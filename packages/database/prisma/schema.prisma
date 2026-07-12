@@ -1,0 +1,318 @@
+// VentureOS - Prisma schema (Phase 1 scope)
+// Entities implemented here match master spec section 22 "Identity and access"
+// plus the minimal Workflow/Integration entities needed for Phase 1 acceptance.
+// Later-phase entities (Opportunity, Evidence, Proposal, Board, Approval,
+// Product, Listing, Finance, Experiment...) are documented in
+// docs/DATA_MODEL.md and will be added in their respective phases without
+// requiring a rewrite of this foundation.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity and access
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String?
+  displayName  String
+  isFounder    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  sessions        Session[]
+  accounts        Account[]
+  memberships     WorkspaceMember[]
+  founderProfile  FounderProfile?
+  securityEvents  SecurityEvent[]
+  auditEventsMade AuditEvent[]      @relation("AuditActor")
+
+  @@index([email])
+  @@map("users")
+}
+
+/// OAuth/credential provider linkage, kept separate from User for future
+/// multi-provider auth (Better Auth / Auth.js compatible shape).
+model Account {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
+  provider          String
+  providerAccountId String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  sessionToken String   @unique
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  revokedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Workspace {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String    @unique
+  mode      String    @default("SINGLE_FOUNDER") // future: MULTI_TENANT
+  baseCurrency String @default("EUR")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  members         WorkspaceMember[]
+  securityEvents  SecurityEvent[]
+  auditEvents     AuditEvent[]
+  workflowRuns    WorkflowRun[]
+  integrations    Integration[]
+  onboardingProfile FounderOnboardingProfile?
+
+  @@map("workspaces")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique // e.g. FOUNDER, OPERATOR, VIEWER
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+  memberships     WorkspaceMember[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique // e.g. approval:decide, product:publish
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  userId      String   @db.Uuid
+  roleId      String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role      @relation(fields: [roleId], references: [id])
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@map("workspace_members")
+}
+
+model FounderProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  timezone  String   @default("Europe/Athens")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("founder_profiles")
+}
+
+/// Founder onboarding answers (master spec section 23.2). One per workspace
+/// for the single-founder-workspace Phase 1 default.
+model FounderOnboardingProfile {
+  id                     String   @id @default(uuid()) @db.Uuid
+  workspaceId            String   @unique @db.Uuid
+  businessObjectives     String?
+  availableBudgetEur     Decimal? @db.Decimal(10, 2)
+  riskTolerance          String?  // LOW | MEDIUM | HIGH
+  preferredCategories    String[] @default([])
+  excludedCategories     String[] @default([])
+  targetRegions          String[] @default([])
+  preferredLanguages     String[] @default(["en"])
+  weeklyTimeHours        Int?
+  existingSkills         String[] @default([])
+  marketplacePreferences String[] @default(["etsy"])
+  advertisingPreference  String   @default("DISABLED")
+  approvalThresholdEur   Decimal? @db.Decimal(10, 2)
+  refundThresholdEur     Decimal? @db.Decimal(10, 2)
+  targetProfitEur        Decimal? @db.Decimal(10, 2)
+  targetLaunchDate        DateTime?
+  completedAt             DateTime?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("founder_onboarding_profiles")
+}
+
+model SecurityEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String?  @db.Uuid
+  userId      String?  @db.Uuid
+  type        String   // e.g. LOGIN_SUCCESS, LOGIN_FAILURE, RATE_LIMIT_HIT, AUTH_ERROR
+  severity    String   @default("INFO") // INFO | WARN | CRITICAL
+  description String
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@map("security_events")
+}
+
+// ---------------------------------------------------------------------------
+// Audit (append-only)
+// ---------------------------------------------------------------------------
+
+/// Append-only by application convention: the API layer must only ever
+/// create rows here, never update or delete. See docs/SECURITY.md.
+model AuditEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String?  @db.Uuid
+  actorId          String?  @db.Uuid
+  action           String
+  entityType       String
+  entityId         String
+  before           Json?
+  after            Json?
+  correlationId    String?
+  workflowId       String?
+  policyResult     Json?
+  approvalReference String?
+  ipOrSessionId    String?
+  integrityHash    String
+  createdAt        DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actor     User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_events")
+}
+
+// ---------------------------------------------------------------------------
+// Workflow (Temporal-backed)
+// ---------------------------------------------------------------------------
+
+model WorkflowRun {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String?   @db.Uuid
+  workflowType     String
+  temporalWorkflowId String  @unique
+  temporalRunId    String?
+  status           String    @default("RUNNING") // RUNNING | COMPLETED | FAILED | CANCELLED | TERMINATED
+  input            Json?
+  output           Json?
+  correlationId    String?
+  startedAt        DateTime  @default(now())
+  completedAt      DateTime?
+
+  workspace Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  steps     WorkflowStep[]
+
+  @@index([workspaceId])
+  @@map("workflow_runs")
+}
+
+model WorkflowStep {
+  id            String    @id @default(uuid()) @db.Uuid
+  workflowRunId String    @db.Uuid
+  name          String
+  status        String    @default("PENDING") // PENDING | RUNNING | COMPLETED | FAILED | SKIPPED
+  attempt       Int       @default(1)
+  input         Json?
+  output        Json?
+  error         String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+
+  @@index([workflowRunId])
+  @@map("workflow_steps")
+}
+
+// ---------------------------------------------------------------------------
+// Integrations (read-only by default; write integrations start disabled)
+// ---------------------------------------------------------------------------
+
+model Integration {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @db.Uuid
+  provider         String   // e.g. etsy, minio, anthropic-mock
+  mode             String   @default("MOCK") // MOCK | READ_ONLY | WRITE_ENABLED
+  writeEnabled     Boolean  @default(false)
+  status           String   @default("DISCONNECTED") // DISCONNECTED | CONNECTED | ERROR
+  lastHealthCheckAt DateTime?
+  lastHealthStatus String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  secrets   SecretReference[]
+
+  @@unique([workspaceId, provider])
+  @@map("integrations")
+}
+
+/// Stores ONLY a reference/pointer to where a secret lives (env var name or
+/// external secret-manager key) - never the secret value itself.
+model SecretReference {
+  id            String   @id @default(uuid()) @db.Uuid
+  integrationId String   @db.Uuid
+  label         String
+  storageMethod String   @default("ENV_VAR") // ENV_VAR | EXTERNAL_SECRET_MANAGER
+  reference     String   // e.g. env var name, never the secret itself
+  createdAt     DateTime @default(now())
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("secret_references")
+}
