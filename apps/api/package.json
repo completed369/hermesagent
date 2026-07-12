@@ -28,7 +28,7 @@
     "@ventureos/observability": "workspace:*",
     "@ventureos/security": "workspace:*",
     "@ventureos/integrations": "workspace:*",
-    "@ventureos/worker": "workspace:*"
+    "@ventureos/workflows": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.5",

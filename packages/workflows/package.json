@@ -1,0 +1,13 @@
+{
+  "name": "@ventureos/workflows",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@temporalio/client": "^1.11.3",
+    "@ventureos/config": "workspace:*"
+  },
+  "devDependencies": { "typescript": "^5.6.3", "@types/node": "^22.7.5" }
+}

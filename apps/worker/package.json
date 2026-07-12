@@ -17,7 +17,8 @@
     "@temporalio/workflow": "^1.11.3",
     "@temporalio/activity": "^1.11.3",
     "@ventureos/config": "workspace:*",
-    "@ventureos/observability": "workspace:*"
+    "@ventureos/observability": "workspace:*",
+    "@ventureos/workflows": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
