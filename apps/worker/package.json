@@ -1,0 +1,28 @@
+{
+  "name": "@ventureos/worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@temporalio/client": "^1.11.3",
+    "@temporalio/worker": "^1.11.3",
+    "@temporalio/workflow": "^1.11.3",
+    "@temporalio/activity": "^1.11.3",
+    "@ventureos/config": "workspace:*",
+    "@ventureos/observability": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "tsx": "^4.19.1",
+    "vitest": "^2.1.3",
+    "@types/node": "^22.7.5"
+  }
+}
