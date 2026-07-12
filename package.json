@@ -22,6 +22,7 @@
     "test:e2e": "turbo run test:e2e",
     "db:generate": "pnpm --filter @ventureos/database run generate",
     "db:migrate": "pnpm --filter @ventureos/database run migrate",
+    "db:migrate:dev": "pnpm --filter @ventureos/database run migrate:dev",
     "db:seed": "pnpm --filter @ventureos/database run seed",
     "db:studio": "pnpm --filter @ventureos/database run studio",
     "clean": "turbo run clean && rm -rf node_modules"

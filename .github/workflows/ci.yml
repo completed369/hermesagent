@@ -1,0 +1,71 @@
+name: CI
+
+# Status: written to a reasonable GitHub Actions shape but NEVER RUN.
+# This repository was built in a sandbox with no network/CI access to
+# validate this workflow file end to end. Treat the first real run as a
+# test of this file itself, not just of the application code.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ventureos
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: ventureos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ventureos -d ventureos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ventureos:ci-only-password@localhost:5432/ventureos?schema=public
+      AUTH_SECRET: ci-only-auth-secret-not-a-real-secret-32chars
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format check
+        run: pnpm run format:check
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Prisma generate + migrate
+        run: |
+          pnpm db:generate
+          pnpm db:migrate
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Integration tests
+        run: pnpm --filter @ventureos/api test:integration
+
+      - name: Build
+        run: pnpm build
