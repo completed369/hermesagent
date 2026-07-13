@@ -65,6 +65,17 @@ beyond local testing**). Created by `pnpm db:seed`.
 
 ## Troubleshooting
 
+- **`running scripts is disabled on this system` / `UnauthorizedAccess` /
+  `PSSecurityException`** → PowerShell's default execution policy blocks
+  unsigned local scripts. Fix once per user account:
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+  ```
+  Or bypass it for a single run without changing the policy:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\scripts\preflight.ps1
+  ```
+
 - **`pnpm: command not found`** → run `corepack enable` then re-open your
   terminal.
 - **Docker Desktop not running** → `preflight.ps1` will catch this and tell
