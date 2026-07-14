@@ -8,7 +8,9 @@
     "experimentalDecorators": true,
     "outDir": "dist",
     "rootDir": "src",
-    "strictPropertyInitialization": false
+    "strictPropertyInitialization": false,
+    "declaration": false,
+    "declarationMap": false
   },
   "include": ["src"]
 }

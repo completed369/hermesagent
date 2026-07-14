@@ -1,0 +1,392 @@
+
+== Prisma generate ==
+
+> ventureos@0.1.0 db:generate D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run generate
+
+
+> @ventureos/database@0.1.0 generate D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- prisma generate
+
+Prisma schema loaded from prisma\schema.prisma
+
+Γ£ö Generated Prisma Client (v5.22.0) to .\..\..\node_modules\.pnpm\@prisma+client@5.22.0_prisma@5.22.0\node_modules\@prisma\client in 160ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want to react to database changes in your app as they happen? Discover how with Pulse: https://pris.ly/tip-1-pulse
+
+  [PASS] Prisma client generated
+
+== Database migrate (dev) ==
+
+> ventureos@0.1.0 db:migrate:dev D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run migrate:dev
+
+
+> @ventureos/database@0.1.0 migrate:dev D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- prisma migrate dev
+
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "ventureos", schema "public" at "localhost:5432"
+
+Already in sync, no schema change or pending migration was found.
+
+Running generate... (Use --skip-generate to skip the generators)
+[2K[1A[2K[GRunning generate... - Prisma Client
+[2K[1A[2K[GΓ£ö Generated Prisma Client (v5.22.0) to .\..\..\node_modules\.pnpm\@prisma+client
+@5.22.0_prisma@5.22.0\node_modules\@prisma\client in 150ms
+
+
+  [PASS] Migrations applied
+
+== Seed database ==
+
+> ventureos@0.1.0 db:seed D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run seed
+
+
+> @ventureos/database@0.1.0 seed D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- tsx src/seed.ts
+
+[seed] starting VentureOS Phase 1 seed...
+[seed] done.
+[seed] founder login: founder@ventureos.local / (password from DEV_FOUNDER_PASSWORD env var)
+[seed] workspace: VentureOS (ventureos-default)
+  [PASS] Database seeded (founder account + workspace created)
+
+== Starting web, api, and worker (Ctrl+C to stop) ==
+  Web:            http://localhost:3000
+  API:            http://localhost:3001
+  API docs:       http://localhost:3001/api/docs
+  Temporal UI:    http://localhost:8088
+  MinIO console:  http://localhost:9001
+
+
+> ventureos@0.1.0 dev D:\Documents\claudehermespromt\ventureos
+> turbo run dev
+
+ΓÇó turbo 2.10.4
+
+   ΓÇó Packages in scope: @ventureos/api, @ventureos/auth, @ventureos/config, @ventureos/contracts, @ventureos/database, @ventureos/finance-engine, @ventureos/integrations, @ventureos/observability, @ventureos/policy-engine, @ventureos/scoring-engine, @ventureos/security, @ventureos/testing, @ventureos/web, @ventureos/worker, @ventureos/workflows
+   ΓÇó Running dev in 15 packages
+   ΓÇó Remote caching disabled
+
+@ventureos/auth:build: cache miss, executing 4b3064e763b7afe7
+@ventureos/contracts:build: cache miss, executing e05590ebc5fc5c91
+@ventureos/security:build: cache miss, executing 2fa952f869789493
+@ventureos/config:build: cache miss, executing f65efcfe86968b90
+@ventureos/web:dev: cache bypass, force executing e2ee100c2a340e4a
+@ventureos/database:build: cache miss, executing b286ee7f1ef1d82e
+@ventureos/auth:build: 
+@ventureos/auth:build: > @ventureos/auth@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\auth
+@ventureos/auth:build: > tsc -p tsconfig.json
+@ventureos/auth:build: 
+@ventureos/contracts:build: 
+@ventureos/contracts:build: > @ventureos/contracts@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\contracts
+@ventureos/contracts:build: > tsc -p tsconfig.json
+@ventureos/contracts:build: 
+@ventureos/security:build: 
+@ventureos/security:build: > @ventureos/security@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\security
+@ventureos/security:build: > tsc -p tsconfig.json
+@ventureos/security:build: 
+@ventureos/config:build: 
+@ventureos/config:build: > @ventureos/config@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\config
+@ventureos/config:build: > tsc -p tsconfig.json
+@ventureos/config:build: 
+@ventureos/web:dev: 
+@ventureos/web:dev: > @ventureos/web@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\web
+@ventureos/web:dev: > next dev -p 3000
+@ventureos/web:dev: 
+@ventureos/database:build: 
+@ventureos/database:build: > @ventureos/database@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\database
+@ventureos/database:build: > tsc -p tsconfig.json
+@ventureos/database:build: 
+@ventureos/web:dev:   Γû▓ Next.js 14.2.35
+@ventureos/web:dev:   - Local:        http://localhost:3000
+@ventureos/web:dev: 
+@ventureos/web:dev:  Γ£ô Starting...
+@ventureos/observability:build: cache miss, executing e4a2b8c417b52bc1
+@ventureos/integrations:build: cache miss, executing 17f7e732b0137f8a
+@ventureos/workflows:build: cache miss, executing 984cc55caccefe6d
+@ventureos/observability:build: 
+@ventureos/observability:build: > @ventureos/observability@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\observability
+@ventureos/observability:build: > tsc -p tsconfig.json
+@ventureos/observability:build: 
+@ventureos/integrations:build: 
+@ventureos/integrations:build: > @ventureos/integrations@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\integrations
+@ventureos/integrations:build: > tsc -p tsconfig.json
+@ventureos/integrations:build: 
+@ventureos/workflows:build: 
+@ventureos/workflows:build: > @ventureos/workflows@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\workflows
+@ventureos/workflows:build: > tsc -p tsconfig.json
+@ventureos/workflows:build: 
+@ventureos/web:dev:  Γ£ô Ready in 19s
+@ventureos/worker:dev: cache bypass, force executing fc5a4fb854455139
+@ventureos/api:dev: cache bypass, force executing efadbe77ec0fad9b
+@ventureos/worker:dev: 
+@ventureos/worker:dev: > @ventureos/worker@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\worker
+@ventureos/worker:dev: > dotenv -e ../../.env -- tsx watch src/index.ts
+@ventureos/worker:dev: 
+@ventureos/api:dev: 
+@ventureos/api:dev: > @ventureos/api@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\api
+@ventureos/api:dev: > dotenv -e ../../.env -- nest start --watch --webpack
+@ventureos/api:dev: 
+@ventureos/worker:dev: {"timestamp":"2026-07-13T10:33:25.625Z","level":"info","service":"worker","message":"Connecting to Temporal","address":"localhost:7233","namespace":"default"}
+@ventureos/worker:dev: {"timestamp":"2026-07-13T10:33:25.735Z","level":"info","service":"worker","message":"Connected to Temporal"}
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/api:dev: webpack 5.97.1 compiled [1m[32msuccessfully[39m[22m in 2947 ms
+@ventureos/api:dev: (node:14664) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+@ventureos/api:dev: (Use `node --trace-deprecation ...` to show where the warning was created)
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/worker:dev: 2026-07-13T10:33:33.752Z [INFO] asset workflow-bundle-8bca0452144585a643da.js 1.47 MiB [emitted] [immutable] (name: main)
+@ventureos/worker:dev: runtime modules 1.34 KiB 4 modules
+@ventureos/worker:dev: modules by path ../../node_modules/.pnpm/ 432 KiB
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+common@1.20.2/node_modules/@temporal...(truncated) 155 KiB 34 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+workflow@1.20.2/node_modules/@tempor...(truncated) 201 KiB 26 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/nexus-rpc@0.0.2/node_modules/nexus-rpc/lib/ 22.3 KiB 13 modules
+@ventureos/worker:dev:   ../../node_modules/.pnpm/long@5.3.2/node_modules/long/umd/index.js 49.8 KiB [built] [code generated]
+@ventureos/worker:dev:   ../../node_modules/.pnpm/ms@3.0.0-canary.1/node_modules/ms/dist/index.cjs 3.41 KiB [built] [code generated]
+@ventureos/worker:dev: modules by path ./src/workflows/ 1.26 KiB
+@ventureos/worker:dev:   ./src/workflows/index-autogenerated-entrypoint.cjs 526 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/index.ts 34 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/hello-workflow.ts 730 bytes [built] [code generated]
+@ventureos/worker:dev: optional modules 30 bytes [optional]
+@ventureos/worker:dev:   __temporal_custom_payload_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev:   __temporal_custom_failure_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev: webpack 5.108.4 compiled successfully in 4685 ms { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/worker:dev: 2026-07-13T10:33:33.767Z [INFO] Workflow bundle created { sdkComponent: 'worker', taskQueue: 'ventureos-main', size: '1.47MB' }
+@ventureos/worker:dev: {"timestamp":"2026-07-13T10:33:37.684Z","level":"info","service":"worker","message":"Worker created, starting run loop","taskQueue":"ventureos-main"}
+@ventureos/worker:dev: 2026-07-13T10:33:37.686Z [INFO] Worker state changed {
+@ventureos/worker:dev:   sdkComponent: 'worker',
+@ventureos/worker:dev:   taskQueue: 'ventureos-main',
+@ventureos/worker:dev:   state: 'RUNNING'
+@ventureos/worker:dev: }
+@ventureos/worker:dev: 2026-07-13T10:33:37.693Z [INFO] No Nexus services registered, not polling for Nexus tasks { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +2ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mThrottlerModule dependencies initialized[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mHealthModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mWorkspacesModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mOnboardingModule dependencies initialized[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuditModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSecurityModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mHealthController {/api/health}:[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health/live, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health/ready, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health/temporal, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/api/auth}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/login, POST} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/logout, POST} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/me, GET} route[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mWorkspacesController {/api/workspaces}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/workspaces/current, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mOnboardingController {/api/onboarding}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/onboarding, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/onboarding, PUT} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuditController {/api/audit-events}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/audit-events, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mSecurityController {/api/security-events}:[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/security-events, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 7876  - [39m07/13/2026, 1:33:39 PM [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:33:39.694Z","level":"info","service":"api","message":"API started","port":3001,"env":"development"}
+@ventureos/api:dev: No errors found.
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:35:18.339Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/health/ready","statusCode":200,"durationMs":327,"correlationId":"c06b9e37-46e9-40e0-877e-6a46d7eb38f1"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:35:23.499Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/health/temporal","statusCode":200,"durationMs":4616,"correlationId":"5bfb42cc-10db-467b-ab17-a4a25ea411a7"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:35:23.959Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/health/live","statusCode":200,"durationMs":1,"correlationId":"c9373407-9a60-401a-b1a9-0cbd3afd331d"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:35:35.231Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/health/ready","statusCode":200,"durationMs":36,"correlationId":"e4958fe5-8c4f-48c2-9bad-e38f5ab71bae"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:35:42.692Z","level":"error","service":"api","message":"unhandled exception","path":"/","status":404,"error":"Cannot GET /","stack":"NotFoundException: Cannot GET /\n    at callback (D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\\node_modules\\@nestjs\\core\\router\\routes-resolver.js:77:19)\n    at D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\\node_modules\\@nestjs\\core\\router\\router-proxy.js:9:23\n    at Layer.handle [as handle_request] (D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\express@4.22.1\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at trim_prefix (D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\express@4.22.1\\node_modules\\express\\lib\\router\\index.js:328:13)\n    at D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\express@4.22.1\\node_modules\\express\\lib\\router\\index.js:286:9\n    at router.process_params (D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\express@4.22.1\\node_modules\\express\\lib\\router\\index.js:346:12)\n    at next (D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\express@4.22.1\\node_modules\\express\\lib\\router\\index.js:280:10)\n    at urlencodedParser (D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\body-parser@1.20.4\\node_modules\\body-parser\\lib\\types\\urlencoded.js:91:7)\n    at Layer.handle [as handle_request] (D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\express@4.22.1\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at trim_prefix (D:\\Documents\\claudehermespromt\\ventureos\\node_modules\\.pnpm\\express@4.22.1\\node_modules\\express\\lib\\router\\index.js:328:13)"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:35:47.508Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/health/live","statusCode":200,"durationMs":0,"correlationId":"9c9252bf-4d39-41da-be19-41596b5138d3"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:35:47.519Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/health/ready","statusCode":200,"durationMs":14,"correlationId":"a359dfff-ca26-4df0-8173-203b0d4cb847"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:35:47.862Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/health/temporal","statusCode":200,"durationMs":356,"correlationId":"d8c22685-d88c-4b29-8ff0-8df0189ca3cd"}
+@ventureos/web:dev:  Γùï Compiling / ...
+@ventureos/web:dev:  Γ£ô Compiled / in 3.4s (446 modules)
+@ventureos/web:dev:  GET / 307 in 3846ms
+@ventureos/web:dev:  Γùï Compiling /dashboard ...
+@ventureos/web:dev:  Γ£ô Compiled /dashboard in 12.8s (502 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:37:47.208Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"8ca7619c-5c63-4fd6-8262-0dc92ea04b60"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:37:47.403Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":193,"correlationId":"4cdf67e2-3a69-431b-9768-90fd6cd7a8fe"}
+@ventureos/web:dev:  GET /dashboard 200 in 13461ms
+@ventureos/web:dev:  Γùï Compiling /dashboard/onboarding ...
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/onboarding in 1057ms (514 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:03.893Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"82d214ea-cec2-40ba-b359-b2716c86ec2e"}
+@ventureos/web:dev:  GET /dashboard/onboarding 200 in 1574ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:05.018Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/onboarding","statusCode":200,"durationMs":48,"correlationId":"2c28ed54-199a-46c0-80bf-61bd3f3febe8"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:05.019Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/onboarding","statusCode":200,"durationMs":54,"correlationId":"be450844-d47d-491b-acbf-67bf28a22394"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:20.700Z","level":"info","service":"api","message":"request completed","method":"PUT","path":"/api/onboarding","statusCode":200,"durationMs":176,"correlationId":"b0d1b215-4b9e-4295-bd15-68d8b60c6023"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:32.701Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"2ccf821b-9b03-4c30-af88-83d5f2c59d56"}
+@ventureos/web:dev:  GET /dashboard/onboarding 200 in 92ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:33.333Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/onboarding","statusCode":200,"durationMs":2,"correlationId":"35781f39-5240-45a5-a3c5-7261aa67d941"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:33.342Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/onboarding","statusCode":200,"durationMs":4,"correlationId":"b9eec07c-3e57-4b32-90bc-c69cb4b84ab0"}
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/audit in 300ms (516 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:41.555Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"8649db6f-755a-4512-90ea-6a97ff376184"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:41.587Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/audit-events?limit=100","statusCode":200,"durationMs":33,"correlationId":"a7552ca1-3f8a-431e-a661-dcf0c49f5426"}
+@ventureos/web:dev:  GET /dashboard/audit 200 in 493ms
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/security in 457ms (518 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:43.126Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"eb159340-94a1-4084-aa1c-43702c388a53"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:39:43.177Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/security-events?limit=100","statusCode":200,"durationMs":54,"correlationId":"1ba1b82c-b716-4f1c-bab7-86ef9c86c386"}
+@ventureos/web:dev:  GET /dashboard/security 200 in 666ms
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/api:dev: webpack 5.97.1 compiled [1m[32msuccessfully[39m[22m in 162 ms
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/api:dev: ERROR in ./src/modules/onboarding/onboarding.controller.ts:22:35
+@ventureos/api:dev: TS2554: Expected 3 arguments, but got 2.
+@ventureos/api:dev:   [0m [90m 20 |[39m   save([33m@[39m[33mBody[39m() body[33m:[39m unknown[33m,[39m [33m@[39m[33mCurrentUser[39m() user[33m:[39m [33mAuthenticatedUser[39m) {
+@ventureos/api:dev:    [90m 21 |[39m     [36mconst[39m input [33m=[39m onboardingSchema[33m.[39mparse(body)[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 22 |[39m     [36mreturn[39m [36mthis[39m[33m.[39monboardingService[33m.[39msave(user[33m.[39mworkspaceId[33m,[39m input)[33m;[39m
+@ventureos/api:dev:    [90m    |[39m                                   [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 23 |[39m   }
+@ventureos/api:dev:    [90m 24 |[39m }
+@ventureos/api:dev:    [90m 25 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: Found 1 error in 1750 ms.
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/api:dev: webpack 5.97.1 compiled [1m[32msuccessfully[39m[22m in 118 ms
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/api:dev: Found 1 error in 1848 ms.
+@ventureos/api:dev: ERROR in ./src/modules/onboarding/onboarding.controller.ts:22:70
+@ventureos/api:dev: TS2339: Property 'id' does not exist on type 'AuthenticatedUser'.
+@ventureos/api:dev:   [0m [90m 20 |[39m   save([33m@[39m[33mBody[39m() body[33m:[39m unknown[33m,[39m [33m@[39m[33mCurrentUser[39m() user[33m:[39m [33mAuthenticatedUser[39m) {
+@ventureos/api:dev:    [90m 21 |[39m     [36mconst[39m input [33m=[39m onboardingSchema[33m.[39mparse(body)[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 22 |[39m     [36mreturn[39m [36mthis[39m[33m.[39monboardingService[33m.[39msave(user[33m.[39mworkspaceId[33m,[39m input[33m,[39m user[33m.[39mid)[33m;[39m
+@ventureos/api:dev:    [90m    |[39m                                                                      [31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 23 |[39m   }
+@ventureos/api:dev:    [90m 24 |[39m }
+@ventureos/api:dev:    [90m 25 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: [32m[Nest] 21564  - [39m07/13/2026, 1:41:22 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+@ventureos/api:dev: [32m[Nest] 21564  - [39m07/13/2026, 1:41:22 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +2ms[39m
+@ventureos/api:dev: [31m[Nest] 21564  - [39m07/13/2026, 1:41:22 PM [31m  ERROR[39m [38;5;3m[ExceptionHandler] [39m[31mNest can't resolve dependencies of the OnboardingService (?). Please make sure that the argument AuditService at index [0] is available in the OnboardingModule context.
+@ventureos/api:dev: 
+@ventureos/api:dev: Potential solutions:
+@ventureos/api:dev: - Is OnboardingModule a valid NestJS module?
+@ventureos/api:dev: - If AuditService is a provider, is it part of the current OnboardingModule?
+@ventureos/api:dev: - If AuditService is exported from a separate @Module, is that module imported within OnboardingModule?
+@ventureos/api:dev:   @Module({
+@ventureos/api:dev:     imports: [ /* the Module containing AuditService */ ]
+@ventureos/api:dev:   })
+@ventureos/api:dev: [39m
+@ventureos/api:dev: Error: Nest can't resolve dependencies of the OnboardingService (?). Please make sure that the argument AuditService at index [0] is available in the OnboardingModule context.
+@ventureos/api:dev: 
+@ventureos/api:dev: Potential solutions:
+@ventureos/api:dev: - Is OnboardingModule a valid NestJS module?
+@ventureos/api:dev: - If AuditService is a provider, is it part of the current OnboardingModule?
+@ventureos/api:dev: - If AuditService is exported from a separate @Module, is that module imported within OnboardingModule?
+@ventureos/api:dev:   @Module({
+@ventureos/api:dev:     imports: [ /* the Module containing AuditService */ ]
+@ventureos/api:dev:   })
+@ventureos/api:dev: 
+@ventureos/api:dev:     at Injector.lookupComponentInParentModules (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:262:19)
+@ventureos/api:dev:     at async Injector.resolveComponentInstance (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:215:33)
+@ventureos/api:dev:     at async resolveParam (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:129:38)
+@ventureos/api:dev:     at async Promise.all (index 0)
+@ventureos/api:dev:     at async Injector.resolveConstructorParams (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:144:27)
+@ventureos/api:dev:     at async Injector.loadInstance (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:70:13)
+@ventureos/api:dev:     at async Injector.loadProvider (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:98:9)
+@ventureos/api:dev:     at async D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\instance-loader.js:56:13
+@ventureos/api:dev:     at async Promise.all (index 3)
+@ventureos/api:dev:     at async InstanceLoader.createInstancesOfProviders (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\instance-loader.js:55:9)
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/api:dev: webpack 5.97.1 compiled [1m[32msuccessfully[39m[22m in 98 ms
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/api:dev: No errors found.
+@ventureos/api:dev: [32m[Nest] 22776  - [39m07/13/2026, 1:41:31 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+@ventureos/api:dev: [32m[Nest] 22776  - [39m07/13/2026, 1:41:31 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +2ms[39m
+@ventureos/api:dev: [31m[Nest] 22776  - [39m07/13/2026, 1:41:31 PM [31m  ERROR[39m [38;5;3m[ExceptionHandler] [39m[31mNest can't resolve dependencies of the OnboardingService (?). Please make sure that the argument AuditService at index [0] is available in the OnboardingModule context.
+@ventureos/api:dev: 
+@ventureos/api:dev: Potential solutions:
+@ventureos/api:dev: - Is OnboardingModule a valid NestJS module?
+@ventureos/api:dev: - If AuditService is a provider, is it part of the current OnboardingModule?
+@ventureos/api:dev: - If AuditService is exported from a separate @Module, is that module imported within OnboardingModule?
+@ventureos/api:dev:   @Module({
+@ventureos/api:dev:     imports: [ /* the Module containing AuditService */ ]
+@ventureos/api:dev:   })
+@ventureos/api:dev: [39m
+@ventureos/api:dev: Error: Nest can't resolve dependencies of the OnboardingService (?). Please make sure that the argument AuditService at index [0] is available in the OnboardingModule context.
+@ventureos/api:dev: 
+@ventureos/api:dev: Potential solutions:
+@ventureos/api:dev: - Is OnboardingModule a valid NestJS module?
+@ventureos/api:dev: - If AuditService is a provider, is it part of the current OnboardingModule?
+@ventureos/api:dev: - If AuditService is exported from a separate @Module, is that module imported within OnboardingModule?
+@ventureos/api:dev:   @Module({
+@ventureos/api:dev:     imports: [ /* the Module containing AuditService */ ]
+@ventureos/api:dev:   })
+@ventureos/api:dev: 
+@ventureos/api:dev:     at Injector.lookupComponentInParentModules (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:262:19)
+@ventureos/api:dev:     at async Injector.resolveComponentInstance (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:215:33)
+@ventureos/api:dev:     at async resolveParam (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:129:38)
+@ventureos/api:dev:     at async Promise.all (index 0)
+@ventureos/api:dev:     at async Injector.resolveConstructorParams (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:144:27)
+@ventureos/api:dev:     at async Injector.loadInstance (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:70:13)
+@ventureos/api:dev:     at async Injector.loadProvider (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\injector.js:98:9)
+@ventureos/api:dev:     at async D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\instance-loader.js:56:13
+@ventureos/api:dev:     at async Promise.all (index 3)
+@ventureos/api:dev:     at async InstanceLoader.createInstancesOfProviders (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\injector\instance-loader.js:55:9)
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/api:dev: webpack 5.97.1 compiled [1m[32msuccessfully[39m[22m in 56 ms
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/api:dev: No errors found.
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +3ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mThrottlerModule dependencies initialized[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mHealthModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mWorkspacesModule dependencies initialized[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuditModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSecurityModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mOnboardingModule dependencies initialized[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mHealthController {/api/health}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health/live, GET} route[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health/ready, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health/temporal, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/api/auth}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/login, POST} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/logout, POST} route[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/me, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mWorkspacesController {/api/workspaces}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/workspaces/current, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mOnboardingController {/api/onboarding}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/onboarding, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/onboarding, PUT} route[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuditController {/api/audit-events}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/audit-events, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mSecurityController {/api/security-events}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/security-events, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 22628  - [39m07/13/2026, 1:41:46 PM [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:41:46.728Z","level":"info","service":"api","message":"API started","port":3001,"env":"development"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:42:20.134Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":2,"correlationId":"143d087d-ffe1-4a5f-a8dd-52e8f3be65a2"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:42:20.156Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":14,"correlationId":"8eb3996f-b47a-4ba5-a0d2-82ad6f8b632d"}
+@ventureos/web:dev:  GET /dashboard 200 in 200ms
+@ventureos/web:dev:  Γùï Compiling /login ...
+@ventureos/web:dev:  Γ£ô Compiled /login in 554ms (524 modules)
+@ventureos/web:dev:  GET /login 200 in 749ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:42:38.396Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"705e28d3-7b10-4572-87d1-a1ca44bdea5f"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:42:38.415Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":21,"correlationId":"e2f5baf6-1e5f-4189-8f91-14cc0a46a549"}
+@ventureos/web:dev:  GET /dashboard 200 in 146ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:42:56.741Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":1,"correlationId":"1817c664-b8e0-4307-91e0-6b037edc8469"}
+@ventureos/web:dev:  Γ£ô Compiled in 343ms (267 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:44:24.917Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"ecca87d4-ac11-44ac-ab75-edeb974d9ef2"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:44:24.923Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":8,"correlationId":"9069f360-5211-4bab-b2dc-47c4f26d2835"}
+@ventureos/web:dev:  Γ£ô Compiled in 950ms (523 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:44:30.286Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"a722153a-cb55-4cbf-a6b0-340d17d21f27"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T10:44:30.303Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":19,"correlationId":"6771d4e5-b20c-41f6-a3bb-ce252fb825dd"}
+Shutting down Turborepo tasks...
+@ventureos/web:dev: [?25h
+
+ Tasks:    8 successful, 11 total
+Cached:    0 cached, 11 total
+  Time:    21m22.058s 
+

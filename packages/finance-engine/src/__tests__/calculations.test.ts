@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_FINANCIAL_ASSUMPTIONS } from '../assumptions';
-import { calculateBreakEven, calculateScenarios, calculateUnitEconomics, roundToCents } from '../calculations';
+import {
+  calculateBreakEven,
+  calculateScenarios,
+  calculateUnitEconomics,
+  roundToCents,
+} from '../calculations';
 
 describe('roundToCents', () => {
   it('rounds correctly avoiding float drift', () => {

@@ -22,5 +22,6 @@ export const FinancialAssumptionsSchema = z.object({
 });
 export type FinancialAssumptions = z.infer<typeof FinancialAssumptionsSchema>;
 
-export const DEFAULT_FINANCIAL_ASSUMPTIONS: FinancialAssumptions =
-  FinancialAssumptionsSchema.parse({});
+export const DEFAULT_FINANCIAL_ASSUMPTIONS: FinancialAssumptions = FinancialAssumptionsSchema.parse(
+  {},
+);

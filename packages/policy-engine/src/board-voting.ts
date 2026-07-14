@@ -80,7 +80,7 @@ export function calculateBoardVotingResult(
 
   let weightedScore = 0;
   for (const output of outputs) {
-    const weight = weights[output.agentRole] ?? 0;
+    const weight = (weights as Record<string, number>)[output.agentRole] ?? 0;
     if (output.decision === 'APPROVE') weightedScore += weight;
     else if (output.decision === 'REVISE') weightedScore += weight / 2;
     // REJECT contributes 0

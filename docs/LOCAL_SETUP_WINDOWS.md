@@ -47,14 +47,14 @@ if one fails.
 
 ## Local service addresses (defaults from `.env.example`)
 
-| Service | Address |
-|---|---|
-| Web app | http://localhost:3000 |
-| API | http://localhost:3001 |
+| Service            | Address                        |
+| ------------------ | ------------------------------ |
+| Web app            | http://localhost:3000          |
+| API                | http://localhost:3001          |
 | API docs (Swagger) | http://localhost:3001/api/docs |
-| Temporal UI | http://localhost:8088 |
-| MinIO console | http://localhost:9001 |
-| PostgreSQL | localhost:5432 |
+| Temporal UI        | http://localhost:8088          |
+| MinIO console      | http://localhost:9001          |
+| PostgreSQL         | localhost:5432                 |
 
 ## Founder dev login
 
@@ -68,10 +68,13 @@ beyond local testing**). Created by `pnpm db:seed`.
 - **`running scripts is disabled on this system` / `UnauthorizedAccess` /
   `PSSecurityException`** → PowerShell's default execution policy blocks
   unsigned local scripts. Fix once per user account:
+
   ```powershell
   Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
   ```
+
   Or bypass it for a single run without changing the policy:
+
   ```powershell
   powershell -ExecutionPolicy Bypass -File .\scripts\preflight.ps1
   ```

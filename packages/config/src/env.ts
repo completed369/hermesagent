@@ -1,6 +1,20 @@
 import { z } from 'zod';
 
 /**
+ * `z.coerce.boolean()` is just `Boolean(value)` under the hood, and
+ * `Boolean("false")` is `true` in JavaScript -- any non-empty string coerces
+ * to `true`. That silently broke `MINIO_USE_SSL=false` (client opened a TLS
+ * handshake against MinIO's plain HTTP port). This helper actually parses
+ * the string instead of relying on JS truthiness.
+ */
+function zBoolean(defaultValue: boolean) {
+  return z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined ? defaultValue : v.trim().toLowerCase() === 'true'));
+}
+
+/**
  * Deterministic environment schema shared by apps/api and apps/worker.
  * Every variable consumed by backend code MUST be declared here.
  * Fail fast (fail closed) on startup if required variables are missing or malformed.
@@ -22,7 +36,7 @@ export const envSchema = z.object({
   AUTH_SECRET: z.string().min(16, 'AUTH_SECRET must be at least 16 characters'),
   AUTH_SESSION_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(604800),
   AUTH_COOKIE_NAME: z.string().default('ventureos_session'),
-  DEV_LOGIN_ENABLED: z.coerce.boolean().default(true),
+  DEV_LOGIN_ENABLED: zBoolean(true),
   DEV_FOUNDER_EMAIL: z.string().email().optional(),
   DEV_FOUNDER_PASSWORD: z.string().optional(),
 
@@ -36,7 +50,7 @@ export const envSchema = z.object({
   MINIO_ROOT_USER: z.string().default('ventureos'),
   MINIO_ROOT_PASSWORD: z.string().default('change-me-dev-only'),
   MINIO_BUCKET: z.string().default('ventureos-dev'),
-  MINIO_USE_SSL: z.coerce.boolean().default(false),
+  MINIO_USE_SSL: zBoolean(false),
   STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   STORAGE_MAX_FILE_SIZE_MB: z.coerce.number().int().positive().default(25),
 
@@ -50,13 +64,13 @@ export const envSchema = z.object({
 
   MARKETPLACE_ETSY_MODE: z.enum(['mock', 'live']).default('mock'),
 
-  FEATURE_LIVE_PUBLISHING_ENABLED: z.coerce.boolean().default(false),
-  FEATURE_ADVERTISING_ENABLED: z.coerce.boolean().default(false),
-  FEATURE_PAID_INTEGRATIONS_ENABLED: z.coerce.boolean().default(false),
+  FEATURE_LIVE_PUBLISHING_ENABLED: zBoolean(false),
+  FEATURE_ADVERTISING_ENABLED: zBoolean(false),
+  FEATURE_PAID_INTEGRATIONS_ENABLED: zBoolean(false),
   GOVERNANCE_BOARD_APPROVAL_THRESHOLD: z.coerce.number().min(0).max(100).default(75),
   GOVERNANCE_EVIDENCE_QUALITY_MINIMUM: z.coerce.number().min(0).max(100).default(70),
 
-  OTEL_ENABLED: z.coerce.boolean().default(false),
+  OTEL_ENABLED: zBoolean(false),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
 });
 

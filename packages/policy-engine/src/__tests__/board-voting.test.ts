@@ -3,7 +3,11 @@ import type { AgentOutput, BoardAgentRole } from '@ventureos/contracts';
 import { BOARD_AGENT_ROLES } from '@ventureos/contracts';
 import { calculateBoardVotingResult, DEFAULT_AGENT_WEIGHTS } from '../board-voting';
 
-function makeOutput(role: BoardAgentRole, decision: AgentOutput['decision'], veto?: Partial<AgentOutput['veto']>): AgentOutput {
+function makeOutput(
+  role: BoardAgentRole,
+  decision: AgentOutput['decision'],
+  veto?: Partial<AgentOutput['veto']>,
+): AgentOutput {
   return {
     agentRole: role,
     agentVersion: '1.0.0',
@@ -41,7 +45,11 @@ describe('calculateBoardVotingResult', () => {
   it('blocks on an active critical finance veto even if weighted score is high', () => {
     const outputs = BOARD_AGENT_ROLES.map((r) =>
       r === 'FINANCE_AND_RISK_OFFICER'
-        ? makeOutput(r, 'REJECT', { active: true, type: 'FINANCE', reason: 'unsupported economics' })
+        ? makeOutput(r, 'REJECT', {
+            active: true,
+            type: 'FINANCE',
+            reason: 'unsupported economics',
+          })
         : makeOutput(r, 'APPROVE'),
     );
     const result = calculateBoardVotingResult(outputs, { evidenceQualityScore: 90 });

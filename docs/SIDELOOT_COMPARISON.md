@@ -27,7 +27,7 @@ material.
 ## How to complete this document
 
 When the founder is ready: (1) provide screenshots/notes of SideLoot's
-*publicly visible* marketing pages, app screenshots, or public
+_publicly visible_ marketing pages, app screenshots, or public
 documentation, (2) a future session can research SideLoot's public-facing
 claims via web search, and (3) this document should then be filled in with
 a section-by-section comparison against `PRODUCT_REQUIREMENTS.md`,

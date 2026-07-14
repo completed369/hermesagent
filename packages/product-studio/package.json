@@ -1,0 +1,24 @@
+{
+  "name": "@ventureos/product-studio",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.23.8",
+    "@ventureos/contracts": "workspace:*",
+    "@ventureos/database": "workspace:*",
+    "@ventureos/integrations": "workspace:*",
+    "@ventureos/policy-engine": "workspace:*",
+    "@ventureos/security": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}

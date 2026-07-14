@@ -1,0 +1,397 @@
+
+== Prisma generate ==
+
+> ventureos@0.1.0 db:generate D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run generate
+
+
+> @ventureos/database@0.1.0 generate D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- prisma generate
+
+Prisma schema loaded from prisma\schema.prisma
+
+Γ£ö Generated Prisma Client (v5.22.0) to .\..\..\node_modules\.pnpm\@prisma+client@5.22.0_prisma@5.22.0\node_modules\@prisma\client in 154ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Curious about the SQL queries Prisma ORM generates? Optimize helps you enhance your visibility: https://pris.ly/tip-2-optimize
+
+  [PASS] Prisma client generated
+
+== Database migrate (dev) ==
+
+> ventureos@0.1.0 db:migrate:dev D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run migrate:dev
+
+
+> @ventureos/database@0.1.0 migrate:dev D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- prisma migrate dev
+
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "ventureos", schema "public" at "localhost:5432"
+
+Already in sync, no schema change or pending migration was found.
+
+Running generate... (Use --skip-generate to skip the generators)
+[2K[1A[2K[GRunning generate... - Prisma Client
+[2K[1A[2K[GΓ£ö Generated Prisma Client (v5.22.0) to .\..\..\node_modules\.pnpm\@prisma+client
+@5.22.0_prisma@5.22.0\node_modules\@prisma\client in 196ms
+
+
+  [PASS] Migrations applied
+
+== Seed database ==
+
+> ventureos@0.1.0 db:seed D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run seed
+
+
+> @ventureos/database@0.1.0 seed D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- tsx src/seed.ts
+
+[seed] starting VentureOS Phase 1 seed...
+[seed] done.
+[seed] founder login: founder@ventureos.local / (password from DEV_FOUNDER_PASSWORD env var)
+[seed] workspace: VentureOS (ventureos-default)
+  [PASS] Database seeded (founder account + workspace created)
+
+== Starting web, api, and worker (Ctrl+C to stop) ==
+  Web:            http://localhost:3000
+  API:            http://localhost:3001
+  API docs:       http://localhost:3001/api/docs
+  Temporal UI:    http://localhost:8088
+  MinIO console:  http://localhost:9001
+
+
+> ventureos@0.1.0 dev D:\Documents\claudehermespromt\ventureos
+> turbo run dev --parallel
+
+ WARNING  --parallel is deprecated and will be removed in a future major version. Instead, define task behavior in your turbo.json task definitions using `persistent` and `with`.
+ΓÇó turbo 2.10.4
+
+   ΓÇó Packages in scope: @ventureos/api, @ventureos/auth, @ventureos/config, @ventureos/contracts, @ventureos/database, @ventureos/finance-engine, @ventureos/integrations, @ventureos/observability, @ventureos/policy-engine, @ventureos/scoring-engine, @ventureos/security, @ventureos/testing, @ventureos/web, @ventureos/worker, @ventureos/workflows
+   ΓÇó Running dev in 15 packages
+   ΓÇó Remote caching disabled
+
+@ventureos/worker:dev: cache bypass, force executing a197044dd07791e0
+@ventureos/web:dev: cache bypass, force executing e2ee100c2a340e4a
+@ventureos/api:dev: cache bypass, force executing 07cca47bc11c3ef2
+@ventureos/worker:dev: 
+@ventureos/worker:dev: > @ventureos/worker@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\worker
+@ventureos/worker:dev: > dotenv -e ../../.env -- tsx watch src/index.ts
+@ventureos/worker:dev: 
+@ventureos/web:dev: 
+@ventureos/web:dev: > @ventureos/web@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\web
+@ventureos/web:dev: > next dev -p 3000
+@ventureos/web:dev: 
+@ventureos/api:dev: 
+@ventureos/api:dev: > @ventureos/api@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\api
+@ventureos/api:dev: > dotenv -e ../../.env -- nest start --watch --webpack
+@ventureos/api:dev: 
+@ventureos/web:dev:   Γû▓ Next.js 14.2.35
+@ventureos/web:dev:   - Local:        http://localhost:3000
+@ventureos/web:dev: 
+@ventureos/web:dev:  Γ£ô Starting...
+@ventureos/worker:dev: node:internal/modules/cjs/loader:553
+@ventureos/worker:dev:       const err = new Error(
+@ventureos/worker:dev:                   ^
+@ventureos/worker:dev: 
+@ventureos/worker:dev: Error: Cannot find module 'D:\Documents\claudehermespromt\ventureos\apps\worker\node_modules\@ventureos\config\dist\index.js'. Please verify that the package.json has a valid "main" entry
+@ventureos/worker:dev:     at tryPackage (node:internal/modules/cjs/loader:553:19)
+@ventureos/worker:dev:     at Module._findPath (node:internal/modules/cjs/loader:821:18)
+@ventureos/worker:dev:     at node:internal/modules/cjs/loader:1502:27
+@ventureos/worker:dev:     at nextResolveSimple (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\tsx@4.23.1\node_modules\tsx\dist\register-BoI6-WNn.cjs:10:1017)
+@ventureos/worker:dev:     at D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\tsx@4.23.1\node_modules\tsx\dist\register-BoI6-WNn.cjs:9:4613
+@ventureos/worker:dev:     at D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\tsx@4.23.1\node_modules\tsx\dist\register-BoI6-WNn.cjs:9:3894
+@ventureos/worker:dev:     at resolveTsPaths (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\tsx@4.23.1\node_modules\tsx\dist\register-BoI6-WNn.cjs:10:770)
+@ventureos/worker:dev:     at D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\tsx@4.23.1\node_modules\tsx\dist\register-BoI6-WNn.cjs:10:1171
+@ventureos/worker:dev:     at T._resolveFilename (file:///D:/Documents/claudehermespromt/ventureos/node_modules/.pnpm/tsx@4.23.1/node_modules/tsx/dist/register-zZ7SWseA.mjs:2:15301)
+@ventureos/worker:dev:     at wrapResolveFilename (node:internal/modules/cjs/loader:1071:27) {
+@ventureos/worker:dev:   code: 'MODULE_NOT_FOUND',
+@ventureos/worker:dev:   path: '\\\\?\\D:\\Documents\\claudehermespromt\\ventureos\\apps\\worker\\node_modules\\@ventureos\\config\\package.json',
+@ventureos/worker:dev:   requestPath: '@ventureos/config'
+@ventureos/worker:dev: }
+@ventureos/worker:dev: 
+@ventureos/worker:dev: Node.js v24.18.0
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/web:dev:  Γ£ô Ready in 5.5s
+@ventureos/api:dev: webpack 5.97.1 compiled [1m[32msuccessfully[39m[22m in 1701 ms
+@ventureos/api:dev: (node:19840) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+@ventureos/api:dev: (Use `node --trace-deprecation ...` to show where the warning was created)
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/api:dev: node:internal/modules/cjs/loader:561
+@ventureos/api:dev:       throw err;
+@ventureos/api:dev:       ^
+@ventureos/api:dev: 
+@ventureos/api:dev: Error: Cannot find module 'D:\Documents\claudehermespromt\ventureos\apps\api\node_modules\@ventureos\config\dist\index.js'. Please verify that the package.json has a valid "main" entry
+@ventureos/api:dev:     at tryPackage (node:internal/modules/cjs/loader:553:19)
+@ventureos/api:dev:     at Module._findPath (node:internal/modules/cjs/loader:821:18)
+@ventureos/api:dev:     at Module._resolveFilename (node:internal/modules/cjs/loader:1502:27)
+@ventureos/api:dev:     at wrapResolveFilename (node:internal/modules/cjs/loader:1071:27)
+@ventureos/api:dev:     at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1095:10)
+@ventureos/api:dev:     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1122:12)
+@ventureos/api:dev:     at Module._load (node:internal/modules/cjs/loader:1294:5)
+@ventureos/api:dev:     at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+@ventureos/api:dev:     at Module.require (node:internal/modules/cjs/loader:1617:12)
+@ventureos/api:dev:     at require (node:internal/modules/helpers:153:16) {
+@ventureos/api:dev:   code: 'MODULE_NOT_FOUND',
+@ventureos/api:dev:   path: '\\\\?\\D:\\Documents\\claudehermespromt\\ventureos\\apps\\api\\node_modules\\@ventureos\\config\\package.json',
+@ventureos/api:dev:   requestPath: '@ventureos/config'
+@ventureos/api:dev: }
+@ventureos/api:dev: 
+@ventureos/api:dev: Node.js v24.18.0
+@ventureos/api:dev: ERROR in ./src/app.module.ts:4:25
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/config' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 2 |[39m [36mimport[39m { [33mAPP_FILTER[39m[33m,[39m [33mAPP_INTERCEPTOR[39m[33m,[39m [33mAPP_GUARD[39m } [36mfrom[39m [32m'@nestjs/core'[39m[33m;[39m
+@ventureos/api:dev:    [90m 3 |[39m [36mimport[39m { [33mThrottlerModule[39m[33m,[39m [33mThrottlerGuard[39m } [36mfrom[39m [32m'@nestjs/throttler'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 4 |[39m [36mimport[39m { loadEnv } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                         [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 5 |[39m [36mimport[39m { [33mAuthModule[39m } [36mfrom[39m [32m'./modules/auth/auth.module'[39m[33m;[39m
+@ventureos/api:dev:    [90m 6 |[39m [36mimport[39m { [33mWorkspacesModule[39m } [36mfrom[39m [32m'./modules/workspaces/workspaces.module'[39m[33m;[39m
+@ventureos/api:dev:    [90m 7 |[39m [36mimport[39m { [33mOnboardingModule[39m } [36mfrom[39m [32m'./modules/onboarding/onboarding.module'[39m[33m;[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/common/filters/safe-exception.filter.ts:3:34
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/observability' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mArgumentsHost[39m[33m,[39m [33mCatch[39m[33m,[39m [33mExceptionFilter[39m[33m,[39m [33mHttpException[39m[33m,[39m [33mHttpStatus[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:    [90m 2 |[39m [36mimport[39m type { [33mRequest[39m[33m,[39m [33mResponse[39m } [36mfrom[39m [32m'express'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 3 |[39m [36mimport[39m { [33mStructuredLogger[39m } [36mfrom[39m [32m'@ventureos/observability'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                                  [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 4 |[39m
+@ventureos/api:dev:    [90m 5 |[39m [36mconst[39m logger [33m=[39m [36mnew[39m [33mStructuredLogger[39m([32m'api'[39m)[33m;[39m
+@ventureos/api:dev:    [90m 6 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/common/guards/session-auth.guard.ts:9:24
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/database' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m  7 |[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:    [90m  8 |[39m [36mimport[39m type { [33mRequest[39m } [36mfrom[39m [32m'express'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m  9 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:    [90m    |[39m                        [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 10 |[39m [36mimport[39m { isSessionExpired } [36mfrom[39m [32m'@ventureos/auth'[39m[33m;[39m
+@ventureos/api:dev:    [90m 11 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev:    [90m 12 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/common/guards/session-auth.guard.ts:10:34
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/auth' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m  8 |[39m [36mimport[39m type { [33mRequest[39m } [36mfrom[39m [32m'express'[39m[33m;[39m
+@ventureos/api:dev:    [90m  9 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 10 |[39m [36mimport[39m { isSessionExpired } [36mfrom[39m [32m'@ventureos/auth'[39m[33m;[39m
+@ventureos/api:dev:    [90m    |[39m                                  [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 11 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev:    [90m 12 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m 13 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/common/guards/session-auth.guard.ts:12:26
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/config' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 10 |[39m [36mimport[39m { isSessionExpired } [36mfrom[39m [32m'@ventureos/auth'[39m[33m;[39m
+@ventureos/api:dev:    [90m 11 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev: Found 25 errors in 15455 ms.
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 12 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m    |[39m                          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 13 |[39m
+@ventureos/api:dev:    [90m 14 |[39m [36mexport[39m [36minterface[39m [33mAuthenticatedUser[39m {
+@ventureos/api:dev:    [90m 15 |[39m   userId[33m:[39m string[33m;[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/common/guards/session-auth.guard.ts:70:57
+@ventureos/api:dev: TS7006: Parameter 'rp' implicitly has an 'any' type.
+@ventureos/api:dev:   [0m [90m 68 |[39m       workspaceId[33m:[39m membership[33m.[39mworkspaceId[33m,[39m
+@ventureos/api:dev:    [90m 69 |[39m       roleKey[33m:[39m membership[33m.[39mrole[33m.[39mkey[33m,[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 70 |[39m       permissions[33m:[39m membership[33m.[39mrole[33m.[39mrolePermissions[33m.[39mmap((rp) [33m=>[39m rp[33m.[39mpermission[33m.[39mkey)[33m,[39m
+@ventureos/api:dev:    [90m    |[39m                                                         [31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 71 |[39m     }[33m;[39m
+@ventureos/api:dev:    [90m 72 |[39m
+@ventureos/api:dev:    [90m 73 |[39m     [36mreturn[39m [36mtrue[39m[33m;[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/common/interceptors/logging.interceptor.ts:4:34
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/observability' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 2 |[39m [36mimport[39m type { [33mRequest[39m[33m,[39m [33mResponse[39m } [36mfrom[39m [32m'express'[39m[33m;[39m
+@ventureos/api:dev:    [90m 3 |[39m [36mimport[39m { [33mObservable[39m[33m,[39m tap } [36mfrom[39m [32m'rxjs'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 4 |[39m [36mimport[39m { [33mStructuredLogger[39m } [36mfrom[39m [32m'@ventureos/observability'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                                  [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 5 |[39m
+@ventureos/api:dev:    [90m 6 |[39m [36mconst[39m logger [33m=[39m [36mnew[39m [33mStructuredLogger[39m([32m'api'[39m)[33m;[39m
+@ventureos/api:dev:    [90m 7 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/common/middleware/correlation-id.middleware.ts:3:59
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/observability' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mInjectable[39m[33m,[39m [33mNestMiddleware[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:    [90m 2 |[39m [36mimport[39m type { [33mNextFunction[39m[33m,[39m [33mRequest[39m[33m,[39m [33mResponse[39m } [36mfrom[39m [32m'express'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 3 |[39m [36mimport[39m { [33mCORRELATION_HEADER[39m[33m,[39m generateCorrelationId } [36mfrom[39m [32m'@ventureos/observability'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 4 |[39m
+@ventureos/api:dev:    [90m 5 |[39m [33m@[39m[33mInjectable[39m()
+@ventureos/api:dev:    [90m 6 |[39m [36mexport[39m [36mclass[39m [33mCorrelationIdMiddleware[39m [36mimplements[39m [33mNestMiddleware[39m {[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/config/env.provider.ts:2:35
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/config' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mProvider[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 2 |[39m [36mimport[39m { loadEnv[33m,[39m type [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                                   [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 3 |[39m
+@ventureos/api:dev:    [90m 4 |[39m [36mexport[39m [36mconst[39m [33mENV_TOKEN[39m [33m=[39m [32m'VENTUREOS_ENV'[39m[33m;[39m
+@ventureos/api:dev:    [90m 5 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/main.ts:5:25
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/config' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 3 |[39m [36mimport[39m cookieParser [36mfrom[39m [32m'cookie-parser'[39m[33m;[39m
+@ventureos/api:dev:    [90m 4 |[39m [36mimport[39m { [33mDocumentBuilder[39m[33m,[39m [33mSwaggerModule[39m } [36mfrom[39m [32m'@nestjs/swagger'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 5 |[39m [36mimport[39m { loadEnv } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                         [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 6 |[39m [36mimport[39m { [33mStructuredLogger[39m } [36mfrom[39m [32m'@ventureos/observability'[39m[33m;[39m
+@ventureos/api:dev:    [90m 7 |[39m [36mimport[39m { [33mAppModule[39m } [36mfrom[39m [32m'./app.module'[39m[33m;[39m
+@ventureos/api:dev:    [90m 8 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/main.ts:6:34
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/observability' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 4 |[39m [36mimport[39m { [33mDocumentBuilder[39m[33m,[39m [33mSwaggerModule[39m } [36mfrom[39m [32m'@nestjs/swagger'[39m[33m;[39m
+@ventureos/api:dev:    [90m 5 |[39m [36mimport[39m { loadEnv } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 6 |[39m [36mimport[39m { [33mStructuredLogger[39m } [36mfrom[39m [32m'@ventureos/observability'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                                  [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 7 |[39m [36mimport[39m { [33mAppModule[39m } [36mfrom[39m [32m'./app.module'[39m[33m;[39m
+@ventureos/api:dev:    [90m 8 |[39m
+@ventureos/api:dev:    [90m 9 |[39m [36masync[39m [36mfunction[39m bootstrap() {[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/audit/audit.service.ts:3:24
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/database' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mInjectable[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:    [90m 2 |[39m [36mimport[39m { randomUUID } [36mfrom[39m [32m'node:crypto'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 3 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                        [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 4 |[39m [36mimport[39m { buildAuditEventRecord[33m,[39m type [33mAuditEventInput[39m } [36mfrom[39m [32m'@ventureos/observability'[39m[33m;[39m
+@ventureos/api:dev:    [90m 5 |[39m
+@ventureos/api:dev:    [90m 6 |[39m [90m/**[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/audit/audit.service.ts:4:61
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/observability' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 2 |[39m [36mimport[39m { randomUUID } [36mfrom[39m [32m'node:crypto'[39m[33m;[39m
+@ventureos/api:dev:    [90m 3 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 4 |[39m [36mimport[39m { buildAuditEventRecord[33m,[39m type [33mAuditEventInput[39m } [36mfrom[39m [32m'@ventureos/observability'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                                                             [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 5 |[39m
+@ventureos/api:dev:    [90m 6 |[39m [90m/**[39m
+@ventureos/api:dev:    [90m 7 |[39m [90m * The ONLY way to write an audit event. Callers never touch prisma.auditEvent[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/auth/auth.controller.ts:7:26
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/config' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m  5 |[39m [36mimport[39m { [33mAuthService[39m } [36mfrom[39m [32m'./auth.service'[39m[33m;[39m
+@ventureos/api:dev:    [90m  6 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m  7 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m    |[39m                          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m  8 |[39m [36mimport[39m { [33mSessionAuthGuard[39m[33m,[39m type [33mAuthenticatedUser[39m } [36mfrom[39m [32m'../../common/guards/session-auth.guard'[39m[33m;[39m
+@ventureos/api:dev:    [90m  9 |[39m [36mimport[39m { [33mCurrentUser[39m } [36mfrom[39m [32m'../../common/decorators/current-user.decorator'[39m[33m;[39m
+@ventureos/api:dev:    [90m 10 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/auth/auth.service.ts:3:24
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/database' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mInject[39m[33m,[39m [33mInjectable[39m[33m,[39m [33mUnauthorizedException[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:    [90m 2 |[39m [36mimport[39m type { [33mRequest[39m } [36mfrom[39m [32m'express'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 3 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                        [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 4 |[39m [36mimport[39m { verifyPassword[33m,[39m generateSessionToken[33m,[39m sessionExpiryDate } [36mfrom[39m [32m'@ventureos/auth'[39m[33m;[39m
+@ventureos/api:dev:    [90m 5 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev:    [90m 6 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/auth/auth.service.ts:4:73
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/auth' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 2 |[39m [36mimport[39m type { [33mRequest[39m } [36mfrom[39m [32m'express'[39m[33m;[39m
+@ventureos/api:dev:    [90m 3 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 4 |[39m [36mimport[39m { verifyPassword[33m,[39m generateSessionToken[33m,[39m sessionExpiryDate } [36mfrom[39m [32m'@ventureos/auth'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                                                                         [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 5 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev:    [90m 6 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m 7 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/auth/auth.service.ts:6:26
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/config' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 4 |[39m [36mimport[39m { verifyPassword[33m,[39m generateSessionToken[33m,[39m sessionExpiryDate } [36mfrom[39m [32m'@ventureos/auth'[39m[33m;[39m
+@ventureos/api:dev:    [90m 5 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 6 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 7 |[39m
+@ventureos/api:dev:    [90m 8 |[39m [36mexport[39m [36minterface[39m [33mLoginResult[39m {
+@ventureos/api:dev:    [90m 9 |[39m   sessionToken[33m:[39m string[33m;[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/health/health.service.ts:2:24
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/database' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mInject[39m[33m,[39m [33mInjectable[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 2 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                        [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 3 |[39m [36mimport[39m { [33mMinioStorageProvider[39m } [36mfrom[39m [32m'@ventureos/integrations'[39m[33m;[39m
+@ventureos/api:dev:    [90m 4 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev:    [90m 5 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/health/health.service.ts:3:38
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/integrations' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mInject[39m[33m,[39m [33mInjectable[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:    [90m 2 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 3 |[39m [36mimport[39m { [33mMinioStorageProvider[39m } [36mfrom[39m [32m'@ventureos/integrations'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                                      [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 4 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev:    [90m 5 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m 6 |[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/health/health.service.ts:5:26
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/config' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 3 |[39m [36mimport[39m { [33mMinioStorageProvider[39m } [36mfrom[39m [32m'@ventureos/integrations'[39m[33m;[39m
+@ventureos/api:dev:    [90m 4 |[39m [36mimport[39m { [33mENV_TOKEN[39m } [36mfrom[39m [32m'../../config/env.provider'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 5 |[39m [36mimport[39m type { [33mEnv[39m } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 6 |[39m
+@ventureos/api:dev:    [90m 7 |[39m [36mexport[39m [36minterface[39m [33mHealthStatus[39m {
+@ventureos/api:dev:    [90m 8 |[39m   status[33m:[39m [32m'ok'[39m [33m|[39m [32m'degraded'[39m [33m|[39m [32m'down'[39m[33m;[39m[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/health/temporal-health.service.ts:3:35
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/workflows' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mInjectable[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:    [90m 2 |[39m [36mimport[39m { randomUUID } [36mfrom[39m [32m'node:crypto'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 3 |[39m [36mimport[39m { getTemporalClient } [36mfrom[39m [32m'@ventureos/workflows'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                                   [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 4 |[39m [36mimport[39m { loadEnv } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m 5 |[39m
+@ventureos/api:dev:    [90m 6 |[39m [33m@[39m[33mInjectable[39m()[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/health/temporal-health.service.ts:4:25
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/config' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 2 |[39m [36mimport[39m { randomUUID } [36mfrom[39m [32m'node:crypto'[39m[33m;[39m
+@ventureos/api:dev:    [90m 3 |[39m [36mimport[39m { getTemporalClient } [36mfrom[39m [32m'@ventureos/workflows'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 4 |[39m [36mimport[39m { loadEnv } [36mfrom[39m [32m'@ventureos/config'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                         [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 5 |[39m
+@ventureos/api:dev:    [90m 6 |[39m [33m@[39m[33mInjectable[39m()
+@ventureos/api:dev:    [90m 7 |[39m [36mexport[39m [36mclass[39m [33mTemporalHealthService[39m {[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/onboarding/onboarding.service.ts:2:24
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/database' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mInjectable[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 2 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                        [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 3 |[39m [36mimport[39m type { [33mOnboardingInput[39m } [36mfrom[39m [32m'./onboarding.dto'[39m[33m;[39m
+@ventureos/api:dev:    [90m 4 |[39m
+@ventureos/api:dev:    [90m 5 |[39m [33m@[39m[33mInjectable[39m()[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/security/security.service.ts:2:24
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/database' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mInjectable[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 2 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                        [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 3 |[39m
+@ventureos/api:dev:    [90m 4 |[39m [33m@[39m[33mInjectable[39m()
+@ventureos/api:dev:    [90m 5 |[39m [36mexport[39m [36mclass[39m [33mSecurityService[39m {[0m
+@ventureos/api:dev: 
+@ventureos/api:dev: ERROR in ./src/modules/workspaces/workspaces.service.ts:2:24
+@ventureos/api:dev: TS2307: Cannot find module '@ventureos/database' or its corresponding type declarations.
+@ventureos/api:dev:   [0m [90m 1 |[39m [36mimport[39m { [33mInjectable[39m } [36mfrom[39m [32m'@nestjs/common'[39m[33m;[39m
+@ventureos/api:dev:   [31m[1m>[22m[39m[90m 2 |[39m [36mimport[39m { prisma } [36mfrom[39m [32m'@ventureos/database'[39m[33m;[39m
+@ventureos/api:dev:    [90m   |[39m                        [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+@ventureos/api:dev:    [90m 3 |[39m
+@ventureos/api:dev:    [90m 4 |[39m [33m@[39m[33mInjectable[39m()
+@ventureos/api:dev:    [90m 5 |[39m [36mexport[39m [36mclass[39m [33mWorkspacesService[39m {[0m
+@ventureos/api:dev: 
+Shutting down Turborepo tasks...
+@ventureos/web:dev: [?25h
+
+ Tasks:    0 successful, 3 total
+Cached:    0 cached, 3 total
+  Time:    1m46.895s 
+

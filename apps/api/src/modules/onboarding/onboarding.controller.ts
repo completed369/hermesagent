@@ -19,6 +19,6 @@ export class OnboardingController {
   @Put()
   save(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
     const input = onboardingSchema.parse(body);
-    return this.onboardingService.save(user.workspaceId, input);
+    return this.onboardingService.save(user.workspaceId, input, user.userId);
   }
 }

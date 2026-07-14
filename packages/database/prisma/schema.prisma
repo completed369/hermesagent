@@ -89,6 +89,27 @@ model Workspace {
   workflowRuns    WorkflowRun[]
   integrations    Integration[]
   onboardingProfile FounderOnboardingProfile?
+  evidenceArtifacts EvidenceArtifact[]
+  evidenceClaims    EvidenceClaim[]
+  opportunities     Opportunity[]
+  ventureProposals  VentureProposal[]
+  products          Product[]
+  listings          Listing[]
+  dataAcquisitionContracts DataAcquisitionContract[]
+  dataAcquisitionRuns      DataAcquisitionRun[]
+  marketplaceAccounts      MarketplaceAccount[]
+  idempotencyKeys          IdempotencyKey[]
+  financialAssumptions     FinancialAssumption[]
+  financialForecasts       FinancialForecast[]
+  expenses                 Expense[]
+  revenueEntries           RevenueEntry[]
+  budgets                  Budget[]
+  costLedgerEntries        CostLedgerEntry[]
+  modelUsages              ModelUsage[]
+  experiments              Experiment[]
+  subscription             Subscription?
+  licenseKeys              LicenseKey[]
+  branding                 WorkspaceBranding?
 
   @@map("workspaces")
 }
@@ -297,6 +318,7 @@ model Integration {
 
   workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   secrets   SecretReference[]
+  marketplaceAccounts MarketplaceAccount[]
 
   @@unique([workspaceId, provider])
   @@map("integrations")
@@ -315,4 +337,1441 @@ model SecretReference {
   integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
 
   @@map("secret_references")
+}
+
+// ---------------------------------------------------------------------------
+// Opportunity and Evidence (Phase 2, master spec sections 15/17/18/22/23.4)
+// ---------------------------------------------------------------------------
+
+/// Where an EvidenceArtifact was retrieved from. Phase 2 only ever creates
+/// these for seeded/mock data; real research connectors are Phase 5.
+model DataSource {
+  id                         String   @id @default(uuid()) @db.Uuid
+  name                       String
+  sourceType                 String // OFFICIAL_API | PUBLIC_EXPORT | FOUNDER_PROVIDED | MANUAL_IMPORT
+  url                        String?
+  accessMethod               String   @default("MANUAL_IMPORT")
+  dataAcquisitionContractId  String?  @db.Uuid
+  createdAt                  DateTime @default(now())
+
+  evidenceArtifacts        EvidenceArtifact[]
+  dataAcquisitionContract  DataAcquisitionContract? @relation(fields: [dataAcquisitionContractId], references: [id], onDelete: SetNull)
+
+  @@map("data_sources")
+}
+
+/// Every material business claim must reference one of these (master spec
+/// section 15): source, retrieval date, reliability/freshness/relevance
+/// scores, terms-of-use, personal-data classification, content hash.
+model EvidenceArtifact {
+  id                         String    @id @default(uuid()) @db.Uuid
+  workspaceId                String    @db.Uuid
+  dataSourceId               String?   @db.Uuid
+  sourceName                 String
+  sourceIdentifier           String?
+  retrievedAt                DateTime
+  region                     String?
+  language                   String    @default("en")
+  collectionMethod           String // API | MANUAL_IMPORT | FOUNDER_PROVIDED | SYSTEM_CALCULATED
+  collectionAgent            String?
+  originalExcerpt            String?
+  reliabilityScore           Int // 0-100
+  freshnessScore             Int // 0-100
+  relevanceScore             Int // 0-100
+  termsOfUseNote             String?
+  personalDataClassification String    @default("NONE") // NONE | PSEUDONYMOUS | PERSONAL
+  contentHash                String
+  processingHistory          Json?
+  storageLocation             String?
+  reviewDate                 DateTime?
+  expiryDate                 DateTime?
+  createdAt                  DateTime  @default(now())
+
+  workspace  Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dataSource DataSource?     @relation(fields: [dataSourceId], references: [id], onDelete: SetNull)
+  claims     EvidenceClaim[]
+
+  @@index([workspaceId])
+  @@map("evidence_artifacts")
+}
+
+/// A single classified claim extracted from an EvidenceArtifact. claimType
+/// MUST be one of the six master-spec-section-15 categories - an agent
+/// assumption may never be silently stored/presented as a verified fact.
+model EvidenceClaim {
+  id                 String   @id @default(uuid()) @db.Uuid
+  workspaceId        String   @db.Uuid
+  evidenceArtifactId String   @db.Uuid
+  opportunityId      String?  @db.Uuid
+  claimType          String // VERIFIED_FACT | EXTERNAL_ESTIMATE | FOUNDER_PROVIDED_FACT | SYSTEM_CALCULATED_VALUE | AGENT_ASSUMPTION | UNKNOWN
+  statement          String
+  value              Json?
+  createdAt          DateTime @default(now())
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  evidenceArtifact EvidenceArtifact @relation(fields: [evidenceArtifactId], references: [id], onDelete: Cascade)
+  opportunity      Opportunity?     @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([opportunityId])
+  @@map("evidence_claims")
+}
+
+model TargetCustomer {
+  id             String   @id @default(uuid()) @db.Uuid
+  opportunityId  String   @db.Uuid
+  persona        String
+  painPoints     String[] @default([])
+  buyingTriggers String[] @default([])
+  createdAt      DateTime @default(now())
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@map("target_customers")
+}
+
+model ChannelRecommendation {
+  id            String   @id @default(uuid()) @db.Uuid
+  opportunityId String   @db.Uuid
+  channel       String
+  rationale     String
+  priority      Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@map("channel_recommendations")
+}
+
+/// Full historical record of every score calculation (master spec section
+/// 17: formula version + factor inputs must be reproducible/traceable).
+/// scoreType keeps Opportunity Score and Profit Confidence Score in the
+/// same table but NEVER merges their values - each row is one or the other.
+model OpportunityScore {
+  id                  String   @id @default(uuid()) @db.Uuid
+  opportunityId       String   @db.Uuid
+  scoreType           String // OPPORTUNITY | PROFIT_CONFIDENCE
+  formulaVersion      String
+  score               Decimal  @db.Decimal(6, 2)
+  factors             Json
+  factorContributions Json?
+  isSpeculative       Boolean?
+  calculatedAt        DateTime
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId, scoreType])
+  @@map("opportunity_scores")
+}
+
+model Opportunity {
+  id                     String    @id @default(uuid()) @db.Uuid
+  workspaceId            String    @db.Uuid
+  title                  String
+  description            String
+  status                 String    @default("NEW") // NEW | UNDER_REVIEW | PROMOTED | REJECTED | ARCHIVED
+  suggestedProductType   String?
+  suggestedMarketplace   String?
+  estimatedCostEur       Decimal?  @db.Decimal(10, 2)
+  estimatedRevenueEur    Decimal?  @db.Decimal(10, 2)
+  estimatedProfitEur     Decimal?  @db.Decimal(10, 2)
+  timeToLaunchDays       Int?
+  risks                  String[]  @default([])
+  latestOpportunityScore Decimal?  @db.Decimal(6, 2)
+  latestProfitConfidence Decimal?  @db.Decimal(6, 2)
+  isSpeculative          Boolean   @default(false)
+  rejectionReason        String?
+  rejectedAt             DateTime?
+  archivedAt             DateTime?
+  promotedAt             DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  workspace        Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  targetCustomers  TargetCustomer[]
+  channels         ChannelRecommendation[]
+  scores           OpportunityScore[]
+  evidenceClaims   EvidenceClaim[]
+  proposal         VentureProposal?
+  proposalVersions VentureProposalVersion[]
+
+  @@unique([workspaceId, title])
+  @@index([workspaceId, status])
+  @@map("opportunities")
+}
+
+/// Minimal Phase 3 groundwork - "promote" needs a real target to create.
+/// Full Board/Approval workflow logic (voting, vetoes, Decision Synthesiser)
+/// is explicitly Phase 3 scope; this is just enough structure for Phase 2's
+/// promote action to persist something real instead of a stub.
+model VentureProposal {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @db.Uuid
+  opportunityId String   @unique @db.Uuid
+  status        String   @default("DRAFT") // DRAFT | IN_REVIEW | APPROVED | REJECTED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace   Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  opportunity Opportunity              @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  versions    VentureProposalVersion[]
+  product     Product?
+  financialAssumptions FinancialAssumption[]
+
+  @@map("venture_proposals")
+}
+
+model VentureProposalVersion {
+  id                String   @id @default(uuid()) @db.Uuid
+  ventureProposalId String   @db.Uuid
+  opportunityId     String   @db.Uuid
+  versionNumber     Int      @default(1)
+  snapshot          Json
+  createdAt         DateTime @default(now())
+
+  ventureProposal VentureProposal @relation(fields: [ventureProposalId], references: [id], onDelete: Cascade)
+  opportunity     Opportunity     @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  boardReviews     BoardReview[]
+  approvalRequests ApprovalRequest[]
+
+  @@unique([ventureProposalId, versionNumber])
+  @@map("venture_proposal_versions")
+}
+
+// ---------------------------------------------------------------------------
+// Board and Approval (Phase 3, master spec sections 11/12/13/14/20/24)
+// ---------------------------------------------------------------------------
+
+/// The 8 voting board agents + the non-voting Decision Synthesiser (master
+/// spec section 11). Weights/veto mapping already existed as pure constants
+/// in @ventureos/policy-engine before this table did; this table is the
+/// persisted, queryable, versionable record of the same roles.
+model AgentDefinition {
+  id                 String   @id @default(uuid()) @db.Uuid
+  role               String   @unique // one of BOARD_AGENT_ROLES, or DECISION_SYNTHESISER
+  name               String
+  isVoting           Boolean  @default(true) // false for the Decision Synthesiser
+  weight             Int? // null for the Decision Synthesiser (non-voting)
+  responsibilities   String[] @default([])
+  toolAllowlist      String[] @default([])
+  prohibitedActions  String[] @default([])
+  modelProvider      String   @default("mock")
+  modelName          String   @default("mock-v1")
+  costLimitEur       Decimal? @db.Decimal(10, 2)
+  timeoutMs          Int      @default(30000)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  promptVersions AgentPromptVersion[]
+  boardVotes     BoardVote[]
+
+  @@map("agent_definitions")
+}
+
+model AgentPromptVersion {
+  id                String   @id @default(uuid()) @db.Uuid
+  agentDefinitionId String   @db.Uuid
+  version           String
+  promptText        String
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  agentDefinition AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([agentDefinitionId, version])
+  @@map("agent_prompt_versions")
+}
+
+/// One board review run against a single VentureProposalVersion. Never
+/// re-run in place - a new review always targets whatever the current
+/// (possibly new) version is, keeping the history honest.
+model BoardReview {
+  id                       String    @id @default(uuid()) @db.Uuid
+  workspaceId              String    @db.Uuid
+  ventureProposalId        String    @db.Uuid
+  ventureProposalVersionId String    @db.Uuid
+  status                   String    @default("PENDING") // PENDING | RUNNING | COMPLETED | FAILED
+  votingResult             Json?
+  blocked                  Boolean?
+  meetsThreshold            Boolean?
+  failureReason            String?
+  startedAt                DateTime?
+  completedAt              DateTime?
+  createdAt                DateTime  @default(now())
+
+  ventureProposalVersion VentureProposalVersion @relation(fields: [ventureProposalVersionId], references: [id], onDelete: Cascade)
+  votes                  BoardVote[]
+  vetoes                 BoardVeto[]
+  decisionSummary        DecisionSummary?
+  approvalRequests       ApprovalRequest[]
+  revisionRequests       RevisionRequest[]
+
+  @@index([workspaceId, ventureProposalId])
+  @@map("board_reviews")
+}
+
+/// One structured AgentOutput per voting agent per review. `output` stores
+/// the full AgentOutputSchema-validated payload; the top-level columns are
+/// denormalized for fast querying/display.
+model BoardVote {
+  id                String   @id @default(uuid()) @db.Uuid
+  boardReviewId     String   @db.Uuid
+  agentDefinitionId String   @db.Uuid
+  agentRole         String
+  agentVersion      String
+  decision          String // APPROVE | REVISE | REJECT
+  confidence        Int
+  output            Json // full AgentOutput, schema-validated before being written
+  isValid           Boolean  @default(true)
+  attempt           Int      @default(1)
+  createdAt         DateTime @default(now())
+
+  boardReview     BoardReview     @relation(fields: [boardReviewId], references: [id], onDelete: Cascade)
+  agentDefinition AgentDefinition @relation(fields: [agentDefinitionId], references: [id])
+  vetoes          BoardVeto[]
+
+  @@unique([boardReviewId, agentRole])
+  @@map("board_votes")
+}
+
+/// A queryable record of every active CRITICAL veto raised during a review
+/// (master spec section 13: Finance/Compliance/Security/Quality vetoes block
+/// regardless of the weighted score). Derived from BoardVote.output at write
+/// time, kept as its own table so vetoes are first-class, not buried in JSON.
+model BoardVeto {
+  id            String   @id @default(uuid()) @db.Uuid
+  boardReviewId String   @db.Uuid
+  boardVoteId   String   @db.Uuid
+  agentRole     String
+  type          String // FINANCE | COMPLIANCE | SECURITY | QUALITY
+  reason        String
+  createdAt     DateTime @default(now())
+
+  boardReview BoardReview @relation(fields: [boardReviewId], references: [id], onDelete: Cascade)
+  boardVote   BoardVote   @relation(fields: [boardVoteId], references: [id], onDelete: Cascade)
+
+  @@map("board_vetoes")
+}
+
+/// The non-voting Decision Synthesiser's output (master spec section 11,
+/// last paragraph: summarise only, never vote/approve/override/execute).
+/// One per BoardReview.
+model DecisionSummary {
+  id                   String   @id @default(uuid()) @db.Uuid
+  boardReviewId        String   @unique @db.Uuid
+  agreementSummary     String
+  disagreementSummary  String
+  vetoSummary          String
+  overallConfidence    Int
+  recommendation       String // APPROVE | REVISE | REJECT -- informational text only, not a decision
+  generatedAt          DateTime
+
+  boardReview BoardReview @relation(fields: [boardReviewId], references: [id], onDelete: Cascade)
+
+  @@map("decision_summaries")
+}
+
+/// Created when a founder decision is REQUEST_REVISION (or, in future
+/// phases, when the board recommends changes before founder review).
+model RevisionRequest {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  ventureProposalId String    @db.Uuid
+  boardReviewId     String?   @db.Uuid
+  approvalRequestId String?   @db.Uuid
+  requestedChanges  String[]  @default([])
+  reason            String
+  status            String    @default("OPEN") // OPEN | RESOLVED
+  createdAt         DateTime  @default(now())
+  resolvedAt        DateTime?
+
+  boardReview     BoardReview?     @relation(fields: [boardReviewId], references: [id], onDelete: SetNull)
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, ventureProposalId])
+  @@map("revision_requests")
+}
+
+/// Master spec section 14's approval-request field set. ApprovalExecution/
+/// ApprovalRevocation are collapsed onto this table as nullable fields
+/// rather than separate tables, since Phase 3 has no real execution path yet
+/// (that lands in Phase 4 when product generation exists to execute) --
+/// avoids dead tables with no writer. See docs/APPROVAL_MODEL.md.
+model ApprovalRequest {
+  id                       String    @id @default(uuid()) @db.Uuid
+  workspaceId              String    @db.Uuid
+  ventureProposalId        String    @db.Uuid
+  ventureProposalVersionId String    @db.Uuid
+  boardReviewId            String?   @db.Uuid
+  kind                     String    @default("VENTURE_PROPOSAL") // VENTURE_PROPOSAL (Phase 3) | PRODUCT_LISTING (Phase 4) | PUBLICATION (Phase 6) | SCALE_DECISION (Phase 7, Gate 6)
+  productPackageId         String?   @db.Uuid
+  listingVersionId         String?   @db.Uuid
+  experimentId             String?   @db.Uuid
+  requestedAction          String
+  explanation              String
+  affectedResources        String[]  @default([])
+  packageHash              String
+  estimatedCostEur         Decimal   @db.Decimal(10, 2)
+  maxAuthorizedCostEur     Decimal   @db.Decimal(10, 2)
+  reversible               Boolean
+  risks                    String[]  @default([])
+  evidenceIds              String[]  @default([])
+  state                    String    @default("PENDING") // matches ApprovalState (contracts/approval.ts) minus DRAFT
+  requestedBy              String
+  workflowId               String?
+  expiresAt                DateTime
+  executedAt               DateTime?
+  executionResult          Json?
+  executionSuccess         Boolean?
+  revokedAt                DateTime?
+  revokedBy                String?
+  revocationReason         String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  ventureProposalVersion VentureProposalVersion @relation(fields: [ventureProposalVersionId], references: [id], onDelete: Cascade)
+  boardReview            BoardReview?           @relation(fields: [boardReviewId], references: [id], onDelete: SetNull)
+  productPackage         ProductPackage?        @relation(fields: [productPackageId], references: [id], onDelete: SetNull)
+  listingVersion         ListingVersion?        @relation(fields: [listingVersionId], references: [id], onDelete: SetNull)
+  experiment             Experiment?            @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  decisions              ApprovalDecision[]
+  revisionRequests       RevisionRequest[]
+  experimentDecisions    ExperimentDecision[]
+
+  @@index([workspaceId, ventureProposalId])
+  @@map("approval_requests")
+}
+
+model ApprovalDecision {
+  id                        String   @id @default(uuid()) @db.Uuid
+  approvalRequestId         String   @db.Uuid
+  founderIdentity           String
+  decidedAt                 DateTime
+  decision                  String // APPROVE | REJECT | REQUEST_REVISION | APPROVE_WITH_CONDITIONS | REVOKE
+  conditions                String[] @default([])
+  comment                   String?
+  approvedAmountEur         Decimal? @db.Decimal(10, 2)
+  approvedArtifactVersionId String
+  approvedPackageHash       String
+  expiresAt                 DateTime
+  auditSignature            String
+  createdAt                 DateTime @default(now())
+
+  approvalRequest ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+
+  @@index([approvalRequestId])
+  @@map("approval_decisions")
+}
+
+// ---------------------------------------------------------------------------
+// Product and Listing Studio (Phase 4, master spec sections 21/22/25/30)
+// ---------------------------------------------------------------------------
+
+/// The versioned reference pack for a single marketplace's rules (master spec
+/// section 21). Global reference data, not workspace-scoped -- analogous to
+/// AgentDefinition. Phase 4 seeds exactly one: the Etsy Digital Products --
+/// Development Pack, mock and draft-only.
+model MarketplacePolicyPack {
+  id          String   @id @default(uuid()) @db.Uuid
+  marketplace String   @unique // e.g. "etsy"
+  name        String
+  createdAt   DateTime @default(now())
+
+  versions MarketplacePolicyPackVersion[]
+
+  @@map("marketplace_policy_packs")
+}
+
+model MarketplacePolicyPackVersion {
+  id                       String   @id @default(uuid()) @db.Uuid
+  marketplacePolicyPackId  String   @db.Uuid
+  version                  String
+  supportedProductTypes    String[] @default([])
+  listingFieldRequirements Json
+  imageRequirements        Json
+  fileRequirements         Json
+  restrictedCategories     String[] @default([])
+  ipChecks                 String[] @default([])
+  pricingRules             Json
+  apiCapabilities          String[] @default([])
+  draftModeOnly            Boolean  @default(true)
+  publicationRequirements  String[] @default([])
+  rateLimits               Json
+  approvalRequirements     String[] @default([])
+  lastVerifiedAt           DateTime
+  reviewDueAt              DateTime
+  isActive                 Boolean  @default(true)
+  createdAt                DateTime @default(now())
+
+  pack MarketplacePolicyPack @relation(fields: [marketplacePolicyPackId], references: [id], onDelete: Cascade)
+
+  @@unique([marketplacePolicyPackId, version])
+  @@map("marketplace_policy_pack_versions")
+}
+
+/// One per approved VentureProposal (unique on ventureProposalId) -- Phase 4
+/// generation is triggered only after the Phase 3 founder approval exists.
+/// Versioned via ProductVersion so regeneration keeps full history rather
+/// than mutating in place, mirroring VentureProposal/VentureProposalVersion.
+model Product {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @db.Uuid
+  ventureProposalId String   @unique @db.Uuid
+  title             String
+  status            String   @default("DRAFT") // DRAFT | GENERATING | GENERATED | QA_PASSED | QA_FAILED | APPROVED | REJECTED
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ventureProposal VentureProposal  @relation(fields: [ventureProposalId], references: [id], onDelete: Cascade)
+  versions        ProductVersion[]
+  listings        Listing[]
+
+  @@map("products")
+}
+
+model ProductVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  productId     String   @db.Uuid
+  versionNumber Int      @default(1)
+  createdAt     DateTime @default(now())
+
+  product        Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  brief          ProductBrief?
+  assets         ProductAsset[]
+  packages       ProductPackage[]
+  qualityChecks  QualityCheck[]
+  licenceRecords LicenceRecord[]
+  listings       Listing[]
+
+  @@unique([productId, versionNumber])
+  @@map("product_versions")
+}
+
+/// The generation instructions for a ProductVersion, derived from the
+/// approved VentureProposalVersion snapshot -- Phase 4 never invents new
+/// research, it only executes what Phase 2/3 already produced (same
+/// principle as the Phase 3 mock board-agent provider).
+model ProductBrief {
+  id               String   @id @default(uuid()) @db.Uuid
+  productVersionId String   @unique @db.Uuid
+  productType      String
+  targetAssetKinds String[] @default([]) // PDF_GUIDE | SPREADSHEET_TEMPLATE | EDITABLE_TEMPLATE | PREVIEW_IMAGE | LICENCE_FILE | README
+  sourceSnapshot   Json // the VentureProposalVersion.snapshot this brief was derived from
+  createdAt        DateTime @default(now())
+
+  productVersion ProductVersion @relation(fields: [productVersionId], references: [id], onDelete: Cascade)
+
+  @@map("product_briefs")
+}
+
+/// A logical asset slot (e.g. "main-template", "readme"). Regeneration
+/// creates a new ProductAssetVersion rather than overwriting, so QA/approval
+/// history stays intact even after a revision.
+model ProductAsset {
+  id               String   @id @default(uuid()) @db.Uuid
+  productVersionId String   @db.Uuid
+  kind             String // PDF_GUIDE | SPREADSHEET_TEMPLATE | EDITABLE_TEMPLATE | PREVIEW_IMAGE | LICENCE_FILE | README
+  label            String
+  createdAt        DateTime @default(now())
+
+  productVersion ProductVersion        @relation(fields: [productVersionId], references: [id], onDelete: Cascade)
+  versions       ProductAssetVersion[]
+
+  @@unique([productVersionId, kind, label])
+  @@map("product_assets")
+}
+
+/// One real, uploaded (MinIO-backed) generated file per attempt. contentHash
+/// is computed by the StorageProvider at upload time -- never hand-typed --
+/// so ProductPackage.packageHash downstream is a real, verifiable value.
+model ProductAssetVersion {
+  id             String   @id @default(uuid()) @db.Uuid
+  productAssetId String   @db.Uuid
+  attempt        Int      @default(1)
+  fileName       String
+  mimeType       String
+  storageKey     String
+  bucket         String
+  sizeBytes      Int
+  contentHash    String
+  generatedAt    DateTime @default(now())
+
+  productAsset  ProductAsset    @relation(fields: [productAssetId], references: [id], onDelete: Cascade)
+  listingImages ListingImage[]
+  listingFiles  ListingFile[]
+  licenceRecord LicenceRecord?
+
+  @@unique([productAssetId, attempt])
+  @@map("product_asset_versions")
+}
+
+/// The hashed, approvable bundle for a ProductVersion (and, once a listing
+/// exists, its paired ListingVersion) -- the Phase 4 analogue of
+/// VentureProposalVersion for approval purposes. packageHash is computed via
+/// @ventureos/security hashObject over the sorted asset-version hashes (+
+/// listing content when present), so any regeneration produces a new hash
+/// and invalidates any approval bound to the old one.
+model ProductPackage {
+  id               String   @id @default(uuid()) @db.Uuid
+  productVersionId String   @db.Uuid
+  listingVersionId String?  @db.Uuid
+  packageHash      String
+  assetVersionIds  String[] @default([])
+  createdAt        DateTime @default(now())
+
+  productVersion   ProductVersion    @relation(fields: [productVersionId], references: [id], onDelete: Cascade)
+  listingVersion   ListingVersion?   @relation(fields: [listingVersionId], references: [id], onDelete: SetNull)
+  approvalRequests ApprovalRequest[]
+
+  @@map("product_packages")
+}
+
+model LicenceRecord {
+  id                    String   @id @default(uuid()) @db.Uuid
+  productVersionId      String   @db.Uuid
+  productAssetVersionId String   @unique @db.Uuid
+  licenceType           String // PERSONAL_USE | COMMERCIAL_USE | ROYALTY_FREE
+  termsSummary          String
+  attribution           String?
+  createdAt             DateTime @default(now())
+
+  productVersion      ProductVersion      @relation(fields: [productVersionId], references: [id], onDelete: Cascade)
+  productAssetVersion ProductAssetVersion @relation(fields: [productAssetVersionId], references: [id], onDelete: Cascade)
+
+  @@map("licence_records")
+}
+
+/// A single QA run against a ProductVersion's current assets (Operations and
+/// Quality Officer's domain, now against real files instead of Phase 3's
+/// "no product exists yet" stub). One row per check *type*; individual rules
+/// within that type are QualityCheckResult rows.
+model QualityCheck {
+  id               String    @id @default(uuid()) @db.Uuid
+  productVersionId String    @db.Uuid
+  checkType        String // COMPLETENESS | FILE_INTEGRITY | NAMING_CONVENTION | DUPLICATE_ASSET | LICENCE_COMPLETENESS
+  status           String    @default("PENDING") // PENDING | RUNNING | PASSED | FAILED
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+
+  productVersion ProductVersion       @relation(fields: [productVersionId], references: [id], onDelete: Cascade)
+  results        QualityCheckResult[]
+
+  @@map("quality_checks")
+}
+
+model QualityCheckResult {
+  id             String   @id @default(uuid()) @db.Uuid
+  qualityCheckId String   @db.Uuid
+  ruleId         String
+  result         String // PASS | FAIL | WARN
+  message        String
+  severity       String   @default("LOW") // LOW | MEDIUM | HIGH | CRITICAL
+  createdAt      DateTime @default(now())
+
+  qualityCheck QualityCheck @relation(fields: [qualityCheckId], references: [id], onDelete: Cascade)
+
+  @@map("quality_check_results")
+}
+
+/// One per (Product, marketplace) -- Phase 4 only ever creates the "etsy"
+/// row, unique constraint leaves room for a second marketplace later without
+/// a schema change.
+model Listing {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @db.Uuid
+  productId        String   @db.Uuid
+  productVersionId String   @db.Uuid
+  marketplace      String   @default("etsy")
+  status           String   @default("DRAFT") // DRAFT | SEO_EVALUATED | READY_FOR_APPROVAL | APPROVED | REJECTED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  product        Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productVersion ProductVersion   @relation(fields: [productVersionId], references: [id], onDelete: Cascade)
+  versions       ListingVersion[]
+
+  @@unique([productId, marketplace])
+  @@map("listings")
+}
+
+model ListingVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  listingId     String   @db.Uuid
+  versionNumber Int      @default(1)
+  title         String
+  description   String
+  tags          String[] @default([])
+  category      String
+  currency      String   @default("EUR")
+  priceEur      Decimal  @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+
+  listing             Listing               @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  images              ListingImage[]
+  files               ListingFile[]
+  priceProposals      PriceProposal[]
+  seoEvaluations      SEOEvaluation[]
+  publicationAttempts PublicationAttempt[]
+  productPackages     ProductPackage[]
+  approvalRequests    ApprovalRequest[]
+
+  @@unique([listingId, versionNumber])
+  @@map("listing_versions")
+}
+
+model ListingImage {
+  id                    String   @id @default(uuid()) @db.Uuid
+  listingVersionId      String   @db.Uuid
+  productAssetVersionId String   @db.Uuid
+  position              Int      @default(0)
+  altText               String?
+  createdAt             DateTime @default(now())
+
+  listingVersion      ListingVersion      @relation(fields: [listingVersionId], references: [id], onDelete: Cascade)
+  productAssetVersion ProductAssetVersion @relation(fields: [productAssetVersionId], references: [id])
+
+  @@map("listing_images")
+}
+
+model ListingFile {
+  id                    String   @id @default(uuid()) @db.Uuid
+  listingVersionId      String   @db.Uuid
+  productAssetVersionId String   @db.Uuid
+  displayName           String
+  createdAt             DateTime @default(now())
+
+  listingVersion      ListingVersion      @relation(fields: [listingVersionId], references: [id], onDelete: Cascade)
+  productAssetVersion ProductAssetVersion @relation(fields: [productAssetVersionId], references: [id])
+
+  @@map("listing_files")
+}
+
+model PriceProposal {
+  id               String   @id @default(uuid()) @db.Uuid
+  listingVersionId String   @db.Uuid
+  priceEur         Decimal  @db.Decimal(10, 2)
+  rationale        String
+  createdAt        DateTime @default(now())
+
+  listingVersion ListingVersion @relation(fields: [listingVersionId], references: [id], onDelete: Cascade)
+
+  @@map("price_proposals")
+}
+
+/// Deterministic checks against a ListingVersion's content -- no live model
+/// calls (same "mock/deterministic by default" principle as Phase 3's board
+/// agents).
+model SEOEvaluation {
+  id               String   @id @default(uuid()) @db.Uuid
+  listingVersionId String   @db.Uuid
+  score            Int // 0-100
+  checks           Json // array of {ruleId, result, message}
+  evaluatedAt      DateTime @default(now())
+
+  listingVersion ListingVersion @relation(fields: [listingVersionId], references: [id], onDelete: Cascade)
+
+  @@map("seo_evaluations")
+}
+
+/// Records every attempt to publish. Phase 4 explicitly never actually
+/// published (master spec: real marketplace integration is Phase 6, gated on
+/// founder approval) -- every Phase 4 attempt resolved to a blocked/mock
+/// status. Phase 6 adds real (mock-adapter) publish attempts, gated on a
+/// second PUBLICATION approval and idempotency-key-protected, but still no
+/// live network calls (founder decision: mock-only) -- so a "PUBLISHED"
+/// status here in Phase 6 means the mock adapter simulated a real publish
+/// end-to-end, not that a real Etsy listing exists.
+model PublicationAttempt {
+  id                   String   @id @default(uuid()) @db.Uuid
+  listingVersionId     String   @db.Uuid
+  marketplace          String
+  status               String   @default("NOT_ATTEMPTED") // NOT_ATTEMPTED | BLOCKED_NO_APPROVAL | BLOCKED_NO_LIVE_INTEGRATION | WOULD_PUBLISH_MOCK | BLOCKED_DISABLED | BLOCKED_RATE_LIMIT | READY_FOR_PUBLISH | PUBLISHED | FAILED
+  blockedReason        String?
+  errorMessage         String?
+  attemptedAt          DateTime  @default(now())
+  completedAt          DateTime?
+
+  marketplaceAccountId String?  @db.Uuid
+  idempotencyKeyId     String?  @db.Uuid
+  externalListingId    String? // mock-generated in Phase 6 -- never a real Etsy id while mock-only
+  externalListingUrl   String? // mock-generated in Phase 6 -- never a real Etsy url while mock-only
+
+  listingVersion     ListingVersion      @relation(fields: [listingVersionId], references: [id], onDelete: Cascade)
+  marketplaceAccount MarketplaceAccount? @relation(fields: [marketplaceAccountId], references: [id], onDelete: SetNull)
+  idempotencyKey     IdempotencyKey?     @relation(fields: [idempotencyKeyId], references: [id], onDelete: SetNull)
+
+  @@map("publication_attempts")
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace Pilot (Phase 6, master spec sections 7/16/35 -- mock-only per
+// explicit founder decision recorded 2026-07-14; see
+// docs/ETSY_API_INTEGRATION.md)
+// ---------------------------------------------------------------------------
+
+/// One row per connected (or, in mock-only mode, simulated) marketplace shop
+/// connection. Real OAuth credentials are never stored as plaintext columns
+/// here -- they live behind the existing Integration/SecretReference
+/// pointer pattern (Phase 1), reused rather than reinvented. In mock-only
+/// mode `mode` stays "MOCK" forever and externalShopId/externalShopName/
+/// accessTokenExpiresAt stay null.
+model MarketplaceAccount {
+  id            String @id @default(uuid()) @db.Uuid
+  workspaceId   String @db.Uuid
+  integrationId String @db.Uuid
+
+  marketplace String @default("etsy")
+  mode        String @default("MOCK") // MOCK | REAL -- mirrors Integration.mode; Phase 6 only ever creates MOCK rows
+
+  externalShopId       String? // populated only if/when a real account is connected
+  externalShopName     String?
+  scopes               String[] @default([]) // OAuth scopes granted, e.g. ["listings_r","listings_w","shops_r"]
+  accessTokenExpiresAt DateTime? // real-mode only; the token itself lives behind SecretReference
+
+  rateLimitPerSecond Int? // learned from Etsy's real QPS limit once connected; unused while mock-only
+  rateLimitPerDay    Int?
+
+  disabled       Boolean @default(false) // kill switch, same pattern as DataAcquisitionContract
+  disabledReason String?
+
+  connectedAt    DateTime?
+  disconnectedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  integration         Integration           @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  publicationAttempts PublicationAttempt[]
+  idempotencyKeys     IdempotencyKey[]
+
+  @@unique([workspaceId, marketplace])
+  @@map("marketplace_accounts")
+}
+
+/// Guarantees every external marketplace write (draft creation, image/file
+/// upload, publish) executes at most once for a given logical operation,
+/// even under retries -- master spec's "duplicate external execution"
+/// threat (docs/THREAT_MODEL.md), previously "Not yet addressed", now real.
+/// A reused key with a different requestHash is a genuine caller error
+/// (never silently treated as a retry of the same operation).
+model IdempotencyKey {
+  id                   String    @id @default(uuid()) @db.Uuid
+  workspaceId          String    @db.Uuid
+  marketplaceAccountId String    @db.Uuid
+  key                  String
+  operationType        String // CREATE_DRAFT_LISTING | UPLOAD_LISTING_IMAGE | UPLOAD_LISTING_FILE | PUBLISH_LISTING
+  requestHash          String // hash of the exact request payload
+  status               String    @default("PENDING") // PENDING | SUCCEEDED | FAILED
+  responseSnapshot     Json? // cached (mock) response, replayed as-is on a genuine retry
+  createdAt            DateTime  @default(now())
+  completedAt          DateTime?
+
+  workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  marketplaceAccount  MarketplaceAccount    @relation(fields: [marketplaceAccountId], references: [id], onDelete: Cascade)
+  publicationAttempts PublicationAttempt[]
+
+  @@unique([workspaceId, key])
+  @@map("idempotency_keys")
+}
+
+// ---------------------------------------------------------------------------
+// Research Connectors (Phase 5, master spec sections 8/15/16/27/31)
+// ---------------------------------------------------------------------------
+
+/// A signed-off, documented agreement for how a single external data source
+/// may be acquired from -- one row per connector, per master spec section 16.
+/// Nothing acquires data without a real DataAcquisitionContract row backing
+/// it (fail closed: a missing or disabled contract blocks every run).
+model DataAcquisitionContract {
+  id           String @id @default(uuid()) @db.Uuid
+  workspaceId  String @db.Uuid
+
+  name    String // human label, e.g. "Etsy public listings (permitted browse)"
+  purpose String // why this data is acquired
+
+  sourceType   String // OFFICIAL_API | PUBLIC_EXPORT | FOUNDER_PROVIDED | PERMITTED_BROWSER_RESEARCH | MANUAL_IMPORT
+  accessMethod String // mirrors DataSource.accessMethod: OFFICIAL_API | PUBLIC_EXPORT | FOUNDER_PROVIDED | MANUAL_IMPORT
+
+  authenticationMethod String @default("NONE") // NONE | API_KEY | OAUTH | FOUNDER_CREDENTIAL_MANUAL
+
+  allowedOperations    String[] @default([]) // e.g. ["READ_PUBLIC_LISTING", "READ_PUBLIC_REVIEW_COUNT"]
+  prohibitedOperations String[] @default([]) // e.g. ["BYPASS_AUTH", "BYPASS_CAPTCHA", "COLLECT_PERSONAL_DATA", "MASQUERADE_AS_USER"]
+
+  rateLimitPerMinute Int?
+  rateLimitPerDay    Int?
+
+  expectedSchema Json? // documented shape of what a successful run returns
+
+  freshnessRequirementHours Int    @default(720) // data older than this is considered stale (30 days default)
+  retryPolicy               String @default("EXPONENTIAL_BACKOFF_3_ATTEMPTS")
+  failureHandling           String @default("FAIL_CLOSED") // FAIL_CLOSED | FAIL_OPEN_WITH_FLAG
+
+  retentionDays               Int     @default(365)
+  personalDataClassification  String  @default("NONE") // NONE | PSEUDONYMOUS | PERSONAL
+  termsOfUseNote               String?
+  geographicLimitations         String?
+  monitoringNote                String? // how source health is monitored (Integration Health row keyed by provider = `research:<slug>`)
+
+  disabled       Boolean  @default(false) // hard kill switch -- fail closed the moment this is true
+  disabledReason String?
+
+  costPerRunEurEstimate Decimal @default(0) @db.Decimal(10, 4) // mock providers cost 0 until a real paid API is enabled
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dataSources DataSource[]
+  runs        DataAcquisitionRun[]
+
+  @@index([workspaceId])
+  @@map("data_acquisition_contracts")
+}
+
+/// Every attempted acquisition -- real record of cost, outcome, and any
+/// prompt-injection content flagged in the raw payload, regardless of
+/// whether the run succeeded, was blocked, or failed.
+model DataAcquisitionRun {
+  id          String @id @default(uuid()) @db.Uuid
+  workspaceId String @db.Uuid
+  contractId  String @db.Uuid
+
+  status String @default("PENDING") // PENDING | SUCCEEDED | FAILED | BLOCKED_DISABLED | BLOCKED_RATE_LIMIT | BLOCKED_COST_CAP
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  costEur         Decimal @default(0) @db.Decimal(10, 4)
+  itemsRetrieved  Int     @default(0)
+
+  promptInjectionFlagged Boolean  @default(false)
+  promptInjectionMatches String[] @default([])
+
+  blockedReason String?
+  errorMessage  String?
+
+  evidenceArtifactId String? @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contract  DataAcquisitionContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([contractId])
+  @@map("data_acquisition_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Finance and Analytics (Phase 7, master spec sections 19/30/41)
+// ---------------------------------------------------------------------------
+
+/// One active set of finance assumptions per venture, overriding
+/// `@ventureos/finance-engine`'s `DEFAULT_FINANCIAL_ASSUMPTIONS`. All
+/// arithmetic is still performed exclusively by the pure functions in
+/// `finance-engine` -- this table only persists the *inputs*, never a
+/// hand-computed result. Editing assumptions does not mutate history: the
+/// previous row is left in place and a new one replaces it as "current" via
+/// `supersededAt`, so every `FinancialForecast` can still point at the exact
+/// assumption set that produced it.
+model FinancialAssumption {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  ventureProposalId String    @db.Uuid
+
+  productPriceEur              Decimal @db.Decimal(10, 2)
+  marketplaceFeeRate           Decimal @db.Decimal(5, 4)
+  paymentProcessingFeeRate     Decimal @db.Decimal(5, 4)
+  listingFeeEur                Decimal @db.Decimal(10, 2)
+  refundRate                   Decimal @db.Decimal(5, 4)
+  discountRate                 Decimal @default(0) @db.Decimal(5, 4)
+  vatRate                      Decimal @default(0) @db.Decimal(5, 4)
+  aiGenerationCostEur          Decimal @db.Decimal(10, 2)
+  monthlyOverheadAllocationEur Decimal @db.Decimal(10, 2)
+  forecastPeriodDays           Int
+  targetContributionMarginRate Decimal @db.Decimal(5, 4)
+  minimumProfitConfidence      Decimal @db.Decimal(5, 2)
+
+  supersededAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ventureProposal VentureProposal   @relation(fields: [ventureProposalId], references: [id], onDelete: Cascade)
+  forecasts       FinancialForecast[]
+
+  @@index([workspaceId, ventureProposalId])
+  @@map("financial_assumptions")
+}
+
+/// One row per forecast computation -- never overwritten in place, so the
+/// founder can see how projections changed as assumptions or unit-sold
+/// estimates changed over time. `breakEvenUnits`/`breakEvenRevenueEur`/
+/// `fixedCostsEur` mirror `calculateBreakEven`'s real output exactly.
+model FinancialForecast {
+  id                     String  @id @default(uuid()) @db.Uuid
+  workspaceId            String  @db.Uuid
+  ventureProposalId      String  @db.Uuid
+  financialAssumptionId  String  @db.Uuid
+
+  baseUnitsSold       Int
+  breakEvenUnits       Int? // null represents Infinity (contribution margin <= 0)
+  breakEvenRevenueEur Decimal? @db.Decimal(12, 2)
+  fixedCostsEur       Decimal  @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialAssumption FinancialAssumption  @relation(fields: [financialAssumptionId], references: [id], onDelete: Cascade)
+  scenarios            FinancialScenario[]
+
+  @@index([workspaceId, ventureProposalId])
+  @@map("financial_forecasts")
+}
+
+/// Exactly 3 rows per FinancialForecast (LOW/BASE/HIGH), mirroring
+/// `finance-engine`'s `ScenarioProjection` shape field-for-field.
+model FinancialScenario {
+  id                    String  @id @default(uuid()) @db.Uuid
+  financialForecastId   String  @db.Uuid
+  scenario              String // LOW | BASE | HIGH
+  unitsSold             Int
+  grossRevenueEur       Decimal @db.Decimal(12, 2)
+  netRevenueEur         Decimal @db.Decimal(12, 2)
+  totalVariableCostEur  Decimal @db.Decimal(12, 2)
+  fixedCostsEur         Decimal @db.Decimal(10, 2)
+  grossProfitEur        Decimal @db.Decimal(12, 2)
+  netProfitEur          Decimal @db.Decimal(12, 2)
+  createdAt             DateTime @default(now())
+
+  financialForecast FinancialForecast @relation(fields: [financialForecastId], references: [id], onDelete: Cascade)
+
+  @@unique([financialForecastId, scenario])
+  @@map("financial_scenarios")
+}
+
+/// Real (or founder-manually-entered) cost ledger entry for a venture.
+/// Distinct from `CostLedgerEntry`: an `Expense` is a business cost visible
+/// on the Finance Centre P&L, `CostLedgerEntry` is the lower-level budget-
+/// enforcement ledger that every costed action writes to regardless of
+/// whether it's ever surfaced as a P&L line item.
+model Expense {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  ventureProposalId String?   @db.Uuid
+
+  category    String // AI_GENERATION | MARKETPLACE_FEE | RESEARCH | ADVERTISING | OVERHEAD | OTHER
+  amountEur   Decimal   @db.Decimal(10, 2)
+  description String
+  source      String    @default("MANUAL") // MANUAL | SYSTEM_GENERATED
+  incurredAt  DateTime
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, ventureProposalId])
+  @@map("expenses")
+}
+
+/// Real (or founder-manually-entered) sale. Phase 7 has no live marketplace
+/// sales feed (Phase 6 is mock-only, per ADR-007) so `source` is always
+/// `MANUAL` today; the field exists so a future real sales sync is additive.
+model RevenueEntry {
+  id                String  @id @default(uuid()) @db.Uuid
+  workspaceId       String  @db.Uuid
+  ventureProposalId String  @db.Uuid
+  listingVersionId  String? @db.Uuid
+
+  unitsSold                Int
+  grossRevenueEur          Decimal @db.Decimal(12, 2)
+  marketplaceFeeEur        Decimal @default(0) @db.Decimal(10, 2)
+  paymentProcessingFeeEur  Decimal @default(0) @db.Decimal(10, 2)
+  listingFeeEur            Decimal @default(0) @db.Decimal(10, 2)
+  vatEur                   Decimal @default(0) @db.Decimal(10, 2)
+  refundsEur               Decimal @default(0) @db.Decimal(10, 2)
+  netRevenueEur            Decimal @db.Decimal(12, 2)
+
+  source     String   @default("MANUAL") // MANUAL | MOCK_MARKETPLACE_SYNC
+  occurredAt DateTime
+  recordedBy String?
+  createdAt  DateTime @default(now())
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  fees      MarketplaceFee[]
+  refunds   RefundRequest[]
+
+  @@index([workspaceId, ventureProposalId])
+  @@map("revenue_entries")
+}
+
+/// Line-item breakdown of a RevenueEntry's fee total -- kept separate so the
+/// Finance Centre can show "why" net revenue is lower than gross, not just
+/// the aggregate.
+model MarketplaceFee {
+  id             String  @id @default(uuid()) @db.Uuid
+  revenueEntryId String  @db.Uuid
+  feeType        String // MARKETPLACE_COMMISSION | PAYMENT_PROCESSING | LISTING_FEE | OTHER
+  amountEur      Decimal @db.Decimal(10, 2)
+  description    String?
+  createdAt      DateTime @default(now())
+
+  revenueEntry RevenueEntry @relation(fields: [revenueEntryId], references: [id], onDelete: Cascade)
+
+  @@index([revenueEntryId])
+  @@map("marketplace_fees")
+}
+
+/// A refund against a real (or manually-entered) sale. Distinct lifecycle
+/// from the sale itself since a refund can be requested and resolved well
+/// after the original RevenueEntry was recorded.
+model RefundRequest {
+  id             String    @id @default(uuid()) @db.Uuid
+  revenueEntryId String    @db.Uuid
+  amountEur      Decimal   @db.Decimal(10, 2)
+  reason         String
+  status         String    @default("REQUESTED") // REQUESTED | APPROVED | DENIED | PROCESSED
+  requestedAt    DateTime  @default(now())
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  createdAt      DateTime  @default(now())
+
+  revenueEntry RevenueEntry @relation(fields: [revenueEntryId], references: [id], onDelete: Cascade)
+
+  @@index([revenueEntryId])
+  @@map("refund_requests")
+}
+
+/// A spending envelope, either workspace-wide or scoped to one venture.
+/// Enforcement happens at the `BudgetAllocation` (per-category) level, the
+/// same fail-closed pattern as `DataAcquisitionContract`/Phase 5's cost
+/// caps and Phase 6's fail-closed publication gating.
+model Budget {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  ventureProposalId String?   @db.Uuid
+
+  name           String
+  periodStart    DateTime
+  periodEnd      DateTime
+  totalLimitEur  Decimal   @db.Decimal(10, 2)
+  status         String    @default("ACTIVE") // ACTIVE | CLOSED
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  allocations BudgetAllocation[]
+
+  @@index([workspaceId])
+  @@map("budgets")
+}
+
+/// Per-category limit within a Budget. `spentEur` is a denormalized running
+/// total, updated transactionally alongside every `CostLedgerEntry` insert
+/// that references this allocation -- never recomputed by summing on read,
+/// so the hard-stop check (`spentEur + newCost > limitEur`) is a single
+/// cheap row read, not an aggregate query, matching the fail-closed
+/// enforcement pattern used by `assertWithinResearchCostCaps` in Phase 5.
+model BudgetAllocation {
+  id        String   @id @default(uuid()) @db.Uuid
+  budgetId  String   @db.Uuid
+  category  String // AI_MODEL_USAGE | RESEARCH | ADVERTISING | PRODUCT_GENERATION | OTHER
+  limitEur  Decimal  @db.Decimal(10, 2)
+  spentEur  Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  budget            Budget             @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  costLedgerEntries CostLedgerEntry[]
+
+  @@unique([budgetId, category])
+  @@map("budget_allocations")
+}
+
+/// Append-only by application convention (same rule as `AuditEvent`): every
+/// costed action across every module writes exactly one row here, whether
+/// or not it is also surfaced as an `Expense` line item. This is the real
+/// enforcement backbone for Phase 7 budget hard-stops.
+model CostLedgerEntry {
+  id                 String  @id @default(uuid()) @db.Uuid
+  workspaceId        String  @db.Uuid
+  budgetAllocationId String? @db.Uuid
+  ventureProposalId  String? @db.Uuid
+
+  category      String // AI_MODEL_USAGE | RESEARCH | ADVERTISING | PRODUCT_GENERATION | OTHER
+  amountEur     Decimal @db.Decimal(10, 4)
+  source        String // module/action that incurred the cost, e.g. "agent-runtime:board-review"
+  referenceType String? // e.g. "BoardReview", "DataAcquisitionRun", "ModelUsage"
+  referenceId   String?
+  description   String?
+  createdAt     DateTime @default(now())
+
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  budgetAllocation BudgetAllocation? @relation(fields: [budgetAllocationId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([budgetAllocationId])
+  @@map("cost_ledger_entries")
+}
+
+/// One row per agent/model invocation. Real for every run (including mock
+/// ones -- `costEur` is simply 0 for the mock provider, per master spec
+/// section 41's "the recording mechanism must be real so it's correct the
+/// moment real providers are enabled").
+model ModelUsage {
+  id                String  @id @default(uuid()) @db.Uuid
+  workspaceId       String  @db.Uuid
+  agentDefinitionId String? @db.Uuid
+  ventureProposalId String? @db.Uuid
+  boardReviewId     String? @db.Uuid
+
+  provider         String @default("mock")
+  model            String @default("mock-v1")
+  promptTokens     Int    @default(0)
+  completionTokens Int    @default(0)
+  totalTokens      Int    @default(0)
+  costEur          Decimal @default(0) @db.Decimal(10, 6)
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("model_usages")
+}
+
+/// Reference pricing table, global (not workspace-scoped) -- same pattern as
+/// `MarketplacePolicyPack`. Used to compute `ModelUsage.costEur` once a real
+/// (non-mock) provider is enabled; unused while `AI_PROVIDER=mock`.
+model ModelCost {
+  id                              String   @id @default(uuid()) @db.Uuid
+  provider                        String
+  model                           String
+  inputCostPerMillionTokensEur    Decimal  @db.Decimal(10, 4)
+  outputCostPerMillionTokensEur   Decimal  @db.Decimal(10, 4)
+  effectiveFrom                   DateTime @default(now())
+  createdAt                       DateTime @default(now())
+
+  @@unique([provider, model, effectiveFrom])
+  @@map("model_costs")
+}
+
+/// A controlled test against a live (mock-published, per Phase 6) listing --
+/// master spec section 30 Gate 5/6 metrics. `status` lifecycle:
+/// DRAFT -> RUNNING -> COMPLETED -> DECIDED.
+model Experiment {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  ventureProposalId String    @db.Uuid
+  listingVersionId  String?   @db.Uuid
+
+  name       String
+  hypothesis String
+  status     String    @default("DRAFT") // DRAFT | RUNNING | COMPLETED | DECIDED
+  startedAt  DateTime?
+  endedAt    DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  variants         ExperimentVariant[]
+  metrics          ExperimentMetric[]
+  decisions        ExperimentDecision[]
+  approvalRequests ApprovalRequest[]
+
+  @@index([workspaceId, ventureProposalId])
+  @@map("experiments")
+}
+
+model ExperimentVariant {
+  id                     String  @id @default(uuid()) @db.Uuid
+  experimentId           String  @db.Uuid
+  name                   String
+  description            String?
+  isControl              Boolean @default(false)
+  trafficAllocationPercent Decimal? @db.Decimal(5, 2)
+  createdAt              DateTime @default(now())
+
+  experiment Experiment          @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  results    ExperimentResult[]
+
+  @@unique([experimentId, name])
+  @@map("experiment_variants")
+}
+
+/// Metric definitions to track for an experiment -- master spec section 30
+/// Gate 5/6 metrics: impressions, CTR, conversion, refund rate, etc.
+model ExperimentMetric {
+  id           String   @id @default(uuid()) @db.Uuid
+  experimentId String   @db.Uuid
+  name         String // IMPRESSIONS | CLICKS | CTR | CONVERSIONS | CONVERSION_RATE | REFUND_RATE | REVENUE_EUR | OTHER
+  targetValue  Decimal? @db.Decimal(12, 4)
+  unit         String? // e.g. "%", "EUR", "count"
+  createdAt    DateTime @default(now())
+
+  experiment Experiment          @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  results    ExperimentResult[]
+
+  @@unique([experimentId, name])
+  @@map("experiment_metrics")
+}
+
+/// A single measured value for one variant/metric pair at a point in time.
+/// Multiple rows per pair are expected (measured repeatedly over the
+/// experiment's run), never overwritten in place.
+model ExperimentResult {
+  id                  String   @id @default(uuid()) @db.Uuid
+  experimentVariantId String   @db.Uuid
+  experimentMetricId  String   @db.Uuid
+  value               Decimal  @db.Decimal(12, 4)
+  sampleSize          Int?
+  measuredAt          DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  variant ExperimentVariant @relation(fields: [experimentVariantId], references: [id], onDelete: Cascade)
+  metric  ExperimentMetric  @relation(fields: [experimentMetricId], references: [id], onDelete: Cascade)
+
+  @@index([experimentVariantId])
+  @@index([experimentMetricId])
+  @@map("experiment_results")
+}
+
+/// The founder's real decision from an experiment -- Gate 6 (Scale Decision)
+/// per master spec section 30. `approvalRequestId` links to the
+/// `SCALE_DECISION`-kind `ApprovalRequest` when the decision was SCALE
+/// (increasing ad spend requires the same founder-approval gate every other
+/// irreversible/costed action in this system requires); KILL/ITERATE/HOLD
+/// decisions do not require a separate approval since they only ever reduce
+/// or hold spend, never increase it.
+model ExperimentDecision {
+  id                String    @id @default(uuid()) @db.Uuid
+  experimentId      String    @db.Uuid
+  approvalRequestId String?   @db.Uuid
+  decision          String // SCALE | KILL | ITERATE | HOLD
+  rationale         String
+  decidedBy         String
+  decidedAt         DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+
+  experiment      Experiment       @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+
+  @@index([experimentId])
+  @@map("experiment_decisions")
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Venture and SaaS (Phase 8, master spec section 3/34)
+// ---------------------------------------------------------------------------
+
+/// A resellable plan tier. Seeded, not founder-editable at runtime (changing
+/// prices/limits is a deploy-time decision, same posture as
+/// DEFAULT_FINANCIAL_ASSUMPTIONS in Phase 1). `maxVentures` is enforced by
+/// `assertWithinVentureLimit` (packages/billing) before a new VentureProposal
+/// is created; the existing Opportunity->VentureProposal 1:1 relation already
+/// supports many concurrent ventures per workspace, so this is a quota check,
+/// not a schema change to that spine.
+model Plan {
+  id                     String   @id @default(uuid()) @db.Uuid
+  key                    String   @unique // TRIAL | STARTER | GROWTH | AGENCY
+  name                   String
+  description            String?
+  priceMonthlyEur        Decimal  @db.Decimal(10, 2)
+  maxVentures            Int
+  maxWorkspaceMembers    Int
+  maxMarketplaceAccounts Int
+  features               String[] @default([])
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+/// One per workspace. `billingMode` is always `MOCK` today -- no real payment
+/// processor is connected (see docs/DECISIONS.md ADR-010), matching the same
+/// mock-behind-a-real-interface pattern Phase 5/6 used for research/
+/// marketplace providers. Switching to a real processor later means adding a
+/// real provider behind `@ventureos/billing`'s existing interface, not
+/// rewriting the subscription lifecycle, plan-limit enforcement, or license
+/// issuance below.
+model Subscription {
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String    @unique @db.Uuid
+  planId             String    @db.Uuid
+  status             String    @default("TRIALING") // TRIALING | ACTIVE | PAST_DUE | CANCELED
+  billingMode        String    @default("MOCK") // MOCK only -- see docs/DECISIONS.md ADR-010
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  canceledAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  workspace Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      Plan                   @relation(fields: [planId], references: [id])
+  invoices  SubscriptionInvoice[]
+
+  @@map("subscriptions")
+}
+
+/// A mock billing period record -- `status` is always `PAID` in this phase
+/// since `billingMode` is always `MOCK` and no real charge is ever attempted.
+/// Real from day one in shape/mechanism so a real processor's webhooks can
+/// populate the same table later without a rewrite.
+model SubscriptionInvoice {
+  id             String   @id @default(uuid()) @db.Uuid
+  subscriptionId String   @db.Uuid
+  amountEur      Decimal  @db.Decimal(10, 2)
+  status         String   @default("PAID") // PAID | MOCK_ONLY -- no real charge ever occurs
+  periodStart    DateTime
+  periodEnd      DateTime
+  issuedAt       DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@map("subscription_invoices")
+}
+
+/// Issued for self-hosted/exportable installs (master spec section 3's
+/// long-term "resell the platform itself" objective) -- a workspace's install
+/// can validate its own license offline against this record's `key` hash and
+/// `expiresAt`, independent of whether that install can reach this database
+/// directly (see docs/DEPLOYMENT.md for the exportable-config story).
+model LicenseKey {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  key         String    @unique
+  status      String    @default("ACTIVE") // ACTIVE | REVOKED | EXPIRED
+  issuedAt    DateTime  @default(now())
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("license_keys")
+}
+
+/// White-label settings, one per workspace. Applied to the dashboard shell
+/// (app name, logo, accent color) so a reselling customer's installation
+/// doesn't visibly say "VentureOS" to their own end users.
+model WorkspaceBranding {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workspaceId          String   @unique @db.Uuid
+  brandName            String?
+  logoUrl              String?
+  primaryColorHex      String   @default("#4F46E5")
+  terminologyOverrides Json     @default("{}")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("workspace_branding")
 }

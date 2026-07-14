@@ -15,7 +15,11 @@ export class HealthService {
   constructor(@Inject(ENV_TOKEN) private readonly env: Env) {}
 
   async liveness(): Promise<HealthStatus> {
-    return { status: 'ok', checks: { process: { status: 'ok' } }, timestamp: new Date().toISOString() };
+    return {
+      status: 'ok',
+      checks: { process: { status: 'ok' } },
+      timestamp: new Date().toISOString(),
+    };
   }
 
   async readiness(): Promise<HealthStatus> {
@@ -25,7 +29,10 @@ export class HealthService {
       await prisma.$queryRaw`SELECT 1`;
       checks.database = { status: 'ok' };
     } catch (err) {
-      checks.database = { status: 'down', message: err instanceof Error ? err.message : 'unknown error' };
+      checks.database = {
+        status: 'down',
+        message: err instanceof Error ? err.message : 'unknown error',
+      };
     }
 
     try {
@@ -39,9 +46,14 @@ export class HealthService {
         maxFileSizeMb: this.env.STORAGE_MAX_FILE_SIZE_MB,
       });
       const result = await storage.healthCheck();
-      checks.storage = result.healthy ? { status: 'ok' } : { status: 'down', message: result.message };
+      checks.storage = result.healthy
+        ? { status: 'ok' }
+        : { status: 'down', message: result.message };
     } catch (err) {
-      checks.storage = { status: 'down', message: err instanceof Error ? err.message : 'unknown error' };
+      checks.storage = {
+        status: 'down',
+        message: err instanceof Error ? err.message : 'unknown error',
+      };
     }
 
     const anyDown = Object.values(checks).some((c) => c.status === 'down');

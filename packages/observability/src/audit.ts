@@ -26,7 +26,11 @@ export interface AuditEventRecord extends AuditEventInput {
  * never UPDATE or DELETE, enforced at both the application and DB layer.
  * This function builds the immutable, hashed record shape.
  */
-export function buildAuditEventRecord(input: AuditEventInput, id: string, now: Date = new Date()): AuditEventRecord {
+export function buildAuditEventRecord(
+  input: AuditEventInput,
+  id: string,
+  now: Date = new Date(),
+): AuditEventRecord {
   const timestamp = now.toISOString();
   const integrityHash = hashObject({ ...input, id, timestamp });
   return { ...input, id, timestamp, integrityHash };

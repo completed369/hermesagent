@@ -12,13 +12,13 @@ authentication and security auditing.
 
 ## Data inventory (Phase 1)
 
-| Data | Purpose | Retention |
-|---|---|---|
-| User.email, displayName | Authentication, display | Until account deletion (soft delete) |
-| User.passwordHash | Authentication | Until account deletion |
-| Session.ipAddress, userAgent | Security auditing | Until session expiry/revocation |
-| SecurityEvent.ipAddress, userAgent, description | Security auditing | Indefinite (append-only) — retention policy TBD Phase 2+ |
-| AuditEvent.before/after (JSON) | Governance auditing | Indefinite (append-only) — must never contain secrets (enforced by convention + redaction at the logging layer, not yet at the audit-write layer) |
+| Data                                            | Purpose                 | Retention                                                                                                                                         |
+| ----------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User.email, displayName                         | Authentication, display | Until account deletion (soft delete)                                                                                                              |
+| User.passwordHash                               | Authentication          | Until account deletion                                                                                                                            |
+| Session.ipAddress, userAgent                    | Security auditing       | Until session expiry/revocation                                                                                                                   |
+| SecurityEvent.ipAddress, userAgent, description | Security auditing       | Indefinite (append-only) — retention policy TBD Phase 2+                                                                                          |
+| AuditEvent.before/after (JSON)                  | Governance auditing     | Indefinite (append-only) — must never contain secrets (enforced by convention + redaction at the logging layer, not yet at the audit-write layer) |
 
 ## Not yet implemented
 

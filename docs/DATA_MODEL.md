@@ -22,13 +22,41 @@ and `Workspace`. `AuditEvent` has no delete/update path in the application
 layer at all (see `apps/api/src/modules/audit/audit.service.ts` — it is the
 only writer, and only ever calls `.create()`).
 
-## Entities NOT yet in the schema (Phase 2+)
+## Phase 2 entities (implemented, `packages/database/prisma/schema.prisma`)
 
-Opportunity, OpportunityScore, TargetCustomer, ChannelRecommendation,
-DataSource, DataAcquisitionContract, EvidenceArtifact, EvidenceClaim,
-EvidenceRelationship, EvidenceReview, VentureProposal(+Version), BoardReview,
-BoardVote, BoardVeto, DecisionSummary, ApprovalRequest, ApprovalDecision,
-ApprovalCondition, ApprovalExecution, PolicyDefinition(+Version),
+**Opportunity & evidence spine**: `DataSource` (provenance root — official
+API, public export, founder-provided, or manual import), `EvidenceArtifact`
+(one row per piece of collected evidence: source, retrieval date, region,
+collection method/agent, reliability/freshness/relevance scores 0-100,
+terms-of-use note, personal-data classification, `contentHash`),
+`EvidenceClaim` (one row per material claim extracted from an artifact,
+tagged with one of the six classification types — see
+`docs/EVIDENCE_MODEL.md`), `TargetCustomer`, `ChannelRecommendation`,
+`OpportunityScore` (one row per score calculation — `scoreType` is
+`OPPORTUNITY` or `PROFIT_CONFIDENCE`, `formulaVersion` pins the exact
+scoring-engine version used, `factorContributions`/`isSpeculative` retained
+alongside the raw `factors` input), `Opportunity` (the candidate venture
+itself — status lifecycle `NEW → UNDER_REVIEW → PROMOTED` or
+`REJECTED`/`ARCHIVED`; denormalized `latestOpportunityScore` /
+`latestProfitConfidence` / `isSpeculative` for fast list-page rendering,
+kept in sync by whatever last wrote an `OpportunityScore` row).
+
+**Venture proposal**: `VentureProposal` (one per opportunity, unique on
+`opportunityId`; `status` starts `DRAFT`), `VentureProposalVersion`
+(append-only snapshot history — every `promote` call adds a new version
+rather than mutating the proposal, so the founder can see how the proposal
+evolved; unique on `(ventureProposalId, versionNumber)`).
+
+All new tables use UUID PKs, are workspace-scoped via `workspaceId` (except
+`TargetCustomer`/`ChannelRecommendation`/`OpportunityScore`, which scope
+through their parent `Opportunity`), and cascade-delete with their parent
+except `EvidenceArtifact.dataSourceId`, which is `SetNull` (an artifact
+survives its data source being removed).
+
+## Entities NOT yet in the schema (Phase 3+)
+
+BoardReview, BoardVote, BoardVeto, DecisionSummary, ApprovalRequest,
+ApprovalDecision, ApprovalCondition, ApprovalExecution, PolicyDefinition(+Version),
 PolicyEvaluation, MarketplacePolicyPack(+Version), Product(+Version),
 ProductAsset(+Version), ProductBrief, ProductPackage, LicenceRecord,
 QualityCheck(Result), Listing(+Version), ListingImage/File, PriceProposal,
@@ -36,15 +64,49 @@ SEOEvaluation, PublicationAttempt, FinancialAssumption, FinancialForecast,
 FinancialScenario, Expense, RevenueEntry, MarketplaceFee, RefundRequest,
 Budget(Allocation), CostLedgerEntry, Experiment(+Variant/Metric/Result/
 Decision), AgentDefinition, AgentPromptVersion, AgentRun, AgentToolCall,
-ModelUsage, ModelCost, Notification(Preference).
+ModelUsage, ModelCost, Notification(Preference), DataAcquisitionContract,
+EvidenceRelationship, EvidenceReview.
 
-Master spec section 22 lists the full target model; adding these in Phase 2
+Master spec section 22 lists the full target model; adding these in Phase 3
 onward is additive (new tables + relations), not a rewrite, because Phase 1
-already establishes the Workspace/AuditEvent/WorkflowRun spine everything
-else hangs off.
+already establishes the Workspace/AuditEvent/WorkflowRun spine and Phase 2
+establishes the Opportunity/Evidence spine everything else hangs off. (Note:
+this list reflects Phase 2's snapshot and was not maintained phase-by-phase
+after that — every entity above except the Phase 8 additions below has
+since actually been implemented across Phases 3-7; see each phase's section
+in `docs/EXECUTION_PLAN.md` for the real, current model list per phase.)
+
+## Phase 8 entities (implemented, `packages/database/prisma/schema.prisma`)
+
+**Multi-venture and SaaS spine**: `Plan` (the 4 resellable tiers — TRIAL,
+STARTER, GROWTH, AGENCY — each with `priceMonthlyEur`, `maxVentures`,
+`maxWorkspaceMembers`, `maxMarketplaceAccounts`, and a `features` string
+array), `Subscription` (one per workspace, unique on `workspaceId`;
+`status` lifecycle `TRIALING → ACTIVE → PAST_DUE`/`CANCELED`;
+`billingMode` hardcoded `'MOCK'`, see `docs/DECISIONS.md` ADR-010),
+`SubscriptionInvoice` (append-only per-period record, `status` always
+`'PAID'` unconditionally — never the result of an actual charge),
+`LicenseKey` (for self-hosted/exportable installs — `key` value, `status`
+lifecycle `ACTIVE → REVOKED`/`EXPIRED`, unique `key`, workspace-scoped),
+`WorkspaceBranding` (one per workspace, unique on `workspaceId`; brand
+name/logo URL/accent color/terminology overrides, applied live to the
+dashboard shell).
+
+No new venture/multi-tenancy tables were needed beyond these: the existing
+`Opportunity` → `VentureProposal` 1:1 relation (Phase 2) already supported
+many concurrent ventures per workspace, and every table across every phase
+already hangs off `workspaceId` (per `docs/ARCHITECTURE.md`'s "server-side
+authorization, always" principle) — Phase 8 only added the plan/billing
+layer and the license/branding tables on top of that already-multi-tenant-
+ready spine.
+
+All new tables use UUID PKs and cascade-delete with their parent
+`Workspace`.
 
 ## Migrations
 
-No migration has been generated or run in this sandbox (no DB reachable).
-Run `pnpm db:migrate:dev` locally to generate the first real migration from
-this schema — see `docs/LOCAL_VERIFICATION_CHECKLIST.md`.
+The Phase 2 migration is generated and applied via
+`pnpm db:migrate:dev --name phase2_opportunity_evidence` (see
+`docs/LOCAL_VERIFICATION_CHECKLIST.md`). The Phase 8 migration
+(`20260714132415_phase8_multi_venture_and_saas`) was generated and applied
+the same way.

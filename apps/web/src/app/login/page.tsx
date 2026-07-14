@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
 
@@ -27,8 +28,20 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}>
-      <form onSubmit={handleSubmit} className="vos-card" style={{ width: 360, display: 'grid', gap: 14 }} data-testid="login-form">
+    <main
+      style={{
+        display: 'flex',
+        minHeight: '100vh',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <form
+        onSubmit={handleSubmit}
+        className="vos-card"
+        style={{ width: 360, display: 'grid', gap: 14 }}
+        data-testid="login-form"
+      >
         <div>
           <h1 style={{ fontSize: 20, margin: 0 }}>VentureOS</h1>
           <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, margin: '4px 0 0' }}>
@@ -75,6 +88,9 @@ export default function LoginPage() {
         <p style={{ fontSize: 12, color: 'var(--vos-text-muted)' }}>
           Development login only. Credentials come from your local <code>.env</code>, seeded via{' '}
           <code>pnpm db:seed</code>.
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--vos-text-muted)' }}>
+          New here? <Link href="/register">Create a workspace</Link>
         </p>
       </form>
     </main>

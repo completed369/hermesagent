@@ -57,7 +57,10 @@ export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
  * This must never be replaced by a frontend-only check.
  */
 export function isApprovalValidForExecution(
-  approval: Pick<ApprovalDecision, 'approvedArtifactVersionId' | 'approvedPackageHash' | 'expiresAt'>,
+  approval: Pick<
+    ApprovalDecision,
+    'approvedArtifactVersionId' | 'approvedPackageHash' | 'expiresAt'
+  >,
   current: { artifactVersionId: string; packageHash: string; now?: Date },
 ): { valid: boolean; reason?: string } {
   const now = current.now ?? new Date();

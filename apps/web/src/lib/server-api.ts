@@ -20,5 +20,20 @@ export async function serverApiFetch<T>(path: string): Promise<{ data: T | null;
   if (!res.ok) {
     return { data: null, status: res.status };
   }
-  return { data: (await res.json()) as T, status: res.status };
+
+  // NestJS sends a genuinely empty response body (not the text "null") when a
+  // controller handler returns `null` or `undefined` -- it special-cases nil
+  // results as "no body to serialize" rather than calling res.json(null).
+  // Every GET-by-something endpoint in this API can legitimately return null
+  // (e.g. no FinancialAssumption/FinancialForecast generated yet for a fresh
+  // venture), so naively calling res.json() here throws "Unexpected end of
+  // JSON input" the first time a real zero-state page is hit -- caught by
+  // Phase 7 live browser verification. Read the body as text first and treat
+  // an empty string as `null`, matching what every caller's `T | null` return
+  // type already expects.
+  const text = await res.text();
+  if (!text) {
+    return { data: null, status: res.status };
+  }
+  return { data: JSON.parse(text) as T, status: res.status };
 }

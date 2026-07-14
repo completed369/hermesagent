@@ -53,7 +53,11 @@ export default function OnboardingPage() {
         Prepopulated with project defaults (master spec section 5) - edit and save.
       </p>
 
-      <form onSubmit={handleSubmit} className="vos-card" style={{ marginTop: 16, display: 'grid', gap: 14, maxWidth: 480 }}>
+      <form
+        onSubmit={handleSubmit}
+        className="vos-card"
+        style={{ marginTop: 16, display: 'grid', gap: 14, maxWidth: 480 }}
+      >
         <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
           Business objectives
           <textarea
@@ -80,7 +84,9 @@ export default function OnboardingPage() {
           <select
             className="vos-input"
             value={form.riskTolerance}
-            onChange={(e) => setForm({ ...form, riskTolerance: e.target.value as OnboardingData['riskTolerance'] })}
+            onChange={(e) =>
+              setForm({ ...form, riskTolerance: e.target.value as OnboardingData['riskTolerance'] })
+            }
           >
             <option value="LOW">Low</option>
             <option value="MEDIUM">Medium</option>

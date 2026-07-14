@@ -19,20 +19,35 @@ describe('MockStorageProvider', () => {
   it('rejects disallowed MIME types', async () => {
     const provider = new MockStorageProvider();
     await expect(
-      provider.upload({ key: 'a.exe', contentType: 'application/x-msdownload', sizeBytes: 10, body: Buffer.from('x') }),
+      provider.upload({
+        key: 'a.exe',
+        contentType: 'application/x-msdownload',
+        sizeBytes: 10,
+        body: Buffer.from('x'),
+      }),
     ).rejects.toThrow();
   });
 
   it('rejects path traversal in object keys', async () => {
     const provider = new MockStorageProvider();
     await expect(
-      provider.upload({ key: '../../etc/passwd', contentType: 'text/plain', sizeBytes: 10, body: Buffer.from('x') }),
+      provider.upload({
+        key: '../../etc/passwd',
+        contentType: 'text/plain',
+        sizeBytes: 10,
+        body: Buffer.from('x'),
+      }),
     ).rejects.toThrow();
   });
 
   it('stores and reports existence of valid uploads', async () => {
     const provider = new MockStorageProvider();
-    const meta = await provider.upload({ key: 'ok.txt', contentType: 'text/plain', sizeBytes: 5, body: Buffer.from('hello') });
+    const meta = await provider.upload({
+      key: 'ok.txt',
+      contentType: 'text/plain',
+      sizeBytes: 5,
+      body: Buffer.from('hello'),
+    });
     expect(meta.contentHash).toBeTruthy();
     expect(await provider.exists('ok.txt')).toBe(true);
     expect(await provider.exists('missing.txt')).toBe(false);

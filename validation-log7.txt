@@ -1,0 +1,149 @@
+
+== Prisma generate ==
+
+> ventureos@0.1.0 db:generate D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run generate
+
+
+> @ventureos/database@0.1.0 generate D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- prisma generate
+
+Prisma schema loaded from prisma\schema.prisma
+
+Γ£ö Generated Prisma Client (v5.22.0) to .\..\..\node_modules\.pnpm\@prisma+client@5.22.0_prisma@5.22.0\node_modules\@prisma\client in 191ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want real-time updates to your database without manual polling? Discover how with Pulse: https://pris.ly/tip-0-pulse
+
+  [PASS] Prisma client generated
+
+== Database migrate (dev) ==
+
+> ventureos@0.1.0 db:migrate:dev D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run migrate:dev
+
+
+> @ventureos/database@0.1.0 migrate:dev D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- prisma migrate dev
+
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "ventureos", schema "public" at "localhost:5432"
+
+Already in sync, no schema change or pending migration was found.
+
+Running generate... (Use --skip-generate to skip the generators)
+[2K[1A[2K[GRunning generate... - Prisma Client
+[2K[1A[2K[GΓ£ö Generated Prisma Client (v5.22.0) to .\..\..\node_modules\.pnpm\@prisma+client
+@5.22.0_prisma@5.22.0\node_modules\@prisma\client in 151ms
+
+
+  [PASS] Migrations applied
+
+== Seed database ==
+
+> ventureos@0.1.0 db:seed D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run seed
+
+
+> @ventureos/database@0.1.0 seed D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- tsx src/seed.ts
+
+[seed] starting VentureOS Phase 1 seed...
+[seed] done.
+[seed] founder login: founder@ventureos.local / (password from DEV_FOUNDER_PASSWORD env var)
+[seed] workspace: VentureOS (ventureos-default)
+  [PASS] Database seeded (founder account + workspace created)
+
+== Starting web, api, and worker (Ctrl+C to stop) ==
+  Web:            http://localhost:3000
+  API:            http://localhost:3001
+  API docs:       http://localhost:3001/api/docs
+  Temporal UI:    http://localhost:8088
+  MinIO console:  http://localhost:9001
+
+
+> ventureos@0.1.0 dev D:\Documents\claudehermespromt\ventureos
+> turbo run dev --parallel
+
+ WARNING  --parallel is deprecated and will be removed in a future major version. Instead, define task behavior in your turbo.json task definitions using `persistent` and `with`.
+ΓÇó turbo 2.10.4
+
+   ΓÇó Packages in scope: @ventureos/api, @ventureos/auth, @ventureos/config, @ventureos/contracts, @ventureos/database, @ventureos/finance-engine, @ventureos/integrations, @ventureos/observability, @ventureos/policy-engine, @ventureos/scoring-engine, @ventureos/security, @ventureos/testing, @ventureos/web, @ventureos/worker, @ventureos/workflows
+   ΓÇó Running dev in 15 packages
+   ΓÇó Remote caching disabled
+
+@ventureos/worker:dev: cache bypass, force executing a197044dd07791e0
+@ventureos/web:dev: cache bypass, force executing e2ee100c2a340e4a
+@ventureos/api:dev: cache bypass, force executing 07cca47bc11c3ef2
+@ventureos/worker:dev: 
+@ventureos/worker:dev: > @ventureos/worker@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\worker
+@ventureos/worker:dev: > dotenv -e ../../.env -- tsx watch src/index.ts
+@ventureos/worker:dev: 
+@ventureos/web:dev: 
+@ventureos/web:dev: > @ventureos/web@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\web
+@ventureos/web:dev: > next dev -p 3000
+@ventureos/web:dev: 
+@ventureos/api:dev: 
+@ventureos/api:dev: > @ventureos/api@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\api
+@ventureos/api:dev: > dotenv -e ../../.env -- nest start --watch --webpack
+@ventureos/api:dev: 
+@ventureos/web:dev:   Γû▓ Next.js 14.2.35
+@ventureos/web:dev:   - Local:        http://localhost:3000
+@ventureos/web:dev: 
+@ventureos/web:dev:  Γ£ô Starting...
+@ventureos/worker:dev: {"timestamp":"2026-07-13T10:16:12.302Z","level":"info","service":"worker","message":"Connecting to Temporal","address":"localhost:7233","namespace":"default"}
+@ventureos/worker:dev: {"timestamp":"2026-07-13T10:16:12.430Z","level":"info","service":"worker","message":"Connected to Temporal"}
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/web:dev:  Γ£ô Ready in 4.4s
+@ventureos/api:dev: webpack 5.97.1 compiled [1m[32msuccessfully[39m[22m in 2431 ms
+@ventureos/api:dev: (node:23496) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+@ventureos/api:dev: (Use `node --trace-deprecation ...` to show where the warning was created)
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/worker:dev: 2026-07-13T10:16:18.000Z [INFO] asset workflow-bundle-8bca0452144585a643da.js 1.47 MiB [emitted] [immutable] (name: main)
+@ventureos/worker:dev: runtime modules 1.34 KiB 4 modules
+@ventureos/worker:dev: modules by path ../../node_modules/.pnpm/ 432 KiB
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+common@1.20.2/node_modules/@temporal...(truncated) 155 KiB 34 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+workflow@1.20.2/node_modules/@tempor...(truncated) 201 KiB 26 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/nexus-rpc@0.0.2/node_modules/nexus-rpc/lib/ 22.3 KiB 13 modules
+@ventureos/worker:dev:   ../../node_modules/.pnpm/long@5.3.2/node_modules/long/umd/index.js 49.8 KiB [built] [code generated]
+@ventureos/worker:dev:   ../../node_modules/.pnpm/ms@3.0.0-canary.1/node_modules/ms/dist/index.cjs 3.41 KiB [built] [code generated]
+@ventureos/worker:dev: modules by path ./src/workflows/ 1.26 KiB
+@ventureos/worker:dev:   ./src/workflows/index-autogenerated-entrypoint.cjs 526 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/index.ts 34 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/hello-workflow.ts 730 bytes [built] [code generated]
+@ventureos/worker:dev: optional modules 30 bytes [optional]
+@ventureos/worker:dev:   __temporal_custom_payload_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev:   __temporal_custom_failure_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev: webpack 5.108.4 compiled successfully in 3801 ms { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/worker:dev: 2026-07-13T10:16:18.011Z [INFO] Workflow bundle created { sdkComponent: 'worker', taskQueue: 'ventureos-main', size: '1.47MB' }
+@ventureos/api:dev: node:internal/modules/esm/resolve:1008
+@ventureos/api:dev:     throw error;
+@ventureos/api:dev:     ^
+@ventureos/api:dev: 
+@ventureos/api:dev: Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'D:\Documents\claudehermespromt\ventureos\packages\config\src\env.js' imported from D:\Documents\claudehermespromt\ventureos\packages\config\src\index.ts
+@ventureos/api:dev:     at finalizeResolution (node:internal/modules/esm/resolve:271:11)
+@ventureos/api:dev:     at moduleResolve (node:internal/modules/esm/resolve:865:10)
+@ventureos/api:dev:     at defaultResolve (node:internal/modules/esm/resolve:992:11)
+@ventureos/api:dev:     at #cachedDefaultResolve (node:internal/modules/esm/loader:701:20)
+@ventureos/api:dev:     at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:721:38)
+@ventureos/api:dev:     at ModuleLoader.resolveSync (node:internal/modules/esm/loader:759:56)
+@ventureos/api:dev:     at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:600:27)
+@ventureos/api:dev:     at ModuleJobSync.syncLink (node:internal/modules/esm/module_job:163:33)
+@ventureos/api:dev:     at ModuleJobSync.link (node:internal/modules/esm/module_job:489:17)
+@ventureos/api:dev:     at new ModuleJobSync (node:internal/modules/esm/module_job:479:26) {
+@ventureos/api:dev:   code: 'ERR_MODULE_NOT_FOUND',
+@ventureos/api:dev:   url: 'file:///D:/Documents/claudehermespromt/ventureos/packages/config/src/env.js'
+@ventureos/api:dev: }
+@ventureos/api:dev: 
+@ventureos/api:dev: Node.js v24.18.0
+@ventureos/worker:dev: {"timestamp":"2026-07-13T10:16:19.894Z","level":"info","service":"worker","message":"Worker created, starting run loop","taskQueue":"ventureos-main"}
+@ventureos/worker:dev: 2026-07-13T10:16:19.895Z [INFO] Worker state changed {
+@ventureos/worker:dev:   sdkComponent: 'worker',
+@ventureos/worker:dev:   taskQueue: 'ventureos-main',
+@ventureos/worker:dev:   state: 'RUNNING'
+@ventureos/worker:dev: }
+@ventureos/worker:dev: 2026-07-13T10:16:19.898Z [INFO] No Nexus services registered, not polling for Nexus tasks { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/api:dev: No errors found.

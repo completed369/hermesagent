@@ -10,7 +10,7 @@ describe('StructuredLogger', () => {
     logger.debug('should not appear', { password: 'secret' });
     logger.info('hello', { password: 'secret', correlationId: 'c1' });
     expect(spy).toHaveBeenCalledTimes(1);
-    const parsed = JSON.parse(spy.mock.calls[0][0] as string);
+    const parsed = JSON.parse(spy.mock.calls[0]![0] as string);
     expect(parsed.message).toBe('hello');
     expect(parsed.password).toBe('[REDACTED]');
     expect(parsed.correlationId).toBe('c1');

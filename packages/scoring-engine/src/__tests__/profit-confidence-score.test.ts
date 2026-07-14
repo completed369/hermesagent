@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { calculateProfitConfidenceScore, ProfitConfidenceFactorWeights } from '../profit-confidence-score';
+import {
+  calculateProfitConfidenceScore,
+  ProfitConfidenceFactorWeights,
+} from '../profit-confidence-score';
 
 const allFifty = Object.fromEntries(
   Object.keys(ProfitConfidenceFactorWeights).map((k) => [k, 50]),

@@ -10,8 +10,8 @@ import { test, expect } from '@playwright/test';
  *   pnpm dev
  *   pnpm --filter @ventureos/web test:e2e
  *
- * Status: written but NOT executed in this sandbox (no Docker/DB/browser
- * binaries available here). See docs/SANDBOX_LIMITATIONS.md.
+ * Status: executed and passing against a real local stack on 2026-07-13
+ * (Postgres, API, web, seeded founder account, Chromium via Playwright).
  */
 
 const FOUNDER_EMAIL = process.env.DEV_FOUNDER_EMAIL ?? 'founder@ventureos.local';
@@ -30,7 +30,10 @@ test.describe('Login and dashboard', () => {
     await page.getByTestId('login-submit').click();
 
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByText('Command Centre')).toBeVisible();
+    // Both the sidebar nav link and the page <h1> say "Command Centre", so
+    // getByText resolves two elements and trips Playwright's strict-mode
+    // ambiguity check. Scope to the heading specifically.
+    await expect(page.getByRole('heading', { name: 'Command Centre' })).toBeVisible();
     await expect(page.getByText('Integration status')).toBeVisible();
   });
 

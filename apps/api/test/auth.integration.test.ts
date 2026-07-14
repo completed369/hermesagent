@@ -23,9 +23,15 @@ describe('Auth flow (integration)', () => {
     await app.init();
 
     const founderRole = await prisma.role.findUniqueOrThrow({ where: { key: 'FOUNDER' } });
-    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { slug: 'ventureos-default' } });
+    const workspace = await prisma.workspace.findUniqueOrThrow({
+      where: { slug: 'ventureos-default' },
+    });
     const user = await prisma.user.create({
-      data: { email: testEmail, passwordHash: hashPassword(testPassword), displayName: 'Integration Test User' },
+      data: {
+        email: testEmail,
+        passwordHash: hashPassword(testPassword),
+        displayName: 'Integration Test User',
+      },
     });
     await prisma.workspaceMember.create({
       data: { workspaceId: workspace.id, userId: user.id, roleId: founderRole.id },
@@ -46,13 +52,17 @@ describe('Auth flow (integration)', () => {
 
   it('rejects an invalid password', async () => {
     const server = app.getHttpServer();
-    const res = await request(server).post('/api/auth/login').send({ email: testEmail, password: 'wrong' });
+    const res = await request(server)
+      .post('/api/auth/login')
+      .send({ email: testEmail, password: 'wrong' });
     expect(res.status).toBe(401);
   });
 
   it('logs in with a valid password and can then access a protected route', async () => {
     const server = app.getHttpServer();
-    const loginRes = await request(server).post('/api/auth/login').send({ email: testEmail, password: testPassword });
+    const loginRes = await request(server)
+      .post('/api/auth/login')
+      .send({ email: testEmail, password: testPassword });
     expect(loginRes.status).toBe(200);
     const cookie = loginRes.headers['set-cookie'];
     expect(cookie).toBeTruthy();

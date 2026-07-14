@@ -1,0 +1,155 @@
+
+> ventureos@0.1.0 dev D:\Documents\claudehermespromt\ventureos
+> turbo run dev
+
+ΓÇó turbo 2.10.4
+
+   ΓÇó Packages in scope: @ventureos/agent-runtime, @ventureos/api, @ventureos/auth, @ventureos/config, @ventureos/contracts, @ventureos/database, @ventureos/finance-engine, @ventureos/integrations, @ventureos/observability, @ventureos/policy-engine, @ventureos/scoring-engine, @ventureos/security, @ventureos/testing, @ventureos/web, @ventureos/worker, @ventureos/workflows
+   ΓÇó Running dev in 16 packages
+   ΓÇó Remote caching disabled
+
+@ventureos/web:dev: cache bypass, force executing 5d1ca2cc488b42b8
+@ventureos/scoring-engine:build: cache hit, replaying logs 952677af79fab5f6
+@ventureos/scoring-engine:build: 
+@ventureos/scoring-engine:build: > @ventureos/scoring-engine@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\scoring-engine
+@ventureos/scoring-engine:build: > tsc -p tsconfig.json
+@ventureos/scoring-engine:build: 
+@ventureos/auth:build: cache hit, replaying logs cc917dfd6dce96c4
+@ventureos/auth:build: 
+@ventureos/auth:build: > @ventureos/auth@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\auth
+@ventureos/auth:build: > tsc -p tsconfig.json
+@ventureos/auth:build: 
+@ventureos/contracts:build: cache hit, replaying logs 7a25bb45e112056b
+@ventureos/contracts:build: 
+@ventureos/contracts:build: > @ventureos/contracts@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\contracts
+@ventureos/contracts:build: > tsc -p tsconfig.json
+@ventureos/contracts:build: 
+@ventureos/config:build: cache hit, replaying logs 8413f8cbd0d90069
+@ventureos/config:build: 
+@ventureos/config:build: > @ventureos/config@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\config
+@ventureos/config:build: > tsc -p tsconfig.json
+@ventureos/config:build: 
+@ventureos/security:build: cache hit, replaying logs 844b876d683bdfd2
+@ventureos/security:build: 
+@ventureos/security:build: > @ventureos/security@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\security
+@ventureos/security:build: > tsc -p tsconfig.json
+@ventureos/security:build: 
+@ventureos/policy-engine:build: cache hit, replaying logs 163240ef549bcb61
+@ventureos/policy-engine:build: 
+@ventureos/policy-engine:build: > @ventureos/policy-engine@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\policy-engine
+@ventureos/policy-engine:build: > tsc -p tsconfig.json
+@ventureos/policy-engine:build: 
+@ventureos/workflows:build: cache hit, replaying logs 8a1f2ed93e00c868
+@ventureos/workflows:build: 
+@ventureos/workflows:build: > @ventureos/workflows@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\workflows
+@ventureos/workflows:build: > tsc -p tsconfig.json
+@ventureos/workflows:build: 
+@ventureos/integrations:build: cache hit, replaying logs 2529160c78858cc4
+@ventureos/integrations:build: 
+@ventureos/integrations:build: > @ventureos/integrations@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\integrations
+@ventureos/integrations:build: > tsc -p tsconfig.json
+@ventureos/integrations:build: 
+@ventureos/observability:build: cache hit, replaying logs 8b9a2d21b9b12a37
+@ventureos/observability:build: 
+@ventureos/observability:build: > @ventureos/observability@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\observability
+@ventureos/observability:build: > tsc -p tsconfig.json
+@ventureos/observability:build: 
+@ventureos/database:build: cache hit, replaying logs b9fa955a56f70c0d
+@ventureos/database:build: 
+@ventureos/database:build: > @ventureos/database@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\database
+@ventureos/database:build: > tsc -p tsconfig.json
+@ventureos/database:build: 
+@ventureos/agent-runtime:build: cache hit, replaying logs 7a2d5db2bd073f91
+@ventureos/agent-runtime:build: 
+@ventureos/agent-runtime:build: > @ventureos/agent-runtime@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\agent-runtime
+@ventureos/agent-runtime:build: > tsc -p tsconfig.json
+@ventureos/agent-runtime:build: 
+@ventureos/api:dev: cache bypass, force executing d9ea43eea4c7d511
+@ventureos/worker:dev: cache bypass, force executing 362b56e4df0d9b71
+@ventureos/web:dev: 
+@ventureos/web:dev: > @ventureos/web@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\web
+@ventureos/web:dev: > next dev -p 3000
+@ventureos/web:dev: 
+@ventureos/api:dev: 
+@ventureos/api:dev: > @ventureos/api@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\api
+@ventureos/api:dev: > dotenv -e ../../.env -- nest start --watch --webpack
+@ventureos/api:dev: 
+@ventureos/worker:dev: 
+@ventureos/worker:dev: > @ventureos/worker@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\worker
+@ventureos/worker:dev: > dotenv -e ../../.env -- tsx watch src/index.ts
+@ventureos/worker:dev: 
+@ventureos/web:dev:  Γ¿» Failed to start server
+@ventureos/web:dev: Error: listen EADDRINUSE: address already in use :::3000
+@ventureos/web:dev:     at Server.setupListenHandle [as _listen2] (node:net:2009:16)
+@ventureos/web:dev:     at listenInCluster (node:net:2066:12)
+@ventureos/web:dev:     at Server.listen (node:net:2171:7)
+@ventureos/web:dev:     at D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\next@14.2.35_@playwright+test@1.61.1_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\server\lib\start-server.js:280:16
+@ventureos/web:dev:     at new Promise (<anonymous>)
+@ventureos/web:dev:     at startServer (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\next@14.2.35_@playwright+test@1.61.1_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\server\lib\start-server.js:191:11)
+@ventureos/web:dev:     at D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\next@14.2.35_@playwright+test@1.61.1_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\server\lib\start-server.js:310:52
+@ventureos/web:dev:     at Span.traceAsyncFn (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\next@14.2.35_@playwright+test@1.61.1_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\trace\trace.js:154:26)
+@ventureos/web:dev:     at process.<anonymous> (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\next@14.2.35_@playwright+test@1.61.1_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\server\lib\start-server.js:310:35)
+@ventureos/web:dev:     at process.emit (node:events:509:28) {
+@ventureos/web:dev:   code: 'EADDRINUSE',
+@ventureos/web:dev:   errno: -4091,
+@ventureos/web:dev:   syscall: 'listen',
+@ventureos/web:dev:   address: '::',
+@ventureos/web:dev:   port: 3000
+@ventureos/web:dev: }
+@ventureos/web:dev: [?25h
+@ventureos/worker:dev: {"timestamp":"2026-07-13T16:40:02.233Z","level":"info","service":"worker","message":"Connecting to Temporal","address":"localhost:7233","namespace":"default"}
+@ventureos/worker:dev: {"timestamp":"2026-07-13T16:40:02.335Z","level":"info","service":"worker","message":"Connected to Temporal"}
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/api:dev: webpack 5.97.1 compiled [1m[32msuccessfully[39m[22m in 2989 ms
+@ventureos/api:dev: (node:13888) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+@ventureos/api:dev: (Use `node --trace-deprecation ...` to show where the warning was created)
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/api:dev: [api] fatal bootstrap error: Error: listen EADDRINUSE: address already in use :::3001
+@ventureos/api:dev:     at Server.setupListenHandle [as _listen2] (node:net:2009:16)
+@ventureos/api:dev:     at listenInCluster (node:net:2066:12)
+@ventureos/api:dev:     at Server.listen (node:net:2171:7)
+@ventureos/api:dev:     at ExpressAdapter.listen (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+platform-express@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+core@10.4.22\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+@ventureos/api:dev:     at D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\nest-application.js:183:30
+@ventureos/api:dev:     at new Promise (<anonymous>)
+@ventureos/api:dev:     at NestApplication.listen (D:\Documents\claudehermespromt\ventureos\node_modules\.pnpm\@nestjs+core@10.4.22_@nestjs+common@10.4.22_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+platfo_7kfmsha4ldy5jexczco62bentu\node_modules\@nestjs\core\nest-application.js:173:16)
+@ventureos/api:dev:     at async bootstrap (D:\Documents\claudehermespromt\ventureos\apps\api\dist\main.js:490:5) {
+@ventureos/api:dev:   code: 'EADDRINUSE',
+@ventureos/api:dev:   errno: -4091,
+@ventureos/api:dev:   syscall: 'listen',
+@ventureos/api:dev:   address: '::',
+@ventureos/api:dev:   port: 3001
+@ventureos/api:dev: }
+@ventureos/worker:dev: 2026-07-13T16:40:26.358Z [INFO] asset workflow-bundle-ba43b4ec7e25d9d9d5d3.js 1.48 MiB [emitted] [immutable] (name: main)
+@ventureos/worker:dev: runtime modules 1.34 KiB 4 modules
+@ventureos/worker:dev: modules by path ../../node_modules/.pnpm/ 432 KiB
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+common@1.20.2/node_modules/@temporal...(truncated) 155 KiB 34 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+workflow@1.20.2/node_modules/@tempor...(truncated) 201 KiB 26 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/nexus-rpc@0.0.2/node_modules/nexus-rpc/lib/ 22.3 KiB 13 modules
+@ventureos/worker:dev:   ../../node_modules/.pnpm/long@5.3.2/node_modules/long/umd/index.js 49.8 KiB [built] [code generated]
+@ventureos/worker:dev:   ../../node_modules/.pnpm/ms@3.0.0-canary.1/node_modules/ms/dist/index.cjs 3.41 KiB [built] [code generated]
+@ventureos/worker:dev: modules by path ./src/workflows/ 3.7 KiB
+@ventureos/worker:dev:   ./src/workflows/index-autogenerated-entrypoint.cjs 526 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/index.ts 77 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/hello-workflow.ts 730 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/board-approval-workflow.ts 2.4 KiB [built] [code generated]
+@ventureos/worker:dev: optional modules 30 bytes [optional]
+@ventureos/worker:dev:   __temporal_custom_payload_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev:   __temporal_custom_failure_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev: webpack 5.108.4 compiled successfully in 14026 ms { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/worker:dev: 2026-07-13T16:40:26.364Z [INFO] Workflow bundle created { sdkComponent: 'worker', taskQueue: 'ventureos-main', size: '1.48MB' }
+@ventureos/worker:dev: {"timestamp":"2026-07-13T16:40:28.808Z","level":"info","service":"worker","message":"Worker created, starting run loop","taskQueue":"ventureos-main"}
+@ventureos/worker:dev: 2026-07-13T16:40:28.816Z [INFO] Worker state changed {
+@ventureos/worker:dev:   sdkComponent: 'worker',
+@ventureos/worker:dev:   taskQueue: 'ventureos-main',
+@ventureos/worker:dev:   state: 'RUNNING'
+@ventureos/worker:dev: }
+@ventureos/worker:dev: 2026-07-13T16:40:28.823Z [INFO] No Nexus services registered, not polling for Nexus tasks { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/api:dev: No errors found.
+Shutting down Turborepo tasks...
+
+ Tasks:    12 successful, 14 total
+Cached:    11 cached, 14 total
+  Time:    4m0.623s 
+

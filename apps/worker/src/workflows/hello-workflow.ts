@@ -13,7 +13,9 @@ const { pingHealthActivity } = proxyActivities<typeof activities>({
  * it exists purely to satisfy Phase 1 acceptance criterion "Temporal test
  * workflow executes."
  */
-export async function helloWorkflow(input: { name: string }): Promise<{ message: string; pingedAt: string }> {
+export async function helloWorkflow(input: {
+  name: string;
+}): Promise<{ message: string; pingedAt: string }> {
   const pingedAt = await pingHealthActivity();
   return { message: `Hello, ${input.name}. VentureOS worker is alive.`, pingedAt };
 }

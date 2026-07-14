@@ -1,0 +1,100 @@
+
+> @ventureos/web@0.1.0 test:e2e D:\Documents\claudehermespromt\ventureos\apps\web
+> playwright test
+
+
+Running 4 tests using 4 workers
+
+[1/4] [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:26:7 ΓÇ║ Login and dashboard ΓÇ║ founder can log in and see the Command Centre
+[2/4] [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:37:7 ΓÇ║ Login and dashboard ΓÇ║ rejects an incorrect password with a visible error
+[3/4] [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:21:7 ΓÇ║ Login and dashboard ΓÇ║ redirects unauthenticated visitors to /login
+[4/4] [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:47:7 ΓÇ║ Login and dashboard ΓÇ║ founder can navigate to audit and security pages
+  1) [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:26:7 ΓÇ║ Login and dashboard ΓÇ║ founder can log in and see the Command Centre 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      25 |
+      26 |   test('founder can log in and see the Command Centre', async ({ page }) => {
+    > 27 |     await page.goto('/login');
+         |                ^
+      28 |     await page.getByTestId('login-email').fill(FOUNDER_EMAIL);
+      29 |     await page.getByTestId('login-password').fill(FOUNDER_PASSWORD);
+      30 |     await page.getByTestId('login-submit').click();
+        at D:\Documents\claudehermespromt\ventureos\apps\web\e2e\login-dashboard.spec.ts:27:16
+
+    Error Context: test-results\login-dashboard-Login-and--3c6ca--and-see-the-Command-Centre-chromium\error-context.md
+
+
+  2) [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:21:7 ΓÇ║ Login and dashboard ΓÇ║ redirects unauthenticated visitors to /login 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/dashboard
+    Call log:
+      - navigating to "http://localhost:3000/dashboard", waiting until "load"
+
+
+      20 | test.describe('Login and dashboard', () => {
+      21 |   test('redirects unauthenticated visitors to /login', async ({ page }) => {
+    > 22 |     await page.goto('/dashboard');
+         |                ^
+      23 |     await expect(page).toHaveURL(/\/login/);
+      24 |   });
+      25 |
+        at D:\Documents\claudehermespromt\ventureos\apps\web\e2e\login-dashboard.spec.ts:22:16
+
+    Error Context: test-results\login-dashboard-Login-and--f8d29-enticated-visitors-to-login-chromium\error-context.md
+
+
+  3) [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:37:7 ΓÇ║ Login and dashboard ΓÇ║ rejects an incorrect password with a visible error 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      36 |
+      37 |   test('rejects an incorrect password with a visible error', async ({ page }) => {
+    > 38 |     await page.goto('/login');
+         |                ^
+      39 |     await page.getByTestId('login-email').fill(FOUNDER_EMAIL);
+      40 |     await page.getByTestId('login-password').fill('definitely-wrong');
+      41 |     await page.getByTestId('login-submit').click();
+        at D:\Documents\claudehermespromt\ventureos\apps\web\e2e\login-dashboard.spec.ts:38:16
+
+    Error Context: test-results\login-dashboard-Login-and--6fd85-ssword-with-a-visible-error-chromium\error-context.md
+
+
+  4) [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:47:7 ΓÇ║ Login and dashboard ΓÇ║ founder can navigate to audit and security pages 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      46 |
+      47 |   test('founder can navigate to audit and security pages', async ({ page, context }) => {
+    > 48 |     await page.goto('/login');
+         |                ^
+      49 |     await page.getByTestId('login-email').fill(FOUNDER_EMAIL);
+      50 |     await page.getByTestId('login-password').fill(FOUNDER_PASSWORD);
+      51 |     await page.getByTestId('login-submit').click();
+        at D:\Documents\claudehermespromt\ventureos\apps\web\e2e\login-dashboard.spec.ts:48:16
+
+    Error Context: test-results\login-dashboard-Login-and--7388e-to-audit-and-security-pages-chromium\error-context.md
+
+
+  4 failed
+    [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:21:7 ΓÇ║ Login and dashboard ΓÇ║ redirects unauthenticated visitors to /login 
+    [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:26:7 ΓÇ║ Login and dashboard ΓÇ║ founder can log in and see the Command Centre 
+    [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:37:7 ΓÇ║ Login and dashboard ΓÇ║ rejects an incorrect password with a visible error 
+    [chromium] ΓÇ║ e2e\login-dashboard.spec.ts:47:7 ΓÇ║ Login and dashboard ΓÇ║ founder can navigate to audit and security pages 
+
+To open last HTML report run:
+[36m[39m
+[36m  pnpm exec playwright show-report[39m
+[36m[39m
+D:\Documents\claudehermespromt\ventureos\apps\web:
+ΓÇëERR_PNPM_RECURSIVE_RUN_FIRST_FAILΓÇë @ventureos/web@0.1.0 test:e2e: `playwright test`
+Exit status 1

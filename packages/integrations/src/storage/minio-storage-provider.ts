@@ -1,7 +1,7 @@
 import { Client as MinioClient } from 'minio';
 import { hashContent } from '@ventureos/security';
-import type { StorageProvider, StoredFileMetadata, UploadFileInput } from './types';
-import { isAllowedMimeType, isWithinSizeLimit } from './types';
+import type { StorageProvider, StoredFileMetadata, UploadFileInput } from './types.js';
+import { isAllowedMimeType, isWithinSizeLimit } from './types.js';
 
 export interface MinioStorageConfig {
   endPoint: string;

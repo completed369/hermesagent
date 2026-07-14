@@ -1,6 +1,6 @@
 import { hashContent } from '@ventureos/security';
-import type { StorageProvider, StoredFileMetadata, UploadFileInput } from './types';
-import { isAllowedMimeType, isWithinSizeLimit } from './types';
+import type { StorageProvider, StoredFileMetadata, UploadFileInput } from './types.js';
+import { isAllowedMimeType, isWithinSizeLimit } from './types.js';
 
 /**
  * In-memory storage provider used in unit/integration tests so tests never

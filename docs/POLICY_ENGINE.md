@@ -4,6 +4,7 @@
 (`evaluateCorePolicies`) and `board-voting.ts` (`calculateBoardVotingResult`).
 
 ## Core policies implemented (12 of the master spec's 25; the rest require
+
 domain models — Product, Listing, etc. — that don't exist until Phase 4+)
 
 POL-001 external publication requires approval · POL-002 approval matches

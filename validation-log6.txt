@@ -1,0 +1,197 @@
+
+== Prisma generate ==
+
+> ventureos@0.1.0 db:generate D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run generate
+
+
+> @ventureos/database@0.1.0 generate D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- prisma generate
+
+Prisma schema loaded from prisma\schema.prisma
+
+Γ£ö Generated Prisma Client (v5.22.0) to .\..\..\node_modules\.pnpm\@prisma+client@5.22.0_prisma@5.22.0\node_modules\@prisma\client in 171ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+
+  [PASS] Prisma client generated
+
+== Database migrate (dev) ==
+
+> ventureos@0.1.0 db:migrate:dev D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run migrate:dev
+
+
+> @ventureos/database@0.1.0 migrate:dev D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- prisma migrate dev
+
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "ventureos", schema "public" at "localhost:5432"
+
+Already in sync, no schema change or pending migration was found.
+
+Running generate... (Use --skip-generate to skip the generators)
+[2K[1A[2K[GRunning generate... - Prisma Client
+[2K[1A[2K[GΓ£ö Generated Prisma Client (v5.22.0) to .\..\..\node_modules\.pnpm\@prisma+client
+@5.22.0_prisma@5.22.0\node_modules\@prisma\client in 153ms
+
+
+  [PASS] Migrations applied
+
+== Seed database ==
+
+> ventureos@0.1.0 db:seed D:\Documents\claudehermespromt\ventureos
+> pnpm --filter @ventureos/database run seed
+
+
+> @ventureos/database@0.1.0 seed D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- tsx src/seed.ts
+
+[seed] starting VentureOS Phase 1 seed...
+[seed] done.
+[seed] founder login: founder@ventureos.local / (password from DEV_FOUNDER_PASSWORD env var)
+[seed] workspace: VentureOS (ventureos-default)
+  [PASS] Database seeded (founder account + workspace created)
+
+== Starting web, api, and worker (Ctrl+C to stop) ==
+  Web:            http://localhost:3000
+  API:            http://localhost:3001
+  API docs:       http://localhost:3001/api/docs
+  Temporal UI:    http://localhost:8088
+  MinIO console:  http://localhost:9001
+
+
+> ventureos@0.1.0 dev D:\Documents\claudehermespromt\ventureos
+> turbo run dev --parallel
+
+ WARNING  --parallel is deprecated and will be removed in a future major version. Instead, define task behavior in your turbo.json task definitions using `persistent` and `with`.
+ΓÇó turbo 2.10.4
+
+   ΓÇó Packages in scope: @ventureos/api, @ventureos/auth, @ventureos/config, @ventureos/contracts, @ventureos/database, @ventureos/finance-engine, @ventureos/integrations, @ventureos/observability, @ventureos/policy-engine, @ventureos/scoring-engine, @ventureos/security, @ventureos/testing, @ventureos/web, @ventureos/worker, @ventureos/workflows
+   ΓÇó Running dev in 15 packages
+   ΓÇó Remote caching disabled
+
+@ventureos/web:dev: cache bypass, force executing e2ee100c2a340e4a
+@ventureos/worker:dev: cache bypass, force executing a197044dd07791e0
+@ventureos/api:dev: cache bypass, force executing 8e49d3396b450cc1
+@ventureos/web:dev: 
+@ventureos/web:dev: > @ventureos/web@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\web
+@ventureos/web:dev: > next dev -p 3000
+@ventureos/web:dev: 
+@ventureos/worker:dev: 
+@ventureos/worker:dev: > @ventureos/worker@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\worker
+@ventureos/worker:dev: > dotenv -e ../../.env -- tsx watch src/index.ts
+@ventureos/worker:dev: 
+@ventureos/api:dev: 
+@ventureos/api:dev: > @ventureos/api@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\api
+@ventureos/api:dev: > dotenv -e ../../.env -- nest start --watch --webpack
+@ventureos/api:dev: 
+@ventureos/web:dev:   Γû▓ Next.js 14.2.35
+@ventureos/web:dev:   - Local:        http://localhost:3000
+@ventureos/web:dev: 
+@ventureos/web:dev:  Γ£ô Starting...
+@ventureos/worker:dev: {"timestamp":"2026-07-13T10:12:40.502Z","level":"info","service":"worker","message":"Connecting to Temporal","address":"localhost:7233","namespace":"default"}
+@ventureos/worker:dev: {"timestamp":"2026-07-13T10:12:40.543Z","level":"info","service":"worker","message":"Connected to Temporal"}
+@ventureos/web:dev:  Γ£ô Ready in 4.1s
+@ventureos/worker:dev: 2026-07-13T10:12:44.699Z [INFO] asset workflow-bundle-8bca0452144585a643da.js 1.47 MiB [emitted] [immutable] (name: main)
+@ventureos/worker:dev: runtime modules 1.34 KiB 4 modules
+@ventureos/worker:dev: modules by path ../../node_modules/.pnpm/ 432 KiB
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+common@1.20.2/node_modules/@temporal...(truncated) 155 KiB 34 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+workflow@1.20.2/node_modules/@tempor...(truncated) 201 KiB 26 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/nexus-rpc@0.0.2/node_modules/nexus-rpc/lib/ 22.3 KiB 13 modules
+@ventureos/worker:dev:   ../../node_modules/.pnpm/long@5.3.2/node_modules/long/umd/index.js 49.8 KiB [built] [code generated]
+@ventureos/worker:dev:   ../../node_modules/.pnpm/ms@3.0.0-canary.1/node_modules/ms/dist/index.cjs 3.41 KiB [built] [code generated]
+@ventureos/worker:dev: modules by path ./src/workflows/ 1.26 KiB
+@ventureos/worker:dev:   ./src/workflows/index-autogenerated-entrypoint.cjs 526 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/index.ts 34 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/hello-workflow.ts 730 bytes [built] [code generated]
+@ventureos/worker:dev: optional modules 30 bytes [optional]
+@ventureos/worker:dev:   __temporal_custom_payload_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev:   __temporal_custom_failure_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev: webpack 5.108.4 compiled successfully in 2189 ms { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/worker:dev: 2026-07-13T10:12:44.708Z [INFO] Workflow bundle created { sdkComponent: 'worker', taskQueue: 'ventureos-main', size: '1.47MB' }
+@ventureos/worker:dev: {"timestamp":"2026-07-13T10:12:46.274Z","level":"info","service":"worker","message":"Worker created, starting run loop","taskQueue":"ventureos-main"}
+@ventureos/worker:dev: 2026-07-13T10:12:46.275Z [INFO] Worker state changed {
+@ventureos/worker:dev:   sdkComponent: 'worker',
+@ventureos/worker:dev:   taskQueue: 'ventureos-main',
+@ventureos/worker:dev:   state: 'RUNNING'
+@ventureos/worker:dev: }
+@ventureos/worker:dev: 2026-07-13T10:12:46.277Z [INFO] No Nexus services registered, not polling for Nexus tasks { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/api:dev: Entrypoint [1mmain[39m[22m =
+@ventureos/api:dev: 
+@ventureos/api:dev: [1m[31mERROR[39m[22m in [1m[32mmain[39m[22m
+@ventureos/api:dev: [1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'ts-loader' in 'D:\Documents\claudehermespromt\ventureos\apps\api'[39m[22m
+@ventureos/api:dev: resolve 'ts-loader' in 'D:\Documents\claudehermespromt\ventureos\apps\api'
+@ventureos/api:dev:   Parsed request is a module
+@ventureos/api:dev:   using description file: D:\Documents\claudehermespromt\ventureos\apps\api\package.json (relative path: .)
+@ventureos/api:dev:     resolve as module
+@ventureos/api:dev:       looking for modules in D:\Documents\claudehermespromt\ventureos\apps\api\node_modules
+@ventureos/api:dev:         single file module
+@ventureos/api:dev:           using description file: D:\Documents\claudehermespromt\ventureos\apps\api\package.json (relative path: ./node_modules/ts-loader)
+@ventureos/api:dev:             no extension
+@ventureos/api:dev: [1m[31m              D:\Documents\claudehermespromt\ventureos\apps\api\node_modules\ts-loader doesn't exist[39m[22m
+@ventureos/api:dev:             .js
+@ventureos/api:dev: [1m[31m              D:\Documents\claudehermespromt\ventureos\apps\api\node_modules\ts-loader.js doesn't exist[39m[22m
+@ventureos/api:dev: [1m[31m        D:\Documents\claudehermespromt\ventureos\apps\api\node_modules\ts-loader doesn't exist[39m[22m
+@ventureos/api:dev: [1m[31m      D:\Documents\claudehermespromt\ventureos\apps\node_modules doesn't exist[39m[22m or is not a directory
+@ventureos/api:dev:       looking for modules in D:\Documents\claudehermespromt\ventureos\node_modules
+@ventureos/api:dev:         single file module
+@ventureos/api:dev:           using description file: D:\Documents\claudehermespromt\ventureos\package.json (relative path: ./node_modules/ts-loader)
+@ventureos/api:dev:             no extension
+@ventureos/api:dev: [1m[31m              D:\Documents\claudehermespromt\ventureos\node_modules\ts-loader doesn't exist[39m[22m
+@ventureos/api:dev:             .js
+@ventureos/api:dev: [1m[31m              D:\Documents\claudehermespromt\ventureos\node_modules\ts-loader.js doesn't exist[39m[22m
+@ventureos/api:dev: [1m[31m        D:\Documents\claudehermespromt\ventureos\node_modules\ts-loader doesn't exist[39m[22m
+@ventureos/api:dev: [1m[31m      D:\Documents\claudehermespromt\node_modules doesn't exist[39m[22m or is not a directory
+@ventureos/api:dev: [1m[31m      D:\Documents\node_modules doesn't exist[39m[22m or is not a directory
+@ventureos/api:dev: [1m[31m      D:\node_modules doesn't exist[39m[22m or is not a directory
+@ventureos/api:dev: 
+@ventureos/api:dev: webpack 5.97.1 compiled with [1m[31m1 error[39m[22m in 922 ms
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/api:dev: No errors found.
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/api:dev: Entrypoint [1mmain[39m[22m =
+@ventureos/api:dev: 
+@ventureos/api:dev: [1m[31mERROR[39m[22m in [1m[32mmain[39m[22m
+@ventureos/api:dev: [1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'ts-loader' in 'D:\Documents\claudehermespromt\ventureos\apps\api'[39m[22m
+@ventureos/api:dev: resolve 'ts-loader' in 'D:\Documents\claudehermespromt\ventureos\apps\api'
+@ventureos/api:dev:   Parsed request is a module
+@ventureos/api:dev:   using description file: D:\Documents\claudehermespromt\ventureos\apps\api\package.json (relative path: .)
+@ventureos/api:dev:     resolve as module
+@ventureos/api:dev:       looking for modules in D:\Documents\claudehermespromt\ventureos\apps\api\node_modules
+@ventureos/api:dev:         single file module
+@ventureos/api:dev:           using description file: D:\Documents\claudehermespromt\ventureos\apps\api\package.json (relative path: ./node_modules/ts-loader)
+@ventureos/api:dev:             no extension
+@ventureos/api:dev: [1m[31m              D:\Documents\claudehermespromt\ventureos\apps\api\node_modules\ts-loader doesn't exist[39m[22m
+@ventureos/api:dev:             .js
+@ventureos/api:dev: [1m[31m              D:\Documents\claudehermespromt\ventureos\apps\api\node_modules\ts-loader.js doesn't exist[39m[22m
+@ventureos/api:dev: [1m[31m        D:\Documents\claudehermespromt\ventureos\apps\api\node_modules\ts-loader doesn't exist[39m[22m
+@ventureos/api:dev: [1m[31m      D:\Documents\claudehermespromt\ventureos\apps\node_modules doesn't exist[39m[22m or is not a directory
+@ventureos/api:dev:       looking for modules in D:\Documents\claudehermespromt\ventureos\node_modules
+@ventureos/api:dev:         single file module
+@ventureos/api:dev:           using description file: D:\Documents\claudehermespromt\ventureos\package.json (relative path: ./node_modules/ts-loader)
+@ventureos/api:dev:             no extension
+@ventureos/api:dev: [1m[31m              D:\Documents\claudehermespromt\ventureos\node_modules\ts-loader doesn't exist[39m[22m
+@ventureos/api:dev:             .js
+@ventureos/api:dev: [1m[31m              D:\Documents\claudehermespromt\ventureos\node_modules\ts-loader.js doesn't exist[39m[22m
+@ventureos/api:dev: [1m[31m        D:\Documents\claudehermespromt\ventureos\node_modules\ts-loader doesn't exist[39m[22m
+@ventureos/api:dev: [1m[31m      D:\Documents\claudehermespromt\node_modules doesn't exist[39m[22m or is not a directory
+@ventureos/api:dev: [1m[31m      D:\Documents\node_modules doesn't exist[39m[22m or is not a directory
+@ventureos/api:dev: [1m[31m      D:\node_modules doesn't exist[39m[22m or is not a directory
+@ventureos/api:dev: 
+@ventureos/api:dev: webpack 5.97.1 compiled with [1m[31m1 error[39m[22m in 20 ms
+@ventureos/api:dev: No errors found.
+Shutting down Turborepo tasks...
+@ventureos/web:dev: [?25h
+
+ Tasks:    0 successful, 3 total
+Cached:    0 cached, 3 total
+  Time:    2m29.391s 
+

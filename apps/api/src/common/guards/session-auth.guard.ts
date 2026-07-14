@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable, Inject, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  Inject,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { prisma } from '@ventureos/database';
 import { isSessionExpired } from '@ventureos/auth';
@@ -12,12 +18,6 @@ export interface AuthenticatedUser {
   workspaceId: string;
   roleKey: string;
   permissions: string[];
-}
-
-declare module 'express-serve-static-core' {
-  interface Request {
-    user?: AuthenticatedUser;
-  }
 }
 
 /**
@@ -42,7 +42,11 @@ export class SessionAuthGuard implements CanActivate {
       include: {
         user: {
           include: {
-            memberships: { include: { role: { include: { rolePermissions: { include: { permission: true } } } } } },
+            memberships: {
+              include: {
+                role: { include: { rolePermissions: { include: { permission: true } } } },
+              },
+            },
           },
         },
       },

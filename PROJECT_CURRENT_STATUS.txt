@@ -1,0 +1,618 @@
+================================================================================
+VENTUREOS — PROJECT CURRENT STATUS (OPERATIONAL REPORT)
+Generated: 2026-07-14
+Repository: D:\Documents\claudehermespromt\ventureos
+================================================================================
+
+STATUS LABELS USED THROUGHOUT THIS FILE:
+  COMPLETE            = built, and documentation/tests claim it works
+  PARTIAL             = diagnosed and/or partly built, not finished
+  NOT STARTED         = no code exists
+  BLOCKED             = cannot proceed without an owner decision or input
+  REQUIRES TESTING    = code/docs claim it works but no independent proof seen
+  REQUIRES OWNER DECISION = a human (the founder) must choose a path forward
+
+--------------------------------------------------------------------------------
+1. PROJECT HEALTH — ONE-LINE VERDICT
+--------------------------------------------------------------------------------
+FUNCTIONALLY RICH BUT OPERATIONALLY FRAGILE. All 8 internal build phases are
+marked done in the project's own docs and the source code on disk broadly
+supports that claim (78 Prisma models, 9 migrations, ~17 packages, extensive
+test files). However: (a) 90%+ of that work has NEVER been committed to git —
+it exists only as uncommitted changes in the working tree, with zero rollback
+point; (b) the application has NEVER been deployed anywhere beyond a local
+dev machine; (c) two known UI bugs actively misinform users on the first
+screen they see after login; (d) no independent, live proof exists that most
+of the "done" claims actually run, beyond one passing Playwright suite.
+
+--------------------------------------------------------------------------------
+2. CURRENT GIT BRANCH: master (CAVEAT: THIS IS ALMOST MEANINGLESS)
+--------------------------------------------------------------------------------
+- Only branch in the repository: `master` (confirmed via `git branch -a`).
+- `git log --oneline --all` shows exactly 6 commits, ALL dated 2026-07-12/13,
+  ALL covering ONLY Phase 0 (scaffolding, docs set) and Phase 1 (packages,
+  api app, web app, worker, one troubleshooting doc):
+    b74829a docs: add PowerShell execution-policy troubleshooting
+    8eaac7e docs: add complete required documentation set (30 files), CI, scripts
+    acd3295 feat(web): Next.js app - login, dashboard, onboarding, audit...
+    371e28e feat(api): NestJS app - auth, workspaces, onboarding, audit...
+    2105b40 feat(packages): database, integrations, auth; stub out-of-scope
+    ee5ba84 feat(packages): config, contracts, finance-engine, scoring-engine...
+- `git status` shows dozens of modified tracked files AND dozens of untracked
+  files/directories spanning EVERY Phase 2-8 feature: new API modules
+  (approvals, billing, board, finance, marketplace, opportunities, products,
+  research, ventures), new web pages (approvals, board-room, finance,
+  opportunities, products, research, ventures, register), new worker
+  workflows/activities (board-approval, marketplace, product-listing), new
+  packages (agent-runtime, billing, marketplace-connectors, product-studio,
+  research-connectors), all Prisma migrations after the initial `init` one,
+  docs/EXECUTION_PLAN.md itself, and dozens of phaseN-*.log.txt /
+  validation-log*.txt / e2e-log*.txt files.
+- CONCLUSION: ALL Phase 2 through Phase 8 work exists ONLY as uncommitted
+  working-tree changes. It is not on `master`, not on any branch, not in any
+  commit, anywhere. If this working directory were lost, corrupted, or
+  `git checkout`/`git reset --hard` were run, essentially the entire product
+  (Phases 2-8) would be gone with no way to recover it from git.
+- A prior record referenced specific commit hashes for Phase 8 work
+  (9521d83, c673d65, e02a296, 13abb06). None of these hashes appear anywhere
+  in `git log --oneline --all`'s 6-commit list. That 6-commit enumeration
+  (which lists every commit reachable from any ref in the repo) is itself
+  sufficient confirmation that none of these four hashes exist as commits in
+  this repository — Confirmed.
+- Saying "current branch is master" is close to meaningless as a status
+  indicator here, since the branch reflects only Phase 0-1 (~15% of the
+  claimed-done feature set); the true state of the project lives entirely in
+  uncommitted working-tree changes.
+- STATUS: BLOCKED / REQUIRES OWNER DECISION — see Blockers (section 8) and
+  Next Task (section 12). This is the single most important operational risk
+  in the entire project.
+
+--------------------------------------------------------------------------------
+3. LAST KNOWN WORKING STATE
+--------------------------------------------------------------------------------
+Per docs/EXECUTION_PLAN.md (the project's own canonical status source):
+
+WHAT `pnpm dev` IS EXPECTED TO DO (per docs, Windows + PowerShell + Docker):
+  1. `docker compose up -d` brings up Postgres, Temporal, Temporal UI, MinIO.
+  2. `pnpm install` (workspace root) links all apps/packages.
+  3. `pnpm db:generate && pnpm db:migrate:dev && pnpm db:seed` creates the
+     schema and seeds a founder account plus the "Social Media Content
+     Planning Kit" demo opportunity.
+  4. `pnpm dev` (turbo) starts apps/web (Next.js, :3000), apps/api (NestJS,
+     :3001), apps/worker (Temporal worker) concurrently, with turbo's `dev`
+     task depending on `^build` so workspace packages are pre-built to
+     `dist/` first.
+  5. Founder logs in at http://localhost:3000/login with
+     DEV_FOUNDER_EMAIL/DEV_FOUNDER_PASSWORD, lands on /dashboard.
+
+WHAT WAS LAST ACTUALLY VERIFIED LIVE (per docs/EXECUTION_PLAN.md, dated
+2026-07-14, Phase 8 section): a brand-new workspace ("Acme Test Ventures")
+was registered via /register, landed on the dashboard with a real TRIAL
+subscription; the Ventures page showed "Trial plan, 0/1 ventures used";
+Settings plan change TRIAL -> STARTER updated limits live; a license key was
+issued and revoked; white-label branding was changed and applied to the
+sidebar on next load. This is the most recent "I drove this myself in a
+browser" claim in the docs. Every phase's section in EXECUTION_PLAN.md
+carries similar live-browser-verification narratives, each with specific
+before/after observations (see that file directly for the full account) —
+REQUIRES TESTING to independently confirm any of these narratives outside
+of the one proven e2e suite (section 10 below).
+
+NOTE: docs/SANDBOX_LIMITATIONS.md and the root README.md both still say (as
+of their last edit) "nothing has been installed, compiled, migrated, seeded,
+started, or tested" / "Not yet installed, built, or run" — this is now
+STALE relative to EXECUTION_PLAN.md's claims of live verification through
+Phase 8. This is itself a documentation-consistency gap: README.md was never
+updated past Phase 0/1 status even though EXECUTION_PLAN.md (the declared
+canonical source) claims Phase 8 complete. Flag as PARTIAL / stale docs.
+
+--------------------------------------------------------------------------------
+4. COMPLETED COMPONENTS (per project docs) — COMPLETE
+--------------------------------------------------------------------------------
+CAVEAT (applies to every item below, not repeated 8 times): every phase
+below is marked "COMPLETE" strictly according to docs/EXECUTION_PLAN.md and
+TODO.md, and source code for each exists on disk. But per Section 2 above,
+Phases 2-8 are UNCOMMITTED — they exist only in the working tree, not in git
+history. "Complete" here means "built and internally claimed as verified,"
+not "safely preserved" or "independently re-confirmed by this report."
+
+- Phase 0 — Environment and Repository — COMPLETE (this one IS committed)
+  Repo init, Docker Compose (Postgres/Temporal/Temporal UI/MinIO), 30
+  required docs, .env.example, Windows setup scripts.
+
+- Phase 1 — Foundation — COMPLETE (this one IS committed)
+  Founder auth (scrypt + server sessions), workspace + RBAC, onboarding,
+  audit trail, security event log, health endpoints, structured logging,
+  rate limiting, MinIO storage abstraction, minimal Temporal worker/workflow,
+  finance/scoring/policy engines with unit tests.
+
+- Phase 2 — Opportunity and Evidence — COMPLETE (uncommitted)
+  Opportunity/Evidence Prisma models + migration
+  (20260713140054_phase2_opportunity_evidence), seeded "Social Media Content
+  Planning Kit" demo opportunity, Opportunity Feed UI, evidence trail
+  display, scoring-engine wired to persisted data, promote/reject/archive
+  API with audit logging.
+
+- Phase 3 — Board and Approval — COMPLETE (uncommitted)
+  8 voting AI agents + Decision Synthesiser (mock provider only, see Section
+  6), board review orchestration, weighted-vote + veto logic wired to real
+  persisted votes, hash-bound Approval Centre, Temporal boardApprovalWorkflow,
+  Board Room + Approval Centre UI.
+
+- Phase 4 — Product and Listing Studio — COMPLETE (uncommitted)
+  Mock product generation (7 asset files across 6 kinds) via MinIO storage,
+  QA checks (5 types), licensing checks, Etsy Development Pack policy
+  content, mock Etsy listing generation, SEO evaluation, second founder
+  approval gate, PublicationAttempt always recorded as
+  BLOCKED_NO_LIVE_INTEGRATION (no real publish path in this phase).
+
+- Phase 5 — Research Connectors — COMPLETE (uncommitted)
+  DataAcquisitionContract/Run models + migration, mock-only research
+  provider, evidence freshness/reliability scoring, research cost caps,
+  source health surfaced in the Integration status table, prompt-injection
+  sanitiser, Research Connectors UI.
+
+- Phase 6 — Marketplace Pilot (Etsy, mock-only) — COMPLETE (uncommitted)
+  Founder explicitly chose mock-only (2026-07-14, ADR-007) — "I WILL NOT
+  CONNECT MY ETSY ACCOUNT NOW". Mock Etsy client shaped like the real Etsy
+  Open API v3, idempotent external writes, second PUBLICATION approval gate,
+  Temporal marketplacePublicationWorkflow, publication audit trail, UI with
+  explicit MOCK mode badge (never claimed as REAL).
+
+- Phase 7 — Finance and Analytics — COMPLETE (uncommitted)
+  Financial assumptions/forecasts/scenarios, expense/revenue tracking,
+  budget hard-stop enforcement, forecast-vs-actual comparison, controlled
+  experiments lifecycle, Gate 6 (Scale Decision) approval gate, Finance
+  Centre UI.
+
+- Phase 8 — Multi-Venture and SaaS — COMPLETE (uncommitted)
+  Multi-venture list view, Plan/Subscription/LicenseKey/WorkspaceBranding
+  models, tenant-isolation audit (one defense-in-depth fix made), mock-only
+  billing engine (ADR-010 — no real payment processor, all invoices hardcoded
+  PAID), white-label settings applied live, customer registration/onboarding
+  flow (/register), license-key issuance for self-hosted installs, Settings
+  UI rewrite.
+
+--------------------------------------------------------------------------------
+5. PARTIALLY COMPLETED COMPONENTS — PARTIAL
+--------------------------------------------------------------------------------
+- Dashboard "Command Centre" stat cards (apps/web/src/app/dashboard/page.tsx)
+  — PARTIAL, diagnosed, NOT YET FIXED (no code written). Confirmed by direct
+  read of the file: "Active ventures" and "Pending approvals" cards are
+  hardcoded to the literal string "0" with stale badges "Phase 2+"/
+  "Phase 3+"; "Budget utilisation (month)" is hardcoded "EUR 0 / EUR 100"
+  with a stale "Phase 7" badge. Only the "Integrations connected" card uses
+  real data. The page's "What's real vs. planned" paragraph explicitly
+  states "Opportunity research, the AI board of agents, approvals,
+  product/listing studios and finance dashboards are architected... but not
+  yet built" — this is now factually false per EXECUTION_PLAN.md's own
+  Phase 2-8 completion claims. This is the FIRST page a user sees after
+  login, so it actively misinforms them about product completeness. Real
+  data sources identified but not wired: GET /ventures, GET
+  /approval-requests, GET /finance/budgets.
+
+- Dashboard nav duplicate link (apps/web/src/components/dashboard-nav.tsx)
+  — PARTIAL, diagnosed, NOT YET FIXED. Confirmed by direct read: the
+  NAV_ITEMS array has both
+    { href: '/dashboard/board-room', label: 'Board Room', available: true }
+  and
+    { href: '/dashboard/board-room', label: 'Product Studio', available: true }
+  — "Product Studio" points to the exact same href as "Board Room" instead
+  of a distinct Product Studio page/route, even though a real Product Studio
+  UI exists (embedded inside the Board Room detail page per
+  EXECUTION_PLAN.md Phase 4). Clicking "Product Studio" in the sidebar just
+  re-navigates to Board Room.
+
+- packages/ui — PARTIAL / stub only. Confirmed via directory listing:
+  packages/ui contains only a README.md, no src/ directory, no package.json.
+  TODO.md's "Known follow-ups from Phase 1" explicitly lists "Extract
+  apps/web/src/components into @ventureos/ui once a second consumer exists"
+  as not yet done — consistent with what's on disk.
+
+- AI provider — real vs. mock — CONFIRMED MOCK-ONLY, not just unconfirmed.
+  .env.example sets AI_PROVIDER=mock and leaves ANTHROPIC_API_KEY commented
+  out with the note "leave unset in development; mock provider is used".
+  packages/agent-runtime/src contains only mock-provider.ts,
+  decision-synthesiser.ts, board-review-runner.ts, approval-runner.ts — no
+  real-provider client file exists anywhere in that package. Every board
+  agent vote in the running system is deterministic mock output, never a
+  real model call.
+
+- Marketplace (Etsy) mode — CONFIRMED MOCK-ONLY, not ambiguous.
+  .env.example sets MARKETPLACE_ETSY_MODE=mock with blank
+  MARKETPLACE_ETSY_API_KEY/SECRET. packages/marketplace-connectors/src
+  contains only mock-etsy-client.ts (fetchMockCreateDraftListing /
+  fetchMockUploadListingImage / fetchMockUploadListingFile /
+  fetchMockPublishListing) plus idempotency/health/publication-runner
+  helpers — no real Etsy HTTP client exists. docs/ETSY_API_INTEGRATION.md is
+  explicitly labelled "research complete, mock-only implementation" — real
+  Etsy API behavior (OAuth+PKCE, endpoint sequence, rate limits) is
+  documented as research findings for a future real integration, not as
+  something implemented. TODO.md and this doc agree; there is no real
+  contradiction between them, just a design that keeps the real integration
+  as a documented-but-unbuilt future step.
+
+- README.md is stale — PARTIAL. Still states "Current status: Phase 0...and
+  Phase 1...source code complete. Not yet installed, built, or run" and "What's
+  explicitly NOT implemented yet" lists Phase 2-8 features as not built —
+  contradicts docs/EXECUTION_PLAN.md's Phase 8-complete claims. Low-effort
+  fix, but currently misleading to anyone who reads README.md first.
+
+--------------------------------------------------------------------------------
+6. MISSING COMPONENTS — NOT STARTED
+--------------------------------------------------------------------------------
+- Staging or production deployment — NOT STARTED. Confirmed by absence of
+  any staging/production docker-compose file, hosting config, Dockerfile per
+  app, reverse-proxy (Caddy/Traefik) config, or deployment log anywhere in
+  the repo. docs/DEPLOYMENT.md explicitly states: "Not configured yet...
+  Candidate approach: Dockerfiles per app (not yet written)... A formal
+  staging/production environment split with separate .env files and separate
+  databases is a Phase 6+ concern" — and it was never actually built even
+  though Phase 6+ is now claimed done. Only docker-compose.yml (local dev:
+  Postgres, Temporal, Temporal UI, MinIO) exists.
+
+- Real AI provider wiring — NOT STARTED (see Section 5 — confirmed mock-only,
+  not just unverified). No Anthropic/OpenAI/other LLM client code exists in
+  packages/agent-runtime/src.
+
+- Real marketplace/payment credentials — NOT STARTED / BLOCKED (by founder's
+  own explicit choice, ADR-007 and ADR-010). .env.example only has
+  placeholder-shaped variable names (MARKETPLACE_ETSY_API_KEY,
+  MARKETPLACE_ETSY_API_SECRET, AUTH_SECRET, etc.) with no real values — this
+  report did not and will not read any actual .env file contents.
+
+- Customer support workflow — NOT STARTED. No support-ticket, helpdesk, or
+  contact-support module found anywhere in apps/api/src/modules or
+  apps/web/src/app/dashboard.
+
+- Product retirement / sunset workflow — NOT STARTED. No
+  archive-venture-permanently, delete-product, or retire-listing workflow
+  found beyond the existing reject/archive opportunity actions (Phase 2) and
+  Experiment KILL decision (Phase 7) — those are lifecycle states within
+  existing entities, not a dedicated retirement/off-boarding flow for a
+  live product or a churning customer's data.
+
+- Multi-factor authentication, account/password recovery, OpenTelemetry
+  exporter wiring — all explicitly listed in TODO.md's "Known follow-ups
+  from Phase 1" as NOT STARTED (OTEL_ENABLED=false stub only; dev-login only,
+  no password reset).
+
+--------------------------------------------------------------------------------
+7. KNOWN ERRORS (from docs/KNOWN_LIMITATIONS.md)
+--------------------------------------------------------------------------------
+docs/KNOWN_LIMITATIONS.md is organized into three groups; summarized here
+rather than just cited:
+
+(A) "Fixed during local verification" — a long list of real bugs that were
+    found and then fixed during the founder's local verification passes,
+    including: a monorepo tsconfig `baseUrl` bug that broke the `@/*` path
+    alias in apps/web; a Swagger/NestJS parameter-decorator crash (worked
+    around with try/catch, `/api/docs` may still not fully work); missing
+    `@types/node` on two packages; a broken DI case in AuthController from
+    mixed decorated/undecorated constructor params; missing `ENV_TOKEN`
+    wiring in AuditModule/SecurityModule; ESM extensionless-import crashes
+    requiring a dev-runner switch to `tsx watch`; a non-functional
+    "Sign out" button (form wrapped a plain anchor, never called the real
+    logout endpoint) — found and fixed; AuditService.record() was fully
+    built but never called anywhere — found and fixed; onboarding save
+    failed with a 500 on every save after the first because Zod rejected
+    Prisma's real `null` values — found and fixed; a `z.coerce.boolean()`
+    footgun silently coerced `MINIO_USE_SSL=false` to `true`, breaking MinIO
+    TLS — found and fixed; several Temporal namespace/dev-runner/docker
+    config issues (crash-looping Temporal container from a bad
+    DYNAMIC_CONFIG_FILE_PATH, .env not reaching sub-packages, etc.) — all
+    marked fixed.
+
+(B) "Code-level gaps, honestly disclosed" — NOT fixed, acknowledged as real
+    gaps: session tokens stored as PLAINTEXT in the DB (not hashed-at-rest;
+    fine for single-founder dev, must be hardened before multi-user/
+    production); NO CSRF token (relies only on sameSite=lax cookie + CORS
+    allowlist); NO login-attempt lockout (only a global rate limiter, no
+    per-account/per-IP brute-force protection); NO dependency scanning has
+    ever run against the repo; NO malware scanning on uploaded files
+    (documented integration point, not wired); NO OpenTelemetry exporter
+    wired despite OTEL_* env vars existing (structural placeholder only).
+
+(C) "Scope limitations (by design)" — Phase 2+ features were, at the time
+    this doc section was originally written, intentionally out of scope;
+    this is now superseded by EXECUTION_PLAN.md's claim that Phases 2-8 are
+    since built — KNOWN_LIMITATIONS.md itself was not fully updated to
+    reflect that, another instance of documentation drift across files (see
+    Section 5's README.md note).
+
+NOTE: KNOWN_LIMITATIONS.md's own header still states "Nothing in this
+repository has been installed, compiled, migrated, seeded, started, or
+tested" — the same stale framing as README.md and SANDBOX_LIMITATIONS.md,
+contradicted by EXECUTION_PLAN.md's specific live-verification claims through
+Phase 8. Treat KNOWN_LIMITATIONS.md's list of fixed bugs as historically
+real (they read as specific, reproduced, root-caused fixes) but treat its
+top-of-file framing as stale.
+
+--------------------------------------------------------------------------------
+8. BLOCKERS
+--------------------------------------------------------------------------------
+- TOP BLOCKER — REQUIRES OWNER DECISION: Uncommitted git history. 90%+ of the
+  claimed-done feature set (Phases 2-8) has never been committed. There is
+  no rollback point, no code review trail, no way to bisect a regression,
+  and a real risk of total loss of months of claimed work if the working
+  directory is ever damaged, the disk fails, or a destructive git command is
+  run by accident. This blocks any confident claim of "production-ready" or
+  "safe to hand off to another engineer" regardless of how good the code
+  itself is. ACTION: commit everything in logical, reviewable chunks before
+  any other work continues (see Section 12).
+
+- Real Etsy account connection — BLOCKED by explicit founder decision
+  (2026-07-14, ADR-007): "I WILL NOT CONNECT MY ETSY ACCOUNT NOW, CONTINUE TO
+  FINISH MY AGENCY." Not a technical blocker — a deliberate founder choice
+  to defer. Revisit when the founder is ready.
+
+- Real payment processor connection — BLOCKED by design (ADR-010), same
+  category as above: billing is mock-only until a real processor decision is
+  made by the founder.
+
+- No dependency scanning has ever run (KNOWN_LIMITATIONS.md) — blocked partly
+  by the sandbox's historical lack of network access during initial
+  authoring; now that local `pnpm install` has reportedly succeeded, this is
+  an outstanding action item, not a hard blocker.
+
+- Two known UI bugs (Section 5) are not blockers to running the app, but are
+  blockers to calling the product "presentable" — the first screen a new
+  user or investor sees is currently either factually wrong (stat cards) or
+  has a dead-end duplicate nav link.
+
+--------------------------------------------------------------------------------
+9. UNTESTED AREAS — BE HONEST ABOUT THE EVIDENCE GAP
+--------------------------------------------------------------------------------
+Roughly ~37 unit/integration/e2e test files exist across apps/ and
+packages/ (rough count from directory listings of __tests__ folders and
+apps/api/test / apps/web/e2e). EXECUTION_PLAN.md and TODO.md both claim
+specific passing counts for every phase (e.g. "67 individual tests," "36/36
+integration tests," "4/4 e2e tests") with narrative descriptions of live
+browser verification for each phase.
+
+WHAT THIS REPORT COULD INDEPENDENTLY CONFIRM: exactly ONE piece of direct,
+verifiable passing-run evidence exists on disk — the root-level
+`e2e-log3.txt` file, which shows a real Playwright run:
+    Running 4 tests using 4 workers
+    [1/4] [chromium] > login-dashboard.spec.ts:21:7 > redirects unauthenticated visitors to /login
+    [2/4] [chromium] > login-dashboard.spec.ts:26:7 > founder can log in and see the Command Centre
+    [3/4] [chromium] > login-dashboard.spec.ts:50:7 > founder can navigate to audit and security pages
+    [4/4] [chromium] > login-dashboard.spec.ts:40:7 > rejects an incorrect password with a visible error
+    4 passed (4.8s)
+This is real, specific, machine-generated output — genuinely convincing
+evidence for these 4 tests. `e2e-log.txt` and `e2e-log2.txt` also exist at
+root (presumably earlier attempts/failures before the 3rd run succeeded) —
+sampled but not fully read; not contradicting the log3 result.
+
+WHAT COULD NOT BE INDEPENDENTLY CONFIRMED: every other test suite's
+pass/fail state. Numerous phaseN-*.log.txt and validation-log*.txt files
+exist at the repo root (phase2-build.log.txt, phase2-test-unit.log.txt,
+phase2-test-integration.log.txt, phase3-*.log.txt, phase4-migrate*.log.txt,
+validation-log.txt through validation-log11.txt, playwright-install-log.txt,
+etc.) which plausibly back up the docs' claims, but this report did not
+open and verify every one of them line-by-line against the specific
+pass/fail counts EXECUTION_PLAN.md quotes.
+
+THE HONEST DISTINCTION: "a test file exists in the repo," "the docs narrate
+a specific pass count and a live browser walkthrough," and "an independent
+reviewer has watched it pass right now" are three different claims. Only the
+first two are demonstrated here for Phases 2-8; only the e2e-log3.txt case
+reaches the third bar. Status for everything except that one suite:
+REQUIRES TESTING — re-run the full validation suite and watch it happen
+before trusting any specific number in EXECUTION_PLAN.md at face value.
+
+--------------------------------------------------------------------------------
+10. ENVIRONMENT REQUIREMENTS
+--------------------------------------------------------------------------------
+Per package.json, docker-compose.yml, .env.example, docs/LOCAL_SETUP_WINDOWS.md:
+
+- Node.js >= 22.0.0 (package.json `engines.node`)
+- pnpm >= 9.0.0, pinned exactly via `packageManager: pnpm@9.12.0` (Corepack
+  ships with Node 22 and enables pnpm via `corepack enable`)
+- Docker Desktop (WSL2 backend), running, for: Postgres 16-alpine, Temporal
+  (temporalio/auto-setup:1.24.2), Temporal UI (temporalio/ui:2.31.2), MinIO
+  (minio/minio:RELEASE.2024-10-13T13-34-11Z) — all defined in
+  docker-compose.yml at repo root
+- Windows 11 + PowerShell 7+ (`pwsh`, not legacy Windows PowerShell 5.1) per
+  docs/LOCAL_SETUP_WINDOWS.md — scripts/*.ps1 target pwsh specifically
+- Git for Windows
+- At least 16 GB RAM recommended (Temporal + Postgres + MinIO + 3 Node dev
+  servers concurrently)
+- Required environment variables (names only, per .env.example — no values
+  read or reproduced from any real .env):
+    NODE_ENV, APP_NAME, APP_BASE_CURRENCY, APP_DEFAULT_LOCALE, LOG_LEVEL
+    WEB_PORT, NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_APP_NAME
+    API_PORT, API_CORS_ORIGIN, API_RATE_LIMIT_WINDOW_MS, API_RATE_LIMIT_MAX
+    POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT, DATABASE_URL
+    AUTH_SECRET, AUTH_SESSION_MAX_AGE_SECONDS, AUTH_COOKIE_NAME,
+      DEV_LOGIN_ENABLED, DEV_FOUNDER_EMAIL, DEV_FOUNDER_PASSWORD
+    TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE, TEMPORAL_TASK_QUEUE, TEMPORAL_UI_PORT
+    STORAGE_PROVIDER, MINIO_ENDPOINT, MINIO_PORT, MINIO_CONSOLE_PORT,
+      MINIO_ROOT_USER, MINIO_ROOT_PASSWORD, MINIO_BUCKET, MINIO_USE_SSL,
+      STORAGE_SIGNED_URL_TTL_SECONDS, STORAGE_MAX_FILE_SIZE_MB
+    AI_PROVIDER, AI_MODEL_ALLOWLIST, AI_PER_AGENT_TOKEN_LIMIT,
+      AI_PER_AGENT_COST_LIMIT_EUR, AI_PER_WORKFLOW_COST_LIMIT_EUR,
+      AI_PER_DAY_COST_LIMIT_EUR, AI_PER_WORKSPACE_MONTHLY_LIMIT_EUR,
+      ANTHROPIC_API_KEY (left unset/commented — mock provider used)
+    MARKETPLACE_ETSY_MODE, MARKETPLACE_ETSY_API_KEY, MARKETPLACE_ETSY_API_SECRET
+    FEATURE_LIVE_PUBLISHING_ENABLED, FEATURE_ADVERTISING_ENABLED,
+      FEATURE_PAID_INTEGRATIONS_ENABLED, GOVERNANCE_BOARD_APPROVAL_THRESHOLD,
+      GOVERNANCE_EVIDENCE_QUALITY_MINIMUM
+    OTEL_ENABLED, OTEL_EXPORTER_OTLP_ENDPOINT
+
+--------------------------------------------------------------------------------
+11. EXACT COMMAND TO CONTINUE DEVELOPMENT
+--------------------------------------------------------------------------------
+Per README.md / docs/LOCAL_SETUP_WINDOWS.md / package.json scripts, quoted
+exactly:
+
+First-time setup (PowerShell 7, from repo root):
+    cd D:\Documents\claudehermespromt\ventureos
+    .\scripts\preflight.ps1
+    .\scripts\setup-local.ps1
+    .\scripts\start-infrastructure.ps1
+    .\scripts\start-development.ps1
+
+Everyday use thereafter:
+    .\scripts\start-infrastructure.ps1
+    .\scripts\start-development.ps1
+    # ... work ...
+    .\scripts\stop-development.ps1
+
+Equivalent raw commands behind those scripts (package.json + docs):
+    docker compose up -d
+    pnpm install
+    pnpm db:generate && pnpm db:migrate:dev && pnpm db:seed
+    pnpm dev
+
+Full validation suite (per docs/LOCAL_SETUP_WINDOWS.md):
+    .\scripts\run-validation.ps1
+  which runs, in order, stopping at the first real failure: format check ->
+  lint -> typecheck -> unit tests -> integration tests -> production build.
+  Raw equivalent (package.json scripts): `pnpm run format:check`,
+  `pnpm run lint`, `pnpm run typecheck`, `pnpm test:unit`,
+  `pnpm --filter @ventureos/api test:integration`, `pnpm build`.
+
+Local service addresses once running: web http://localhost:3000, API
+http://localhost:3001, API docs http://localhost:3001/api/docs, Temporal UI
+http://localhost:8088, MinIO console http://localhost:9001, Postgres
+localhost:5432. Founder dev login: DEV_FOUNDER_EMAIL / DEV_FOUNDER_PASSWORD
+from local .env (defaults documented as founder@ventureos.local /
+change-me-dev-only — must be changed before anything beyond local testing).
+
+--------------------------------------------------------------------------------
+12. EXACT NEXT RECOMMENDED TASK (IN ORDER)
+--------------------------------------------------------------------------------
+1. COMMIT THE UNCOMMITTED WORK FIRST, in logical, reviewable chunks — not one
+   giant commit. Suggested grouping, mirroring the phase structure already
+   used for Phases 0/1: one commit per phase (Phase 2 opportunity/evidence;
+   Phase 3 board/approval; Phase 4 product/listing; Phase 5 research
+   connectors; Phase 6 marketplace; Phase 7 finance; Phase 8 multi-venture/
+   SaaS), plus a final commit for the log/validation files and any doc-only
+   drift. This is REQUIRES OWNER DECISION only in the sense that the founder
+   should confirm nothing in the working tree is meant to be discarded first
+   (e.g. review `git status` and any stray debug files) — otherwise this is
+   a mechanical, low-risk, high-value action that should happen before
+   anything else, including before starting the two UI fixes below, so that
+   the fixes themselves land in git too.
+2. Fix task #101 — wire the Command Centre stat cards
+   (apps/web/src/app/dashboard/page.tsx) to real data (GET /ventures, GET
+   /approval-requests, GET /finance/budgets) and rewrite the "What's real vs.
+   planned" paragraph to match actual Phase 2-8 status; remove the stale
+   Phase 2+/Phase 3+/Phase 7 badges once wired.
+3. Fix task #102 — give "Product Studio" its own route/href in
+   apps/web/src/components/dashboard-nav.tsx distinct from "Board Room"
+   (Product Studio currently only exists embedded inside the Board Room
+   detail page per Phase 4 — decide whether to build a standalone list page
+   or simply relabel/remove the duplicate nav entry to avoid a fake distinct
+   destination).
+4. Re-run the full verification suite (`.\scripts\run-validation.ps1` or the
+   raw `pnpm run format:check && pnpm run lint && pnpm run typecheck &&
+   pnpm test:unit && pnpm --filter @ventureos/api test:integration && pnpm
+   build`) AFTER committing and fixing the two UI issues, and independently
+   watch it pass rather than trusting the docs' historical pass counts.
+5. Only after 1-4: consider staging deployment, a real AI provider, or a
+   real Etsy/payment connection — all REQUIRES OWNER DECISION items that
+   should wait until the codebase has a safe git history and a currently-
+   accurate dashboard.
+
+--------------------------------------------------------------------------------
+13. PRODUCTION READINESS: 55% (own assessment, not from project docs)
+--------------------------------------------------------------------------------
+This 55% reflects a codebase with genuinely broad, internally-consistent
+functional coverage, held back hard by process/operational gaps that have
+nothing to do with code quality and everything to do with how the work has
+(and hasn't) been safeguarded, deployed, and independently verified.
+
+--------------------------------------------------------------------------------
+14. REASONS FOR THE PERCENTAGE
+--------------------------------------------------------------------------------
+Positive factors (pushing the number up):
+  + All 8 internal phases have real source code on disk, not stubs — 78
+    Prisma models, 9 migrations, ~17 shared packages, fail-closed guards
+    (approval hash-binding, budget hard-stops, plan-limit checks) applied
+    consistently across every phase per the docs' own narrative.
+  + Extensive test files exist (~37 across apps/ and packages/), and the
+    docs describe specific, plausible pass counts and bug-fix narratives
+    for every phase, including several genuinely serious bugs found and
+    fixed along the way (e.g. Gate 6's packageHash mismatch, the
+    non-functional sign-out button, the onboarding null-schema 500).
+  + One full end-to-end suite (login-dashboard.spec.ts, 4 tests) has real,
+    machine-generated, verifiable passing output on disk (e2e-log3.txt).
+  + Security/governance patterns (RBAC, audit trail, hash-bound approvals,
+    fail-closed budget/plan checks) are applied as a consistent pattern
+    across all 8 phases, not bolted on inconsistently.
+
+Negative factors (pushing the number down):
+  - Zero git history for ~90% of the claimed feature set (Phases 2-8) — no
+    rollback point, no code review trail, real risk of catastrophic loss.
+    This alone caps "production ready" well below 100% regardless of code
+    quality, because "production ready" implies the work is safely
+    preserved and auditable, and right now it is neither.
+  - Zero staging or production deployment has ever been attempted — no
+    Dockerfiles per app, no hosting config, no TLS/reverse-proxy setup, no
+    deployment log. "Runs on one developer's laptop" and "production ready"
+    are different claims.
+  - AI provider is confirmed mock-only — the core "AI board of agents"
+    premise of the product has never executed against a real model; cost
+    controls and prompt-injection defenses are real, but unproven against
+    real model output/behavior variance.
+  - Marketplace and payment integrations are confirmed mock-only by
+    deliberate founder choice — real Etsy publishing and real billing have
+    never happened even once.
+  - Two known UI bugs remain unfixed on the very first screen a user sees
+    (fake stat cards, a factually-false "what's real" paragraph, and a
+    dead-end duplicate nav link) — small in code-size terms, large in
+    first-impression/trust terms.
+  - No external security review has occurred; KNOWN_LIMITATIONS.md itself
+    discloses plaintext session tokens, no CSRF token beyond
+    sameSite+CORS, no login-lockout, and no dependency scanning has ever
+    run.
+  - Beyond the one e2e suite, this report could not independently confirm
+    any of the many specific pass counts EXECUTION_PLAN.md/TODO.md cite for
+    Phases 2-8 — those numbers are plausible and specific but unverified
+    by a third party in this pass.
+  - Several docs (README.md, KNOWN_LIMITATIONS.md's header,
+    SANDBOX_LIMITATIONS.md) are stale relative to EXECUTION_PLAN.md's
+    claims, indicating the documentation set itself has drifted and cannot
+    be taken as fully self-consistent evidence.
+
+--------------------------------------------------------------------------------
+15. CHECKLIST — WHAT MUST BE COMPLETED NEXT
+--------------------------------------------------------------------------------
+[ BLOCKED / REQUIRES OWNER DECISION ] Commit all Phases 2-8 uncommitted work
+    into git, in logical chunks, before anything else — top priority.
+[ PARTIAL            ] Fix Command Centre stat cards + stale "what's real"
+    copy (apps/web/src/app/dashboard/page.tsx) — task #101.
+[ PARTIAL            ] Fix duplicate Product Studio / Board Room nav link
+    (apps/web/src/components/dashboard-nav.tsx) — task #102.
+[ REQUIRES TESTING    ] Re-run the full validation suite
+    (.\scripts\run-validation.ps1) and independently confirm pass counts
+    for Phases 2-8, not just Phase 1's e2e suite.
+[ NOT STARTED         ] Update README.md, KNOWN_LIMITATIONS.md's header, and
+    SANDBOX_LIMITATIONS.md to reflect actual current (Phase 8) status —
+    doc-consistency cleanup.
+[ NOT STARTED         ] Staging/production deployment: write per-app
+    Dockerfiles, choose a European VPS or managed container target, add a
+    reverse proxy + TLS (per docs/DEPLOYMENT.md's own "future target"
+    section).
+[ REQUIRES OWNER DECISION ] Decide when/if to connect a real Etsy account
+    (ADR-007) and a real payment processor (ADR-010) — both deliberately
+    deferred, not technical blockers.
+[ NOT STARTED         ] Wire a real AI provider behind AI_PROVIDER (currently
+    mock-only) if/when the founder wants real board-agent reasoning instead
+    of deterministic mock output.
+[ NOT STARTED         ] Harden session storage (hash-at-rest, not plaintext),
+    add a real CSRF token, add login-attempt lockout, run a dependency
+    scan, wire OpenTelemetry — all disclosed gaps in KNOWN_LIMITATIONS.md.
+[ NOT STARTED         ] Build packages/ui properly (currently a README-only
+    stub) once a second UI consumer exists, per TODO.md's own follow-up
+    note.
+[ NOT STARTED         ] Customer support workflow and product/venture
+    retirement (off-boarding) workflow — neither exists yet.
+[ REQUIRES OWNER DECISION ] Commission an external security review before
+    any real customer data or real payment flow goes live.
+
+================================================================================
+END OF REPORT
+================================================================================

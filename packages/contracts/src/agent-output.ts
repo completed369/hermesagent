@@ -11,6 +11,7 @@ export type AgentDecision = z.infer<typeof AgentDecision>;
 export const RiskSeverity = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 export const RiskProbability = z.enum(['LOW', 'MEDIUM', 'HIGH']);
 export const VetoType = z.enum(['NONE', 'FINANCE', 'COMPLIANCE', 'SECURITY', 'QUALITY']);
+export type VetoType = z.infer<typeof VetoType>;
 
 export const RiskSchema = z.object({
   title: z.string().min(1),
@@ -82,7 +83,7 @@ export const BOARD_AGENT_ROLES = [
 ] as const;
 export type BoardAgentRole = (typeof BOARD_AGENT_ROLES)[number];
 
-export const CRITICAL_VETO_ROLES: Record<string, VetoType[number] | undefined> = {
+export const CRITICAL_VETO_ROLES: Record<string, VetoType | undefined> = {
   FINANCE_AND_RISK_OFFICER: 'FINANCE',
   COMPLIANCE_AND_MARKETPLACE_POLICY_OFFICER: 'COMPLIANCE',
   OPERATIONS_AND_QUALITY_OFFICER: 'QUALITY',

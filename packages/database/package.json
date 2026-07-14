@@ -2,24 +2,31 @@
   "name": "@ventureos/database",
   "version": "0.1.0",
   "private": true,
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "generate": "prisma generate",
-    "migrate": "prisma migrate deploy",
-    "migrate:dev": "prisma migrate dev",
-    "seed": "tsx src/seed.ts",
-    "studio": "prisma studio",
+    "build": "tsc -p tsconfig.json",
+    "generate": "dotenv -e ../../.env -- prisma generate",
+    "migrate": "dotenv -e ../../.env -- prisma migrate deploy",
+    "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
+    "seed": "dotenv -e ../../.env -- tsx src/seed.ts",
+    "studio": "dotenv -e ../../.env -- prisma studio",
     "typecheck": "tsc --noEmit",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0"
+    "@prisma/client": "^5.20.0",
+    "@ventureos/scoring-engine": "workspace:*",
+    "@ventureos/security": "workspace:*",
+    "@ventureos/policy-engine": "workspace:*",
+    "@ventureos/contracts": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^5.20.0",
     "typescript": "^5.6.3",
     "tsx": "^4.19.1",
-    "vitest": "^2.1.3"
+    "vitest": "^2.1.3",
+    "dotenv-cli": "^7.4.2",
+    "@types/node": "^22.7.5"
   }
 }

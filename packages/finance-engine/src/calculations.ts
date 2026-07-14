@@ -1,4 +1,4 @@
-import type { FinancialAssumptions } from './assumptions';
+import type { FinancialAssumptions } from './assumptions.js';
 
 export interface UnitEconomics {
   productPriceEur: number;
@@ -46,7 +46,8 @@ export function calculateUnitEconomics(a: FinancialAssumptions): UnitEconomics {
     netRevenueEur: roundToCents(netRevenue),
     variableCostEur: roundToCents(variableCost),
     contributionMarginEur: roundToCents(contributionMargin),
-    contributionMarginRate: grossRevenue > 0 ? roundToCents((contributionMargin / grossRevenue) * 100) / 100 : 0,
+    contributionMarginRate:
+      grossRevenue > 0 ? roundToCents((contributionMargin / grossRevenue) * 100) / 100 : 0,
   };
 }
 
@@ -64,7 +65,11 @@ export function calculateBreakEven(a: FinancialAssumptions): BreakEvenResult {
   const unit = calculateUnitEconomics(a);
   const fixedCosts = a.aiGenerationCostEur + a.monthlyOverheadAllocationEur;
   if (unit.contributionMarginEur <= 0) {
-    return { breakEvenUnits: Infinity, breakEvenRevenueEur: Infinity, fixedCostsEur: roundToCents(fixedCosts) };
+    return {
+      breakEvenUnits: Infinity,
+      breakEvenRevenueEur: Infinity,
+      fixedCostsEur: roundToCents(fixedCosts),
+    };
   }
   const units = Math.ceil(fixedCosts / unit.contributionMarginEur);
   return {
@@ -93,7 +98,7 @@ export function calculateScenarios(
   a: FinancialAssumptions,
   baseUnitsSold: number,
   multipliers: { low: number; high: number } = { low: 0.5, high: 1.75 },
-): ScenarioProjection[] {
+): [low: ScenarioProjection, base: ScenarioProjection, high: ScenarioProjection] {
   const unit = calculateUnitEconomics(a);
   const fixedCosts = a.aiGenerationCostEur + a.monthlyOverheadAllocationEur;
 

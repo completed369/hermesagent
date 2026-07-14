@@ -1,0 +1,256 @@
+
+> ventureos@0.1.0 dev D:\Documents\claudehermespromt\ventureos
+> turbo run dev
+
+ΓÇó turbo 2.10.4
+
+   ΓÇó Packages in scope: @ventureos/agent-runtime, @ventureos/api, @ventureos/auth, @ventureos/config, @ventureos/contracts, @ventureos/database, @ventureos/finance-engine, @ventureos/integrations, @ventureos/observability, @ventureos/policy-engine, @ventureos/scoring-engine, @ventureos/security, @ventureos/testing, @ventureos/web, @ventureos/worker, @ventureos/workflows
+   ΓÇó Running dev in 16 packages
+   ΓÇó Remote caching disabled
+
+@ventureos/web:dev: cache bypass, force executing 5d1ca2cc488b42b8
+@ventureos/auth:build: cache hit, replaying logs cc917dfd6dce96c4
+@ventureos/auth:build: 
+@ventureos/auth:build: > @ventureos/auth@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\auth
+@ventureos/auth:build: > tsc -p tsconfig.json
+@ventureos/auth:build: 
+@ventureos/security:build: cache hit, replaying logs 844b876d683bdfd2
+@ventureos/security:build: 
+@ventureos/security:build: > @ventureos/security@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\security
+@ventureos/security:build: > tsc -p tsconfig.json
+@ventureos/security:build: 
+@ventureos/config:build: cache hit, replaying logs 8413f8cbd0d90069
+@ventureos/config:build: 
+@ventureos/config:build: > @ventureos/config@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\config
+@ventureos/config:build: > tsc -p tsconfig.json
+@ventureos/config:build: 
+@ventureos/scoring-engine:build: cache hit, replaying logs 952677af79fab5f6
+@ventureos/scoring-engine:build: 
+@ventureos/scoring-engine:build: > @ventureos/scoring-engine@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\scoring-engine
+@ventureos/scoring-engine:build: > tsc -p tsconfig.json
+@ventureos/scoring-engine:build: 
+@ventureos/contracts:build: cache hit, replaying logs 7a25bb45e112056b
+@ventureos/contracts:build: 
+@ventureos/contracts:build: > @ventureos/contracts@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\contracts
+@ventureos/contracts:build: > tsc -p tsconfig.json
+@ventureos/contracts:build: 
+@ventureos/workflows:build: cache hit, replaying logs 8a1f2ed93e00c868
+@ventureos/observability:build: cache hit, replaying logs 8b9a2d21b9b12a37
+@ventureos/workflows:build: 
+@ventureos/workflows:build: > @ventureos/workflows@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\workflows
+@ventureos/workflows:build: > tsc -p tsconfig.json
+@ventureos/workflows:build: 
+@ventureos/observability:build: 
+@ventureos/observability:build: > @ventureos/observability@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\observability
+@ventureos/observability:build: > tsc -p tsconfig.json
+@ventureos/observability:build: 
+@ventureos/integrations:build: cache hit, replaying logs 2529160c78858cc4
+@ventureos/integrations:build: 
+@ventureos/integrations:build: > @ventureos/integrations@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\integrations
+@ventureos/integrations:build: > tsc -p tsconfig.json
+@ventureos/integrations:build: 
+@ventureos/policy-engine:build: cache hit, replaying logs 163240ef549bcb61
+@ventureos/policy-engine:build: 
+@ventureos/policy-engine:build: > @ventureos/policy-engine@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\policy-engine
+@ventureos/policy-engine:build: > tsc -p tsconfig.json
+@ventureos/policy-engine:build: 
+@ventureos/database:build: cache hit, replaying logs b9fa955a56f70c0d
+@ventureos/database:build: 
+@ventureos/database:build: > @ventureos/database@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\database
+@ventureos/database:build: > tsc -p tsconfig.json
+@ventureos/database:build: 
+@ventureos/agent-runtime:build: cache hit, replaying logs 7a2d5db2bd073f91
+@ventureos/agent-runtime:build: 
+@ventureos/agent-runtime:build: > @ventureos/agent-runtime@0.1.0 build D:\Documents\claudehermespromt\ventureos\packages\agent-runtime
+@ventureos/agent-runtime:build: > tsc -p tsconfig.json
+@ventureos/agent-runtime:build: 
+@ventureos/worker:dev: cache bypass, force executing 362b56e4df0d9b71
+@ventureos/api:dev: cache bypass, force executing d9ea43eea4c7d511
+@ventureos/web:dev: 
+@ventureos/web:dev: > @ventureos/web@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\web
+@ventureos/web:dev: > next dev -p 3000
+@ventureos/web:dev: 
+@ventureos/worker:dev: 
+@ventureos/worker:dev: > @ventureos/worker@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\worker
+@ventureos/worker:dev: > dotenv -e ../../.env -- tsx watch src/index.ts
+@ventureos/worker:dev: 
+@ventureos/api:dev: 
+@ventureos/api:dev: > @ventureos/api@0.1.0 dev D:\Documents\claudehermespromt\ventureos\apps\api
+@ventureos/api:dev: > dotenv -e ../../.env -- nest start --watch --webpack
+@ventureos/api:dev: 
+@ventureos/web:dev:   Γû▓ Next.js 14.2.35
+@ventureos/web:dev:   - Local:        http://localhost:3000
+@ventureos/web:dev: 
+@ventureos/web:dev:  Γ£ô Starting...
+@ventureos/worker:dev: {"timestamp":"2026-07-13T16:46:57.874Z","level":"info","service":"worker","message":"Connecting to Temporal","address":"localhost:7233","namespace":"default"}
+@ventureos/worker:dev: {"timestamp":"2026-07-13T16:46:57.972Z","level":"info","service":"worker","message":"Connected to Temporal"}
+@ventureos/api:dev: 
+@ventureos/api:dev:  Info  Webpack is building your sources...
+@ventureos/api:dev: 
+@ventureos/api:dev: webpack 5.97.1 compiled [1m[32msuccessfully[39m[22m in 3165 ms
+@ventureos/api:dev: (node:8092) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+@ventureos/api:dev: (Use `node --trace-deprecation ...` to show where the warning was created)
+@ventureos/api:dev: Type-checking in progress...
+@ventureos/web:dev:  Γ£ô Ready in 6.5s
+@ventureos/web:dev:  Γùï Compiling /dashboard ...
+@ventureos/worker:dev: 2026-07-13T16:47:05.464Z [INFO] asset workflow-bundle-ba43b4ec7e25d9d9d5d3.js 1.48 MiB [emitted] [immutable] (name: main)
+@ventureos/worker:dev: runtime modules 1.34 KiB 4 modules
+@ventureos/worker:dev: modules by path ../../node_modules/.pnpm/ 432 KiB
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+common@1.20.2/node_modules/@temporal...(truncated) 155 KiB 34 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/@temporalio+workflow@1.20.2/node_modules/@tempor...(truncated) 201 KiB 26 modules
+@ventureos/worker:dev:   modules by path ../../node_modules/.pnpm/nexus-rpc@0.0.2/node_modules/nexus-rpc/lib/ 22.3 KiB 13 modules
+@ventureos/worker:dev:   ../../node_modules/.pnpm/long@5.3.2/node_modules/long/umd/index.js 49.8 KiB [built] [code generated]
+@ventureos/worker:dev:   ../../node_modules/.pnpm/ms@3.0.0-canary.1/node_modules/ms/dist/index.cjs 3.41 KiB [built] [code generated]
+@ventureos/worker:dev: modules by path ./src/workflows/ 3.7 KiB
+@ventureos/worker:dev:   ./src/workflows/index-autogenerated-entrypoint.cjs 526 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/index.ts 77 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/hello-workflow.ts 730 bytes [built] [code generated]
+@ventureos/worker:dev:   ./src/workflows/board-approval-workflow.ts 2.4 KiB [built] [code generated]
+@ventureos/worker:dev: optional modules 30 bytes [optional]
+@ventureos/worker:dev:   __temporal_custom_payload_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev:   __temporal_custom_failure_converter (ignored) 15 bytes [optional] [built] [code generated]
+@ventureos/worker:dev: webpack 5.108.4 compiled successfully in 5616 ms { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/worker:dev: 2026-07-13T16:47:05.477Z [INFO] Workflow bundle created { sdkComponent: 'worker', taskQueue: 'ventureos-main', size: '1.48MB' }
+@ventureos/worker:dev: {"timestamp":"2026-07-13T16:47:12.535Z","level":"info","service":"worker","message":"Worker created, starting run loop","taskQueue":"ventureos-main"}
+@ventureos/worker:dev: 2026-07-13T16:47:12.546Z [INFO] Worker state changed {
+@ventureos/worker:dev:   sdkComponent: 'worker',
+@ventureos/worker:dev:   taskQueue: 'ventureos-main',
+@ventureos/worker:dev:   state: 'RUNNING'
+@ventureos/worker:dev: }
+@ventureos/worker:dev: 2026-07-13T16:47:12.558Z [INFO] No Nexus services registered, not polling for Nexus tasks { sdkComponent: 'worker', taskQueue: 'ventureos-main' }
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +2ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mThrottlerModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mHealthModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mWorkspacesModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuditModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSecurityModule dependencies initialized[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mOnboardingModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mOpportunitiesModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mBoardModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mApprovalsModule dependencies initialized[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mHealthController {/api/health}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health/live, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health/ready, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health/temporal, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/api/auth}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/login, POST} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/logout, POST} route[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/me, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mWorkspacesController {/api/workspaces}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/workspaces/current, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mOnboardingController {/api/onboarding}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/onboarding, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/onboarding, PUT} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuditController {/api/audit-events}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/audit-events, GET} route[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mSecurityController {/api/security-events}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/security-events, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mOpportunitiesController {/api/opportunities}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/opportunities, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/opportunities/:id, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/opportunities/:id/reject, POST} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/opportunities/:id/archive, POST} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/opportunities/:id/promote, POST} route[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mBoardController {/api}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/venture-proposals/:id/board-reviews, POST} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/venture-proposals/:id/board-reviews, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/board-reviews/:id, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mApprovalsController {/api/approval-requests}:[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/approval-requests, GET} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/approval-requests/:id, GET} route[39m[38;5;3m +1ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/approval-requests/:id/decide, POST} route[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: [32m[Nest] 4240  - [39m07/13/2026, 7:47:16 PM [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +0ms[39m
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:47:16.279Z","level":"info","service":"api","message":"API started","port":3001,"env":"development"}
+@ventureos/api:dev: No errors found.
+@ventureos/web:dev:  Γ£ô Compiled /dashboard in 34.9s (530 modules)
+@ventureos/web:dev:  ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+@ventureos/web:dev:  GET /dashboard 200 in 35264ms
+@ventureos/web:dev:  GET /_next/static/webpack/914f150ca28e9cc7.webpack.hot-update.json 404 in 35432ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:47:38.130Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":4,"correlationId":"d2f293cf-229c-48d5-8f8f-a6ab7ef58771"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:47:38.177Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":30,"correlationId":"6291c88e-1be5-463f-97b0-1e006bf46e9e"}
+@ventureos/web:dev:  Γùï Compiling /login ...
+@ventureos/web:dev:  Γ£ô Compiled /login in 1166ms (522 modules)
+@ventureos/web:dev:  ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+@ventureos/web:dev:  GET /dashboard 200 in 1198ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:47:39.204Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"c0378d22-ddc1-4102-8de8-4ddc75c65a13"}
+@ventureos/web:dev:  GET /_next/static/webpack/914f150ca28e9cc7.webpack.hot-update.json 404 in 648ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:47:39.220Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":19,"correlationId":"b46214f0-c6b7-4b55-93b6-398c6f1cf7ee"}
+@ventureos/web:dev:  GET /login 200 in 1794ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:47:39.298Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":1,"correlationId":"9f49a38f-47d7-4637-9a91-b75d76b26c59"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:47:39.308Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":9,"correlationId":"b6698348-6e14-4278-8f09-4ed760aae314"}
+@ventureos/web:dev:  GET /dashboard 200 in 171ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:47:44.745Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"0aad6e71-1241-4a3b-9505-205a13c01dca"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:47:44.762Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":19,"correlationId":"ef3df1ed-2024-4e20-8970-01b7d66cb3ae"}
+@ventureos/web:dev:  GET /dashboard 200 in 113ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:48:45.079Z","level":"error","service":"api","message":"request failed","method":"POST","path":"/api/auth/login","durationMs":76,"correlationId":"d7861a3b-3dad-4bcd-ac54-ce8e21180b9f","error":"Invalid email or password"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:48:45.081Z","level":"error","service":"api","message":"unhandled exception","correlationId":"d7861a3b-3dad-4bcd-ac54-ce8e21180b9f","path":"/api/auth/login","status":401,"error":"Invalid email or password","stack":"UnauthorizedException: Invalid email or password\n    at AuthService.login (D:\\Documents\\claudehermespromt\\ventureos\\apps\\api\\dist\\main.js:1080:19)\n    at async AuthController.login (D:\\Documents\\claudehermespromt\\ventureos\\apps\\api\\dist\\main.js:953:24)"}
+@ventureos/web:dev:  Γùï Compiling /dashboard/opportunities ...
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/opportunities in 543ms (523 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:48:50.926Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":1,"correlationId":"aee6fabb-430f-415a-bb69-949185d7ed15"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:48:50.955Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/opportunities","statusCode":200,"durationMs":31,"correlationId":"06605f0d-0b35-4e67-9c36-fc559145eddf"}
+@ventureos/web:dev:  GET /dashboard/opportunities 200 in 817ms
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/opportunities/[id] in 441ms (530 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:49:32.416Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":1,"correlationId":"a6d850b7-36b9-45c8-8a4d-6d45e725a359"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:49:32.464Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/opportunities/d189ad6a-1806-495c-88d7-b7ccab087280","statusCode":200,"durationMs":50,"correlationId":"f92ba265-56b9-49df-9d9c-61751027f01f"}
+@ventureos/web:dev:  GET /dashboard/opportunities/d189ad6a-1806-495c-88d7-b7ccab087280 200 in 1640ms
+@ventureos/web:dev:  Γùï Compiling /dashboard/board-room/[proposalId] ...
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/board-room/[proposalId] in 530ms (537 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:51:46.279Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"9146fb8d-4f98-48f6-bdd8-2052117250a6"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:51:46.283Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":200,"durationMs":5,"correlationId":"074e07ac-eff7-41f0-a7ad-d5db508069ad"}
+@ventureos/web:dev:  GET /dashboard/board-room/60768dd2-6f1a-443e-9d24-93958adca514 200 in 1380ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:52:00.911Z","level":"info","service":"api","message":"request completed","method":"POST","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":201,"durationMs":922,"correlationId":"952afd3b-a19a-4152-bafc-536b50f065bd"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:52:00.936Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":200,"durationMs":4,"correlationId":"c2f01c56-30d9-4667-8a76-16e5c8f01043"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:52:02.064Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":200,"durationMs":22,"correlationId":"093eca8f-3f9d-4dfd-bbf8-c9a72c1708d9"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:52:03.109Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":200,"durationMs":52,"correlationId":"ff9b12d4-62ea-4cdd-8f8c-21b8ea0978ea"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:52:03.183Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"008c5f8d-b862-4aa8-b936-57d4b1d8cf00"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:52:03.196Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":200,"durationMs":11,"correlationId":"1e2649a6-680d-4b5f-a238-44e97a0e2736"}
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/approvals in 377ms (539 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:52:59.266Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"426b166a-3f58-4ee0-922e-a3e31508868a"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:52:59.273Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/approval-requests","statusCode":200,"durationMs":10,"correlationId":"fef37447-8f97-4431-b8ba-ec46ba32036b"}
+@ventureos/web:dev:  GET /dashboard/approvals 200 in 564ms
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/approvals/[id] in 314ms (546 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:53:09.854Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":1,"correlationId":"60dc6690-843d-4e67-a965-9ec2a14e47aa"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:53:09.859Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/approval-requests/3f0cd584-f03d-4857-85bb-9ea4ac00c1e5","statusCode":200,"durationMs":5,"correlationId":"fa4bdf9b-98b5-43d4-9847-f8b828f3c8dd"}
+@ventureos/web:dev:  GET /dashboard/approvals/3f0cd584-f03d-4857-85bb-9ea4ac00c1e5 200 in 888ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:53:54.158Z","level":"info","service":"api","message":"request completed","method":"POST","path":"/api/approval-requests/3f0cd584-f03d-4857-85bb-9ea4ac00c1e5/decide","statusCode":201,"durationMs":350,"correlationId":"dd17c2c1-9b87-4b68-a3d5-4c635761c196"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:53:54.230Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"ce3355ce-86c5-4133-ad9d-0aa1039c2d52"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:53:54.235Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/approval-requests/3f0cd584-f03d-4857-85bb-9ea4ac00c1e5","statusCode":200,"durationMs":7,"correlationId":"dd0cebd1-44f6-400f-afd7-e898a212b187"}
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/audit in 414ms (541 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:54:50.383Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"684fff7f-747e-410f-9403-0928a79aa25a"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T16:54:50.390Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/audit-events?limit=100","statusCode":200,"durationMs":8,"correlationId":"c4c3c627-723a-487d-b6ea-11ccd1994e06"}
+@ventureos/web:dev:  GET /dashboard/audit 200 in 624ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:02:12.476Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"caa02e92-9b83-4f2e-92cf-5a30184741db"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:02:12.480Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/audit-events?limit=100","statusCode":200,"durationMs":7,"correlationId":"0509f3aa-d9cd-4363-9049-64a3c2eae3dc"}
+@ventureos/web:dev:  GET /dashboard/audit 200 in 148ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:02:20.060Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/workspaces/current","statusCode":200,"durationMs":8,"correlationId":"3906f541-f233-4fc9-a50e-0916c789a3ce"}
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/onboarding in 482ms (542 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:02:21.400Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/onboarding","statusCode":200,"durationMs":4,"correlationId":"19b67769-d5c8-4192-9ca8-74a49fe4d0d0"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:02:21.401Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/onboarding","statusCode":200,"durationMs":4,"correlationId":"565ea63c-7385-4e65-aa0c-c39006829ebc"}
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/security in 253ms (544 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:02:23.402Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/security-events?limit=100","statusCode":200,"durationMs":6,"correlationId":"00036c66-4bf4-4ab7-be1b-1c3bfbb5f656"}
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/settings in 263ms (546 modules)
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/board-room in 400ms (537 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:08.899Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/opportunities","statusCode":200,"durationMs":22,"correlationId":"e015f3ae-1af5-45f4-9602-6bf095f1d3fd"}
+@ventureos/web:dev:  Γ£ô Compiled /dashboard/board-room/[proposalId] in 253ms (282 modules)
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:14.606Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"bca1c577-7ff7-454e-aeac-00250d47bf4c"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:14.620Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":200,"durationMs":16,"correlationId":"1b722d6d-36ca-4718-8ed7-abc729db882e"}
+@ventureos/web:dev:  GET /dashboard/board-room/60768dd2-6f1a-443e-9d24-93958adca514 200 in 495ms
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:28.297Z","level":"info","service":"api","message":"request completed","method":"POST","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":201,"durationMs":82,"correlationId":"982d7fc8-ddde-48bb-b38e-906adbeb1483"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:28.315Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":200,"durationMs":6,"correlationId":"542f17e7-38f8-47d3-8b21-c75bebaf3139"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:29.120Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":200,"durationMs":32,"correlationId":"6b3eae67-7f6d-409b-95e0-eaa438579395"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:29.192Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":0,"correlationId":"ea101cea-74c4-44bc-aa5a-495f79dcb433"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:29.206Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/venture-proposals/60768dd2-6f1a-443e-9d24-93958adca514/board-reviews","statusCode":200,"durationMs":15,"correlationId":"56027a4c-6d98-4c32-b195-f2c4debbedb2"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:32.956Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/approval-requests","statusCode":200,"durationMs":7,"correlationId":"a943fac6-8071-450e-8f9b-2ca7dfc6f933"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:37.982Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/auth/me","statusCode":200,"durationMs":1,"correlationId":"870099e4-cd9e-49c3-994e-a5767ea5dd7b"}
+@ventureos/api:dev: {"timestamp":"2026-07-13T17:06:37.988Z","level":"info","service":"api","message":"request completed","method":"GET","path":"/api/approval-requests/ea4873ac-4018-4b0c-971d-2397857526d2","statusCode":200,"durationMs":5,"correlationId":"f7a0d1c1-ab88-4881-bb44-43f7bf1f2b34"}
+@ventureos/web:dev:  GET /dashboard/approvals/ea4873ac-4018-4b0c-971d-2397857526d2 200 in 87ms
+Shutting down Turborepo tasks...
+@ventureos/web:dev: [?25h
+
+ Tasks:    11 successful, 14 total
+Cached:    11 cached, 14 total
+  Time:    29m48.493s 
+

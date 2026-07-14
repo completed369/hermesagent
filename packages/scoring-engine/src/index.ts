@@ -1,2 +1,2 @@
-export * from './opportunity-score';
-export * from './profit-confidence-score';
+export * from './opportunity-score.js';
+export * from './profit-confidence-score.js';

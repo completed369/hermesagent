@@ -1,0 +1,1026 @@
+VENTUREOS — FORWARD PROJECT ROADMAP
+Generated: 2026-07-14
+Scope: this file is a STANDALONE forward-looking roadmap starting from the
+project's actual current state today. It does not retell the project's
+history — see docs/EXECUTION_PLAN.md and docs/ROADMAP.md for that. Read this
+file top to bottom if you are picking up VentureOS with zero prior
+conversation context.
+
+====================================================================
+0. PHASE-NUMBERING DISAMBIGUATION — READ THIS FIRST
+====================================================================
+
+VentureOS's own internal documentation (docs/EXECUTION_PLAN.md,
+docs/ROADMAP.md, TODO.md) already uses a "Phase 0" through "Phase 8"
+numbering scheme (Environment/Repo, Foundation, Opportunity+Evidence,
+Board+Approval, Product+Listing Studio, Research Connectors, Marketplace
+Pilot, Finance+Analytics, Multi-Venture+SaaS). All 8 of those phases are
+marked DONE in the project's own tracker, with source code, migrations, and
+tests present on disk.
+
+THIS ROADMAP INTRODUCES A SEPARATE, NEW NUMBERING SCHEME — "Roadmap Stage 1"
+through "Roadmap Stage 9" — that starts AFTER the project's own Phase 0-8 and
+covers everything from here to production launch and beyond. Roadmap Stage
+numbers in this file are NOT the same axis as the project's internal Phase
+numbers. Where this file needs to refer to the project's own phases, it will
+always say "internal Phase N" explicitly to avoid confusion. Do not conflate
+"Roadmap Stage 1" (Stabilization, in this file) with "internal Phase 1"
+(Foundation, already done).
+
+====================================================================
+1. CURRENT ACTUAL STATE (as of 2026-07-14)
+====================================================================
+
+VentureOS is a monorepo (Next.js apps/web, NestJS apps/api, Temporal
+apps/worker, ~19 packages/*, PostgreSQL via Prisma) implementing an
+AI-board-governed venture-creation platform. Per the project's own internal
+Phase 0-8 tracker, all 8 internal phases are coded and internally verified:
+real Prisma migrations applied against a real local Postgres, real unit and
+integration test suites passing, real Temporal workflows exercised, and
+every feature live-browser-verified by whoever built it, according to the
+docs. However, three material gaps separate "internally verified" from
+"production-ready":
+
+1. ZERO GIT HISTORY for ~90% of the claimed work. `git log --oneline --all`
+   shows exactly 6 commits, all dated 2026-07-12/13, all covering only
+   internal Phase 0 and Phase 1:
+     b74829a docs: add PowerShell execution-policy troubleshooting to LOCAL_SETUP_WINDOWS
+     8eaac7e docs: add complete required documentation set (30 files), CI workflow, Windows PowerShell setup/validation scripts
+     acd3295 feat(web): Next.js app - login, dashboard shell, onboarding, audit, security, settings pages; feat(worker): Temporal hello workflow; feat(workflows): shared Temporal client; wire MinIO health check into API readiness
+     371e28e feat(api): NestJS app - auth, workspaces, onboarding, audit, security, health modules with guards, RBAC, correlation IDs, structured logging, safe error handling, rate limiting
+     2105b40 feat(packages): add database (Prisma schema + seed), integrations (storage), auth (password/session/RBAC); stub out-of-scope packages
+     ee5ba84 feat(packages): add config, contracts, finance-engine, scoring-engine, policy-engine, security, observability with unit tests
+   `git status` (run directly, confirmed) shows internal Phase 2 through
+   Phase 8's entire codebase as uncommitted: ~120 modified tracked files
+   (existing packages, apps, docs) plus ~90 untracked new files/directories
+   (apps/api/src/modules/{approvals,billing,board,finance,marketplace,
+   opportunities,products,research,ventures}, apps/web new dashboard routes,
+   apps/worker new workflows/activities, packages/agent-runtime,
+   packages/billing, packages/marketplace-connectors, packages/product-studio,
+   packages/research-connectors, all Prisma migrations after Phase 1,
+   docs/EXECUTION_PLAN.md, docs/ETSY_API_INTEGRATION.md,
+   docs/CUSTOMER_GETTING_STARTED.md, and dozens of stray log files
+   left in the repo root from verification runs).
+   A prior record referenced commit hashes 9521d83, c673d65, e02a296, and
+   13abb06 as having landed specific fixes. All four were directly checked
+   with `git cat-file -e <hash>` against this repository and every one
+   returned "fatal: Not a valid object name" — none of them exist here. Any
+   document, memory, or handoff note referencing those hashes is describing
+   a commit that is not present in this repository and must not be trusted
+   as a resumability anchor.
+
+   Practical consequence: from a pure version-control standpoint, this
+   project is NOT safely resumable, reviewable via diff, or revertible for
+   ~90% of its claimed functionality. Anyone (human or agent) picking this
+   up cannot answer "what changed between internal Phase 4 and internal
+   Phase 5" with `git diff` — that history simply does not exist yet as
+   commits. This is why Roadmap Stage 1 (below) makes committing the
+   working tree the literal first action, before any other work, including
+   bug fixes.
+
+2. ZERO DEPLOYMENTS EVER ATTEMPTED. Confirmed directly: there is no staging
+   or production docker-compose variant (only one docker-compose.yml at
+   repo root, covering Postgres + Temporal + Temporal UI + MinIO for local
+   dev only — see docs/DEPLOYMENT.md, which explicitly states "Local
+   development (only target verified in this build)" and "Not configured
+   yet" for any VPS/hosting target). There is no hosting configuration
+   (no Dockerfile per app, no Terraform/Pulumi, no Vercel/Fly/Render config
+   found). `.github/workflows/ci.yml` exists but only runs format check,
+   lint, typecheck, Prisma generate/migrate, unit tests, integration tests,
+   and build — it contains NO deploy step of any kind, and its own header
+   comment states: "Status: written to a reasonable GitHub Actions shape but
+   NEVER RUN. This repository was built in a sandbox with no network/CI
+   access to validate this workflow file end to end." So even the
+   check-only CI has never actually executed once, let alone deployed
+   anything.
+
+3. TWO SMALL KNOWN UI BUGS, unfixed, verified directly by reading the
+   current file contents:
+   - apps/web/src/app/dashboard/page.tsx hardcodes "Active ventures" = 0,
+     "Pending approvals" = 0, and "Budget utilisation (month)" = "€0 / €100"
+     as literal JSX text (lines 32, 39, 46), tags them with stale
+     "Phase 2+"/"Phase 3+"/"Phase 7" badges even though internal Phases 2,
+     3, and 7 are now done, and ends with a paragraph (lines 92-100)
+     claiming "Opportunity research, the AI board of agents, approvals,
+     product/listing studios and finance dashboards are architected... but
+     not yet built" — false, since all of that now exists.
+   - apps/web/src/components/dashboard-nav.tsx has a duplicate nav entry:
+     line 11 "Board Room" and line 13 "Product Studio" both point to the
+     same href, '/dashboard/board-room' — Product Studio has its own real
+     route at apps/web/src/app/dashboard/products (confirmed present) that
+     the nav item should point to instead.
+
+4. AI AND MARKETPLACE/PAYMENT INTEGRATIONS ARE MOCK/PLACEHOLDER-ONLY,
+   BY DELIBERATE FOUNDER DECISION, NOT BY OMISSION:
+   - packages/agent-runtime/src contains only mock-provider.ts (plus
+     decision-synthesiser.ts, board-review-runner.ts, approval-runner.ts,
+     index.ts) — no real-model-provider file exists anywhere in the
+     package. .env.example sets AI_PROVIDER=mock and leaves
+     ANTHROPIC_API_KEY commented out with the note "leave unset in
+     development; mock provider is used." No AI board agent has ever made
+     a real model API call.
+   - packages/marketplace-connectors/src contains only
+     mock-etsy-client.ts (plus idempotency.ts, health.ts,
+     publication-runner.ts, errors.ts, index.ts) — no real Etsy API client
+     file exists. .env.example sets MARKETPLACE_ETSY_MODE=mock with empty
+     MARKETPLACE_ETSY_API_KEY/MARKETPLACE_ETSY_API_SECRET. This is not an
+     open question: docs/DECISIONS.md ADR-007 records a founder decision on
+     2026-07-14, quoted verbatim in that file: "I WILL NOT CONNECT MY ETSY
+     ACCOUNT NOW, CONTINUE TO FINISH MY AGENCY." That is a settled decision,
+     not an ambiguity — TODO.md's "mock-only per explicit founder decision"
+     claim for internal Phase 6 is accurate and reconciled against ADR-007
+     and docs/ETSY_API_INTEGRATION.md (which documents the real Etsy Open
+     API v3 shape the mock client deliberately mirrors, so a future swap is
+     narrow). No further owner-approval gate is needed to KEEP it mock —
+     that decision already exists in writing. An owner-approval gate IS
+     needed only if/when the founder later wants to REVERSE ADR-007 and
+     connect a real account (see Roadmap Stage 4 below).
+   - Similarly, packages/billing is mock-only per ADR-010 (no Stripe/Paddle
+     etc. integrated; every subscription/invoice is synthetic). This is
+     also a settled, recorded founder decision ("full SaaS resale
+     build-out" instruction), not an open gap requiring a gate to preserve
+     — only reversing it requires one.
+   - No real marketplace or payment credentials exist anywhere in the repo;
+     .env.example only contains placeholder variable names with empty or
+     "mock"/"change-me-dev-only" values.
+
+This roadmap starts from this exact state. It does not ask "what comes after
+internal Phase 8 feature work" in isolation — it asks "what has to happen,
+in what order, before this software is safely resumable, then reviewable,
+then secure, then deployed, then commercially validated, then live."
+
+====================================================================
+ROADMAP STAGE 1 — IMMEDIATE STABILIZATION (do this before anything else)
+====================================================================
+
+Nothing else in this roadmap should be attempted until Stage 1 closes. Every
+sub-task below is ordered; do not skip ahead.
+
+--------------------------------------------------------------------
+1.1 Commit the entire uncommitted working tree, in phase-grouped commits
+--------------------------------------------------------------------
+Task: Create one commit per internal phase (Phase 2 through Phase 8),
+following the existing commit-message style already used by the 6 real
+commits (`git log --oneline --all`), e.g. "feat(opportunities): Opportunity
++ Evidence Prisma models, scoring-engine wiring, Opportunity Feed UI
+(internal Phase 2)". Suggested grouping, based on the actual modified/
+untracked file list from `git status`:
+  - Commit A (Phase 2): packages/contracts/src/evidence.ts,
+    apps/api/src/modules/opportunities/, apps/web/src/app/dashboard/
+    opportunities/, apps/web/src/components/opportunity-actions.tsx,
+    apps/api/test/opportunities.integration.spec.ts, the Phase 2 migration
+    under packages/database/prisma/migrations/, relevant seed.ts changes.
+  - Commit B (Phase 3): packages/agent-runtime/ (new package),
+    apps/api/src/modules/board/, apps/api/src/modules/approvals/,
+    apps/web/src/app/dashboard/board-room/,
+    apps/web/src/app/dashboard/approvals/,
+    apps/web/src/components/board-room-actions.tsx,
+    apps/web/src/components/approval-actions.tsx,
+    apps/worker/src/workflows/board-approval-workflow.ts,
+    apps/worker/src/activities/board-approval-activities.ts,
+    apps/api/test/board-and-approval.integration.spec.ts, its migration.
+  - Commit C (Phase 4): packages/product-studio/,
+    apps/api/src/modules/products/, apps/web/src/app/dashboard/products/,
+    apps/web/src/components/product-studio-actions.tsx,
+    apps/worker/src/workflows/product-listing-workflow.ts,
+    apps/worker/src/activities/product-listing-activities.ts,
+    apps/api/test/product-and-listing.integration.spec.ts, its migration.
+  - Commit D (Phase 5): packages/research-connectors/,
+    apps/api/src/modules/research/,
+    apps/web/src/app/dashboard/research/,
+    apps/web/src/components/research-connector-actions.tsx,
+    apps/api/test/research-connectors.integration.spec.ts, its migration,
+    docs/ETSY_API_INTEGRATION.md if research-adjacent, else fold into E.
+  - Commit E (Phase 6): packages/marketplace-connectors/,
+    apps/api/src/modules/marketplace/,
+    apps/web/src/components/marketplace-actions.tsx,
+    apps/worker/src/workflows/marketplace-publication-workflow.ts,
+    apps/worker/src/activities/marketplace-activities.ts,
+    apps/worker/src/lib/ (audit-write path, ADR-008),
+    apps/api/test/marketplace.integration.spec.ts, its migration,
+    docs/ETSY_API_INTEGRATION.md.
+  - Commit F (Phase 7): packages/finance-engine/src/{assumptions-runner,
+    budget-guard,errors,experiment-runner,forecast-runner,
+    model-usage-recorder}.ts and their __tests__,
+    apps/api/src/modules/finance/,
+    apps/web/src/app/dashboard/finance/,
+    apps/web/src/components/finance-actions.tsx,
+    apps/web/src/components/experiment-actions.tsx,
+    apps/api/test/finance.integration.spec.ts, its migration.
+  - Commit G (Phase 8): packages/billing/,
+    apps/api/src/modules/billing/, apps/api/src/modules/ventures/,
+    apps/web/src/app/dashboard/ventures/, apps/web/src/app/register/,
+    apps/web/src/components/{billing-actions,branding-actions,
+    sign-out-button}.tsx, apps/web/.eslintrc.json,
+    apps/api/src/config/config.module.ts, apps/api/src/types/,
+    apps/api/src/modules/workspaces/workspaces.dto.ts, its migration.
+  - Commit H (docs + cross-cutting): remaining modified docs/*.md files,
+    docs/EXECUTION_PLAN.md, docs/CUSTOMER_GETTING_STARTED.md, TODO.md,
+    package.json/tsconfig.json/turbo.json/pnpm-workspace.yaml/
+    docker-compose.yml tweaks not already captured above, .env.example.
+  - Do NOT commit: the stray root-level log files (e2e-log*.txt,
+    phase2-*.log.txt, phase3-*.log.txt, phase4-*.log.txt,
+    playwright-install-log.txt, validation-log*.txt) or pnpm-lock.yaml
+    unless it is intentionally meant to be tracked (check
+    .gitignore first — if pnpm-lock.yaml is untracked today, that is
+    itself worth fixing since reproducible installs need a committed
+    lockfile; if so, add it to Commit H). Add the stray logs to
+    .gitignore in Commit H rather than committing or silently leaving
+    them as permanent untracked clutter.
+Dependencies: none — this is the true first action.
+Deliverable: `git log --oneline --all` shows a clean, phase-ordered history
+from the existing 6 commits through 8 new ones (A-H); `git status` shows a
+clean working tree (only intentionally-ignored files untracked).
+Acceptance criteria: every source file that was "modified" or "untracked"
+before this task is now committed in a commit whose message correctly
+identifies its phase; no commit mixes unrelated phases; `git status`
+reports nothing to commit.
+Owner-approval gate: NO — this is pure housekeeping of already-approved,
+already-built work; it changes no behavior and commits nothing that wasn't
+already sitting in the working tree.
+
+--------------------------------------------------------------------
+1.2 Fix bug #101 — Command Centre real-data wiring + stale copy
+--------------------------------------------------------------------
+Task: In apps/web/src/app/dashboard/page.tsx, replace the three hardcoded
+stat values with real data:
+  - "Active ventures" (currently literal "0", line 32): fetch
+    GET /ventures (apps/api/src/modules/ventures already exists per Phase 8)
+    and render the real count of ventures for the current workspace.
+  - "Pending approvals" (currently literal "0", line 39): fetch
+    GET /approval-requests and filter client- or server-side by
+    `state === 'PENDING'`, render the real count.
+  - "Budget utilisation (month)" (currently literal "€0 / €100", line 46):
+    fetch GET /finance/budgets for the current workspace/month and render
+    real spend vs. real limit (respect `baseCurrency` from the existing
+    `/workspaces/current` response already used on this page instead of
+    hardcoding "€").
+  - Remove the stale "Phase 2+"/"Phase 3+"/"Phase 7" badges on these three
+    cards (lines 33, 40, 47) now that those internal phases are done —
+    replace with the same "Live" badge style already used on the fourth
+    "Integrations connected" card (line 57), or a "Mock data" badge only if
+    the underlying figures are still synthetic seed data rather than
+    founder-entered data (be honest about which).
+  - Rewrite or remove the "What's real vs. planned" paragraph (lines 91-100)
+    — it currently falsely claims opportunities/board/approvals/product/
+    listing/finance are "architected... but not yet built." Replace with an
+    accurate one-paragraph summary of what is real today (all 8 internal
+    phases) and what remains mock-only by founder decision (real AI model
+    calls, real Etsy publishing, real payment processing — see Roadmap
+    Stage 4 below), or delete the paragraph entirely if the stat cards and
+    nav now speak for themselves.
+Dependencies: 1.1 (commit first, so this fix is diffable against a clean
+baseline).
+Deliverable: a single focused commit, e.g. "fix(web): wire Command Centre
+stats to real /ventures, /approval-requests, /finance/budgets data; remove
+stale phase badges and false 'not yet built' copy."
+Acceptance criteria: loading the Command Centre in a browser against seeded
+data shows non-zero, real counts matching what `GET /ventures` and
+`GET /approval-requests?state=PENDING` actually return; no literal "0" or
+"€0 / €100" string remains hardcoded in the JSX; no stale phase badge
+remains on a shipped feature.
+Test gate: `pnpm run typecheck`, `pnpm run lint`, and (if an e2e test
+touches this page) `pnpm --filter @ventureos/web test:e2e` all pass after
+the change.
+Owner-approval gate: NO — this is a bug fix to already-approved,
+already-built functionality; it does not add new capability, spend money,
+or touch anything external.
+
+--------------------------------------------------------------------
+1.3 Fix bug #102 — duplicate Product Studio / Board Room nav link
+--------------------------------------------------------------------
+Task: In apps/web/src/components/dashboard-nav.tsx, line 13 currently reads
+`{ href: '/dashboard/board-room', label: 'Product Studio', available: true }`
+— identical href to line 11's Board Room entry. Change line 13's href to
+'/dashboard/products', which is the real route already built at
+apps/web/src/app/dashboard/products (confirmed present on disk from Phase 4
+work). Verify the products page actually renders correctly at that route
+before committing.
+Dependencies: 1.1.
+Deliverable: a single focused commit, e.g. "fix(web): point Product Studio
+nav link at /dashboard/products instead of duplicating Board Room's href."
+Acceptance criteria: clicking "Product Studio" in the sidebar navigates to
+a distinct page from "Board Room" and renders the Product Studio content;
+no two NAV_ITEMS entries share an href.
+Test gate: manual click-through in a running `pnpm dev` session, plus
+`pnpm run typecheck && pnpm run lint`.
+Owner-approval gate: NO — trivial bug fix, no new capability.
+
+--------------------------------------------------------------------
+1.4 Re-run the full verification suite and require a clean pasted result
+--------------------------------------------------------------------
+Task: Run, in order, and paste the full real terminal output (not a
+paraphrase) into the phase-closeout record (docs/EXECUTION_PLAN.md
+"Stabilization" section, to be added):
+  1. `pnpm install` — confirm zero errors, lockfile consistent.
+  2. `pnpm run format:check`
+  3. `pnpm run lint`
+  4. `pnpm run typecheck`
+  5. `pnpm db:generate && pnpm db:migrate:dev` (or `db:migrate:deploy` if
+     validating against a clean database) — confirm all 9+ migrations
+     apply cleanly in order from zero.
+  6. `pnpm test:unit` (all packages)
+  7. `pnpm --filter @ventureos/api test:integration`
+  8. `pnpm build` (all apps)
+  9. `pnpm dev`, then `pnpm --filter @ventureos/web test:e2e`
+This is a full re-run, not a resumption of whatever the individual phase
+logs (phase2-*.log.txt etc.) already captured — those logs were taken
+mid-build, before the Stage 1.1-1.3 fixes existed, and were never committed
+alongside the code they describe. A fresh, single, end-to-end run after
+1.1-1.3 land is the first real proof this codebase works as a whole rather
+than phase-by-phase in isolation.
+Dependencies: 1.1, 1.2, 1.3.
+Deliverable: one committed log (or docs/EXECUTION_PLAN.md section) containing
+the real pasted output of all 9 commands, all green, dated after the 1.1-1.3
+commits.
+Acceptance criteria: zero failing tests, zero lint/typecheck errors, a
+successful build of all apps, and a clean migration run from scratch.
+Any failure found here must be fixed and the suite re-run — do not proceed
+to Stage 2 on a partially-green result.
+Owner-approval gate: NO — this is verification of existing, already-approved
+work, not new capability.
+
+--------------------------------------------------------------------
+1.5 Resolve the Etsy mock-vs-real documentation ambiguity
+--------------------------------------------------------------------
+Task: Confirm (already done in this roadmap's research, restate for the
+record) that MARKETPLACE_ETSY_MODE=mock in .env.example,
+packages/marketplace-connectors/src contains only mock-etsy-client.ts (no
+real client), and docs/DECISIONS.md ADR-007 records an explicit,
+already-founder-confirmed 2026-07-14 decision ("I WILL NOT CONNECT MY ETSY
+ACCOUNT NOW, CONTINUE TO FINISH MY AGENCY") to remain mock-only. TODO.md's
+"mock-only per explicit founder decision" phrasing for internal Phase 6 is
+accurate and consistent with ADR-007, docs/ROADMAP.md, and
+docs/ETSY_API_INTEGRATION.md. There is NO unresolved ambiguity here today —
+the decision is settled and documented. The only future action item is:
+before any real Etsy account is ever connected, ADR-007's own text requires
+docs/DECISIONS.md and docs/EXECUTION_PLAN.md to be updated first to say so
+explicitly, and that reversal itself requires fresh founder approval (see
+Roadmap Stage 4.2 below) — never assume ADR-007 has lapsed just because
+time has passed.
+Dependencies: none (informational task; can run in parallel with 1.1-1.4).
+Deliverable: no code change required; optionally add one line to
+docs/DECISIONS.md noting this roadmap re-confirmed ADR-007 is still in
+effect as of 2026-07-14.
+Acceptance criteria: anyone reading TODO.md, docs/ROADMAP.md, ADR-007, and
+.env.example together sees one consistent story (mock-only, founder-
+decided), not a conflict.
+Owner-approval gate: NO for confirming the existing decision stands. YES
+(pre-existing, already satisfied) is the gate that produced ADR-007 in the
+first place — do not re-ask the founder unless proposing to reverse it.
+
+--------------------------------------------------------------------
+Stage 1 closeout gate
+--------------------------------------------------------------------
+Do not begin Roadmap Stage 2 until: git history is clean and phase-grouped
+(1.1), both known UI bugs are fixed and committed (1.2, 1.3), a full green
+verification suite run is pasted into the record (1.4), and the Etsy
+mock-mode documentation is confirmed consistent (1.5). This mirrors the
+project's own existing discipline of not starting new work until the prior
+unit closes clean (see AGENTS.md rule 6, "build one phase at a time, stop at
+phase boundaries").
+
+====================================================================
+ROADMAP STAGE 2 — SECURITY & COMPLIANCE HARDENING
+====================================================================
+Dependencies: Stage 1 fully closed.
+
+2.1 External-style review against docs/THREAT_MODEL.md
+Task: Treat docs/THREAT_MODEL.md as a checklist, not a status report — it
+was last meaningfully updated around internal Phase 6 (2026-07-14) per its
+own "coverage gap found" note, and several rows predate later phases. Walk
+every row and re-verify against the CURRENT codebase (post Phase 7/8):
+  - "Excessive agent tool permissions" — currently "Partially mitigated":
+    `AgentDefinition.toolAllowlist`/`prohibitedActions` are seeded but no
+    runtime layer enforces a tool call against its role's allowlist. Decide:
+    build real enforcement now, or explicitly accept the risk in writing
+    (who accepts it, and why) before Stage 4 (staging stand-up) begins.
+  - "Approval bypass" — listed as only partially mitigated as of Phase 3;
+    re-verify against the Phase 4/6/7/8 approval gates (PRODUCT_LISTING,
+    PUBLICATION, Gate 6 SCALE) since more approval types exist now than
+    when this row was last scored.
+  - "Audit-log tampering" — DB-level immutability (REVOKE UPDATE/DELETE
+    grants on the audit table) is still not configured; add a migration
+    that does this as a concrete Stage 2 deliverable.
+  - "Session theft" — session token is not hashed at rest; fix (hash
+    session tokens the same way passwords are hashed, add a migration if
+    the column needs to change) or explicitly accept and document why not.
+  - "Brute-force login" — no login-specific lockout; add one (e.g.
+    exponential backoff or a fixed lockout window per email+IP) given this
+    system will hold real founder financial/business data once live.
+  - "Cross-site request forgery" — no dedicated CSRF token yet; decide
+    whether `sameSite=lax` + CORS allowlist is sufficient for launch or a
+    real CSRF token is required (recommended: add one, it's cheap).
+  - "Dependency compromise" — no dependency scanning has ever run (the
+    sandbox had no network access). Run `pnpm audit` (or wire
+    `npm audit`/Snyk/Dependabot into CI) for the first time now that real
+    network access exists outside the sandbox, and fix or explicitly
+    accept every finding.
+Deliverable: docs/THREAT_MODEL.md rewritten with every row re-scored against
+the actual current codebase, dated, with either a code fix landed or an
+explicit accepted-risk note naming who accepted it and why.
+Acceptance criteria: no row says "Not yet addressed" for anything that
+blocks safe handling of real customer data or real money once Stage 6/8
+happen; every remaining gap has an explicit, named risk acceptance.
+Test gate: any new enforcement code (tool allowlist, session hashing,
+lockout, CSRF) ships with its own unit/integration test.
+Security gate: this entire section IS the security gate for Stage 2 — no
+proceeding to Stage 3 without it closing clean.
+Owner-approval gate: NO for fixing genuine bugs/gaps. YES for accepting any
+residual risk rather than fixing it — the founder must explicitly sign off
+on any "we're shipping with this known gap" decision, per AGENTS.md rule 2's
+spirit (no agent decides alone to ship a security compromise).
+
+2.2 Secret rotation plan
+Task: Write (does not yet exist) a concrete secret-rotation runbook:
+which secrets exist today (AUTH_SECRET, POSTGRES_PASSWORD,
+MINIO_ROOT_PASSWORD, and once Stage 4 lands, ANTHROPIC_API_KEY/
+MARKETPLACE_ETSY_API_SECRET/payment-processor keys), how each is generated
+(`openssl rand -base64 32` per .env.example's own comment for AUTH_SECRET),
+where each lives (local .env only per AGENTS.md/.gitignore, never
+committed), how to rotate one without downtime (e.g. AUTH_SECRET rotation
+invalidates all sessions — decide if that's acceptable or if dual-secret
+verification during rotation is needed), and who is responsible (the
+founder, since no team exists yet).
+Deliverable: a new docs/SECRET_ROTATION.md.
+Acceptance criteria: a new developer/agent can rotate every secret in the
+system following this doc alone, without guessing.
+Owner-approval gate: NO (documentation only).
+
+2.3 GDPR data export/delete implementation check
+Task: docs/PRIVACY_GDPR.md documents an intended process but, per
+docs/EXECUTION_PLAN.md's cross-cutting tracker, "real data-subject-request
+flows (export/correction/deletion) not yet built since there's no real
+customer data to act on." That excuse expires once Stage 4 (staging) or
+Stage 6 (commercial pilot) introduces even one real external user. Audit
+apps/api/src/modules/* for: a real "export all my data" endpoint, a real
+"delete my account and all associated data" endpoint (respecting the
+existing soft-delete columns on User/Workspace noted in
+docs/THREAT_MODEL.md's "Destructive commands" row, but needing a REAL hard-
+delete path for a genuine GDPR erasure request, gated by founder approval
+per BACKUP_AND_RECOVERY.md's "permanent deletion always requires a separate
+founder approval" rule), and confirm whether either currently exists.
+Deliverable: either the endpoints exist and are tested, or a clearly scoped
+follow-up ticket with acceptance criteria is written before Stage 4/6.
+Acceptance criteria: a real customer (once Stage 6 exists) can exercise a
+real export and a real deletion request end-to-end, with the deletion step
+requiring explicit founder approval exactly like every other destructive/
+external action in this system.
+Owner-approval gate: YES for the actual execution of any real customer's
+delete request (per BACKUP_AND_RECOVERY.md's existing rule) — NO for
+building the endpoints themselves.
+
+Stage 2 closeout gate: docs/THREAT_MODEL.md fully re-scored with no
+unaccepted "Not yet addressed" rows relevant to launch, docs/SECRET_ROTATION.md
+exists, and the GDPR export/delete gap is either closed or explicitly
+ticketed with a committed-to date before Stage 4.
+
+====================================================================
+ROADMAP STAGE 3 — REAL INTEGRATIONS (all owner-approval gated)
+====================================================================
+Dependencies: Stage 1 and Stage 2 fully closed. Per AGENTS.md's
+non-negotiable rule 2 ("Agents... never get to: spend money, publish
+externally,... enter agreements... without founder approval"), every
+sub-task below requires an explicit, dated founder decision recorded in
+docs/DECISIONS.md (in the same style as ADR-007/ADR-010) BEFORE any code in
+that sub-task is written — not after.
+
+3.1 Decide + wire a real AI provider (optional)
+Task: The founder must first decide, in writing: (a) stay mock-only
+indefinitely, (b) connect a real provider (e.g. Anthropic's API, since
+ANTHROPIC_API_KEY is the placeholder already present in .env.example) for
+the 8 voting board agents + Decision Synthesiser, and (c) if (b), what
+per-agent/per-workflow/per-day/per-workspace-month cost ceilings apply
+(the env vars already exist and default to conservative values:
+AI_PER_AGENT_COST_LIMIT_EUR=0.50, AI_PER_WORKFLOW_COST_LIMIT_EUR=3.00,
+AI_PER_DAY_COST_LIMIT_EUR=10.00, AI_PER_WORKSPACE_MONTHLY_LIMIT_EUR=100.00
+— confirm these are still the founder's intended ceilings, adjust if not).
+If approved: implement a real-provider adapter behind the same interface
+`mock-provider.ts` already implements (do not rewrite board-review-runner.ts,
+decision-synthesiser.ts, or approval-runner.ts — they should be provider-
+agnostic already per the package's own design intent), wire
+`recordModelUsage`/budget-guard enforcement (already built in Phase 7) to
+real, non-zero costs, and add a `AI_PROVIDER=anthropic` mode switch mirroring
+the `MARKETPLACE_ETSY_MODE` pattern.
+Dependencies: explicit founder decision recorded first.
+Deliverable: docs/DECISIONS.md ADR-0XX recording the decision (mirroring
+ADR-007's format) + (if approved) a new real-provider file alongside
+mock-provider.ts, integration tests proving cost-cap enforcement against
+real (small, capped) API calls.
+Acceptance criteria: if built, a real board review with real model calls
+completes, real cost is recorded via `recordModelUsage`, and a call that
+would exceed any configured ceiling fails closed exactly like the existing
+mock-cost-cap tests already prove for research spend (Phase 5's
+`assertWithinResearchCostCaps`).
+Owner-approval gate: YES — for the decision itself, for the specific
+provider chosen, and for every cost ceiling value.
+
+3.2 Decide + activate real Etsy credentials (optional)
+Task: Requires explicitly reversing ADR-007. The founder must first decide,
+in writing, to connect a real Etsy seller account, understanding this means
+real OAuth 2.0 + PKCE credentials (per docs/ETSY_API_INTEGRATION.md's
+existing research), real API rate limits, and real published listings once
+Stage 7 (production) is reached. If approved: implement a real Etsy client
+behind the same interface `mock-etsy-client.ts` implements (draft/upload/
+publish), switch `MarketplaceAccount.mode` to `'REAL'` for the connected
+account only (mock accounts continue to exist for testing), and confirm
+`withIdempotency`, the fail-closed publication runner, and the PUBLICATION
+approval gate all continue to function unchanged against the real client
+(they should, since Phase 6 was explicitly built adapter-agnostic per
+ADR-007's own "Consequences" section).
+Dependencies: explicit founder decision reversing ADR-007, recorded first.
+Deliverable: docs/DECISIONS.md ADR-0XX documenting the reversal + (if
+approved) a real Etsy client file, with FEATURE_LIVE_PUBLISHING_ENABLED
+flipped from its current default of `false` only after this is live-tested
+against Etsy's sandbox/test mode first, never directly against production
+listings.
+Acceptance criteria: a real draft listing is created against Etsy's actual
+API in a test/sandbox context first; only after that succeeds is a real
+publish attempted, and only with a fresh PUBLICATION approval decided by
+the founder for that specific listing.
+Owner-approval gate: YES — for reversing ADR-007, for the specific Etsy
+account connected, and for every individual real publish (the existing
+PUBLICATION approval gate already enforces the per-publish part in code;
+the account-connection decision itself is the new gate here).
+
+3.3 Decide + activate a real payment processor (optional)
+Task: Requires explicitly reversing ADR-010. Same pattern as 3.2: founder
+decides whether to connect Stripe/Paddle/other, which plan tiers map to
+real prices, and how refunds/chargebacks are handled. If approved: build a
+real billing adapter behind `@ventureos/billing`'s existing interface,
+switch `Subscription.billingMode` from hardcoded `'MOCK'` to a real value
+only for accounts that complete real checkout, and never mark a
+`SubscriptionInvoice` as `'PAID'` except as the result of an actual
+processor webhook confirming payment.
+Dependencies: explicit founder decision reversing ADR-010, recorded first.
+Deliverable: docs/DECISIONS.md ADR-0XX + (if approved) a real payment
+adapter, webhook handler, and reconciliation job (compare processor state
+to local `Subscription` state on a schedule, alert on drift).
+Acceptance criteria: a real test-mode charge (e.g. Stripe test card)
+completes end-to-end and the resulting `SubscriptionInvoice` reflects it
+accurately; no code path can mark an invoice paid without processor
+confirmation.
+Owner-approval gate: YES — for reversing ADR-010, for the processor chosen,
+and this is also a "financial accounts" action per AGENTS.md rule 2, so
+real production credentials must never be pasted into chat or committed,
+only referenced by env-var name via the existing `SecretReference` pattern.
+
+Stage 3 closeout gate: none of 3.1/3.2/3.3 are required to proceed to
+Stage 4 (staging can stand up mock-only) — but if the founder wants a real
+commercial pilot (Stage 6) with real AI-generated products or real Etsy
+listings, the relevant sub-task above must close first. Document explicitly
+in docs/DECISIONS.md which of 3.1/3.2/3.3 the founder chose to pursue, and
+which remain intentionally mock-only, before Stage 6
+====================================================================
+ROADMAP STAGE 4 — STAGING ENVIRONMENT STAND-UP
+====================================================================
+Dependencies: Stage 1 and Stage 2 closed. Stage 3 optional (staging can run
+fully mock-only).
+
+4.1 Hosting decision
+Task: docs/DEPLOYMENT.md already names a candidate direction — "Future
+target: affordable European VPS / managed containers (master spec §4)... a
+single European VPS running the same docker-compose.yml plus a reverse
+proxy (Caddy/Traefik) for TLS." Confirm this is still the founder's
+preferred direction (usage-based/self-hosted preferred over "enterprise-
+only products" per that doc), or get an updated decision. Candidates to
+evaluate concretely: Hetzner Cloud (EU, cheap, matches "affordable European
+VPS"), Scaleway, OVHcloud, or a managed-container option (Fly.io, Railway)
+if the founder prefers less ops burden over lower cost.
+Deliverable: docs/DEPLOYMENT.md updated with the chosen provider and a
+one-paragraph rationale.
+Owner-approval gate: YES — this is the first real spend decision in the
+project's life (a VPS costs real money monthly); per AGENTS.md rule 2 no
+agent picks this or provisions it without founder sign-off.
+
+4.2 Database hosting decision
+Task: Decide whether Postgres runs as a container on the same VPS (matches
+docs/DEPLOYMENT.md's "thin layer over the same Docker Compose services")
+or as a managed database (e.g. a managed Postgres add-on) for easier
+backup/failover. Given docs/BACKUP_AND_RECOVERY.md currently documents only
+manual `pg_dump`/restore with no automation, a managed DB with built-in
+point-in-time recovery meaningfully reduces operational risk versus a
+self-managed container — weigh this explicitly against cost.
+Deliverable: decision recorded in docs/DEPLOYMENT.md + docs/BACKUP_AND_RECOVERY.md
+updated to describe the real chosen backup mechanism (automated, not just
+the manual procedure that document currently describes).
+Owner-approval gate: YES — spend decision.
+
+4.3 Domain/DNS and SSL
+Task: Register or confirm a domain for the staging environment (e.g.
+staging.<domain>), configure DNS, and stand up TLS termination — the
+Caddy/Traefik reverse proxy docs/DEPLOYMENT.md already names is a reasonable
+default since it handles Let's Encrypt automatically with minimal config.
+Deliverable: a working `https://staging.<domain>` reachable endpoint
+serving apps/web, with apps/api reachable at a sibling path or subdomain.
+Owner-approval gate: YES — domain registration is a real spend + it is
+technically "publishing externally" in a limited sense (a real public URL
+now exists); founder sign-off required before it's reachable from the
+public internet, even pre-launch.
+
+4.4 CI/CD deploy pipeline
+Task: Extend .github/workflows/ci.yml (currently check-only, never run) with
+a real deploy step gated on the existing check steps passing AND on manual
+approval (GitHub Environments with required reviewers is the standard
+mechanism) — never an automatic deploy on every push, consistent with
+docs/DEPLOYMENT.md's rule "No deployment step publishes externally, spends
+money, or changes production configuration without founder approval." Also:
+this is the FIRST time ci.yml will actually run in a real GitHub Actions
+environment (its own header comment admits it's never been executed) — treat
+the very first run, even just of the existing check steps, as itself a test
+of whether this file is even syntactically/behaviorally correct, before
+trusting it to gate a deploy.
+Deliverable: `.github/workflows/deploy-staging.yml` (or an extended job in
+ci.yml) that builds, and — only after a human approval step — deploys to
+the Stage 4.1 VPS.
+Acceptance criteria: a real push triggers real checks; a real manual
+approval triggers a real deploy; an unapproved push never reaches staging.
+Test gate: the existing check steps (format/lint/typecheck/unit/integration/
+build) must be proven to actually pass in GitHub Actions' real environment,
+not just locally — differences in Node version, network access, or service
+container behavior could surface real failures never seen locally.
+Owner-approval gate: YES for the deploy step design itself (this is where
+"deployment... without founder approval" risk lives); the per-deploy
+approval click is the founder's, per-deploy, by design.
+
+4.5 Environment variable / secrets management for a real environment
+Task: A real staging .env cannot reuse any "change-me-dev-only" value from
+.env.example — generate real values for AUTH_SECRET, POSTGRES_PASSWORD,
+MINIO_ROOT_PASSWORD; decide a secrets-storage mechanism (GitHub Actions
+encrypted secrets for CI-injected values, plus whatever secret store the
+Stage 4.1 hosting choice supports natively) rather than a plaintext .env
+file sitting on the VPS. NODE_ENV=production (not development) changes
+cookie `secure` flag behavior and Prisma log verbosity per docs/DEPLOYMENT.md
+— confirm this is set correctly for staging (staging should behave like
+production for these flags, even though it's not the real production
+environment).
+Deliverable: a documented (docs/SECRET_ROTATION.md, extended from Stage 2.2)
+list of every env var staging needs, where each real value is generated and
+stored, and confirmation NODE_ENV=production is set for staging.
+Acceptance criteria: no default/placeholder value from .env.example is
+present in the real staging environment; secrets are never committed or
+visible in CI logs.
+Owner-approval gate: NO for the mechanics; YES implicitly already covered
+by 4.1/4.3's spend/publish gates.
+
+Stage 4 closeout gate: a real, reachable staging URL exists, serving a real
+deployed build of apps/web + apps/api + apps/worker against a real
+(non-dev) Postgres/Temporal/MinIO, with a working founder-gated deploy
+pipeline and no development-default secrets anywhere in it.
+
+====================================================================
+ROADMAP STAGE 5 — STAGING VALIDATION
+====================================================================
+Dependencies: Stage 4 closed (a real staging URL exists).
+
+5.1 Full manual QA pass
+Task: Walk every one of the internal 8 phases' features live against the
+real staging deployment, not localhost — repeat the same manual
+verification steps docs/EXECUTION_PLAN.md records as already done locally
+for each phase (founder login, opportunity feed + promote, board review +
+approval decision, product generation + QA + second approval, research
+connector run, marketplace prepare/approval/publish (mock), forecast/
+expense/revenue/experiment/Gate-6 approval, ventures list + billing +
+branding + registration), but this time against staging's real (non-dev)
+database, real Temporal instance, and real MinIO instance, over the real
+public URL from Stage 4.3. Staging-specific behavior differs from local
+dev in ways that matter: cookie `secure=true` now applies (NODE_ENV=
+production), CORS is scoped to the real staging origin not localhost, and
+network latency to the VPS is real. Any of these could surface a bug never
+seen in local dev.
+Deliverable: a dated QA log (new docs/STAGING_QA_LOG.md) recording each
+feature walked, pass/fail, and any bug found + fixed.
+Acceptance criteria: every internal Phase 1-8 feature works end-to-end on
+staging exactly as it did locally; zero regressions from the environment
+change itself.
+Test gate: any bug found here gets a regression test added before being
+marked fixed.
+
+5.2 Load/performance testing
+Task: docs/TEST_STRATEGY.md is explicit that this does not exist yet — its
+own "What's NOT covered yet" section lists load/rate-limit behavior as
+untested, and no load-testing tool (k6, Artillery, autocannon) appears
+anywhere in the repo's package.json files. Build a minimal load test
+suite before any real commercial traffic is possible: target the
+highest-risk paths first — login (rate-limited per docs/THREAT_MODEL.md's
+"Brute-force login" row), the board-review Temporal workflow (CPU/DB load
+per review), and the research-connector acquisition path (has real
+per-run/per-day cost caps that must hold under concurrent load, not just
+sequential test-suite load).
+Deliverable: a new `load-tests/` directory (k6 or equivalent scripts) +
+docs/TEST_STRATEGY.md updated with a "Load testing" section describing
+what's covered and the observed throughput/latency numbers from a real run
+against staging.
+Acceptance criteria: staging survives a defined concurrent-user load (pick
+a number appropriate to expected pilot scale, e.g. 20 concurrent users,
+since this is a pre-revenue single-founder product, not yet needing
+enterprise-scale numbers) without the API falling over, the budget/cost
+caps still enforcing correctly under concurrency (a real risk: two
+concurrent requests both checking a budget limit before either records its
+charge could double-spend past the cap — specifically test this race
+condition against `assertWithinBudget`/`chargeToBudget` and
+`assertWithinResearchCostCaps`).
+Test gate: this IS the test gate — Stage 6 (commercial pilot) must not
+begin without it, since real, if small, commercial traffic follows next.
+Security gate: the concurrent budget-cap race-condition test doubles as a
+security gate (unbounded-cost-under-concurrency is a real threat-model row
+still marked "Not yet addressed" for AI/model costs in docs/THREAT_MODEL.md).
+
+Stage 5 closeout gate: docs/STAGING_QA_LOG.md shows a full clean pass, and
+a real load test has been run and its results recorded, before any real
+external user touches the system in Stage 6.
+
+====================================================================
+ROADMAP STAGE 6 — COMMERCIAL VALIDATION PILOT
+====================================================================
+Dependencies: Stage 5 closed. Stage 3 (real integrations) required only for
+whichever specific gates below need a real marketplace/AI provider; the
+pilot can otherwise run against mock adapters if the founder has chosen to
+keep Stage 3 mock-only.
+
+This stage's actual process is already fully defined in
+docs/COMMERCIAL_VALIDATION.md (master spec section 30) — this roadmap does
+not invent new thresholds, it implements exactly the six gates that
+document already specifies, which were "not reachable" at the time that doc
+was written (Phase 1, before any opportunity/proposal/product/listing
+existed) and are now reachable since all 8 internal phases are built:
+
+  Gate 1. Problem Validation — defined customer + problem, evidence
+    records present, no critical compliance blocker. Now reachable via the
+    real Opportunity/Evidence models (internal Phase 2).
+  Gate 2. Opportunity Validation — Opportunity score >= 70, Profit
+    Confidence >= 70, evidence quality >= 70, board weighted approval
+    >= 75%, no active critical veto, founder approval. The scoring math
+    (`scoring-engine`) and board math (`policy-engine`) are both already
+    built and unit-tested; this gate is now fully mechanically reachable —
+    run a real opportunity through it for the first time outside of the
+    seeded "Social Media Content Planning Kit" demo data.
+  Gate 3. Product Validation — complete package, QA passed, licences
+    complete, hashes recorded, founder approval. Reachable via internal
+    Phase 4's product-studio + QA checks.
+  Gate 4. Listing Validation — marketplace policy checks passed, pricing
+    validated, preview complete, founder approval. Reachable via internal
+    Phase 4's listing generation + SEO evaluation.
+  Gate 5. Commercial Validation — impressions/conversion/refund-rate/
+    margin/support-load metrics. This is the FIRST gate that requires a
+    real marketplace presence (Stage 3.2 real Etsy connection) to produce
+    real impressions/conversions — if Stage 3.2 was not exercised, this
+    gate cannot be genuinely passed with real numbers; running it against
+    the mock Etsy adapter can only validate the mechanics of the gate
+    itself, not real commercial signal. Be explicit about which case
+    applies before claiming this gate "passed."
+  Gate 6. Scale Decision — positive unit economics, acceptable refund/
+    quality/support metrics, improving forecast accuracy, founder approval
+    for spend increase. Already has real enforcement machinery (internal
+    Phase 7's Gate 6 SCALE approval, sharing `ApprovalRequest`/
+    `decideApprovalRequest` with every other gate) — this stage's job is to
+    exercise it with a REAL venture's real numbers, not the seeded demo
+    data already used to prove the mechanism works in internal Phase 7.
+
+Also enforced from day one per docs/COMMERCIAL_VALIDATION.md: "do not scale
+paid advertising before low-cost validation" — FEATURE_ADVERTISING_ENABLED
+must remain `false` until Gate 5/6 are genuinely passed with real data, not
+flipped preemptively to accelerate the pilot.
+
+Task: Pick ONE real opportunity (not necessarily the seeded "Social Media
+Content Planning Kit" — that can remain a demo/reference fixture; consider
+whether the founder wants the pilot to be that exact opportunity or a fresh
+one) and walk it through Gates 1-6 for real, with real founder approvals at
+each of the four approval points (Opportunity promotion, Product/Listing,
+Publication, Scale Decision), recording real evidence, real board reviews
+(mock or real AI per Stage 3.1's decision), and — if Stage 3.2 was
+exercised — a real published listing generating real impressions.
+Dependencies: Stage 5 closed; Stage 3.2 closed if Gate 5 is to be
+genuinely (not just mechanically) validated.
+Deliverable: a dated pilot log (new docs/COMMERCIAL_PILOT_LOG.md) recording
+the chosen opportunity, and the real outcome of each of the 6 gates,
+including actual score numbers, actual board vote results, and (if
+applicable) actual marketplace metrics.
+Acceptance criteria: all 6 gates in docs/COMMERCIAL_VALIDATION.md are
+exercised against one real venture, not synthetic seed data, with every
+founder-approval checkpoint genuinely decided by the founder (not
+auto-approved or skipped).
+Commercial-validation gate: this stage IS the commercial-validation gate —
+Stage 7 (production deployment) should not proceed until at least Gates 1-4
+pass for the pilot venture (Gates 5-6 may still be in progress if the
+pilot is ongoing at the time production infrastructure work begins, since
+production deployment and pilot completion can reasonably overlap).
+Owner-approval gate: YES at all four existing approval checkpoints (already
+enforced in code) — no new gate needed here since the mechanism already
+requires it structurally.
+
+====================================================================
+ROADMAP STAGE 7 — PRODUCTION DEPLOYMENT
+====================================================================
+Dependencies: Stage 4 (staging infra pattern proven), Stage 5 (validated),
+Stage 6 (at minimum Gates 1-4 passed on the pilot venture).
+
+7.1 Production environment stand-up
+Task: Mirror Stage 4's staging stand-up for a genuinely separate production
+environment — separate VPS/hosting instance (or a production-tier plan on
+the same provider), separate database (never share staging and production
+data), separate domain (e.g. `app.<domain>` vs `staging.<domain>`), fresh
+secrets (never copy staging's AUTH_SECRET/POSTGRES_PASSWORD/etc. into
+production — generate new ones per Stage 2.2's rotation plan).
+Deliverable: a reachable `https://app.<domain>` (or chosen production
+domain) serving a real production deployment, fully separate from staging.
+Owner-approval gate: YES — real spend (second hosting bill), and this is
+the environment real customers/founder data will live in.
+
+7.2 Pre-deployment checklist
+Task: Before the first production deploy, confirm in writing:
+  - Stage 1-6 all closed (git history clean, bugs fixed, security hardened,
+    integrations decisions recorded, staging validated, pilot gates 1-4
+    passed).
+  - Real database backup automation is running (extend
+    docs/BACKUP_AND_RECOVERY.md's still-manual `pg_dump` procedure into a
+    real scheduled job — that doc explicitly defers this "until there is
+    production data," which is now true).
+  - Monitoring/alerting is wired (see 7.4) BEFORE go-live, not after.
+  - Rollback plan (7.3) is written and has been rehearsed at least once
+    against staging.
+  - FEATURE_LIVE_PUBLISHING_ENABLED, FEATURE_ADVERTISING_ENABLED,
+    FEATURE_PAID_INTEGRATIONS_ENABLED are each explicitly set to whatever
+    value the founder has approved for production launch — never left at
+    their conservative `false` defaults by accident, nor flipped to `true`
+    without the corresponding Stage 3 decision on record.
+Deliverable: a signed-off (founder-approved) go/no-go checklist, dated.
+Owner-approval gate: YES — the go/no-go decision itself.
+
+7.3 Rollback plan
+Task: Write a concrete rollback runbook: how to revert a bad production
+deploy (redeploy the previous Docker image tag / git commit — this is
+exactly why Stage 1's clean git history matters: a bad deploy needs a real
+previous commit to roll back to), how to restore the database from the
+most recent automated backup (7.2) if a migration corrupted data, and the
+maximum acceptable downtime/data-loss window (RTO/RPO) the founder is
+comfortable with — this number should directly inform how often backups run.
+Deliverable: new docs/ROLLBACK_PLAN.md, rehearsed once against staging
+before the first real production deploy.
+Acceptance criteria: a deliberately-broken staging deploy can be rolled
+back following this doc alone, within the stated RTO.
+Owner-approval gate: NO for writing the plan; the RTO/RPO targets
+themselves are a founder decision (how much downtime/data loss is
+acceptable is a business call, not a technical one).
+
+7.4 Monitoring/alerting go-live
+Task: docs/EXECUTION_PLAN.md's own "Known follow-ups from Phase 1" lists
+"OpenTelemetry exporter wiring (currently OTEL_ENABLED=false stub only)" as
+still outstanding — this cannot remain deferred once real production
+traffic exists. Wire OTEL_ENABLED=true with a real exporter endpoint
+(OTEL_EXPORTER_OTLP_ENDPOINT, currently blank in .env.example) pointed at a
+real observability backend (self-hosted Grafana/Loki/Tempo stack, or a
+managed option — weigh against Stage 4.1's "affordable, usage-based
+preferred" principle). At minimum, alert on: API error rate, Postgres
+connection exhaustion, Temporal workflow failure rate, and any budget/cost-
+cap breach (these already write structured log events per
+`packages/observability`; they need an actual alerting rule on top).
+Deliverable: a real monitoring dashboard + at least one working alert
+(test it by deliberately triggering a budget-cap breach in staging first
+and confirming the alert fires).
+Acceptance criteria: a real production incident (simulated first) reaches
+the founder via a real notification channel (email/Slack/etc.) within a
+defined time window.
+Owner-approval gate: NO (operational setup), though the choice of
+notification channel/service may itself be a small spend decision worth a
+quick founder confirmation.
+
+Stage 7 closeout gate: production is live, reachable, backed up on a
+schedule, monitored with at least one working alert, and a rehearsed
+rollback plan exists — only then does the first real customer-facing
+production traffic begin.
+
+====================================================================
+ROADMAP STAGE 8 — POST-LAUNCH MONITORING & OPTIMIZATION
+====================================================================
+Dependencies: Stage 7 closed, production live.
+
+8.1 First-week intensive monitoring
+Task: For the first 7 days of real production traffic, review the Stage
+7.4 dashboards daily (not just on alert) — error rates, budget/cost-cap
+utilisation against the real ceilings set in Stage 3.1, real Temporal
+workflow success rates, real database growth rate (informs whether the
+Stage 4.2 database hosting choice still fits).
+Deliverable: a dated post-launch log (new docs/POST_LAUNCH_LOG.md) with
+daily entries for the first week, weekly thereafter for the first month.
+Owner-approval gate: NO.
+
+8.2 Cost reconciliation
+Task: Compare actual spend (VPS/hosting from Stage 4.1/7.1, real AI
+provider costs from Stage 3.1 if activated, real payment-processor fees
+from Stage 3.3 if activated) against the forecasts already produced by
+internal Phase 7's finance-engine (`compareForecastToActual`). This is the
+first time that comparison runs against genuinely real infrastructure and
+integration spend rather than only real venture revenue/expense entries.
+Deliverable: a real forecast-vs-actual report for infrastructure/platform
+costs, not just venture-level P&L.
+Owner-approval gate: NO for the report; YES if it recommends a spend change
+(e.g. raising AI_PER_WORKSPACE_MONTHLY_LIMIT_EUR because real usage is
+hitting the ceiling).
+
+8.3 Bug triage and hardening backlog
+Task: Every issue found during Stage 6 (pilot) and the first month of
+Stage 8 gets triaged into a real backlog (GitHub Issues, or a
+docs/BACKLOG.md if the founder prefers staying inside this repo) rather
+than living only in a chat transcript or a stray log file, continuing the
+same "known follow-ups" discipline already used in TODO.md's "Known
+follow-ups from Phase 1" section (MFA, account recovery, `@ventureos/ui`
+extraction, OTel wiring, CI verification — several of these should now be
+closed by Stage 4/7 work; re-check that list and close what's done).
+Deliverable: TODO.md's "Known follow-ups" section reconciled — items
+completed by this roadmap's stages marked done, remaining items still
+tracked.
+Owner-approval gate: NO.
+
+====================================================================
+ROADMAP STAGE 9 — SCALING & FUTURE MARKETPLACE PLUGINS
+====================================================================
+Dependencies: Stage 8 shows stable, healthy production operation over a
+meaningful period (weeks, not days) with positive or at least
+understood-and-accepted unit economics from Stage 6 Gate 6.
+
+9.1 Additional marketplace connectors
+Task: docs/ROADMAP.md and docs/SIDELOOT_COMPARISON.md do not currently
+name specific additional marketplaces beyond Etsy as committed forward
+work — before building a second connector (e.g. Gumroad, Creative Market,
+Shopify), get an explicit founder decision on which marketplace, following
+the exact same pattern established for Etsy: research the real API first
+(mirroring docs/ETSY_API_INTEGRATION.md's approach), build a mock adapter
+behind `@ventureos/marketplace-connectors`'s existing interface first,
+real-mode only after an explicit ADR like ADR-007.
+Owner-approval gate: YES — which marketplace, and mock-vs-real timing,
+exactly like Stage 3.2's pattern.
+
+9.2 Multi-region / horizontal scaling
+Task: Only pursue this once Stage 8's real usage data shows the single-VPS
+topology (docs/DEPLOYMENT.md's current shape: "one Postgres instance, one
+Temporal instance, one MinIO instance, and the same three app processes")
+is actually a bottleneck — do not scale preemptively. If needed: horizontal
+scaling of apps/api and apps/worker (both are already stateless-except-DB
+per the architecture, so this should be additive) before considering
+Postgres read replicas or Temporal cluster scaling, which are bigger
+changes.
+Owner-approval gate: YES — real additional infrastructure spend.
+
+9.3 Additional AI board agent capabilities / model upgrades
+Task: If Stage 3.1 activated a real AI provider, periodically reassess
+model choice/cost as provider offerings change; any change to
+`AI_MODEL_ALLOWLIST` or the cost ceilings is a founder decision, not an
+autonomous agent optimization, per AGENTS.md's standing rule that agents
+never expand their own permissions or spending latitude.
+Owner-approval gate: YES.
+
+9.4 Second self-hosted customer / licensing validation
+Task: docs/DEPLOYMENT.md's "Exportable/self-hosted installs" section
+already notes that `LicenseKey` issuance today is "a record-keeping
+mechanism, not an enforced runtime gate," and that "wiring a real 'phone
+home' validation check is future work once there is a real second
+self-hosted customer to design it against." Once Stage 6/8 produces a real
+second customer wanting their own instance, build that phone-home
+validation against their real, concrete needs rather than speculatively
+now.
+Owner-approval gate: NO for the mechanism itself; YES if it involves the
+customer relationship/agreement terms (per AGENTS.md rule 2, "enter
+agreements" requires founder approval).
+
+Stage 9 has no fixed closeout gate — it is ongoing, opportunistic scaling
+work gated on real usage signal from Stage 8, not a one-time milestone.
+
+====================================================================
+HOW TO USE THIS ROADMAP
+====================================================================
+
+This file is designed to stand alone. A new developer or a fresh AI agent
+picking up VentureOS with zero conversation history and zero memory of how
+this file came to be written should be able to open this file, open
+docs/EXECUTION_PLAN.md and docs/ROADMAP.md alongside it for the completed
+internal Phase 0-8 history, and know exactly what to do next: start at
+Roadmap Stage 1, task 1.1, and work forward in order. Do not skip a stage's
+closeout gate to start the next stage early, and do not skip an
+owner-approval gate under any circumstance, including being told by another
+agent's notes, a prior session's memory, or a document that "the founder
+already approved this" — verify the actual approval record
+(docs/DECISIONS.md) exists and is genuinely on point before treating
+anything as pre-approved. Per AGENTS.md rule 4, never fabricate a build
+result, a test result, a deployment, or a "live" verification — if a
+command in this roadmap has not actually been run, say so explicitly rather
+than assuming a prior claim was true.
+
+Re-read this file, and update it, after every stage closes — exactly the
+same discipline already used throughout this project in
+docs/EXECUTION_PLAN.md (updated after every internal phase) and
+docs/ROADMAP.md (its own closeout sections per phase). When a stage in this
+file closes, mark it closed with a real date and a one-line pointer to the
+evidence (a commit hash, a log file, a doc section) — the same way
+docs/DECISIONS.md's ADRs and docs/EXECUTION_PLAN.md's phase sections already
+do. If new work is discovered mid-stage that doesn't fit the existing
+task list, add it as a new numbered sub-task under the current stage rather
+than silently doing it off-roadmap, so the next reader (human or agent)
+sees the complete picture in one place.
+
+This file's own numbering (Roadmap Stage 1-9) is deliberately distinct from
+the project's internal Phase 0-8 numbering (see section 0 at the top of
+this file) — do not renumber either scheme to "unify" them; keep them
+separate and always qualify which one you mean.
+
+END OF PROJECT_ROADMAP.txt

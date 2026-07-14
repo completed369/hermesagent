@@ -3,7 +3,8 @@
  * appear in logs"). This is a defense-in-depth layer, not a substitute for
  * never logging secret material in the first place.
  */
-const SECRET_KEY_PATTERN = /(secret|password|token|api[_-]?key|authorization|credential|private[_-]?key)/i;
+const SECRET_KEY_PATTERN =
+  /(secret|password|token|api[_-]?key|authorization|credential|private[_-]?key)/i;
 const REDACTED = '[REDACTED]';
 
 export function redactSecrets<T>(value: T, seen: WeakSet<object> = new WeakSet()): T {

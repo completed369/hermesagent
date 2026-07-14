@@ -1,0 +1,23 @@
+
+> @ventureos/database@0.1.0 migrate:dev D:\Documents\claudehermespromt\ventureos\packages\database
+> dotenv -e ../../.env -- prisma migrate dev "--name" "phase4_product_and_listing"
+
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "ventureos", schema "public" at "localhost:5432"
+
+Applying migration `20260713173019_phase4_product_and_listing`
+
+The following migration(s) have been created and applied from new schema changes:
+
+migrations/
+  ΓööΓöÇ 20260713173019_phase4_product_and_listing/
+    ΓööΓöÇ migration.sql
+
+Your database is now in sync with your schema.
+
+Running generate... (Use --skip-generate to skip the generators)
+[2K[1A[2K[GRunning generate... - Prisma Client
+[2K[1A[2K[GΓ£ö Generated Prisma Client (v5.22.0) to .\..\..\node_modules\.pnpm\@prisma+client
+@5.22.0_prisma@5.22.0\node_modules\@prisma\client in 421ms
+
+

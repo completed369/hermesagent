@@ -1,2 +1,2 @@
-export * from './board-voting';
-export * from './policies';
+export * from './board-voting.js';
+export * from './policies.js';

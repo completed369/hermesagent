@@ -17,13 +17,26 @@ async function bootstrap() {
   app.enableCors({ origin: env.API_CORS_ORIGIN, credentials: true });
   app.setGlobalPrefix('api');
 
-  const config = new DocumentBuilder()
-    .setTitle('VentureOS API')
-    .setDescription('VentureOS - Human-Controlled AI Business Operating System')
-    .setVersion('0.1.0')
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // Swagger doc generation is best-effort, not load-bearing: under the tsx
+  // dev runner, @nestjs/swagger's parameter explorer has been observed to
+  // throw on esbuild-emitted decorator metadata for some custom parameter
+  // decorators (TypeError reading '0' of undefined in
+  // ParameterMetadataAccessor.explore). Rather than let a docs-generation
+  // bug take down the whole API, isolate it and log a warning instead.
+  // See docs/KNOWN_LIMITATIONS.md.
+  try {
+    const config = new DocumentBuilder()
+      .setTitle('VentureOS API')
+      .setDescription('VentureOS - Human-Controlled AI Business Operating System')
+      .setVersion('0.1.0')
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+  } catch (err) {
+    logger.warn('Swagger doc generation failed - API will still start without /api/docs', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   await app.listen(env.API_PORT);
   logger.info('API started', { port: env.API_PORT, env: env.NODE_ENV });

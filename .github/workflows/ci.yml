@@ -22,7 +22,7 @@ jobs:
           POSTGRES_USER: ventureos
           POSTGRES_PASSWORD: ci-only-password
           POSTGRES_DB: ventureos
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U ventureos -d ventureos"
           --health-interval 5s

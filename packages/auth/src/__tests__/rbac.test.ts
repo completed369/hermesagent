@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { requirePermission, hasPermission, ForbiddenError, type AuthorizationContext } from '../rbac';
+import {
+  requirePermission,
+  hasPermission,
+  ForbiddenError,
+  type AuthorizationContext,
+} from '../rbac';
 
 const ctx: AuthorizationContext = {
   userId: 'u1',
