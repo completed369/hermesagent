@@ -84,6 +84,32 @@ export class ProductsService {
     });
   }
 
+  /**
+   * Workspace-scoped Product Studio index. Returns every product in the
+   * caller's workspace (orderBy createdAt desc) using only existing Prisma
+   * fields. `opportunity.title` is surfaced via the product's
+   * ventureProposal relation (Product.ventureProposal is unique per product).
+   */
+  async listForWorkspace(workspaceId: string) {
+    return prisma.product.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        title: true,
+        ventureProposalId: true,
+        createdAt: true,
+        updatedAt: true,
+        ventureProposal: {
+          select: {
+            opportunity: { select: { title: true } },
+          },
+        },
+      },
+    });
+  }
+
   async getById(workspaceId: string, id: string) {
     const product = await prisma.product.findFirst({
       where: { id, workspaceId },

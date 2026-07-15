@@ -29,4 +29,10 @@ export class ProductsController {
   getById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.productsService.getById(user.workspaceId, id);
   }
+
+  @Get('products')
+  @RequirePermission('product:view')
+  listForWorkspace(@CurrentUser() user: AuthenticatedUser) {
+    return this.productsService.listForWorkspace(user.workspaceId);
+  }
 }

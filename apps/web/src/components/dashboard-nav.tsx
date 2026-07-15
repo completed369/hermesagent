@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-const NAV_ITEMS = [
+export const NAV_ITEMS = [
   { href: '/dashboard', label: 'Command Centre', available: true },
   { href: '/dashboard/onboarding', label: 'Onboarding', available: true },
   { href: '/dashboard/audit', label: 'Audit Centre', available: true },
@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { href: '/dashboard/opportunities', label: 'Opportunity Feed', available: true },
   { href: '/dashboard/board-room', label: 'Board Room', available: true },
   { href: '/dashboard/approvals', label: 'Approval Centre', available: true },
-  { href: '/dashboard/board-room', label: 'Product Studio', available: true },
+  { href: '/dashboard/products', label: 'Product Studio', available: true },
   { href: '/dashboard/research', label: 'Research Connectors', available: true },
   { href: '/dashboard/finance', label: 'Finance Centre', available: true },
   { href: '#', label: 'Workflow Centre', available: false },
