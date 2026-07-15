@@ -187,8 +187,8 @@ export function RecordRevenueAction({ ventureProposalId }: { ventureProposalId: 
         </button>
       </div>
       <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
-        Manual entry -- Phase 6&apos;s marketplace pilot is mock-only (no real Etsy account connected),
-        so there is no live sales feed to sync from yet.
+        Manual entry -- Phase 6&apos;s marketplace pilot is mock-only (no real Etsy account
+        connected), so there is no live sales feed to sync from yet.
       </p>
     </div>
   );

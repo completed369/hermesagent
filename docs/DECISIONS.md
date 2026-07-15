@@ -470,7 +470,7 @@ masked the entire time:
   notes): TypeScript's declaration-emit can't portably name an inferred
   Prisma payload type across the monorepo's nested `node_modules`. **Fix**:
   a named `SubscriptionWithPlan = Prisma.SubscriptionGetPayload<{include:
-  {plan: true}}>` type alias, used as each function's explicit return type.
+{plan: true}}>` type alias, used as each function's explicit return type.
 - Two of the package's own unit test files indexed arrays without
   accounting for `noUncheckedIndexedAccess`: `errors.test.ts` read
   `errors[0].message` after building a literal array (`TS2532`), and
@@ -507,7 +507,7 @@ linted against this rule before. **Fix**: escaped each with `&apos;`
 cosmetic-only change, no behavior difference.
 
 **Pattern across all four**: three of the four bugs (2, 3, 4) were only
-reachable because a *tooling gap* (an unlinked workspace package, a missing
+reachable because a _tooling gap_ (an unlinked workspace package, a missing
 ESLint config) had been silently suppressing an entire category of checks
 for one or more prior phases — the underlying code defects themselves had
 existed unnoticed the whole time. This is a different failure mode from

@@ -25,9 +25,7 @@ type SubscriptionWithPlan = Prisma.SubscriptionGetPayload<{ include: { plan: tru
  * in this phase (see docs/DECISIONS.md ADR-010), so no amount is ever
  * actually charged for the trial or any later plan change.
  */
-export async function startTrialSubscription(
-  workspaceId: string,
-): Promise<SubscriptionWithPlan> {
+export async function startTrialSubscription(workspaceId: string): Promise<SubscriptionWithPlan> {
   const existing = await prisma.subscription.findUnique({ where: { workspaceId } });
   if (existing) {
     throw new SubscriptionAlreadyExistsError(
@@ -89,9 +87,7 @@ export async function changePlan(
 /** Moves a TRIALING or PAST_DUE subscription to ACTIVE and opens a fresh
  * monthly billing period, recording one mock (always-PAID) invoice for it.
  * No real charge is ever attempted -- `billingMode` stays `'MOCK'`. */
-export async function activateSubscription(
-  workspaceId: string,
-): Promise<SubscriptionWithPlan> {
+export async function activateSubscription(workspaceId: string): Promise<SubscriptionWithPlan> {
   const subscription = await prisma.subscription.findUnique({
     where: { workspaceId },
     include: { plan: true },

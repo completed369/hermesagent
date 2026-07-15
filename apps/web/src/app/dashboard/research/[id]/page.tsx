@@ -175,10 +175,10 @@ export default async function ResearchConnectorDetailPage({ params }: { params: 
       <div className="vos-card">
         <h2 style={{ fontSize: 16, marginTop: 0 }}>Evidence produced</h2>
         <p style={{ fontSize: 13, color: 'var(--vos-text-muted)', marginTop: 0 }}>
-          Freshness/reliability are computed for real from this contract&apos;s freshness requirement and
-          source type (Phase 5 deliverable #3) -- never hand-typed. The excerpt below is always the
-          sanitized version; any prompt-injection attempt in the raw payload has already been
-          neutralized before it reaches this page.
+          Freshness/reliability are computed for real from this contract&apos;s freshness
+          requirement and source type (Phase 5 deliverable #3) -- never hand-typed. The excerpt
+          below is always the sanitized version; any prompt-injection attempt in the raw payload has
+          already been neutralized before it reaches this page.
         </p>
         {evidenceArtifacts.length === 0 ? (
           <p style={{ color: 'var(--vos-text-muted)', fontSize: 14 }}>No evidence produced yet.</p>

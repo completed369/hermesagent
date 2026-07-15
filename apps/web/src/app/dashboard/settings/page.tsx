@@ -131,8 +131,8 @@ export default async function SettingsPage() {
       <section className="vos-card" style={{ display: 'grid', gap: 12 }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>White-label branding</h2>
         <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
-          Applied to the dashboard shell (app name, logo, accent color) so a reselling customer&apos;s
-          installation doesn&apos;t visibly say &quot;VentureOS&quot;.
+          Applied to the dashboard shell (app name, logo, accent color) so a reselling
+          customer&apos;s installation doesn&apos;t visibly say &quot;VentureOS&quot;.
         </p>
         <UpdateBrandingAction
           brandName={workspaceSummary?.branding?.brandName ?? null}
