@@ -1,5 +1,20 @@
 # TODO
 
+<!-- STATUS UPDATE — 2026-07-15:
+Phase 2-8 work is now COMMITTED and protected. Branch:
+recovery/phase2-8-checkpoint-20260715. Commits: 6c8a699 (checkpoint recovered
+Phase 2-8 working tree), 933691e (Prettier formatting), 5594883 (PowerShell
+validation-script argument-handling fix). Working tree is clean. A fresh
+`.\scripts\run-validation.ps1` after 5594883 passed all six stages (exit 0:
+format; lint 17/17; typecheck 36/36; unit 67 tests; integration 7 files/54
+tests; build 20/20). Docker services verified healthy/running (PostgreSQL,
+MinIO, Temporal, Temporal UI); API /api/health/ready returned HTTP 200.
+STILL PENDING (unchanged): VentureOS is a local dev build, NOT production
+deployed; real AI provider, live Etsy publication, real payments, and
+advertising remain disabled/pending; and two known UI tasks are still open —
+(1) wire real Command Centre stats + remove stale phase text/badges, and
+(2) fix the Product Studio nav link that duplicates Board Room. -->
+
 **See `docs/EXECUTION_PLAN.md` for the full Phase 0–8 task breakdown and the
 canonical up-to-date completion status.** This file only tracks the
 immediate next actions.

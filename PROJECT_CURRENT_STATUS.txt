@@ -1,8 +1,60 @@
 ================================================================================
 VENTUREOS — PROJECT CURRENT STATUS (OPERATIONAL REPORT)
 Generated: 2026-07-14
+Status update applied: 2026-07-15
 Repository: D:\Documents\claudehermespromt\ventureos
 ================================================================================
+
+################################################################################
+STATUS UPDATE — 2026-07-15 (SUPERSEDES STALE "UNCOMMITTED" CLAIMS BELOW)
+################################################################################
+The single most important finding in the original 2026-07-14 report — that
+Phase 2-8 work existed ONLY as uncommitted working-tree changes with zero
+rollback point — HAS BEEN RESOLVED. It is preserved verbatim below as
+historical record, but every statement in this file describing Phase 2-8 as
+"uncommitted", "never committed", "zero git history", or as the "TOP BLOCKER /
+REQUIRES OWNER DECISION" is now HISTORICAL and no longer current.
+
+Verified current facts as of 2026-07-15:
+  - Current branch: recovery/phase2-8-checkpoint-20260715
+  - Phase 2-8 recovery checkpoint commit:
+      6c8a699 chore: checkpoint recovered Phase 2-8 working tree
+  - Formatting commit:
+      933691e style: apply verified Prettier formatting
+  - Validation-script fix commit:
+      5594883 fix: correct PowerShell validation argument handling
+  - Working tree is CLEAN.
+  - Phase 2-8 work is no longer uncommitted or unprotected; it is committed
+    on the branch above (resolved by checkpoint commit 6c8a699).
+  - .env is gitignored and not tracked.
+  - Docker services verified: PostgreSQL healthy, MinIO healthy, Temporal
+    running, Temporal UI running.
+  - API readiness endpoint (/api/health/ready) returned HTTP 200.
+  - Fresh validation was executed after commit 5594883 via
+    `.\scripts\run-validation.ps1`, exit code 0, "All validation steps passed":
+      * Format check passed
+      * Lint passed: 17/17 tasks
+      * Typecheck passed: 36/36 tasks
+      * Unit tests passed: 67 tests
+      * Integration tests passed: 7 files, 54/54 tests
+      * Production build passed: 20/20 tasks
+  - The earlier opportunities.service.ts Prisma typecheck errors came from
+    stale historical logs and are NOT present in the fresh typecheck.
+  - Remaining known warning (non-blocking): turbo reports no output files
+    configured for @ventureos/api#build — a turbo.json outputs-configuration
+    warning only.
+
+STILL TRUE / UNCHANGED (do not read this update as claiming otherwise):
+  - VentureOS is a verified LOCAL DEVELOPMENT build; it is NOT production
+    deployed.
+  - Real AI provider activation, live Etsy publication, real payments,
+    advertising spend, and production deployment all remain disabled/pending.
+  - Two known UI tasks remain unfinished:
+      1. Replace hardcoded Command Centre statistics with real API data and
+         remove stale phase text/badges (task #101).
+      2. Correct the Product Studio navigation link, which currently
+         duplicates Board Room (task #102).
+################################################################################
 
 STATUS LABELS USED THROUGHOUT THIS FILE:
   COMPLETE            = built, and documentation/tests claim it works
@@ -15,18 +67,33 @@ STATUS LABELS USED THROUGHOUT THIS FILE:
 --------------------------------------------------------------------------------
 1. PROJECT HEALTH — ONE-LINE VERDICT
 --------------------------------------------------------------------------------
-FUNCTIONALLY RICH BUT OPERATIONALLY FRAGILE. All 8 internal build phases are
-marked done in the project's own docs and the source code on disk broadly
-supports that claim (78 Prisma models, 9 migrations, ~17 packages, extensive
-test files). However: (a) 90%+ of that work has NEVER been committed to git —
-it exists only as uncommitted changes in the working tree, with zero rollback
-point; (b) the application has NEVER been deployed anywhere beyond a local
-dev machine; (c) two known UI bugs actively misinform users on the first
-screen they see after login; (d) no independent, live proof exists that most
-of the "done" claims actually run, beyond one passing Playwright suite.
+FUNCTIONALLY RICH; PHASE 2-8 NOW COMMITTED AND VALIDATION-GREEN. All 8
+internal build phases are marked done in the project's own docs and the source
+code on disk broadly supports that claim (78 Prisma models, 9 migrations, ~17
+packages, extensive test files). As of the 2026-07-15 status update above:
+(a) [RESOLVED] Phase 2-8 work is now committed on branch
+recovery/phase2-8-checkpoint-20260715 (checkpoint 6c8a699) — the original
+"90%+ never committed" finding below is historical; (b) the application has
+still NEVER been deployed anywhere beyond a local dev machine; (c) two known
+UI bugs still actively misinform users on the first screen they see after
+login; (d) beyond the passing Playwright suite, the full validation suite has
+now been run fresh end-to-end (exit 0) after the checkpoint (see the status
+update above).
 
 --------------------------------------------------------------------------------
-2. CURRENT GIT BRANCH: master (CAVEAT: THIS IS ALMOST MEANINGLESS)
+2. CURRENT GIT BRANCH: recovery/phase2-8-checkpoint-20260715
+--------------------------------------------------------------------------------
+[UPDATED 2026-07-15] The historical account below (branch "master", 6
+commits, Phase 2-8 uncommitted) is RESOLVED and preserved only as record.
+Current verified state: the active branch is
+`recovery/phase2-8-checkpoint-20260715`, and Phase 2-8 work is committed on it
+via checkpoint 6c8a699 ("chore: checkpoint recovered Phase 2-8 working tree"),
+followed by 933691e (Prettier formatting) and 5594883 (validation-script fix).
+The working tree is clean. The paragraphs below describe the PRIOR state
+before that checkpoint and must not be read as current.
+
+--- HISTORICAL (pre-2026-07-15 checkpoint) ---
+2H. CURRENT GIT BRANCH: master (CAVEAT: THIS IS ALMOST MEANINGLESS)
 --------------------------------------------------------------------------------
 - Only branch in the repository: `master` (confirmed via `git branch -a`).
 - `git log --oneline --all` shows exactly 6 commits, ALL dated 2026-07-12/13,
@@ -331,7 +398,14 @@ top-of-file framing as stale.
 --------------------------------------------------------------------------------
 8. BLOCKERS
 --------------------------------------------------------------------------------
-- TOP BLOCKER — REQUIRES OWNER DECISION: Uncommitted git history. 90%+ of the
+- [RESOLVED 2026-07-15 — see status update at top of file] TOP BLOCKER —
+  REQUIRES OWNER DECISION (HISTORICAL): Uncommitted git history. This was the
+  top blocker in the original report and has since been resolved: Phase 2-8
+  work is now committed on branch recovery/phase2-8-checkpoint-20260715
+  (checkpoint 6c8a699), the working tree is clean, and a rollback point now
+  exists. The original finding is preserved verbatim below for the record.
+  --- HISTORICAL ---
+  TOP BLOCKER — REQUIRES OWNER DECISION: Uncommitted git history. 90%+ of the
   claimed-done feature set (Phases 2-8) has never been committed. There is
   no rollback point, no code review trail, no way to bisect a regression,
   and a real risk of total loss of months of claimed work if the working

@@ -27,9 +27,29 @@ always say "internal Phase N" explicitly to avoid confusion. Do not conflate
 "Roadmap Stage 1" (Stabilization, in this file) with "internal Phase 1"
 (Foundation, already done).
 
-====================================================================
-1. CURRENT ACTUAL STATE (as of 2026-07-14)
-====================================================================
+================================================================================
+1. CURRENT ACTUAL STATE (as of 2026-07-14; status-updated 2026-07-15)
+================================================================================
+
+################################################################################
+STATUS UPDATE — 2026-07-15 (SUPERSEDES STALE "UNCOMMITTED" CLAIMS BELOW)
+################################################################################
+The "ZERO GIT HISTORY for ~90% of the claimed work" finding below is RESOLVED.
+It is preserved verbatim as historical record. Current verified state:
+  - Branch: recovery/phase2-8-checkpoint-20260715
+  - Phase 2-8 committed via checkpoint 6c8a699
+    ("chore: checkpoint recovered Phase 2-8 working tree"), then 933691e
+    (Prettier formatting) and 5594883 (validation-script fix).
+  - Working tree clean; a real rollback point now exists. Phase 2-8 is no
+    longer uncommitted, unprotected, or non-resumable via git.
+  - Fresh `.\scripts\run-validation.ps1` after 5594883: exit 0, all six
+    stages pass (format; lint 17/17; typecheck 36/36; unit 67 tests;
+    integration 7 files/54 tests; build 20/20).
+Gap #2 (zero deployments) and gap #3 (two known UI bugs) below remain
+CURRENT and unchanged. VentureOS remains a verified local dev build, not
+production deployed; real AI/Etsy/payments/advertising remain pending.
+--- HISTORICAL (pre-2026-07-15 checkpoint) ---
+1H. CURRENT ACTUAL STATE (as of 2026-07-14)
 
 VentureOS is a monorepo (Next.js apps/web, NestJS apps/api, Temporal
 apps/worker, ~19 packages/*, PostgreSQL via Prisma) implementing an
@@ -159,6 +179,18 @@ sub-task below is ordered; do not skip ahead.
 --------------------------------------------------------------------
 1.1 Commit the entire uncommitted working tree, in phase-grouped commits
 --------------------------------------------------------------------
+[STATUS 2026-07-15 — DONE (via recovery checkpoint, not per-phase A-H).]
+The working tree has been committed and protected: checkpoint 6c8a699
+("chore: checkpoint recovered Phase 2-8 working tree") on branch
+recovery/phase2-8-checkpoint-20260715 captured the recovered Phase 2-8 tree
+in one checkpoint commit, followed by 933691e (Prettier formatting) and
+5594883 (validation-script fix). The working tree is now clean and a rollback
+point exists, so the core intent of this task — "no more uncommitted Phase
+2-8 work at risk of loss" — is satisfied. The per-phase A-H grouping below was
+NOT performed; it remains an OPTIONAL future cleanup (re-committing into
+logical phase-scoped commits) if a reviewable per-phase history is later
+desired. The original task text is preserved below for that purpose.
+--- ORIGINAL TASK (historical) ---
 Task: Create one commit per internal phase (Phase 2 through Phase 8),
 following the existing commit-message style already used by the 6 real
 commits (`git log --oneline --all`), e.g. "feat(opportunities): Opportunity

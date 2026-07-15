@@ -7,6 +7,25 @@ phase at once and requires stopping for a verified report at each phase
 boundary (sections 34, 41, 45). Update this file every time a phase's status
 changes — do not let it go stale like the original `TODO.md` did.
 
+> **STATUS UPDATE — 2026-07-15.** Phase 2-8 work is now committed and
+> protected on branch `recovery/phase2-8-checkpoint-20260715`: checkpoint
+> `6c8a699` (recovered Phase 2-8 working tree), `933691e` (Prettier
+> formatting), `5594883` (PowerShell validation-script argument-handling fix).
+> The working tree is clean. A fresh `.\scripts\run-validation.ps1` run after
+> `5594883` passed all six stages (exit 0): format check; lint 17/17 tasks;
+> typecheck 36/36 tasks; unit tests 67; integration tests 7 files / 54/54;
+> production build 20/20. Docker services verified healthy/running
+> (PostgreSQL, MinIO, Temporal, Temporal UI); API `/api/health/ready`
+> returned HTTP 200. The earlier `opportunities.service.ts` Prisma typecheck
+> errors came from stale historical logs and are not present in the fresh
+> typecheck. Non-blocking known warning: turbo reports no output files
+> configured for `@ventureos/api#build`. **Unchanged:** VentureOS is a
+> verified local development build, NOT production deployed; real AI provider,
+> live Etsy publication, real payments, and advertising remain
+> disabled/pending; and two known UI tasks are still open — (1) wire real
+> Command Centre stats + remove stale phase text/badges, and (2) fix the
+> Product Studio nav link that duplicates Board Room.
+
 **Status legend**
 
 - ✅ **DONE** — built, and personally verified working (I ran it, or drove it

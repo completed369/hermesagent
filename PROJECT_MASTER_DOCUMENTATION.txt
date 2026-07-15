@@ -2,7 +2,57 @@
 VENTUREOS — PROJECT MASTER DOCUMENTATION
 ================================================================================
 Generated: 2026-07-14
+Status update applied: 2026-07-15
 Location: D:\Documents\claudehermespromt\ventureos
+
+################################################################################
+STATUS UPDATE — 2026-07-15 (SUPERSEDES STALE "UNCOMMITTED" CLAIMS BELOW)
+################################################################################
+This document was written on 2026-07-14, when Phase 2-8 work existed only as
+uncommitted working-tree changes. THAT CONDITION HAS BEEN RESOLVED. Every
+statement throughout this document that describes Phase 2-8 as "uncommitted",
+"never committed", "zero git history", "not safely resumable", or that names
+committing the working tree as the top/first required action (including the
+TR-012 / OR-004 "NOT MET" version-control findings, the Section 2/14/16/17/19
+git findings, and the RW-C1 remediation action) is now HISTORICAL and no
+longer current. It is preserved verbatim for the record.
+
+Verified current facts as of 2026-07-15:
+  - Current branch: recovery/phase2-8-checkpoint-20260715
+  - Phase 2-8 recovery checkpoint commit:
+      6c8a699 chore: checkpoint recovered Phase 2-8 working tree
+  - Formatting commit: 933691e style: apply verified Prettier formatting
+  - Validation-script fix: 5594883 fix: correct PowerShell validation
+      argument handling
+  - Working tree is CLEAN. Phase 2-8 work is committed (resolved by 6c8a699);
+    it is no longer uncommitted or unprotected. TR-012 and OR-004 (version
+    control) are therefore now MET for the Phase 2-8 working tree.
+  - .env is gitignored and not tracked.
+  - Docker services verified: PostgreSQL healthy, MinIO healthy, Temporal
+    running, Temporal UI running. API /api/health/ready returned HTTP 200.
+  - Fresh validation executed after 5594883 via
+    `.\scripts\run-validation.ps1` — exit code 0, "All validation steps
+    passed": format check passed; lint 17/17 tasks; typecheck 36/36 tasks;
+    unit tests 67; integration tests 7 files / 54/54; production build 20/20.
+    This satisfies the TR-011 "no single fresh clean run captured" caveat
+    below with a real, current run.
+  - The earlier opportunities.service.ts Prisma typecheck errors came from
+    stale historical logs and are NOT present in the fresh typecheck.
+  - Remaining known warning (non-blocking): turbo reports no output files
+    configured for @ventureos/api#build (turbo.json outputs config warning).
+
+STILL TRUE / UNCHANGED (scope and safety posture are NOT altered by this
+update):
+  - VentureOS is a verified LOCAL DEVELOPMENT build; it is NOT production
+    deployed.
+  - Real AI provider activation, live Etsy publication, real payments,
+    advertising spend, and production deployment all remain disabled/pending.
+  - Two known UI tasks remain unfinished: (1) replace hardcoded Command
+    Centre statistics with real API data and remove stale phase text/badges;
+    (2) correct the Product Studio navigation link, which currently
+    duplicates Board Room.
+################################################################################
+
 Document type: Single-file master reference (27 sections)
 Labeling convention used throughout: every substantive claim is tagged
 Confirmed / Implemented / Partially implemented / Planned / Proposed /
