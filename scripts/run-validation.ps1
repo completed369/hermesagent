@@ -19,7 +19,7 @@ $results = @()
 
 foreach ($step in $steps) {
     Write-Step $step.Name
-    & $step.Command @($step.Args)
+    cmd /c "$($step.Command) $($step.Args -join ' ')"
     $exitCode = $LASTEXITCODE
     if ($exitCode -eq 0) {
         Write-Pass "$($step.Name) passed"
