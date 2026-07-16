@@ -1,0 +1,11 @@
+# Repository line-ending policy
+# Keep normal repository text files as LF so Prettier (which defaults to
+# endOfLine: lf) and other tooling stay consistent across Windows/macOS/Linux,
+# regardless of a machine's core.autocrlf setting. Binary files are detected
+# automatically by text=auto and left untouched.
+
+* text=auto eol=lf
+
+# Windows batch/command scripts must remain CRLF to execute correctly.
+*.bat text eol=crlf
+*.cmd text eol=crlf
