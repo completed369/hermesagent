@@ -10,12 +10,14 @@
     "migrate": "dotenv -e ../../.env -- prisma migrate deploy",
     "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
     "seed": "dotenv -e ../../.env -- tsx src/seed.ts",
+    "reset-founder-password": "dotenv -e ../../.env -- tsx src/reset-founder-password.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
+    "@ventureos/auth": "workspace:*",
     "@ventureos/scoring-engine": "workspace:*",
     "@ventureos/security": "workspace:*",
     "@ventureos/policy-engine": "workspace:*",

@@ -24,6 +24,7 @@
     "db:migrate": "pnpm --filter @ventureos/database run migrate",
     "db:migrate:dev": "pnpm --filter @ventureos/database run migrate:dev",
     "db:seed": "pnpm --filter @ventureos/database run seed",
+    "db:reset-founder-password": "pnpm --filter @ventureos/database run reset-founder-password",
     "db:studio": "pnpm --filter @ventureos/database run studio",
     "clean": "turbo run clean && rimraf node_modules"
   },
