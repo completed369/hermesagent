@@ -48,13 +48,45 @@ It is preserved verbatim as historical record. Current verified state:
 Gap #2 (zero deployments) and gap #3 (two known UI bugs) below remain
 CURRENT and unchanged. VentureOS remains a verified local dev build, not
 production deployed; real AI/Etsy/payments/advertising remain pending.
+
+################################################################################
+STATUS UPDATE — 2026-07-16 (GAP #3 UI BUGS RESOLVED; LOCAL FOUNDER CREDENTIAL
+ROTATION UTILITY ADDED AND USED; ALL VALIDATION-GREEN)
+################################################################################
+Gap #3's two known UI bugs are now RESOLVED (see Stage 1.2 and 1.3 below for
+the per-task closeouts). Summary, all committed on branch
+feat/command-centre-product-studio-20260715:
+  - [commit 5a01583] Command Centre now uses REAL workspace data instead of
+    fabricated values; Product Studio has its own /dashboard/products route
+    and no longer shares Board Room's nav destination; a workspace-scoped
+    GET /api/products endpoint (auth + product:view) was added. Product
+    queries are workspace-scoped.
+  - [commit 2b931a3] PermissionGuard Reflector injection is explicitly
+    configured and tested.
+  - [commit 13c8021] Playwright loads the root local .env without hardcoding
+    credentials; the existing E2E suite passes 4/4.
+  - [commit c9d5de4] A LOCAL-DEV-ONLY founder credential rotation utility was
+    added (`pnpm db:reset-founder-password`): updates ONLY the founder
+    passwordHash and revokes ONLY that founder's sessions in one transaction,
+    reads inputs only from env vars, never prints secrets, and REJECTS
+    NODE_ENV=production. The actual local founder credential was rotated
+    successfully and previous founder sessions were revoked; the replacement
+    password is not recorded anywhere. Focused rotation tests: 12 passing.
+  - Verification 2026-07-16: `pnpm install --frozen-lockfile` passes; all six
+    official validation stages pass (exit 0); the working tree was clean
+    after verification.
+Gap #1 (git history) was already resolved on 2026-07-15. Gap #2 (zero
+deployments) remains CURRENT. VentureOS remains a LOCAL DEVELOPMENT build,
+NOT production deployed; Phase 9 has NOT started; real AI/Etsy/payments/
+advertising remain disabled/pending; founder approval remains mandatory for
+sensitive actions; nothing has been pushed, merged, or deployed.
 --- HISTORICAL (pre-2026-07-15 checkpoint) ---
 1H. CURRENT ACTUAL STATE (as of 2026-07-14)
 
 VentureOS is a monorepo (Next.js apps/web, NestJS apps/api, Temporal
 apps/worker, ~19 packages/*, PostgreSQL via Prisma) implementing an
 AI-board-governed venture-creation platform. Per the project's own internal
-Phase 0-8 tracker, all 8 internal phases are coded and internally verified:
+Phase 0-8 tracker, all numbered internal phases 0–8 are coded and internally verified:
 real Prisma migrations applied against a real local Postgres, real unit and
 integration test suites passing, real Temporal workflows exercised, and
 every feature live-browser-verified by whoever built it, according to the
@@ -274,6 +306,19 @@ already sitting in the working tree.
 --------------------------------------------------------------------
 1.2 Fix bug #101 — Command Centre real-data wiring + stale copy
 --------------------------------------------------------------------
+[STATUS 2026-07-16 — DONE, commit 5a01583 "feat: wire Command Centre and add
+Product Studio index" on branch feat/command-centre-product-studio-20260715.]
+The Command Centre now uses REAL workspace data instead of fabricated values.
+The three previously-hardcoded stat cards are wired through pure, unit-tested
+helpers in apps/web/src/lib/dashboard.ts (ventureProposalCount,
+pendingApprovalCount filtering state==='PENDING', currentBudgetUtilisation
+over ACTIVE in-period budgets, connectedIntegrationCount). The helpers fail
+safe to "—" on missing data and never fabricate a "0" count or a "€100"
+limit; the stale "Phase 2+/3+/7" badges and the false "not yet built"
+paragraph were removed. Typecheck, lint, and the full validation suite pass;
+the existing E2E suite passes 4/4. The original task text is preserved below
+for the record.
+--- ORIGINAL TASK (historical) ---
 Task: In apps/web/src/app/dashboard/page.tsx, replace the three hardcoded
 stat values with real data:
   - "Active ventures" (currently literal "0", line 32): fetch
@@ -296,8 +341,8 @@ stat values with real data:
   - Rewrite or remove the "What's real vs. planned" paragraph (lines 91-100)
     — it currently falsely claims opportunities/board/approvals/product/
     listing/finance are "architected... but not yet built." Replace with an
-    accurate one-paragraph summary of what is real today (all 8 internal
-    phases) and what remains mock-only by founder decision (real AI model
+    accurate one-paragraph summary of what is real today (all numbered internal
+    phases 0–8) and what remains mock-only by founder decision (real AI model
     calls, real Etsy publishing, real payment processing — see Roadmap
     Stage 4 below), or delete the paragraph entirely if the stat cards and
     nav now speak for themselves.
@@ -321,6 +366,15 @@ or touch anything external.
 --------------------------------------------------------------------
 1.3 Fix bug #102 — duplicate Product Studio / Board Room nav link
 --------------------------------------------------------------------
+[STATUS 2026-07-16 — DONE, commit 5a01583 on branch
+feat/command-centre-product-studio-20260715.] The "Product Studio" nav entry
+in apps/web/src/components/dashboard-nav.tsx now points to
+'/dashboard/products', distinct from Board Room's '/dashboard/board-room' — no
+two NAV_ITEMS entries share an href. A workspace-level Product Studio index
+page exists at apps/web/src/app/dashboard/products/page.tsx, backed by a new
+workspace-scoped GET /api/products endpoint (authentication + product:view).
+The original task text is preserved below for the record.
+--- ORIGINAL TASK (historical) ---
 Task: In apps/web/src/components/dashboard-nav.tsx, line 13 currently reads
 `{ href: '/dashboard/board-room', label: 'Product Studio', available: true }`
 — identical href to line 11's Board Room entry. Change line 13's href to
@@ -706,7 +760,7 @@ ROADMAP STAGE 5 — STAGING VALIDATION
 Dependencies: Stage 4 closed (a real staging URL exists).
 
 5.1 Full manual QA pass
-Task: Walk every one of the internal 8 phases' features live against the
+Task: Walk every one of the numbered internal phases 0–8's features live against the
 real staging deployment, not localhost — repeat the same manual
 verification steps docs/EXECUTION_PLAN.md records as already done locally
 for each phase (founder login, opportunity feed + promote, board review +
@@ -775,7 +829,7 @@ docs/COMMERCIAL_VALIDATION.md (master spec section 30) — this roadmap does
 not invent new thresholds, it implements exactly the six gates that
 document already specifies, which were "not reachable" at the time that doc
 was written (Phase 1, before any opportunity/proposal/product/listing
-existed) and are now reachable since all 8 internal phases are built:
+existed) and are now reachable since all numbered internal phases 0–8 are built:
 
   Gate 1. Problem Validation — defined customer + problem, evidence
     records present, no critical compliance blocker. Now reachable via the

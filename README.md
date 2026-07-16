@@ -8,10 +8,17 @@ holding final authority over every spend, publication, and irreversible
 action. See `PROJECT_CONTEXT.md` for the full mission and `docs/ROADMAP.md`
 for the phased delivery plan.
 
-**Current status: Phase 0 (environment/repo) and Phase 1 (foundation) source
-code complete. Not yet installed, built, or run — see
-[docs/SANDBOX_LIMITATIONS.md](docs/SANDBOX_LIMITATIONS.md) and
-[docs/LOCAL_VERIFICATION_CHECKLIST.md](docs/LOCAL_VERIFICATION_CHECKLIST.md).**
+**Current status: verified LOCAL DEVELOPMENT build. All numbered internal
+phases 0–8 are committed and validation-green — the full six-stage suite
+(format, lint, typecheck, unit, integration, build) passes, and the
+Playwright login/dashboard e2e suite passes 4/4. This is NOT a production
+deployment: real AI provider calls, live Etsy publishing, real payments, and
+advertising spend all remain disabled/pending, and founder approval remains
+mandatory for every sensitive action. See
+[docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) (canonical status),
+[docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md), and
+[docs/SANDBOX_LIMITATIONS.md](docs/SANDBOX_LIMITATIONS.md) for the historical
+sandbox context in which the code was first authored.**
 
 ## What's implemented in Phase 1
 
@@ -31,10 +38,15 @@ code complete. Not yet installed, built, or run — see
 
 ## What's explicitly NOT implemented yet
 
-Opportunity feed, evidence system, AI board of agents, approval workflow UI,
-product/listing studios, finance dashboards, marketplace publishing — all
-Phase 2+ (see `docs/ROADMAP.md`). Their nav entries exist in the dashboard
-shell but are greyed out and labelled by phase.
+The numbered internal implementation phases 0–8 (opportunity feed, evidence system, AI board of
+agents, approval workflow, product/listing studio, research connectors,
+marketplace pilot, finance/analytics, multi-venture SaaS) are all built and
+their nav entries are live. What remains deliberately mock-only or pending —
+by founder decision, not omission — is: real AI model calls (`AI_PROVIDER=mock`),
+live Etsy publishing (ADR-007, mock-only), real payment processing (ADR-010,
+mock-only), advertising spend, and any staging/production deployment. These
+stay disabled until the founder explicitly authorises them. See
+`docs/ROADMAP.md`, `docs/DECISIONS.md`, and `docs/KNOWN_LIMITATIONS.md`.
 
 ## Repository layout
 
@@ -66,13 +78,15 @@ Then open http://localhost:3000, sign in with the seeded founder account
 [docs/LOCAL_VERIFICATION_CHECKLIST.md](docs/LOCAL_VERIFICATION_CHECKLIST.md)
 to confirm every Phase 1 acceptance criterion locally.
 
-## Why nothing has been installed, built, or tested yet
+## Historical note: the original sandbox authoring environment
 
-This repository was generated in a sandboxed environment with **no Docker**
-and **no outbound network access** (npm/PyPI/GitHub/Docker Hub all blocked).
-Every file here is real, hand-written source — not generator boilerplate —
-but none of it has been through `pnpm install`, a compiler, or a test
-runner. Full details: [docs/SANDBOX_LIMITATIONS.md](docs/SANDBOX_LIMITATIONS.md).
+This repository was first generated in a sandboxed environment with **no
+Docker** and **no outbound network access** (npm/PyPI/GitHub/Docker Hub all
+blocked), so the initial commits were hand-written source that had never been
+through `pnpm install`, a compiler, or a test runner. That is no longer the
+current state: the code has since been installed, migrated, seeded, built,
+and validated locally (see `docs/EXECUTION_PLAN.md`). This section is kept for
+historical context — full details: [docs/SANDBOX_LIMITATIONS.md](docs/SANDBOX_LIMITATIONS.md).
 
 ## License
 

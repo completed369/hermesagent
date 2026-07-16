@@ -1,5 +1,32 @@
 # TODO
 
+<!-- STATUS UPDATE — 2026-07-16:
+The two UI tasks flagged open on 2026-07-15 are now RESOLVED, and a local-dev
+founder credential rotation utility was added and used. Branch:
+feat/command-centre-product-studio-20260715. Relevant commits:
+- 2b931a3 fix(auth): inject Reflector in permission guard (explicit
+  @Inject(Reflector), covered by a guard test)
+- 5a01583 feat: wire Command Centre and add Product Studio index — Command
+  Centre now uses REAL workspace data (no fabricated values); Product Studio
+  has its own /dashboard/products route (no longer shares Board Room's nav
+  destination); workspace-scoped GET /api/products (auth + product:view) added
+- 13c8021 test(e2e): load local environment for Playwright — loads root .env
+  without hardcoding credentials; existing E2E suite passes 4/4
+- c9d5de4 chore(security): add local founder credential rotation utility —
+  LOCAL-DEV-ONLY; updates only the founder passwordHash and revokes only that
+  founder's sessions in one transaction; rejects NODE_ENV=production; 12
+  focused rotation tests passing. The actual local founder credential was
+  rotated successfully and previous founder sessions were revoked (the
+  replacement password is not recorded anywhere).
+Verification 2026-07-16: `pnpm install --frozen-lockfile` passes; all six
+official validation stages pass (`.\scripts\run-validation.ps1`, exit 0);
+working tree clean afterward.
+STILL PENDING (unchanged): VentureOS is a local dev build, NOT production
+deployed; Phase 9 has NOT started; real AI provider, live Etsy publication,
+real payments, and advertising remain disabled/pending; founder approval
+remains mandatory for sensitive actions; nothing has been pushed, merged, or
+deployed. -->
+
 <!-- STATUS UPDATE — 2026-07-15:
 Phase 2-8 work is now COMMITTED and protected. Branch:
 recovery/phase2-8-checkpoint-20260715. Commits: 6c8a699 (checkpoint recovered

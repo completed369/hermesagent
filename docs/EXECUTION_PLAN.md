@@ -1,7 +1,7 @@
 # Execution Plan — Phase 0 to Phase 8
 
 This is the single source of truth for "what is actually done" versus "what
-is still to build," across the entire master spec (all 8 phases, section
+is still to build," across the entire master spec (all numbered phases 0–8, section
 34). It exists because the master spec explicitly forbids building every
 phase at once and requires stopping for a verified report at each phase
 boundary (sections 34, 41, 45). Update this file every time a phase's status
@@ -25,6 +25,44 @@ changes — do not let it go stale like the original `TODO.md` did.
 > disabled/pending; and two known UI tasks are still open — (1) wire real
 > Command Centre stats + remove stale phase text/badges, and (2) fix the
 > Product Studio nav link that duplicates Board Room.
+
+> **STATUS UPDATE — 2026-07-16.** The two UI tasks noted as still open in the
+> 2026-07-15 update are now RESOLVED, and a local-development founder
+> credential rotation utility has been added and used — all committed on
+> branch `feat/command-centre-product-studio-20260715` and validation-green.
+>
+> - `2b931a3 fix(auth): inject Reflector in permission guard` — PermissionGuard
+>   now injects `Reflector` explicitly (`@Inject(Reflector)`), covered by a
+>   guard test; fails closed on a missing permission.
+> - `5a01583 feat: wire Command Centre and add Product Studio index` — the
+>   Command Centre now uses **real workspace data** instead of fabricated
+>   values (via unit-tested helpers in `apps/web/src/lib/dashboard.ts` that
+>   fail safe to "—" and never fabricate a count or limit); **Product Studio
+>   has its own `/dashboard/products` route** and no longer shares Board
+>   Room's nav destination; a **workspace-scoped `GET /api/products`**
+>   endpoint was added, requiring authentication plus `product:view`. Product
+>   queries are workspace-scoped. Stale phase badges and the false "not yet
+>   built" copy were removed.
+> - `13c8021 test(e2e): load local environment for Playwright` — Playwright
+>   loads the root local `.env` without hardcoding credentials; the existing
+>   login/dashboard E2E suite passes **4/4**.
+> - `c9d5de4 chore(security): add local founder credential rotation utility` —
+>   a **local-development-only** utility (`pnpm db:reset-founder-password`)
+>   that updates **only** the founder `passwordHash` and revokes **only** that
+>   founder's sessions in a single transaction, reads inputs only from env
+>   vars, never prints the email/password, and **rejects `NODE_ENV=production`**.
+>   The actual local founder credential was rotated successfully and previous
+>   founder sessions were revoked; the replacement password is deliberately
+>   not recorded anywhere. **Focused rotation tests: 12 passing.**
+>
+> Verification 2026-07-16: `pnpm install --frozen-lockfile` passes; all six
+> official validation stages pass (`.\scripts\run-validation.ps1`, exit 0);
+> the working tree was clean after verification. **Unchanged:** VentureOS
+> remains a verified local development build, NOT production deployed; **Phase
+> 9 has not started**; real AI provider, live Etsy publication, real payments,
+> and advertising spend remain disabled/pending; founder approval remains
+> mandatory for sensitive actions; nothing has been pushed, merged, or
+> deployed.
 
 **Status legend**
 
@@ -444,6 +482,6 @@ phase deliverables. Current status:
 ## Immediate next steps (in order)
 
 1. Phases 1 through 8 are all genuinely ✅ DONE — every acceptance criterion verified with real command output or live browser confirmation (see each phase's section above). Phase 6 is mock-only per the founder's explicit 2026-07-14 decision (no real Etsy account connected); Phase 8's billing is mock-only per ADR-010 (no real payment processor connected).
-2. Master spec section 34's 8 phases are now all complete. Do not begin any further build work without explicit founder instruction on what comes next (e.g., connecting a real Etsy account, a real payment processor, or a genuinely new phase of scope).
+2. Master spec section 34's numbered phases 0–8 are now all complete. Do not begin any further build work without explicit founder instruction on what comes next (e.g., connecting a real Etsy account, a real payment processor, or a genuinely new phase of scope).
 
 This file will be updated after every phase-affecting change. `docs/ROADMAP.md` and `TODO.md` both now point here as the canonical status source.

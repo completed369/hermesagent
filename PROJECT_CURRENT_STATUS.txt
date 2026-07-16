@@ -56,6 +56,86 @@ STILL TRUE / UNCHANGED (do not read this update as claiming otherwise):
          duplicates Board Room (task #102).
 ################################################################################
 
+################################################################################
+STATUS UPDATE — 2026-07-16 (SUPERSEDES THE TWO "STILL OPEN" UI TASKS AND
+ADDS THE LOCAL FOUNDER CREDENTIAL ROTATION UTILITY — ALL VALIDATION-GREEN)
+################################################################################
+The two known UI tasks flagged in the 2026-07-15 update above are now
+RESOLVED, and a local-development founder credential rotation utility has been
+added and used. The 2026-07-15 update remains accurate for everything it does
+not contradict; the specific items below supersede it.
+
+Resolved UI tasks (both committed on branch
+feat/command-centre-product-studio-20260715):
+  - [RESOLVED — commit 5a01583 "feat: wire Command Centre and add Product
+    Studio index"] Task #101: the Command Centre now renders REAL
+    workspace data instead of fabricated values. The stat cards use pure,
+    unit-tested helpers (apps/web/src/lib/dashboard.ts) that fail safe to
+    "—" on missing data and never fabricate a "0" count or a "€100" limit:
+    venture count, PENDING-only approval count, current-period ACTIVE budget
+    utilisation, and CONNECTED integration count. Stale "Phase 2+/3+/7"
+    badges and the false "not yet built" copy were removed.
+  - [RESOLVED — commit 5a01583] Task #102: Product Studio now has its own
+    /dashboard/products route (apps/web/src/app/dashboard/products/page.tsx)
+    and the sidebar nav entry points to it. Board Room and Product Studio no
+    longer share the same navigation destination — no two NAV_ITEMS entries
+    share an href.
+  - [commit 5a01583] A workspace-level GET /api/products endpoint now exists,
+    requires authentication plus the product:view permission, and is
+    workspace-scoped (ProductsService.listForWorkspace queries only the
+    caller's workspaceId). Product queries throughout the products module are
+    workspace-scoped.
+
+PermissionGuard fix (committed on the same branch):
+  - [RESOLVED — commit 2b931a3 "fix(auth): inject Reflector in permission
+    guard"] The PermissionGuard now injects Reflector explicitly via
+    @Inject(Reflector) and this is covered by a dedicated guard test. It
+    fails closed: a declared permission the caller lacks yields 403.
+
+Playwright / E2E:
+  - [commit 13c8021 "test(e2e): load local environment for Playwright"]
+    Playwright now loads the repository-root local .env (built-ins only, no
+    new dependency) so DEV_FOUNDER_EMAIL/DEV_FOUNDER_PASSWORD are available
+    to the suite WITHOUT hardcoding credentials; explicit env / CI still
+    wins. The existing login/dashboard E2E suite passes 4/4 (exit 0).
+
+Local founder credential rotation utility:
+  - [commit c9d5de4 "chore(security): add local founder credential rotation
+    utility"] A LOCAL-DEVELOPMENT-ONLY utility exists
+    (packages/database/src/reset-founder-password.ts, invoked via
+    `pnpm db:reset-founder-password`). It reads inputs only from environment
+    variables, and in a single transaction updates ONLY the founder's
+    passwordHash (identified by DEV_FOUNDER_EMAIL) and revokes ONLY that
+    founder's sessions. It never touches other users or other data, never
+    prints the email or password, and REJECTS NODE_ENV=production (fails
+    before any database access). It supports a --dry-run mode that verifies
+    connectivity and user existence without mutating anything.
+  - The actual local founder credential was ROTATED SUCCESSFULLY against the
+    local database: the founder passwordHash changed and all previous founder
+    sessions were revoked (session count went to zero). The rotation ran
+    exactly once. The replacement password is NOT recorded in any
+    documentation and must never be.
+  - Focused rotation tests: 12 passing
+    (packages/database/src/reset-founder-password.test.ts — input validation,
+    dry-run no-mutation, single-row update + session revocation, no-leak
+    assertions, and production-refusal cases).
+
+Verification performed 2026-07-16:
+  - `pnpm install --frozen-lockfile` passes (lockfile up to date).
+  - All six official validation stages pass via
+    `.\scripts\run-validation.ps1` (exit 0): format check, lint, typecheck,
+    unit tests, integration tests, production build.
+  - The Git working tree was clean after verification.
+
+STILL TRUE / UNCHANGED after this update:
+  - VentureOS remains a LOCAL DEVELOPMENT system; it is NOT production
+    deployed. Phase 9 has NOT started.
+  - Real Etsy publishing, live payments, real advertising spend, and
+    autonomous external actions all remain disabled or pending.
+  - Founder approval remains mandatory for every sensitive action.
+  - Nothing has been pushed, merged, or deployed as part of this work.
+################################################################################
+
 STATUS LABELS USED THROUGHOUT THIS FILE:
   COMPLETE            = built, and documentation/tests claim it works
   PARTIAL             = diagnosed and/or partly built, not finished
@@ -602,7 +682,7 @@ nothing to do with code quality and everything to do with how the work has
 14. REASONS FOR THE PERCENTAGE
 --------------------------------------------------------------------------------
 Positive factors (pushing the number up):
-  + All 8 internal phases have real source code on disk, not stubs — 78
+  + All numbered internal phases 0–8 have real source code on disk, not stubs — 78
     Prisma models, 9 migrations, ~17 shared packages, fail-closed guards
     (approval hash-binding, budget hard-stops, plan-limit checks) applied
     consistently across every phase per the docs' own narrative.
@@ -615,7 +695,7 @@ Positive factors (pushing the number up):
     machine-generated, verifiable passing output on disk (e2e-log3.txt).
   + Security/governance patterns (RBAC, audit trail, hash-bound approvals,
     fail-closed budget/plan checks) are applied as a consistent pattern
-    across all 8 phases, not bolted on inconsistently.
+    across all numbered internal phases 0–8, not bolted on inconsistently.
 
 Negative factors (pushing the number down):
   - Zero git history for ~90% of the claimed feature set (Phases 2-8) — no

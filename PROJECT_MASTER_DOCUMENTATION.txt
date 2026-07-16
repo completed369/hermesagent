@@ -53,6 +53,51 @@ update):
     duplicates Board Room.
 ################################################################################
 
+################################################################################
+STATUS UPDATE — 2026-07-16 (TWO KNOWN UI TASKS RESOLVED; LOCAL FOUNDER
+CREDENTIAL ROTATION UTILITY ADDED AND USED; ALL VALIDATION-GREEN)
+################################################################################
+The two known UI tasks listed as unfinished in the 2026-07-15 update above
+are now RESOLVED, and a local-development founder credential rotation utility
+has been added and exercised. All items below are committed on branch
+feat/command-centre-product-studio-20260715 and supersede the corresponding
+"Confirmed bug"/"Partially implemented" findings later in this document
+(notably FR-014 and FR-015, now updated in place).
+
+  - [RESOLVED — commit 5a01583] Command Centre now uses REAL workspace data
+    instead of fabricated values. Stat cards are backed by pure, unit-tested
+    helpers (apps/web/src/lib/dashboard.ts) that fail safe to "—" and never
+    fabricate a number: venture count, PENDING-only approval count,
+    current-period ACTIVE budget utilisation, CONNECTED integration count.
+    Stale phase badges and the false "not yet built" copy were removed.
+  - [RESOLVED — commit 5a01583] Product Studio has its own /dashboard/products
+    route; Board Room and Product Studio no longer share a nav destination.
+    A workspace-level GET /api/products endpoint exists, requires
+    authentication plus product:view, and is workspace-scoped. Product
+    queries are workspace-scoped.
+  - [RESOLVED — commit 2b931a3] PermissionGuard Reflector injection is now
+    explicitly configured (@Inject(Reflector)) and covered by a test.
+  - [commit 13c8021] Playwright loads the root local .env without hardcoding
+    credentials; the existing E2E suite passes 4/4.
+  - [commit c9d5de4] A LOCAL-DEV-ONLY founder credential rotation utility
+    exists (`pnpm db:reset-founder-password`). It updates ONLY the founder
+    passwordHash and revokes ONLY that founder's sessions in one transaction,
+    reads inputs only from env vars, never prints the email/password, and
+    REJECTS NODE_ENV=production. The actual local founder credential was
+    rotated successfully; previous founder sessions were revoked. The
+    replacement password is deliberately NOT recorded here. Focused rotation
+    tests: 12 passing.
+  - Verification 2026-07-16: `pnpm install --frozen-lockfile` passes; all six
+    official validation stages pass (`.\scripts\run-validation.ps1`, exit 0);
+    the working tree was clean after verification.
+
+STILL TRUE / UNCHANGED: VentureOS remains a LOCAL DEVELOPMENT build, NOT
+production deployed; Phase 9 has NOT started; real Etsy publishing, live
+payments, real advertising spend, and autonomous external actions remain
+disabled/pending; founder approval remains mandatory for sensitive actions;
+nothing has been pushed, merged, or deployed as part of this work.
+################################################################################
+
 Document type: Single-file master reference (27 sections)
 Labeling convention used throughout: every substantive claim is tagged
 Confirmed / Implemented / Partially implemented / Planned / Proposed /
@@ -178,8 +223,8 @@ SECTION 2 — EXECUTIVE SUMMARY
 
 What it is: a Turborepo monorepo (Next.js dashboard, NestJS API, Temporal
 worker, PostgreSQL via Prisma, MinIO object storage) implementing an
-8-phase build plan (the project's own internal Phase 0-8 numbering, per
-docs/EXECUTION_PLAN.md and docs/ROADMAP.md). All 8 phases are recorded in
+numbered-phase build plan (the project's own internal Phase 0-8 numbering, per
+docs/EXECUTION_PLAN.md and docs/ROADMAP.md). All numbered phases 0–8 are recorded in
 the project's own documentation as "DONE" / "fully verified" (Implemented,
 Source: docs/EXECUTION_PLAN.md, docs/ROADMAP.md, TODO.md).
 
@@ -512,22 +557,29 @@ model. Priority: Low. Acceptance: live-verified branding change applies to
 sidebar on next load. Dependencies: dashboard/layout.tsx.
 
 FR-014 Command Centre dashboard shows real workspace summary stats. Status:
-Partially implemented — Confirmed bug: the "Active ventures"/"Pending
-approvals"/"Budget utilisation" stat cards in apps/web/src/app/dashboard/
-page.tsx are hardcoded literal "0"/"€0 / €100" values, not wired to
-GET /ventures, GET /approval-requests, or GET /finance/budgets, despite all
-three real endpoints existing. Component: dashboard/page.tsx. Priority:
-High (tracked as the project's own task #101). Acceptance (not yet met):
-cards reflect live counts. Dependencies: VenturesService.list,
-ApprovalsService (filter state==='PENDING'), FinanceService.listBudgets.
+Implemented [RESOLVED 2026-07-16, commit 5a01583] — the "Active ventures"/
+"Pending approvals"/"Budget utilisation" stat cards in apps/web/src/app/
+dashboard/page.tsx now render REAL workspace data via pure, unit-tested
+helpers in apps/web/src/lib/dashboard.ts (ventureProposalCount,
+pendingApprovalCount filtering state==='PENDING', currentBudgetUtilisation
+over ACTIVE in-period budgets, connectedIntegrationCount). The helpers fail
+safe to "—" on missing data and never fabricate a "0" or a "€100" limit; the
+stale phase badges and the false "not yet built" copy were removed.
+Component: dashboard/page.tsx, lib/dashboard.ts. Priority: High (was task
+#101). Acceptance (MET): cards reflect live counts. Dependencies:
+VenturesService.list, ApprovalsService (filter state==='PENDING'),
+FinanceService.listBudgets.
 
 FR-015 Dashboard navigation must route each distinct module to its own page.
-Status: Partially implemented — Confirmed bug: dashboard-nav.tsx's "Product
-Studio" entry has href identical to "Board Room"'s (`/dashboard/board-room`).
-Component: apps/web/src/components/dashboard-nav.tsx. Priority: Medium
-(tracked as project's own task #102). Acceptance (not yet met): distinct
-route, noting apps/web/src/app/dashboard/products only has a [id] detail
-route today, no index page. Dependencies: apps/web/src/app/dashboard/products.
+Status: Implemented [RESOLVED 2026-07-16, commit 5a01583] — dashboard-nav.tsx's
+"Product Studio" entry now points to '/dashboard/products', a distinct route
+from Board Room's '/dashboard/board-room'; no two NAV_ITEMS entries share an
+href. A workspace-level Product Studio index page exists at
+apps/web/src/app/dashboard/products/page.tsx, backed by GET /api/products
+(auth + product:view, workspace-scoped). Component: apps/web/src/components/
+dashboard-nav.tsx, apps/web/src/app/dashboard/products/page.tsx. Priority:
+Medium (was task #102). Acceptance (MET): distinct route renders Product
+Studio content. Dependencies: apps/web/src/app/dashboard/products.
 
 --- TECHNICAL REQUIREMENTS (TR) ---
 
@@ -2697,7 +2749,7 @@ Factors pushing the estimate DOWN (real, substantial gaps):
 
 Distinguishing "code exists and is claimed complete in docs" from
 "independently proven via a test run visible in this pass": the project's
-own docs (EXECUTION_PLAN.md, ROADMAP.md, TODO.md) report all 8 phases as
+own docs (EXECUTION_PLAN.md, ROADMAP.md, TODO.md) report all numbered phases 0–8 as
 "✅ DONE" / "✅ fully verified" — this is the project's own internal claim,
 Source: those three files, and it is well-supported by real source files,
 migrations, and phase-specific log excerpts quoted directly in Sections
@@ -3734,7 +3786,7 @@ SECTION 27 — FINAL HANDOVER CHECKLIST
 Yes / Partial / No, for each item, with the reasoning behind the label.
 
 Complete source code: YES, but with a critical caveat — Confirmed, real
-source exists on disk for all 8 of the project's own phases, but it is
+source exists on disk for all numbered phases 0–8 of the project's own phases, but it is
 UNCOMMITTED (Section 14/17). A handover of "the repository" today would hand
 over a working tree, not a reviewable git history.
 
