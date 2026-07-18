@@ -1,0 +1,35 @@
+# Dependabot version-update configuration (Phase 9.1).
+# Controlled, weekly checks for npm/pnpm dependencies and GitHub Actions.
+# Limits open PRs to a manageable number. Automatic merging is intentionally
+# disabled — every Dependabot PR still requires CI to pass and founder review.
+
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 10
+    reviewers: []
+    labels:
+      - 'dependencies'
+    # Do not group everything into one PR; let individual bumps be reviewed.
+    groups:
+      typescript-and-build:
+        patterns:
+          - 'typescript'
+          - 'turbo'
+          - 'prettier'
+          - 'eslint*'
+      prisma:
+        patterns:
+          - 'prisma'
+          - '@prisma/*'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    labels:
+      - 'github-actions'
