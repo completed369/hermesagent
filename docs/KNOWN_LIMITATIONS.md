@@ -56,8 +56,14 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
 - **MinIO/Temporal/Postgres connectivity code has never executed.** Client
   configuration (ports, bucket names, connection strings) is believed
   correct based on each library's documented API but is unverified.
-- **CI workflow is unverified** — written to a reasonable GitHub Actions
-  shape but has never actually run.
+- **CI workflow HAS run (corrected 2026-07-17, Phase 9.1).** The
+  `.github/workflows/ci.yml` pipeline executed once against commit
+  `22357e1` and FAILED at the build step (a missing-artifact cascade on the
+  clean runner, not a source bug). Phase 9.1 hardened the workflow
+  (least-privilege permissions, concurrency, timeouts, Prisma client
+  generated before typecheck/build) and added the defensive transaction
+  type fix. See `docs/CI_GOVERNANCE.md`. The historical framing below
+  ("never actually run") is now superseded.
 - **Playwright browsers are not installed** in this sandbox; the e2e test
   file has never executed even once, not even to confirm it parses/compiles
   correctly under the real Playwright test runner.
