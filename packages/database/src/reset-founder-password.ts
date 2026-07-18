@@ -21,7 +21,7 @@
  *    salt:hash hex), identical to the format produced by the seed, so the
  *    result is verifiable by the normal login path.
  */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { hashPassword } from '@ventureos/auth';
 import { prisma as defaultPrisma } from './client.js';
 
@@ -85,7 +85,7 @@ export async function resetFounderPassword(params: ResetFounderParams): Promise<
   }
 
   const passwordHash = hashPassword(password);
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.user.update({
       where: { id: user.id },
       data: { passwordHash },
