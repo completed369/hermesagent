@@ -1,19 +1,39 @@
 name: CI
 
-# Status: written to a reasonable GitHub Actions shape but NEVER RUN.
-# This repository was built in a sandbox with no network/CI access to
-# validate this workflow file end to end. Treat the first real run as a
-# test of this file itself, not just of the application code.
+# Phase 9.1 hardened validation pipeline.
+# Status: runs on GitHub Actions (first run at commit 22357e1 FAILED at the
+# build step due to a missing-artifact cascade on the cold runner — see
+# docs/CI_GOVERNANCE.md). This revision pins official actions, scopes
+# permissions to least privilege, adds timeouts and concurrency, ensures the
+# Prisma client is generated before typecheck/build, and keeps the clean
+# PostgreSQL migration check.
+#
+# CI is authoritative for "does the complete nine-migration chain apply on a
+# fresh database". The local ./scripts/run-validation.ps1 verifies code
+# quality and build on the developer machine but does NOT apply migrations.
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+# Least privilege: this workflow only reads code and runs CI. It never writes
+# to the repository, packages, deployments, or issues.
+permissions:
+  contents: read
+
+# Cancel superseded runs for the same ref/PR to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
+    name: build-and-test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -22,7 +42,8 @@ jobs:
           POSTGRES_USER: ventureos
           POSTGRES_PASSWORD: ci-only-password
           POSTGRES_DB: ventureos
-        ports: ['5432:5432']
+        ports:
+          - '5432:5432'
         options: >-
           --health-cmd "pg_isready -U ventureos -d ventureos"
           --health-interval 5s
@@ -31,21 +52,33 @@ jobs:
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://ventureos:ci-only-password@localhost:5432/ventureos?schema=public
+      DATABASE_URL: postgresql://ventureos:***@localhost:5432/ventureos?schema=public
       AUTH_SECRET: ci-only-auth-secret-not-a-real-secret-32chars
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Enable Corepack (pnpm)
         run: corepack enable
 
-      - name: Install dependencies
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # Use the exact pnpm version declared in package.json
+          # (packageManager: pnpm@9.12.0) via corepack.
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
+
+      # Generate the Prisma client BEFORE typecheck/build so downstream
+      # packages can resolve @ventureos/database's type declarations on a
+      # clean runner. Without this, a missing-artifact cascade causes
+      # spurious "cannot find module" / implicit-any failures.
+      - name: Prisma client generation
+        run: pnpm db:generate
 
       - name: Format check
         run: pnpm run format:check
@@ -56,16 +89,18 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
-      - name: Prisma generate + migrate
-        run: |
-          pnpm db:generate
-          pnpm db:migrate
+      # Apply the full migration chain to the fresh CI PostgreSQL. This is the
+      # authoritative clean-database migration verification. No db:seed runs.
+      - name: Prisma migrate (apply chain)
+        run: pnpm db:migrate
 
       - name: Unit tests
         run: pnpm test:unit
 
+      # Use the root integration command so every package's integration suite
+      # is exercised (not only @ventureos/api). Requires the Postgres service.
       - name: Integration tests
-        run: pnpm --filter @ventureos/api test:integration
+        run: pnpm test:integration
 
-      - name: Build
+      - name: Production build
         run: pnpm build
