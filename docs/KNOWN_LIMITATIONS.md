@@ -56,14 +56,17 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
 - **MinIO/Temporal/Postgres connectivity code has never executed.** Client
   configuration (ports, bucket names, connection strings) is believed
   correct based on each library's documented API but is unverified.
-- **CI workflow HAS run (corrected 2026-07-17, Phase 9.1).** The
-  `.github/workflows/ci.yml` pipeline executed once against commit
-  `22357e1` and FAILED at the build step (a missing-artifact cascade on the
-  clean runner, not a source bug). Phase 9.1 hardened the workflow
-  (least-privilege permissions, concurrency, timeouts, Prisma client
-  generated before typecheck/build) and added the defensive transaction
-  type fix. See `docs/CI_GOVERNANCE.md`. The historical framing below
-  ("never actually run") is now superseded.
+- **CI has run, but there is still no complete green clean-runner result
+  (corrected 2026-07-20, Phase 9.1).** The historical first main-branch run
+  failed at build. The current pull-request run for PR #1 at commit
+  `0f536c7c9511945a135a5a030f34e8908a5a9f4b` also remains red (GitHub
+  Actions run `29660695312`): dependency installation, Prisma generation,
+  format, lint, and typecheck succeeded; Prisma migrate failed because the CI
+  database connection did not succeed; unit tests, integration tests, and
+  production build were skipped. This records the observed stopping point
+  without asserting why the connection failed, a migration defect, or a
+  verified fix. Historical green local validation is separate evidence and
+  does not make the branch CI-ready. See `docs/CI_GOVERNANCE.md`.
 - **Playwright browsers are not installed** in this sandbox; the e2e test
   file has never executed even once, not even to confirm it parses/compiles
   correctly under the real Playwright test runner.

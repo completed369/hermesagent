@@ -165,7 +165,9 @@ immediate next actions.
 - [ ] Multi-factor authentication (deferred per master spec section 8, architecture should anticipate it)
 - [ ] Account recovery flow (password reset) — not implemented, dev-login only so far
 - [ ] OpenTelemetry exporter wiring (currently `OTEL_ENABLED=false` stub only)
-- [ ] CI workflow (`.github/workflows/ci.yml`) is written but unverified — needs a real run
+- [ ] Obtain one complete green clean-runner CI run, including Prisma migrate,
+      unit tests, integration tests, and production build; the current PR #1
+      run is red at Prisma migrate and skipped all three later stages
 
 See `docs/ROADMAP.md` for the full phase-by-phase plan and `docs/KNOWN_LIMITATIONS.md`
 for a complete list of mocked/incomplete functionality.

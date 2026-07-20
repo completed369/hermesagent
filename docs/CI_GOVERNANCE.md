@@ -21,19 +21,22 @@ any older "CI has never run" framing in `docs/KNOWN_LIMITATIONS.md`.
 
 ## Exact required check names
 
-The single CI job is `build-and-test`. It runs, in order:
+The single CI job is `build-and-test`. After checkout and toolchain setup, it
+runs, in order:
 
-1. Format check (`pnpm run format:check`)
-2. Lint (`pnpm run lint`)
-3. Typecheck (`pnpm run typecheck`)
-4. Prisma client generation (`pnpm db:generate`) — runs BEFORE typecheck so
-   downstream packages resolve `@ventureos/database` types on a clean runner
-5. Prisma migrate (`pnpm db:migrate` = `prisma migrate deploy`) — applies the
-   complete nine-migration chain to the fresh CI database
-6. Unit tests (`pnpm test:unit`)
-7. Integration tests (`pnpm test:integration` — the root command, so every
+1. Dependency installation (`pnpm install --frozen-lockfile`)
+2. Prisma client generation (`pnpm db:generate`) — runs before typecheck so
+   downstream packages can resolve `@ventureos/database` types on a clean
+   runner
+3. Format check (`pnpm run format:check`)
+4. Lint (`pnpm run lint`)
+5. Typecheck (`pnpm run typecheck`)
+6. Prisma migrate (`pnpm db:migrate` = `prisma migrate deploy`) — intended to
+   apply the complete nine-migration chain to the fresh CI database
+7. Unit tests (`pnpm test:unit`)
+8. Integration tests (`pnpm test:integration` — the root command, so every
    package's integration suite runs, not only `@ventureos/api`)
-8. Production build (`pnpm build`)
+9. Production build (`pnpm build`)
 
 No `db:seed` runs in CI. No `.env` is loaded; CI uses explicit
 non-production placeholder values only.
@@ -50,13 +53,17 @@ non-production placeholder values only.
 Always run `scripts/run-validation.ps1` locally before pushing. CI is the
 final gate.
 
+Historical green local validation recorded elsewhere in the repository is
+developer-machine evidence only. It does not establish that migration, unit,
+integration, or production-build stages pass on a clean GitHub Actions runner.
+
 > NOTE: turbo caches build/typecheck outputs. A previously cached green run
 > can mask a genuine cold-build failure. If CI reports a "cannot find module
 > '@ventureos/database'" or implicit-any error, first ensure the database
 > package is built (`pnpm --filter @ventureos/database run build`) before
 > trusting a cached local result.
 
-## First CI run and the root cause of the red state
+## Historical first main-branch CI run
 
 - Commit `22357e1` (the Phase 9 starting point) was pushed to `main` and
   triggered GitHub Actions run "CI #1".
@@ -70,19 +77,45 @@ final gate.
   problem, not a logic bug in `reset-founder-password.ts` (whose `tx` is
   correctly typed by Prisma 5.22.0's interactive-transaction overload).
 - The same committed code builds cleanly once the database package is built
-  first (verified locally: full `turbo run typecheck` 36/36, validation
-  script all-green).
+  first (historical local evidence: full `turbo run typecheck` 36/36,
+  validation script all-green). This was not a complete green clean-runner
+  result.
 
-## The implemented fix (Slice 9.1)
+## Slice 9.1 changes awaiting complete clean-runner verification
 
 1. `packages/database/src/reset-founder-password.ts` — the interactive
    `$transaction` callback parameter is now explicitly annotated
-   `Prisma.TransactionClient`. This is behaviour-preserving and defensive:
-   it guarantees that file can never regress to an implicit-any failure even
-   if the database types are temporarily unavailable.
+   `Prisma.TransactionClient`. This behaviour-preserving, defensive change was
+   intended to prevent the previously observed implicit-any failure in that
+   file; the current run does not provide complete clean-runner verification.
 2. `.github/workflows/ci.yml` — hardened as described above, most importantly
-   generating the Prisma client BEFORE typecheck/build so the
-   missing-artifact cascade cannot recur.
+   generating the Prisma client before typecheck/build to address the
+   previously observed missing-artifact cascade. The current pull-request run
+   did not reach unit tests, integration tests, or production build, so these
+   changes do not yet have a complete green clean-runner result.
+
+## Current pull-request CI evidence
+
+- Pull request #1 is open at commit
+  `0f536c7c9511945a135a5a030f34e8908a5a9f4b`.
+- Its `build-and-test` check failed in GitHub Actions run `29660695312`.
+- Verified step outcomes, in execution order:
+  1. Dependency installation: **SUCCEEDED**.
+  2. Prisma client generation: **SUCCEEDED**.
+  3. Format check: **SUCCEEDED**.
+  4. Lint: **SUCCEEDED**.
+  5. Typecheck: **SUCCEEDED**.
+  6. Prisma migrate: **FAILED** because the CI database connection did not
+     succeed.
+  7. Unit tests: **SKIPPED**.
+  8. Integration tests: **SKIPPED**.
+  9. Production build: **SKIPPED**.
+
+This evidence records only where the run stopped. It does not establish why
+the database connection failed, a structural defect in the migration chain, or
+a verified fix. The current branch has no complete green clean-runner result
+and must not be described as CI-ready. One complete green run, including
+migration, unit, integration, and production-build stages, remains required.
 
 ## Confirmation: both Phase 6 migrations are valid
 
@@ -97,10 +130,12 @@ not duplicates:
   foreign key.
 
 Both are already recorded in the development database with checksums and
-completed timestamps, and both apply cleanly to a fresh disposable
-PostgreSQL database (verified during the Slice 9.1 audit). They MUST remain
-unchanged: no edit, delete, rename, squash, or corrective migration. Editing
-or removing either would break Prisma's applied-migration history.
+completed timestamps, and both applied cleanly to a fresh disposable local
+PostgreSQL database during the Slice 9.1 audit. That historical local result
+is separate from the failed current GitHub Actions migration step and is not
+a green clean-runner result. They MUST remain unchanged: no edit, delete,
+rename, squash, or corrective migration. Editing or removing either would
+break Prisma's applied-migration history.
 
 ## Security features — current repository plan
 
