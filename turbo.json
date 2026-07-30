@@ -13,7 +13,25 @@
       "dependsOn": ["^build"],
       "env": ["DATABASE_URL", "AUTH_SECRET"]
     },
-    "test:e2e": { "dependsOn": ["build"] },
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "env": [
+        "AI_PROVIDER",
+        "API_CORS_ORIGIN",
+        "API_PORT",
+        "AUTH_SECRET",
+        "CI",
+        "DATABASE_URL",
+        "DEV_FOUNDER_EMAIL",
+        "DEV_FOUNDER_PASSWORD",
+        "E2E_BASE_URL",
+        "FEATURE_ADVERTISING_ENABLED",
+        "FEATURE_LIVE_PUBLISHING_ENABLED",
+        "FEATURE_PAID_INTEGRATIONS_ENABLED",
+        "MARKETPLACE_ETSY_MODE",
+        "NEXT_PUBLIC_API_BASE_URL"
+      ]
+    },
     "clean": { "cache": false }
   }
 }

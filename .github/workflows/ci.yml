@@ -118,3 +118,23 @@ jobs:
 
       - name: Production build
         run: pnpm build
+
+      # Install only the browser exercised by apps/web/playwright.config.ts.
+      # Playwright's webServer configuration owns deterministic API/web
+      # readiness and tears both processes down when the suite exits.
+      - name: Install Playwright Chromium
+        run: pnpm --filter @ventureos/web exec playwright install --with-deps chromium
+
+      - name: Application E2E
+        run: pnpm test:e2e
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-e2e-failure-${{ github.run_id }}
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          if-no-files-found: warn
+          retention-days: 14

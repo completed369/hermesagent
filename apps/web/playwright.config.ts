@@ -41,9 +41,28 @@ export default defineConfig({
   fullyParallel: true,
   retries: 0,
   reporter: [['html', { open: 'never' }]],
+  webServer: [
+    {
+      command: 'pnpm --filter @ventureos/api start',
+      url: 'http://localhost:3001/api/health/live',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      command: 'pnpm --filter @ventureos/web start',
+      url: 'http://localhost:3000/login',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  ],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
-    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });
