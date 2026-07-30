@@ -354,6 +354,7 @@ export class FinanceService {
     try {
       const result = await recordExperimentResult({
         workspaceId,
+        experimentId,
         experimentVariantId: input.experimentVariantId,
         experimentMetricId: input.experimentMetricId,
         value: input.value,

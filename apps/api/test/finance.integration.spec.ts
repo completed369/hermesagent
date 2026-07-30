@@ -411,6 +411,7 @@ describe('Finance and Analytics (integration)', () => {
 
       const result = await recordExperimentResult({
         workspaceId: workspace.id,
+        experimentId: experiment.id,
         experimentVariantId: control.id,
         experimentMetricId: ctrMetric.id,
         value: 2.5,
@@ -420,6 +421,7 @@ describe('Finance and Analytics (integration)', () => {
       await expect(
         recordExperimentResult({
           workspaceId: otherWorkspace.id,
+          experimentId: experiment.id,
           experimentVariantId: variantB.id,
           experimentMetricId: ctrMetric.id,
           value: 3.1,

@@ -6,6 +6,7 @@ import {
   verifyPassword,
   hashPassword,
   generateSessionToken,
+  hashSessionToken,
   sessionExpiryDate,
 } from '@ventureos/auth';
 import { startTrialSubscription, SubscriptionAlreadyExistsError } from '@ventureos/billing';
@@ -64,7 +65,7 @@ export class AuthService {
     await prisma.session.create({
       data: {
         userId: user.id,
-        sessionToken,
+        tokenDigest: hashSessionToken(sessionToken),
         expiresAt,
         ipAddress: req.ip,
         userAgent:
@@ -179,7 +180,7 @@ export class AuthService {
     await prisma.session.create({
       data: {
         userId: user.id,
-        sessionToken,
+        tokenDigest: hashSessionToken(sessionToken),
         expiresAt,
         ipAddress: req.ip,
         userAgent:
@@ -208,9 +209,10 @@ export class AuthService {
   }
 
   async logout(sessionToken: string): Promise<void> {
-    await prisma.session
-      .updateMany({ where: { sessionToken, revokedAt: null }, data: { revokedAt: new Date() } })
-      .catch(() => undefined);
+    await prisma.session.updateMany({
+      where: { tokenDigest: hashSessionToken(sessionToken), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   private async recordSecurityEvent(

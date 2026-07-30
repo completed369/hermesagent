@@ -63,6 +63,7 @@ export async function startExperiment(
 
 export interface RecordExperimentResultParams {
   workspaceId: string;
+  experimentId: string;
   experimentVariantId: string;
   experimentMetricId: string;
   value: number;
@@ -78,8 +79,21 @@ export async function recordExperimentResult(
     where: { id: params.experimentVariantId },
     include: { experiment: true },
   });
-  if (!variant || variant.experiment.workspaceId !== params.workspaceId) {
+  if (
+    !variant ||
+    variant.experiment.workspaceId !== params.workspaceId ||
+    variant.experimentId !== params.experimentId
+  ) {
     throw new ExperimentNotFoundError('Experiment variant not found');
+  }
+  const metric = await prisma.experimentMetric.findFirst({
+    where: {
+      id: params.experimentMetricId,
+      experimentId: variant.experimentId,
+    },
+  });
+  if (!metric) {
+    throw new ExperimentNotFoundError('Experiment metric not found');
   }
   return prisma.experimentResult.create({
     data: {

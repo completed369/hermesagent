@@ -21,6 +21,7 @@ import { ConfigModule } from './config/config.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { SafeExceptionFilter } from './common/filters/safe-exception.filter';
+import { CsrfOriginGuard } from './common/guards/csrf-origin.guard';
 
 const env = loadEnv();
 
@@ -46,6 +47,7 @@ const env = loadEnv();
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: CsrfOriginGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_FILTER, useClass: SafeExceptionFilter },
   ],

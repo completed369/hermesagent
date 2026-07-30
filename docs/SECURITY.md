@@ -4,12 +4,10 @@
 
 - Password hashing: scrypt with random per-password salt, constant-time
   verification (`packages/auth/src/password.ts`).
-- Server-side sessions: opaque random token (32 bytes) stored in
-  `Session.sessionToken` with a unique DB index. **Known gap**: the token is
-  stored as plaintext in the DB rather than hashed-at-rest; acceptable for a
-  single-founder dev deployment but flagged in `KNOWN_LIMITATIONS.md` as a
-  hardening item (hash the token before storing, compare hashes) before any
-  multi-user or production deployment.
+- Server-side sessions: an opaque random 32-byte token is returned only at
+  creation time. The database stores a deterministic SHA-256 digest in
+  `Session.tokenDigest`; incoming tokens are digested before equality lookup.
+  Expiry and revocation remain server-enforced.
 - httpOnly, sameSite=lax session cookie; `secure` flag auto-enabled in
   production (`NODE_ENV=production`).
 - Server-side RBAC on every sensitive route (`SessionAuthGuard` +
@@ -20,25 +18,37 @@
 - Safe error responses: internal detail (stack traces, DB errors) never
   reaches the client; only a generic message + correlation ID does.
 - Rate limiting (120 req/60s default, configurable).
+- CSRF protection: the global `CsrfOriginGuard` rejects authenticated unsafe
+  methods unless the browser-supplied `Origin` exactly matches
+  `API_CORS_ORIGIN`. Safe methods and cookie-less public authentication
+  requests are intentionally exempt; this control supplements rather than
+  replaces `sameSite=lax`.
 - File upload validation: MIME allowlist, size limit, path-traversal
   rejection (`packages/integrations/src/storage`).
+- Fixture seeding fails closed without explicit non-placeholder founder
+  credentials and is disabled in production.
+- Tenant security-event reads exclude unscoped platform authentication
+  telemetry. Experiment results bind workspace, route experiment, variant, and
+  metric before insertion.
 - Append-only audit log with integrity hashing (tamper-evident, not
   tamper-proof — see limitations).
-- Write-enabled integrations start disabled (`Integration.writeEnabled`
-  defaults to `false`; seed creates all three Phase 1 integrations as
-  `DISCONNECTED`/mock).
+- Integration records start disabled (`Integration.writeEnabled=false`; seed
+  creates mock/disconnected records). Current marketplace, payment, advertising,
+  and AI safety comes from hardcoded mock-only implementations; the global flags
+  and `writeEnabled` are not yet runtime provider-dispatch gates.
 - Secrets are referenced, never stored: `SecretReference.reference` holds an
   env var name or external-secret-manager key, never a value.
 - `.env.example` contains only placeholders; `.gitignore` excludes `.env`.
 
 ## Deferred / not yet implemented
 
-CSRF token enforcement (currently relying on `sameSite=lax` + CORS
-allowlist — acceptable for Phase 1's same-origin-in-practice setup but not
-a complete CSRF defense); multi-factor authentication; account recovery;
-dependency scanning / SAST in CI (workflow file exists but hasn't run);
+Multi-factor authentication; account recovery; dependency vulnerability
+remediation and SAST/secret scanning in CI;
 malware scanning for uploaded files (integration point noted in code, no
-scanner wired); OpenTelemetry export.
+scanner wired); OpenTelemetry export; shared login/registration abuse controls
+and timing equalization; a non-mutating/internal Temporal health probe; atomic
+single-writer approval decisions; subscription/plan enforcement; and fail-closed
+runtime provider kill-switch wiring.
 
 ## See also
 

@@ -1,5 +1,11 @@
 # Known Limitations
 
+> **Status note (2026-07-30):** this file began as a Phase 1 sandbox inventory
+> and still contains historical phase/sandbox statements. For current executed
+> release evidence use `TECHNICAL_RELEASE_BASELINE.md`; for the current security
+> findings and gates use `APPLICATION_SECURITY_BASELINE.md`. Historical claims
+> below must not override those newer records.
+
 ## Sandbox-imposed (not a code problem — see SANDBOX_LIMITATIONS.md)
 
 Nothing in this repository has been installed, compiled, migrated, seeded,
@@ -37,25 +43,37 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
 
 ## Code-level gaps, honestly disclosed
 
-- **Session tokens stored as plaintext** in the DB (unique-indexed, not
-  hashed-at-rest). Fine for single-founder dev; must be hardened
-  (hash-and-compare) before any multi-user or production deployment.
-- **No CSRF token**: relies on `sameSite=lax` cookie + CORS origin allowlist
-  only. Adequate for local dev, not a complete CSRF defense.
-- **No login-attempt lockout**: only the global rate limiter throttles
-  repeated login attempts; no per-account/per-IP brute-force lockout yet.
-- **No dependency scanning has ever run** against this repository (no
-  network access in the build sandbox) — the `pnpm-lock.yaml` does not even
-  exist yet, so exact resolved versions (and any known CVEs in them) are
-  unknown until `pnpm install` runs locally.
-- **Prisma migrations have not been generated.** The schema
-  (`schema.prisma`) is hand-written and believed correct but has never been
-  run through `prisma migrate dev` against a real Postgres instance, so
-  subtle issues (e.g. enum vs. string choices, index naming collisions)
-  could surface on first real migration.
-- **MinIO/Temporal/Postgres connectivity code has never executed.** Client
-  configuration (ports, bucket names, connection strings) is believed
-  correct based on each library's documented API but is unverified.
+- **CSRF protection is origin-based, not a synchronizer token**: authenticated
+  unsafe methods now require an exact `Origin` match in the API's global guard,
+  in addition to `sameSite=lax` and the CORS allowlist. Deployments must keep a
+  single trusted `API_CORS_ORIGIN`; future multi-origin clients will require a
+  reviewed allowlist or a synchronizer-token design.
+- **Authentication abuse controls are not staging-ready**: only the
+  process-local global limiter throttles login/registration. There is no shared
+  per-account/trusted-IP limiter; missing-user login skips synchronous scrypt,
+  leaving timing and distributed KDF-pressure paths.
+- **The public Temporal health probe is mutating**: each unauthenticated request
+  starts and awaits a real workflow. Replace it with a bounded non-mutating or
+  authenticated internal probe before Temporal-backed staging.
+- **Commercial/provider gates are incomplete**: subscription/plan helpers and
+  declared global publishing/advertising/paid-integration/dev-login flags are
+  not feature/provider dispatch gates. Current external-call safety derives
+  from hardcoded mock-only implementations.
+- **Approval decisions are not concurrency-safe**: the pending-state check and
+  decision update are not one atomic single-writer transition. Fix before any
+  real publication, spend, or customer side effect is connected.
+- **Dependency remediation is incomplete**: the Phase 10 application-security
+  review ran `pnpm audit --prod --audit-level=high --json` against the lockfile
+  and found unresolved Critical/High advisories. See
+  `APPLICATION_SECURITY_BASELINE.md`; do not treat the dependency gate as
+  green until a compatibility-tested upgrade changes that result.
+- **Database migrations still require normal production change controls**:
+  the ten-migration chain, including in-place hashing of existing session
+  tokens, has been exercised on disposable PostgreSQL. That does not replace a
+  production backup, restore rehearsal, maintenance plan, or rollback review.
+- **MinIO and live Temporal connectivity remain unverified here.** Disposable
+  PostgreSQL migration, seed, unit/integration, and compatibility probes passed;
+  this is not production infrastructure evidence.
 - **CI has run, but there is still no complete green clean-runner result
   (corrected 2026-07-20, Phase 9.1).** The historical first main-branch run
   failed at build. The current pull-request run for PR #1 at commit
@@ -67,9 +85,11 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   without asserting why the connection failed, a migration defect, or a
   verified fix. Historical green local validation is separate evidence and
   does not make the branch CI-ready. See `docs/CI_GOVERNANCE.md`.
-- **Playwright browsers are not installed** in this sandbox; the e2e test
-  file has never executed even once, not even to confirm it parses/compiles
-  correctly under the real Playwright test runner.
+- **Root E2E build orchestration is defective**: Turbo can report the API build
+  successful while its concurrent dependency build deletes/omits
+  `apps/api/dist/main.js`, so `pnpm test:e2e` then fails before Playwright. A
+  clean sequential API build followed by direct Playwright execution passes all
+  four tests; the root task itself still needs correction.
 - **No malware scanning** on uploaded files (integration point documented,
   not wired).
 - **No OpenTelemetry exporter** wired despite `OTEL_*` env vars existing —
@@ -77,6 +97,8 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
 
 ## Scope limitations (by design, not oversight)
 
-Everything Phase 2 and later (Opportunity/Evidence/Board/Approval/Product/
-Listing/Finance/Experiments/Marketplace-live/Multi-venture) is intentionally
-absent — see `ROADMAP.md`.
+Later-phase opportunity, board, approval, product, research, finance,
+experiment, billing, and marketplace modules now exist. Real-provider/live
+publication and commercial readiness remain intentionally blocked by the
+controls and residual risks above; see `ROADMAP.md` and
+`APPLICATION_SECURITY_BASELINE.md`.

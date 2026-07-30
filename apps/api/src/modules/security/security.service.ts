@@ -5,7 +5,7 @@ import { prisma } from '@ventureos/database';
 export class SecurityService {
   async list(workspaceId: string, limit = 100) {
     return prisma.securityEvent.findMany({
-      where: { OR: [{ workspaceId }, { workspaceId: null }] },
+      where: { workspaceId },
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 500),
     });
