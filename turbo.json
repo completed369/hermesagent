@@ -9,7 +9,10 @@
     "typecheck": { "dependsOn": ["^build"] },
     "test": { "dependsOn": ["^build"] },
     "test:unit": {},
-    "test:integration": { "dependsOn": ["^build"] },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "env": ["DATABASE_URL", "AUTH_SECRET"]
+    },
     "test:e2e": { "dependsOn": ["build"] },
     "clean": { "cache": false }
   }

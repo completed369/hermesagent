@@ -28,18 +28,22 @@ runs, in order:
 2. Prisma client generation (`pnpm db:generate`) — runs before typecheck so
    downstream packages can resolve `@ventureos/database` types on a clean
    runner
-3. Format check (`pnpm run format:check`)
-4. Lint (`pnpm run lint`)
-5. Typecheck (`pnpm run typecheck`)
-6. Prisma migrate (`pnpm db:migrate` = `prisma migrate deploy`) — intended to
+3. Prisma format check (`prisma format --check`)
+4. Prisma schema validation (`prisma validate`)
+5. Format check (`pnpm run format:check`)
+6. Lint (`pnpm run lint`)
+7. Typecheck (`pnpm run typecheck`)
+8. Prisma migrate (`pnpm db:migrate` = `prisma migrate deploy`) — intended to
    apply the complete nine-migration chain to the fresh CI database
-7. Unit tests (`pnpm test:unit`)
-8. Integration tests (`pnpm test:integration` — the root command, so every
-   package's integration suite runs, not only `@ventureos/api`)
-9. Production build (`pnpm build`)
+9. Seed integration fixtures (`pnpm db:seed`) using disposable CI-only founder
+   credentials; the auth and board suites explicitly require the `FOUNDER`
+   role, default workspace, and voting `AgentDefinition` rows
+10. Unit tests (`pnpm test:unit`)
+11. Integration tests (`pnpm test:integration` — the root command, so every
+    package's integration suite runs, not only `@ventureos/api`)
+12. Production build (`pnpm build`)
 
-No `db:seed` runs in CI. No `.env` is loaded; CI uses explicit
-non-production placeholder values only.
+No `.env` is loaded; CI uses explicit non-production placeholder values only.
 
 ## CI versus local validation
 

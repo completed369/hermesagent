@@ -52,8 +52,10 @@ jobs:
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://ventureos:***@localhost:5432/ventureos?schema=public
+      DATABASE_URL: postgresql://ventureos:ci-only-password@localhost:5432/ventureos?schema=public
       AUTH_SECRET: ci-only-auth-secret-not-a-real-secret-32chars
+      DEV_FOUNDER_EMAIL: founder@ventureos.local
+      DEV_FOUNDER_PASSWORD: ci-only-founder-password
 
     steps:
       - name: Checkout
@@ -80,6 +82,12 @@ jobs:
       - name: Prisma client generation
         run: pnpm db:generate
 
+      - name: Prisma format check
+        run: pnpm --filter @ventureos/database exec prisma format --check --schema prisma/schema.prisma
+
+      - name: Prisma validate
+        run: pnpm --filter @ventureos/database exec prisma validate --schema prisma/schema.prisma
+
       - name: Format check
         run: pnpm run format:check
 
@@ -90,9 +98,15 @@ jobs:
         run: pnpm run typecheck
 
       # Apply the full migration chain to the fresh CI PostgreSQL. This is the
-      # authoritative clean-database migration verification. No db:seed runs.
+      # authoritative clean-database migration verification.
       - name: Prisma migrate (apply chain)
         run: pnpm db:migrate
+
+      # Integration suites explicitly require the idempotent baseline fixtures
+      # (FOUNDER role/workspace and voting AgentDefinitions). Credentials above
+      # are disposable CI-only values for this ephemeral database.
+      - name: Seed integration fixtures
+        run: pnpm db:seed
 
       - name: Unit tests
         run: pnpm test:unit
