@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import { ResearchConnectorActions } from '@/components/research-connector-actions';
 
@@ -66,8 +67,13 @@ function runStatusBadgeClass(status: string) {
   return 'vos-badge--mock';
 }
 
-export default async function ResearchConnectorDetailPage({ params }: { params: { id: string } }) {
-  const { data, status } = await serverApiFetch<ContractDetail>(`/research/contracts/${params.id}`);
+export default async function ResearchConnectorDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const { data, status } = await serverApiFetch<ContractDetail>(`/research/contracts/${id}`);
   if (status === 404 || !data) {
     notFound();
   }
@@ -77,9 +83,9 @@ export default async function ResearchConnectorDetailPage({ params }: { params: 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <div>
-        <a href="/dashboard/research" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
+        <Link href="/dashboard/research" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
           ← Back to Research Connectors
-        </a>
+        </Link>
         <h1 style={{ margin: '8px 0 4px', fontSize: 24 }}>{contract.name}</h1>
         <p style={{ color: 'var(--vos-text-muted)', fontSize: 14, maxWidth: 720 }}>
           {contract.purpose}

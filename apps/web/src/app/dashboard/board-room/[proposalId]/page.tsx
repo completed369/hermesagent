@@ -1,4 +1,5 @@
 import { serverApiFetch } from '@/lib/server-api';
+import Link from 'next/link';
 import { BoardRoomActions } from '@/components/board-room-actions';
 import { ProductStudioActions } from '@/components/product-studio-actions';
 
@@ -52,10 +53,15 @@ function productBadgeClass(status: string) {
   return 'vos-badge--mock';
 }
 
-export default async function BoardRoomPage({ params }: { params: { proposalId: string } }) {
+export default async function BoardRoomPage({
+  params,
+}: {
+  params: Promise<{ proposalId: string }>;
+}) {
+  const { proposalId } = await params;
   const [{ data }, { data: productData }] = await Promise.all([
-    serverApiFetch<BoardReview[]>(`/venture-proposals/${params.proposalId}/board-reviews`),
-    serverApiFetch<ProductSummary[]>(`/venture-proposals/${params.proposalId}/products`),
+    serverApiFetch<BoardReview[]>(`/venture-proposals/${proposalId}/board-reviews`),
+    serverApiFetch<ProductSummary[]>(`/venture-proposals/${proposalId}/products`),
   ]);
   const reviews = data ?? [];
   const products = productData ?? [];
@@ -63,9 +69,12 @@ export default async function BoardRoomPage({ params }: { params: { proposalId: 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <div>
-        <a href="/dashboard/opportunities" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
+        <Link
+          href="/dashboard/opportunities"
+          style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}
+        >
           ← Back to Opportunity Feed
-        </a>
+        </Link>
         <h1 style={{ margin: '8px 0 4px', fontSize: 24 }}>Board Room</h1>
         <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, maxWidth: 720 }}>
           The 8 voting board agents (mock provider, Phase 3) review this venture proposal and vote.
@@ -75,7 +84,7 @@ export default async function BoardRoomPage({ params }: { params: { proposalId: 
       </div>
 
       <div className="vos-card">
-        <BoardRoomActions proposalId={params.proposalId} />
+        <BoardRoomActions proposalId={proposalId} />
       </div>
 
       {reviews.length === 0 ? (
@@ -185,7 +194,7 @@ export default async function BoardRoomPage({ params }: { params: { proposalId: 
           single durable workflow -- the result (including the second founder approval request) is
           shown on the product page below.
         </p>
-        <ProductStudioActions proposalId={params.proposalId} />
+        <ProductStudioActions proposalId={proposalId} />
 
         {products.length === 0 ? (
           <p style={{ color: 'var(--vos-text-muted)', fontSize: 14, marginTop: 16 }}>
@@ -228,9 +237,9 @@ export default async function BoardRoomPage({ params }: { params: { proposalId: 
 
       <div className="vos-card">
         <p style={{ fontSize: 14 }}>
-          <a href="/dashboard/approvals" style={{ color: 'var(--vos-accent)' }}>
+          <Link href="/dashboard/approvals" style={{ color: 'var(--vos-accent)' }}>
             View pending approvals in the Approval Centre →
-          </a>
+          </Link>
         </p>
       </div>
     </div>

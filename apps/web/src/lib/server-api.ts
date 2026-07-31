@@ -9,7 +9,7 @@ const AUTH_COOKIE_NAME = 'ventureos_session';
  * never a client-trusted flag.
  */
 export async function serverApiFetch<T>(path: string): Promise<{ data: T | null; status: number }> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
 
   const res = await fetch(`${API_BASE_URL}/api${path}`, {

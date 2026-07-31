@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import { MarketplaceActions } from '@/components/marketplace-actions';
 
@@ -153,8 +154,9 @@ function statusBadgeClass(status: string) {
   return 'vos-badge--mock';
 }
 
-export default async function ProductDetailPage({ params }: { params: { id: string } }) {
-  const { data, status } = await serverApiFetch<ProductDetail>(`/products/${params.id}`);
+export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const { data, status } = await serverApiFetch<ProductDetail>(`/products/${id}`);
   if (status === 404 || !data) {
     notFound();
   }
@@ -183,9 +185,9 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <div>
-        <a href="/dashboard/board-room" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
+        <Link href="/dashboard/board-room" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
           ← Back to Board Room
-        </a>
+        </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '8px 0 4px' }}>
           <h1 style={{ margin: 0, fontSize: 24 }}>{product.title}</h1>
           <span className={`vos-badge ${statusBadgeClass(product.status)}`}>{product.status}</span>
@@ -505,9 +507,9 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
                   </p>
                 ))}
                 <p style={{ fontSize: 13 }}>
-                  <a href="/dashboard/approvals" style={{ color: 'var(--vos-accent)' }}>
+                  <Link href="/dashboard/approvals" style={{ color: 'var(--vos-accent)' }}>
                     Decide in the Approval Centre →
-                  </a>
+                  </Link>
                 </p>
               </div>
             )}
@@ -517,9 +519,9 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
 
       <div className="vos-card">
         <p style={{ fontSize: 14 }}>
-          <a href="/dashboard/approvals" style={{ color: 'var(--vos-accent)' }}>
+          <Link href="/dashboard/approvals" style={{ color: 'var(--vos-accent)' }}>
             View pending approvals in the Approval Centre →
-          </a>
+          </Link>
         </p>
       </div>
     </div>

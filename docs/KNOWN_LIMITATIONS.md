@@ -1,6 +1,6 @@
 # Known Limitations
 
-> **Status note (2026-07-30):** this file began as a Phase 1 sandbox inventory
+> **Status note (2026-08-01):** this file began as a Phase 1 sandbox inventory
 > and still contains historical phase/sandbox statements. For current executed
 > release evidence use `TECHNICAL_RELEASE_BASELINE.md`; for the current security
 > findings and gates use `APPLICATION_SECURITY_BASELINE.md`. Historical claims
@@ -62,11 +62,13 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
 - **Approval decisions are not concurrency-safe**: the pending-state check and
   decision update are not one atomic single-writer transition. Fix before any
   real publication, spend, or customer side effect is connected.
-- **Dependency remediation is incomplete**: the Phase 10 application-security
-  review ran `pnpm audit --prod --audit-level=high --json` against the lockfile
-  and found unresolved Critical/High advisories. See
-  `APPLICATION_SECURITY_BASELINE.md`; do not treat the dependency gate as
-  green until a compatibility-tested upgrade changes that result.
+- **Dependency Critical/High remediation is complete for the validated
+  lockfile**: compatibility-tested Next 15, Nest 11/Express 5, and Vitest 3
+  upgrades plus targeted vulnerable-child replacements reduced both production
+  and complete `pnpm audit` results to zero findings at every severity. This is
+  lockfile-specific evidence, not a permanent waiver: frozen install and both
+  audits must remain required for future dependency changes. See
+  `APPLICATION_SECURITY_BASELINE.md` for advisory roots and validation evidence.
 - **Database migrations still require normal production change controls**:
   the ten-migration chain, including in-place hashing of existing session
   tokens, has been exercised on disposable PostgreSQL. That does not replace a
@@ -85,11 +87,12 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   without asserting why the connection failed, a migration defect, or a
   verified fix. Historical green local validation is separate evidence and
   does not make the branch CI-ready. See `docs/CI_GOVERNANCE.md`.
-- **Root E2E build orchestration is defective**: Turbo can report the API build
-  successful while its concurrent dependency build deletes/omits
-  `apps/api/dist/main.js`, so `pnpm test:e2e` then fails before Playwright. A
-  clean sequential API build followed by direct Playwright execution passes all
-  four tests; the root task itself still needs correction.
+- **Root E2E build orchestration is fixed and regression-protected**: the root
+  task now performs the production build before Playwright, the API build asserts
+  a non-empty `dist/main.js`, and build-contract tests cover stale incremental
+  state. On the remediated dependency graph, clean-state, reused-state, and
+  immediate repeated root runs each passed build 20/20 and E2E 4/4. Future build
+  script or Turbo graph changes must preserve those regression gates.
 - **No malware scanning** on uploaded files (integration point documented,
   not wired).
 - **No OpenTelemetry exporter** wired despite `OTEL_*` env vars existing —

@@ -1,11 +1,11 @@
 # Application Security Baseline — Phase 10
 
-Date: 2026-07-30
+Date: 2026-08-01
 
 ## Provenance and scope
 
-- Parent commit: `fe652af01f14737e37d8acc6a10f6c36a91323f8`
-- Branch: `feat/phase10-security-hardening`
+- Parent commit: `2ebdadd692b59ae10509522f48ce5b1018097cf5`
+- Branch: `security/phase10-dependency-remediation`
 - External technical baseline reference: GitHub Actions run `30538646314`
 - Scope: authentication, sessions, request security, authorization, workspace
   isolation, input/query/output boundaries, audit behavior, dependencies,
@@ -13,8 +13,9 @@ Date: 2026-07-30
 - Environment: local disposable PostgreSQL 16 using synthetic credentials and
   mock providers only. No production environment or real provider was used.
 
-This record is not a claim that VentureOS is production secure. The dependency
-and repository-administration gates below remain open.
+This record is not a claim that VentureOS is production secure. The Critical
+and High dependency gates are closed for the validated lockfile, but the
+application and repository-administration blockers below remain open.
 
 ## Security model observed
 
@@ -45,15 +46,12 @@ and repository-administration gates below remain open.
 
 ### Critical
 
-1. **C-01 — Open development-tool dependency advisory (unfixed).** The complete
-   `pnpm audit --audit-level=high --json` reports one Critical advisory for
-   direct dev dependency `vitest@2.1.9`: arbitrary file read/execution when the
-   Vitest UI server is listening. Repository scripts use non-listening
-   `vitest run`, so it is not reachable in the deployed application or the
-   validated CI/test path. The published fix requires `vitest>=3.2.6`, a major
-   upgrade across the workspace. It was not forced into this bounded changeset.
-   It does not by itself block a runtime-only staging deployment, but it keeps
-   the complete dependency gate and Critical-open flag red.
+1. **C-01 — Development-tool dependency advisory (fixed).** The complete audit
+   previously reported GHSA-9crc-q9x8-hgqq against direct dev dependency
+   `vitest@2.1.9`. Every workspace declaration was upgraded from `^2.1.3` to
+   `^3.2.6`, resolving to `vitest@3.2.7` with `vite@6.4.3`. No Vitest
+   configuration, mock, coverage, test-discovery, skip, or assertion change was
+   required. The full 208-test unit suite and all five build-contract tests pass.
 
 2. **C-02 — Repository-known founder seed credential (fixed locally).**
    - Before: `pnpm db:seed` silently fell back to the public
@@ -123,23 +121,12 @@ and repository-administration gates below remain open.
    - Tests: two red/green package regressions cover foreign metrics and a variant
      from a different route experiment. Existing finance integration tests pass.
 
-5. **H-05 — Production dependency audit remains red (unfixed; staging
-   blocker).** `pnpm audit --prod --audit-level=high --json` exits 1 with 42
-   advisories: 18 High, 21 Moderate, and 3 Low across 365 production dependency
-   nodes. High packages are `next` (8), `multer` (4), `postcss` (2),
-   `fast-uri` (1), `fast-xml-parser` (1), `js-yaml` (1), and `lodash` (1).
-   - Direct runtime exposure: `next@14.2.35` is used by the public web app. The
-     audit's complete fix floor is `next>=15.5.21`, a major upgrade requiring a
-     dedicated compatibility changeset and lockfile update.
-   - Transitive/reachability constraints: no multipart API endpoint was found
-     for Multer; PostCSS and Swagger YAML/Lodash paths process repository-owned
-     build/startup input; fast-xml-parser is reached through the configured
-     storage client and requires a malicious XML response; fast-uri is
-     transitive through schema tooling. These constraints reduce several paths
-     but do not make the audit gate green.
-   - Non-breaking patches exist for several transitive packages, but resolving
-     them safely requires owner-package upgrades or reviewed overrides and a
-     lockfile change. No force-upgrade or lockfile change was made here.
+5. **H-05 — Production dependency audit (fixed).** The initial production audit
+   reported 18 High, 21 Moderate, and 3 Low findings. The compatibility-tested
+   remediation upgraded Next.js to 15.5.22, the coordinated NestJS/Express
+   family to Nest 11.1.28 and Express 5.2.1, and patched reachable transitive
+   packages. The final production and complete audits both exit zero with no
+   finding at any severity. Detailed roots and compatibility evidence are below.
 
 6. **H-06 — Public authentication lacks distributed/account-specific abuse
    control (unfixed; staging blocker).** Login and registration are protected
@@ -207,65 +194,118 @@ and repository-administration gates below remain open.
 
 ## Dependency audit outcome
 
-- Complete command: `pnpm audit --audit-level=high --json`
-  - Exit 1; 59 total advisories: 1 Critical, 26 High, 26 Moderate, 6 Low.
-  - Direct Critical: Vitest development tooling; fixed only by a major upgrade.
-- Production command: `pnpm audit --prod --audit-level=high --json`
-  - Exit 1; 42 total advisories: 18 High, 21 Moderate, 3 Low.
-  - Direct High runtime package: Next.js; complete published remediation requires
-    a major upgrade from 14.2.35 to at least 15.5.21.
-- The lockfile was not changed. No `--force` upgrade was run.
+### Before
+
+- Production: 42 findings — 18 High, 21 Moderate, 3 Low.
+- Complete: 59 findings — 1 Critical, 26 High, 26 Moderate, 6 Low.
+- Reachable runtime High findings included the public Next.js application. Other
+  production paths included Nest platform/Multer, Swagger YAML/Lodash, MinIO XML,
+  Temporal brace expansion, PostCSS, and schema URI processing. The Vitest
+  Critical finding was development-only and not reachable in deployed runtime.
+
+### Remediation roots
+
+- **Next.js:** `next` 14.2.35 -> 15.5.22 and `eslint-config-next` 14.2.15 ->
+  15.5.22 resolved GHSA-9g9p-9gw9-jx7f, GHSA-f82v-jwr5-mffw,
+  GHSA-g5qg-72qw-gw5v, GHSA-h25m-26qc-wcjf, GHSA-mwv6-3258-q52c,
+  GHSA-p5wg-g6qr-c7cg, GHSA-qpjv-v59x-3qc4, GHSA-vf9p-x7vx-q6p9,
+  GHSA-3h52-269p-cp9r, GHSA-gv2c-59w2-j3r8, GHSA-5j59-xgg2-r9c4,
+  GHSA-ggv3-7p47-pfv8, GHSA-4342-x723-ch2f, GHSA-j3hg-5p4h-vf9q, and
+  GHSA-mq59-m269-xvcx.
+- **NestJS/Express:** coordinated upgrades to Nest 11.1.28, Swagger 11.4.6,
+  Express 5.2.1, Nest CLI 11.0.24, Nest testing 11.1.28, and Express 5 typings
+  resolved the platform/Multer/Lodash/js-yaml parent paths. Multer resolved to
+  2.2.0. Addressed advisories include GHSA-44fp-w29j-9vj5,
+  GHSA-4pg4-qvpc-4h7c, GHSA-g5wq-j36m-2p46, GHSA-j2f9-p6j9-4r5q,
+  GHSA-fjgf-rc76-4x9p, GHSA-xxjr-mmjv-4gpg, and GHSA-86r5-2q66-6m8q.
+- **Vitest/Vite:** all 18 workspace Vitest declarations moved from `^2.1.3`
+  (resolved 2.1.9) to `^3.2.6` (resolved 3.2.7); Vite resolves to 6.4.3.
+  This resolves GHSA-9crc-q9x8-hgqq and the Vite High advisories
+  GHSA-g4jq-h2w9-997c, GHSA-93m4-6634-74q7, GHSA-jqfw-vq24-v9c3,
+  GHSA-67mh-4wv8-2f99, and GHSA-g9pc-8g42-g6vq.
+- **Targeted transitive patches:** `fast-uri` 3.1.3 -> 3.1.5,
+  `fast-xml-parser` 5.10.0 -> 5.10.1, and `brace-expansion` 1.1.16/2.1.2/5.0.7
+  -> 1.1.18/2.1.4/5.0.9 resolved GHSA-8ghp-88xm-4h5r,
+  GHSA-jmr7-xgp7-cmfj, GHSA-v6h2-p8h4-qcjw, GHSA-7h2j-9565-4h9v, and
+  GHSA-832h-xg76-4gv6.
+- **Exact vulnerable-child replacements:** reviewed pnpm overrides replace
+  `js-yaml` with 5.2.2, `postcss` with 8.5.18, `sharp` with 0.35.0, and `vite`
+  with 6.4.3. These replace vulnerable code retained by exact/incompatible
+  parent ranges; they do not suppress audit output. They resolve
+  GHSA-2g4f-4pwh-qvx6, GHSA-q7g4-2pjw-v29r, GHSA-566m-qj78-rww5, and
+  GHSA-4h9g-4w22-8q66 in addition to the Vite advisories above.
+
+### Compatibility evidence
+
+- Next 15 asynchronous request APIs are handled by awaiting `cookies()` and
+  dynamic route `params`; internal dashboard anchors were migrated to
+  `next/link`. The generated Next type reference was retained.
+- Nest 11 uses the named `{*path}` middleware catch-all and emits no legacy
+  route-conversion warning. No controller contract or permission behavior was
+  relaxed.
+- Vitest required no config, mock, coverage, environment, or discovery change.
+- Node 24.18.0 was used; all selected packages support the repository's declared
+  Node >=22 floor. Prisma 5.22.0, TypeScript 5.9.3, Playwright 1.61.1, Turbo
+  2.10.4, and pnpm 9.12.0 remained compatible.
+
+### After
+
+- `pnpm audit --prod --audit-level=high --json`: exit 0; 0 Critical, 0 High,
+  0 Moderate, 0 Low.
+- `pnpm audit --audit-level=high --json`: exit 0; 0 Critical, 0 High,
+  0 Moderate, 0 Low.
+- Residual dependency advisories: none. Reachable residual Critical/High: none.
+- No force-upgrade, advisory suppression, ignored finding, or unrelated package
+  refresh was used.
 
 ## Secret and repository protection review
 
-A value-redacting local scanner enumerated 413 tracked and nine untracked
-proposed files, then inspected 404 eligible UTF-8 text files after excluding the
-lockfile and generated outputs. It separately inspected added diff lines for
-private keys and common provider/token/password patterns. Result: zero
-review-required findings; one tracked synthetic fixture was classified as a
-placeholder/reference; zero proposed-diff findings. This is local evidence, not
-confirmation of GitHub Advanced Security settings. Required repository
-administrative protections remain: secret scanning, push protection, protected
-main branch, required passing CI, and least-privilege workflow permissions.
+A value-redacting local scanner enumerated 425 tracked/proposed files and
+inspected 403 eligible UTF-8 text files after excluding the lockfile and
+generated outputs. It separately inspected added diff lines for private keys and
+common provider/token/password patterns. Result: zero review-required findings;
+two tracked synthetic fixture/documentation examples classified as placeholders;
+zero proposed-diff findings. This is local evidence, not confirmation of GitHub
+Advanced Security settings. Required repository administrative protections
+remain: secret scanning, push protection, protected main branch, required
+passing CI, and least-privilege workflow permissions.
 
 ## Validation evidence
 
-Executed with `TURBO_FORCE=true` where Turbo supports cache bypass and with
-synthetic local credentials:
+Executed with a fresh disposable PostgreSQL 16 database, synthetic credentials,
+mock providers, and live/paid flags disabled:
 
-1. `pnpm install --frozen-lockfile --prefer-offline` — PASS; lockfile unchanged.
-2. `pnpm db:generate` — PASS.
-3. `pnpm --filter @ventureos/database exec dotenv -e ../../.env -- prisma format --check --schema prisma/schema.prisma` — PASS.
-4. `pnpm --filter @ventureos/database exec dotenv -e ../../.env -- prisma validate --schema prisma/schema.prisma` — PASS.
-5. Disposable `postgres:16-alpine` on loopback with tmpfs storage — PASS.
-6. `pnpm db:migrate` — PASS; all ten migrations applied fresh.
-7. `pnpm db:seed` — PASS with synthetic founder credentials and mock-only flags.
-8. Existing-row migration compatibility probe — PASS; raw token became the
-   expected 64-character digest and remained lookup-compatible.
-9. `pnpm --filter @ventureos/auth test:unit` — PASS; 8 tests.
-10. `pnpm --filter @ventureos/database test:unit` — PASS; 16 tests.
-11. `pnpm --filter @ventureos/finance-engine test:unit` — PASS; 20 tests.
-12. `pnpm --filter @ventureos/api test:unit` — PASS; 37 tests.
-13. `pnpm --filter @ventureos/api test:integration` — PASS; 58 tests.
-14. `TURBO_FORCE=true; pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/run-validation.ps1` — PASS: format, lint, typecheck, 203 unit tests in 41 files, 58 integration tests, and production build.
-15. Direct Playwright run after a clean sequential API build — PASS; 4 tests.
-    The root Turbo E2E task remains orchestration-defective: its concurrent build
-    can report API success while deleting/omitting `dist/main.js`. The direct run
-    verified the real API entrypoint and exercised both servers.
-16. `pnpm audit --prod --audit-level=high --json` — FAIL (open dependency gate).
-17. `pnpm audit --audit-level=high --json` — FAIL (open dependency gate).
-18. Value-redacting tracked-file and proposed-diff secret scan — PASS.
-19. `git diff --check` — PASS before final cleanup/review.
+1. `pnpm install --frozen-lockfile` — PASS with pnpm 9.12.0.
+2. `pnpm run format:check` — PASS.
+3. `pnpm run lint` — PASS, 17/17 tasks.
+4. `pnpm run typecheck` — PASS, 36/36 tasks.
+5. `pnpm run db:generate` — PASS, Prisma Client 5.22.0.
+6. Prisma format check and validate — PASS.
+7. `pnpm run db:migrate` — PASS; all ten migrations applied fresh.
+8. `pnpm run db:seed` — PASS with explicit synthetic credentials.
+9. `node --test scripts/api-build-contract.test.mjs` — PASS, 5/5.
+10. `pnpm run test:unit` — PASS, 208/208 application tests plus 5/5 build
+    contracts; 18/18 Turbo test tasks.
+11. `pnpm run test:integration` — PASS, 58/58; 17/17 Turbo tasks.
+12. Clean-state root `pnpm run test:e2e` — PASS: build 20/20, E2E 4/4.
+13. Reused-state root `pnpm run test:e2e` — PASS: build 20/20, E2E 4/4.
+14. Immediate repeated root `pnpm run test:e2e` — PASS: build 20/20, E2E 4/4.
+15. Separate `pnpm run build` — PASS, 20/20.
+16. `node scripts/assert-api-entrypoint.mjs` — PASS; non-empty `dist/main.js`
+    verified at 2,377 bytes before cleanup.
+17. Production and complete audits — PASS with zero findings at every severity.
+18. Value-redacting tracked/proposed-file and added-diff secret scan — PASS.
+19. `git diff --check` — PASS.
+20. Cleanup — PASS; app build outputs and disposable database removed.
+21. Final port check — PASS; 3000, 3001, and 5432 closed.
 
 No real AI, marketplace, payment, email, advertising, storage, customer, or
 production account was contacted.
 
 ## Residual risks and staging blockers
 
-- Production and complete dependency audits remain red.
-- The direct Next.js High advisories require compatibility-tested remediation.
-- The direct Vitest Critical development-tool advisory requires a coordinated
-  workspace test-runner upgrade.
+- The dependency Critical/High gates are closed for the validated lockfile, but
+  audits must remain required on future lockfile changes.
 - MFA and account recovery remain deferred product/security work.
 - Login/registration abuse controls and timing equalization remain open.
 - The Temporal health route must stop creating workflows before public staging.
@@ -277,9 +317,9 @@ production account was contacted.
 
 ## Readiness flags
 
-`APPLICATION_SECURITY_BASELINE_READY=False`
+`APPLICATION_SECURITY_BASELINE_READY=True`
 
-`CRITICAL_SECURITY_FINDINGS_OPEN=True`
+`CRITICAL_SECURITY_FINDINGS_OPEN=False`
 
 `HIGH_SECURITY_FINDINGS_OPEN=True`
 
