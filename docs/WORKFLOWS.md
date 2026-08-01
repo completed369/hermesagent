@@ -9,12 +9,10 @@ workflow engine (explicitly forbidden by master spec section 8/33).
 
 `apps/worker/src/workflows/hello-workflow.ts` — proxies a single activity
 (`pingHealthActivity`) with a 30s timeout and 3 retries, returning a
-durable, deterministic result. Started by `apps/api`'s
-`TemporalHealthService` via the shared client in `@ventureos/workflows`, and
-exposed at `GET /api/health/temporal`. This exists solely to prove: the
-worker registers with Temporal, executes a workflow, calls an activity, and
-returns a result — the Phase 1 acceptance criterion "Temporal test workflow
-executes."
+durable, deterministic result. It remains available for explicit development
+verification of the Phase 1 acceptance criterion "Temporal test workflow
+executes," but health endpoints do not start it. `GET /api/health/temporal`
+uses only the non-mutating gRPC Health `Check`; see `docs/HEALTH_CHECKS.md`.
 
 ## Phase 3: `boardApprovalWorkflow` (implemented, live-verified)
 

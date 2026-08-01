@@ -140,12 +140,13 @@ application and repository-administration blockers below remain open.
    workspace-slug conflicts retry transactionally with at most three fresh
    randomized suffixes; exhaustion returns only a controlled generic failure.
 
-7. **H-07 — Public Temporal health probe starts workflows (unfixed; staging
-   blocker when Temporal is connected).** Every unauthenticated
-   `GET /api/health/temporal` starts and awaits a uniquely named workflow. The
-   global per-IP limiter does not prevent distributed workflow/history/worker
-   exhaustion. Replace it with a bounded non-mutating connectivity probe or an
-   authenticated internal-only diagnostic before exposing staging.
+7. **H-07 — Public Temporal health probe starts workflows (fixed in Phase 12).**
+   `GET /api/health/temporal` now performs only the standard gRPC Health `Check`
+   under a 3-second connection/RPC deadline. Readiness includes the same
+   non-mutating Temporal check, returns HTTP 503 on unavailable dependencies,
+   and exposes only generic component status. Repeated disposable-infrastructure
+   probes created no additional workflow history. Server connectivity does not
+   claim worker/task-queue readiness; see `docs/HEALTH_CHECKS.md`.
 
 8. **H-08 — Subscription and global provider flags are not enforcement gates
    (unfixed; commercial blocker).** Plan-limit helpers and subscription
@@ -339,6 +340,36 @@ The original read-only findings report should have been delivered before edits
 began. Implementation started first, so this phase records that sequencing
 violation explicitly rather than presenting the work as procedurally perfect.
 
+### Phase 12 Temporal-health validation — 2026-08-01
+
+The Temporal-health implementation passed its scoped source, unit, build,
+runtime, audit, and secret-scan gates. This does **not** make the full
+application suite green. Two separate reliability blockers remain recorded and
+must not be hidden, skipped, or treated as passing:
+
+1. The complete integration run has produced a Prisma interactive-transaction
+   admission timeout in `auth-abuse.integration.test.ts` when five concurrent
+   same-row operations compete for the two-second admission window. Ten serial
+   focused base-commit runs and six complete base-commit integration runs passed,
+   so the exact timeout is resource-dependent rather than deterministic. The
+   failing test and authentication service are unchanged by the Temporal diff,
+   import no health code, and execute no Temporal-health path.
+2. Clean root E2E has produced a five-second login URL timeout while concurrent
+   asynchronous scrypt work occupied approximately 4.2 seconds. Fifteen repeated
+   base-commit E2E runs did not reproduce that exact URL timeout, but five failed
+   on a separate pre-existing strict-locator race in the same unchanged E2E file.
+   The Playwright spec, timeout, authentication path, and scrypt implementation
+   are unchanged by the Temporal diff; Playwright continues to start the API by
+   polling process-only `/api/health/live`.
+
+Both reported global failures are classified as pre-existing,
+environmental/resource-dependent reliability risks in unchanged code, not as
+failures introduced by the Temporal-health implementation. A separate
+authentication/E2E reliability task is required before the full application
+suite can be called green. No authentication assertion or Playwright timeout was
+weakened or skipped, and no staging or production readiness claim follows from
+the scoped Temporal result.
+
 ## Residual risks and staging blockers
 
 - The dependency Critical/High gates are closed for the validated lockfile, but
@@ -346,7 +377,8 @@ violation explicitly rather than presenting the work as procedurally perfect.
 - MFA and account recovery remain deferred product/security work.
 - Authentication hardening is implemented; deployment proxy-hop configuration
   and digest-secret rotation remain explicit operational responsibilities.
-- The Temporal health route must stop creating workflows before public staging.
+- Temporal health is non-mutating and readiness-gated. Worker/task-queue
+  readiness remains a separately monitored operational limitation.
 - Subscription enforcement and provider kill switches are not wired.
 - Approval decisions require an atomic single-writer transition before real
   side effects are enabled.
@@ -361,11 +393,19 @@ violation explicitly rather than presenting the work as procedurally perfect.
 
 `AUTHENTICATION_STAGING_GATE_READY=True`
 
+`TEMPORAL_PUBLIC_HEALTH_NONMUTATING_READY=True`
+
+`TEMPORAL_READINESS_GATE_READY=True`
+
+`TEMPORAL_STAGING_GATE_READY=True`
+
 `APPLICATION_SECURITY_BASELINE_READY=True`
 
 `CRITICAL_SECURITY_FINDINGS_OPEN=False`
 
 `HIGH_SECURITY_FINDINGS_OPEN=True`
+
+`FULL_APPLICATION_VALIDATION_GREEN=False`
 
 `STAGING_SECURITY_GATE_READY=False`
 

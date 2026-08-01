@@ -117,8 +117,11 @@ browser and see the real dashboard.
 curl http://localhost:3001/api/health/temporal
 ```
 
-Should return `{"healthy": true, "result": {"message": "Hello, Founder...", ...}}`.
-Proves the worker registered with Temporal and executed `helloWorkflow`.
+Should return HTTP 200 with
+`{"status":"ok","checks":{"temporal":{"status":"ok"}},...}`. This proves
+only bounded, non-mutating Temporal server connectivity. It creates no workflow
+history and does not prove worker or task-queue readiness. See
+`docs/HEALTH_CHECKS.md` for monitoring expectations and the worker limitation.
 
 ## First error to report back if anything fails
 

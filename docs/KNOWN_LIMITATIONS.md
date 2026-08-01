@@ -60,9 +60,12 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   trusted hop count; the secure default is `0`, which ignores forwarding headers.
   Rotating the abuse-digest secret invalidates existing pseudonymous buckets and
   therefore requires an explicit operational reset decision.
-- **The public Temporal health probe is mutating**: each unauthenticated request
-  starts and awaits a real workflow. Replace it with a bounded non-mutating or
-  authenticated internal probe before Temporal-backed staging.
+- **Public Temporal health mutation is resolved in Phase 12**: the route now
+  performs only the standard gRPC Health `Check` under one bounded connection/RPC
+  deadline, awaits connection cleanup, and returns generic status. It creates no
+  workflow execution or history and does not claim worker/task-queue readiness.
+  See `HEALTH_CHECKS.md`. Full application validation remains red for separate
+  authentication-transaction and Playwright timing reliability blockers.
 - **Commercial/provider gates are incomplete**: subscription/plan helpers and
   declared global publishing/advertising/paid-integration/dev-login flags are
   not feature/provider dispatch gates. Current external-call safety derives

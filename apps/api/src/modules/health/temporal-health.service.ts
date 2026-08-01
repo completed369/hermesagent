@@ -1,28 +1,25 @@
-import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { getTemporalClient } from '@ventureos/workflows';
-import { loadEnv } from '@ventureos/config';
+import { Inject, Injectable } from '@nestjs/common';
+import { checkTemporalConnection } from '@ventureos/workflows';
+import type { Env } from '@ventureos/config';
+import { ENV_TOKEN } from '../../config/env.provider';
+import { HEALTH_CHECK_TIMEOUT_MS, withHealthTimeout } from './health-timeout';
 
 @Injectable()
 export class TemporalHealthService {
+  constructor(@Inject(ENV_TOKEN) private readonly env: Env) {}
+
   /**
-   * Starts the Phase 1 connectivity-proof workflow (helloWorkflow) and waits
-   * for its result. Requires the worker process to be running and connected
-   * to the same Temporal server/namespace/task queue.
+   * Checks only Temporal server connectivity. This does not prove that an
+   * application worker is polling the configured task queue.
    */
-  async runConnectivityCheck(): Promise<{ healthy: boolean; result?: unknown; message?: string }> {
+  async runConnectivityCheck(): Promise<{ status: 'ok' | 'down' }> {
     try {
-      const env = loadEnv();
-      const client = await getTemporalClient();
-      const handle = await client.start('helloWorkflow', {
-        taskQueue: env.TEMPORAL_TASK_QUEUE,
-        workflowId: `health-check-${randomUUID()}`,
-        args: [{ name: 'Founder' }],
-      });
-      const result = await handle.result();
-      return { healthy: true, result };
-    } catch (err) {
-      return { healthy: false, message: err instanceof Error ? err.message : 'unknown error' };
+      const serving = await withHealthTimeout(
+        checkTemporalConnection(this.env.TEMPORAL_ADDRESS, HEALTH_CHECK_TIMEOUT_MS),
+      );
+      return { status: serving ? 'ok' : 'down' };
+    } catch {
+      return { status: 'down' };
     }
   }
 }
