@@ -102,13 +102,16 @@ export class AuthAbuseService {
 
   async recordAttempt(channel: AuthChannel, context: AuthAbuseContext): Promise<AuthBlock | null> {
     const now = this.clock.now();
-    const rows = await prisma.$transaction(async (tx) => {
-      await this.deleteExpiredBatch(tx, now);
-      const states: StoredAuthAbuseState[] = [];
-      for (const { scope, keyDigest } of this.scopedKeys(channel, context)) {
-        states.push(await this.increment(tx, channel, scope, keyDigest, now));
-      }
-      return states;
+    await this.deleteExpiredBatch(prisma, now);
+    const resultSets = await prisma.$transaction(
+      this.scopedKeys(channel, context).map(({ scope, keyDigest }) =>
+        this.increment(prisma, channel, scope, keyDigest, now),
+      ),
+    );
+    const rows = resultSets.map((result) => {
+      const state = result[0];
+      if (!state) throw new Error('Authentication abuse state update returned no row');
+      return state;
     });
     return this.blockFromRows(channel, rows, now);
   }
@@ -144,19 +147,19 @@ export class AuthAbuseService {
     `;
   }
 
-  private async increment(
-    tx: Prisma.TransactionClient,
+  private increment(
+    client: Pick<Prisma.TransactionClient, '$queryRaw'>,
     channel: AuthChannel,
     scope: AuthScope,
     keyDigest: string,
     now: Date,
-  ): Promise<StoredAuthAbuseState> {
+  ): Prisma.PrismaPromise<StoredAuthAbuseState[]> {
     const policy = AUTH_ABUSE_POLICIES[`${channel}_${scope}`];
     if (!policy) throw new Error(`Unsupported authentication abuse scope: ${channel}_${scope}`);
     const windowCutoff = new Date(now.getTime() - policy.windowMs);
     const expiresAt = new Date(now.getTime() + RETENTION_MS + MAX_COOLDOWN_MS);
 
-    const rows = await tx.$queryRaw<StoredAuthAbuseState[]>`
+    return client.$queryRaw<StoredAuthAbuseState[]>`
       INSERT INTO "auth_abuse_states" (
         "channel", "scope", "keyDigest", "attemptCount", "windowStartedAt",
         "cooldownLevel", "cooldownUntil", "lastAttemptAt", "expiresAt",
@@ -219,10 +222,6 @@ export class AuthAbuseService {
         "updatedAt" = ${now}
       RETURNING *
     `;
-
-    const state = rows[0];
-    if (!state) throw new Error('Authentication abuse state update returned no row');
-    return state;
   }
 
   private scopedKeys(

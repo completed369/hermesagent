@@ -10,6 +10,7 @@ vi.mock('@ventureos/database', () => ({
       deleteMany: vi.fn(),
       delete: vi.fn(),
     },
+    $queryRaw: vi.fn(),
     $executeRaw: vi.fn(),
     $transaction: vi.fn(),
   },
@@ -85,18 +86,14 @@ describe('AuthAbuseService', () => {
     });
   });
 
-  it('atomically increments account and IP state in one transaction', async () => {
-    const queryRaw = vi
-      .fn()
+  it('atomically increments account and IP state without an interactive transaction', async () => {
+    vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([row()])
       .mockResolvedValueOnce([
         row({ scope: 'IP', keyDigest: 'b'.repeat(64), cooldownUntil: null }),
       ]);
-    vi.mocked(prisma.$transaction).mockImplementation(async (callback) =>
-      callback({
-        $queryRaw: queryRaw,
-        $executeRaw: vi.fn().mockResolvedValue(0),
-      } as never),
+    vi.mocked(prisma.$transaction).mockImplementation(
+      async (queries) => Promise.all(queries as never) as never,
     );
     const service = new AuthAbuseService(env, clock);
     const context = service.createContext('founder@example.test', '192.0.2.10');
@@ -106,28 +103,30 @@ describe('AuthAbuseService', () => {
       retryAfterSeconds: 60,
     });
     expect(prisma.$transaction).toHaveBeenCalledOnce();
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenCalledWith([expect.any(Promise), expect.any(Promise)]);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$executeRaw).toHaveBeenCalledOnce();
+    expect(vi.mocked(prisma.$executeRaw).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(prisma.$transaction).mock.invocationCallOrder[0]!,
+    );
   });
 
   it('uses only the source-IP scope for public registration to avoid arbitrary-account denial', async () => {
-    const queryRaw = vi
-      .fn()
-      .mockResolvedValue([
-        row({ channel: 'REGISTER', scope: 'IP', keyDigest: 'b'.repeat(64), cooldownUntil: null }),
-      ]);
-    const executeRaw = vi.fn().mockResolvedValue(0);
-    vi.mocked(prisma.$transaction).mockImplementation(async (callback) =>
-      callback({ $queryRaw: queryRaw, $executeRaw: executeRaw } as never),
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      row({ channel: 'REGISTER', scope: 'IP', keyDigest: 'b'.repeat(64), cooldownUntil: null }),
+    ] as never);
+    vi.mocked(prisma.$transaction).mockImplementation(
+      async (queries) => Promise.all(queries as never) as never,
     );
     const service = new AuthAbuseService(env, clock);
     const context = service.createContext('victim@example.test', '192.0.2.10');
 
     await service.recordAttempt('REGISTER', context);
 
-    expect(queryRaw).toHaveBeenCalledOnce();
-    expect(executeRaw).toHaveBeenCalledOnce();
-    expect(executeRaw.mock.calls[0]).toContain(now);
-    expect(executeRaw.mock.calls[0]).toContain(500);
+    expect(prisma.$queryRaw).toHaveBeenCalledOnce();
+    expect(prisma.$executeRaw).toHaveBeenCalledOnce();
+    expect(vi.mocked(prisma.$executeRaw).mock.calls[0]).toContain(now);
+    expect(vi.mocked(prisma.$executeRaw).mock.calls[0]).toContain(500);
   });
 
   it('deletes expired state using the controllable clock', async () => {

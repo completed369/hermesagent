@@ -67,8 +67,17 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   cleanup may finish after the RPC deadline rather than being abandoned by an
   outer timeout. The route returns generic status, creates no workflow execution
   or history, and does not claim worker/task-queue readiness. See
-  `HEALTH_CHECKS.md`. Full application validation remains red for separate
-  authentication-transaction and Playwright timing reliability blockers.
+  `HEALTH_CHECKS.md`.
+- **Authentication transaction and login/dashboard E2E reliability blockers are
+  resolved in Phase 13**: authentication failure counters use an ordered,
+  non-interactive ACCOUNT/IP batch transaction after independent bounded cleanup,
+  removing the resource-sensitive two-second interactive-admission dependency
+  without changing thresholds or adding retries. Playwright login assertions
+  synchronize on the login response before redirect readiness, and duplicate
+  nav/page labels are selected by unique semantic heading role. Focused auth,
+  forced complete integration, clean-output E2E, reused-state E2E, and immediate
+  E2E repeat gates all passed without retry recovery. See
+  `APPLICATION_SECURITY_BASELINE.md` for measured evidence.
 - **Commercial/provider gates are incomplete**: subscription/plan helpers and
   declared global publishing/advertising/paid-integration/dev-login flags are
   not feature/provider dispatch gates. Current external-call safety derives

@@ -90,8 +90,13 @@ describe('durable authentication abuse control (integration)', () => {
 
   it('does not lose concurrent failure increments', async () => {
     const context = createContext('concurrent@example.test', '198.51.100.20');
+    const separateInstance = new AuthAbuseService(env, clock);
 
-    await Promise.all(Array.from({ length: 5 }, () => service.recordAttempt('LOGIN', context)));
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, index) =>
+        (index % 2 === 0 ? service : separateInstance).recordAttempt('LOGIN', context),
+      ),
+    );
 
     const accountState = await prisma.authAbuseState.findUniqueOrThrow({
       where: {
@@ -104,6 +109,21 @@ describe('durable authentication abuse control (integration)', () => {
     });
     expect(accountState.attemptCount).toBe(5);
     expect(accountState.cooldownUntil).not.toBeNull();
+
+    const ipState = await prisma.authAbuseState.findUniqueOrThrow({
+      where: {
+        channel_scope_keyDigest: {
+          channel: 'LOGIN',
+          scope: 'IP',
+          keyDigest: context.ipDigest,
+        },
+      },
+    });
+    expect(ipState.attemptCount).toBe(5);
+    expect(ipState.cooldownUntil).toBeNull();
+    expect(
+      results.filter((result) => result?.reasonCode === 'LOGIN_ACCOUNT_COOLDOWN'),
+    ).toHaveLength(1);
   });
 
   it('clears only account state after successful authentication and preserves source-IP aging', async () => {
@@ -150,5 +170,45 @@ describe('durable authentication abuse control (integration)', () => {
         where: { keyDigest: { in: [context.accountDigest, context.ipDigest] } },
       }),
     ).resolves.toBe(0);
+  });
+
+  it('does not let locked expired cleanup rows block the critical counter update', async () => {
+    const expired = createContext('locked-expired@example.test', '192.0.2.31');
+    await service.recordAttempt('LOGIN', expired);
+    await prisma.authAbuseState.updateMany({
+      where: { keyDigest: { in: [expired.accountDigest, expired.ipDigest] } },
+      data: { expiresAt: new Date('2026-07-31T00:00:00.000Z') },
+    });
+
+    let signalLocked!: () => void;
+    let releaseLock!: () => void;
+    const locked = new Promise<void>((resolve) => {
+      signalLocked = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    const lockTransaction = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`
+          SELECT "keyDigest"
+          FROM "auth_abuse_states"
+          WHERE "keyDigest" IN (${expired.accountDigest}, ${expired.ipDigest})
+          FOR UPDATE
+        `;
+        signalLocked();
+        await release;
+      },
+      { timeout: 30_000 },
+    );
+
+    await locked;
+    try {
+      const current = createContext('cleanup-independent@example.test', '192.0.2.32');
+      await expect(service.recordAttempt('LOGIN', current)).resolves.toBeNull();
+    } finally {
+      releaseLock();
+      await lockTransaction;
+    }
   });
 });

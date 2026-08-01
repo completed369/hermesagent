@@ -382,6 +382,66 @@ suite can be called green. No authentication assertion or Playwright timeout was
 weakened or skipped, and no staging or production readiness claim follows from
 the scoped Temporal result.
 
+### Phase 13 authentication and E2E reliability — 2026-08-01
+
+The two Phase 12 reliability blockers were reproduced and corrected without a
+dependency, policy-threshold, KDF, timeout, retry, or Temporal-health change:
+
+1. Authentication transaction admission — the failure was Prisma `P2028`
+   before interactive-transaction callback execution. A controlled pool probe
+   admitted five held interactive transactions, showed five PostgreSQL sessions
+   idle in transaction, and reproduced `Unable to start a transaction in the
+given time` with the next callback never entered. The login-failure path used
+   one interactive transaction per attempt, performed cleanup while reserving
+   that connection, then locked ACCOUNT followed by IP. PostgreSQL reported zero
+   deadlocks, every LOGIN path used the same lock order, and test digests/cleanup
+   were isolated. This is an avoidable production transaction-design defect
+   under resource contention, not lost updates, reversed lock order, global test
+   cleanup, or an unrealistic five-failure scenario.
+2. Authentication correction — bounded `FOR UPDATE SKIP LOCKED` cleanup now
+   completes outside the counter transaction. ACCOUNT and IP UPSERTs execute in
+   one ordered non-interactive Prisma batch transaction, preserving atomicity,
+   ACCOUNT-before-IP lock order, exact thresholds, cooldown escalation, restart
+   persistence, shared multi-instance state, and selective account clearing.
+   No `maxWait` increase or retry was added.
+3. Authentication proof — the focused real-PostgreSQL suite passed 20/20
+   consecutive runs with a constrained two-connection pool (7/7 each;
+   3,338–5,068 ms wall time, 4,318 ms average). Five concurrent failures retained
+   exact ACCOUNT=5 and IP=5 counts, activated only the account threshold, and
+   alternated across service instances. A locked expired row did not block a
+   different critical counter update. Five concurrent HTTP failures split across
+   two independently running API processes produced exactly four `401` responses
+   and one `429`, with durable ACCOUNT=5/IP=5 database state. The forced complete
+   integration suite passed 5/5 consecutive runs, 71/71 tests each, with no cache
+   (42,606–46,381 ms; 44,864 ms average).
+4. E2E root cause — navigation assertions for Audit Centre and Security Events
+   used unscoped text shared by each persistent sidebar link and destination
+   heading. Depending on render timing, the assertion either passed prematurely
+   against the link or saw both elements and failed strict mode. This is a test
+   selector/readiness defect; matching accessible nav and heading labels are
+   correct UI. Login assertions also started their five-second URL budget before
+   the asynchronous scrypt-backed API request completed, conflating KDF and
+   client-navigation time. Measured successful login API durations were
+   149–198 ms and the concurrent invalid login was 267–276 ms in the final local
+   environment; no timeout increase was supported.
+5. E2E correction and proof — each login now synchronizes on the specific POST
+   response and expected status before asserting redirect/readiness. Destination
+   assertions use unique semantic headings; no `.first()`, forced click, sleep,
+   retry, disabled assertion, or timeout increase was added. Clean-output root
+   E2E passed 5/5 consecutive 4/4 runs (19,734–75,279 ms; 31,454 ms average),
+   reused-state root E2E passed 3/3 (15,884–18,324 ms; 17,310 ms average), and
+   immediate root E2E passed 3/3 (16,559–20,412 ms; 18,498 ms average). Every
+   first attempt passed and Playwright stopped its API/web processes after each
+   run.
+6. Final validation — frozen install, format, lint (17/17), typecheck (36/36),
+   Prisma generate/format/validate, all 11 migrations on fresh PostgreSQL,
+   synthetic seed, build-contract tests (5/5), complete unit orchestration,
+   complete integration (71/71), clean/reused/immediate root E2E (4/4 each),
+   production build (20/20), API entrypoint assertion, and Temporal health
+   regression (26/26) passed. Production and complete dependency audits each
+   reported zero findings. The value-redacting scan inspected 419 eligible UTF-8
+   files plus the proposed diff and reported zero review-required findings.
+
 ## Residual risks and staging blockers
 
 - The dependency Critical/High gates are closed for the validated lockfile, but
@@ -405,6 +465,10 @@ the scoped Temporal result.
 
 `AUTHENTICATION_STAGING_GATE_READY=True`
 
+`AUTH_TRANSACTION_RELIABILITY_READY=True`
+
+`LOGIN_E2E_RELIABILITY_READY=True`
+
 `TEMPORAL_PUBLIC_HEALTH_NONMUTATING_READY=True`
 
 `TEMPORAL_READINESS_GATE_READY=True`
@@ -417,7 +481,7 @@ the scoped Temporal result.
 
 `HIGH_SECURITY_FINDINGS_OPEN=True`
 
-`FULL_APPLICATION_VALIDATION_GREEN=False`
+`FULL_APPLICATION_VALIDATION_GREEN=True`
 
 `STAGING_SECURITY_GATE_READY=False`
 

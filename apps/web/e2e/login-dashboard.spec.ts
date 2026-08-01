@@ -17,6 +17,17 @@ import { test, expect } from '@playwright/test';
 const FOUNDER_EMAIL = process.env.DEV_FOUNDER_EMAIL ?? 'founder@ventureos.local';
 const FOUNDER_PASSWORD = process.env.DEV_FOUNDER_PASSWORD ?? 'change-me-dev-only';
 
+async function submitLogin(page: import('@playwright/test').Page, expectedStatus: number) {
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (candidate) =>
+        candidate.request().method() === 'POST' && candidate.url().endsWith('/api/auth/login'),
+    ),
+    page.getByTestId('login-submit').click(),
+  ]);
+  expect(response.status()).toBe(expectedStatus);
+}
+
 test.describe('Login and dashboard', () => {
   test('redirects unauthenticated visitors to /login', async ({ page }) => {
     await page.goto('/dashboard');
@@ -27,7 +38,7 @@ test.describe('Login and dashboard', () => {
     await page.goto('/login');
     await page.getByTestId('login-email').fill(FOUNDER_EMAIL);
     await page.getByTestId('login-password').fill(FOUNDER_PASSWORD);
-    await page.getByTestId('login-submit').click();
+    await submitLogin(page, 200);
 
     await expect(page).toHaveURL(/\/dashboard/);
     // Both the sidebar nav link and the page <h1> say "Command Centre", so
@@ -41,7 +52,7 @@ test.describe('Login and dashboard', () => {
     await page.goto('/login');
     await page.getByTestId('login-email').fill(FOUNDER_EMAIL);
     await page.getByTestId('login-password').fill('definitely-wrong');
-    await page.getByTestId('login-submit').click();
+    await submitLogin(page, 401);
 
     await expect(page.getByTestId('login-error')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
@@ -51,13 +62,13 @@ test.describe('Login and dashboard', () => {
     await page.goto('/login');
     await page.getByTestId('login-email').fill(FOUNDER_EMAIL);
     await page.getByTestId('login-password').fill(FOUNDER_PASSWORD);
-    await page.getByTestId('login-submit').click();
+    await submitLogin(page, 200);
     await expect(page).toHaveURL(/\/dashboard/);
 
     await page.getByRole('link', { name: 'Audit Centre' }).click();
-    await expect(page.getByText('Audit Centre')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Audit Centre' })).toBeVisible();
 
     await page.getByRole('link', { name: 'Security Events' }).click();
-    await expect(page.getByText('Security Events')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Security Events' })).toBeVisible();
   });
 });
