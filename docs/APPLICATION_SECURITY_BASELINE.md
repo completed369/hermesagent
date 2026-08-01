@@ -142,11 +142,15 @@ application and repository-administration blockers below remain open.
 
 7. **H-07 — Public Temporal health probe starts workflows (fixed in Phase 12).**
    `GET /api/health/temporal` now performs only the standard gRPC Health `Check`
-   under a 3-second connection/RPC deadline. Readiness includes the same
-   non-mutating Temporal check, returns HTTP 503 on unavailable dependencies,
-   and exposes only generic component status. Repeated disposable-infrastructure
-   probes created no additional workflow history. Server connectivity does not
-   claim worker/task-queue readiness; see `docs/HEALTH_CHECKS.md`.
+   under one 3-second absolute connection/RPC deadline. A corrective follow-up
+   to the prior local commit removed the API layer's competing timeout: the
+   helper now remains the sole connection lifecycle owner and awaits cleanup
+   before settling, even when cleanup extends beyond the RPC deadline. Readiness
+   includes the same non-mutating Temporal check, returns HTTP 503 on unavailable
+   dependencies or cleanup failure, and exposes only generic component status.
+   Repeated disposable-infrastructure probes create no additional workflow
+   history. Server connectivity does not claim worker/task-queue readiness; see
+   `docs/HEALTH_CHECKS.md`.
 
 8. **H-08 — Subscription and global provider flags are not enforcement gates
    (unfixed; commercial blocker).** Plan-limit helpers and subscription
@@ -346,6 +350,14 @@ The Temporal-health implementation passed its scoped source, unit, build,
 runtime, audit, and secret-scan gates. This does **not** make the full
 application suite green. Two separate reliability blockers remain recorded and
 must not be hidden, skipped, or treated as passing:
+
+The prior local Temporal-health commit was not an approved checkpoint because
+its API service added a second `Promise.race` around the helper-owned gRPC
+deadline and connection cleanup. The corrective follow-up removes that outer
+timeout, awaits helper cleanup before every route outcome, and truthfully allows
+cleanup to finish after the RPC deadline. The Temporal readiness and staging
+flags below apply only after this correction passes scoped validation and
+independent review.
 
 1. The complete integration run has produced a Prisma interactive-transaction
    admission timeout in `auth-abuse.integration.test.ts` when five concurrent

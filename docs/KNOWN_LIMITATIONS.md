@@ -60,11 +60,14 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   trusted hop count; the secure default is `0`, which ignores forwarding headers.
   Rotating the abuse-digest secret invalidates existing pseudonymous buckets and
   therefore requires an explicit operational reset decision.
-- **Public Temporal health mutation is resolved in Phase 12**: the route now
-  performs only the standard gRPC Health `Check` under one bounded connection/RPC
-  deadline, awaits connection cleanup, and returns generic status. It creates no
-  workflow execution or history and does not claim worker/task-queue readiness.
-  See `HEALTH_CHECKS.md`. Full application validation remains red for separate
+- **Public Temporal health mutation is resolved in Phase 12, with a corrective
+  timeout-lifecycle follow-up after the prior local commit**: the route performs
+  only the standard gRPC Health `Check` under one absolute connection/RPC
+  deadline. The helper owns the connection and awaits cleanup before settling;
+  cleanup may finish after the RPC deadline rather than being abandoned by an
+  outer timeout. The route returns generic status, creates no workflow execution
+  or history, and does not claim worker/task-queue readiness. See
+  `HEALTH_CHECKS.md`. Full application validation remains red for separate
   authentication-transaction and Playwright timing reliability blockers.
 - **Commercial/provider gates are incomplete**: subscription/plan helpers and
   declared global publishing/advertising/paid-integration/dev-login flags are

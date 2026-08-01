@@ -23,7 +23,9 @@ outages must not turn liveness into a restart loop.
 `GET /api/health/ready`
 
 - Checks PostgreSQL, object storage, and Temporal concurrently.
-- Bounds every dependency check to 3 seconds.
+- Uses a 3-second operation timeout for PostgreSQL and object storage, and one
+  3-second absolute connection/RPC deadline for Temporal. Temporal connection
+  cleanup is awaited and may finish after its RPC deadline.
 - Returns HTTP 200 only when every required component reports `ok`.
 - Returns HTTP 503 with only `ok`/`down` component statuses when any dependency
   is unavailable or times out.
@@ -38,15 +40,23 @@ process-restart signal.
 `GET /api/health/temporal`
 
 This public compatibility route performs the standard gRPC Health `Check` RPC
-through a lazy `@temporalio/client` connection, with one shared 3-second
-connect/RPC deadline. The operation is read-only and creates no workflow
-execution or history. It returns HTTP 200 with `temporal: ok`, or HTTP 503 with
-`temporal: down`.
+through a lazy `@temporalio/client` connection, with one 3-second absolute
+connection/RPC deadline. The health RPC establishes connectivity as needed;
+creating the lazy connection object does not itself issue a workflow or
+application-level RPC. The helper owns the connection and awaits `close()` in
+`finally` before it settles. Cleanup may therefore complete after the RPC
+deadline when necessary. There is no outer timeout that returns while an owned
+connection continues cleanup in the background. The operation is read-only and
+creates no workflow execution or history. It returns HTTP 200 with
+`temporal: ok`, or HTTP 503 with `temporal: down`, including when the RPC,
+deadline, or cleanup fails.
 
 Repeated calls are safe with respect to workflow state. Regression tests forbid
-workflow start, execute, signal, update, and terminate calls from the health
-path, and disposable Temporal verification confirms the workflow count does not
-change after repeated requests.
+workflow start, execute, signal, update, terminate, and cancel calls from the
+health path, and disposable Temporal verification confirms the workflow count
+does not change after repeated requests. Public responses never include
+Temporal addresses, namespaces, task queues, exception messages, or stack
+traces.
 
 ## Worker readiness limitation
 

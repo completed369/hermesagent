@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { checkTemporalConnection } from '@ventureos/workflows';
 import type { Env } from '@ventureos/config';
 import { ENV_TOKEN } from '../../config/env.provider';
-import { HEALTH_CHECK_TIMEOUT_MS, withHealthTimeout } from './health-timeout';
+import { HEALTH_CHECK_TIMEOUT_MS } from './health-timeout';
 
 @Injectable()
 export class TemporalHealthService {
@@ -14,8 +14,9 @@ export class TemporalHealthService {
    */
   async runConnectivityCheck(): Promise<{ status: 'ok' | 'down' }> {
     try {
-      const serving = await withHealthTimeout(
-        checkTemporalConnection(this.env.TEMPORAL_ADDRESS, HEALTH_CHECK_TIMEOUT_MS),
+      const serving = await checkTemporalConnection(
+        this.env.TEMPORAL_ADDRESS,
+        HEALTH_CHECK_TIMEOUT_MS,
       );
       return { status: serving ? 'ok' : 'down' };
     } catch {
