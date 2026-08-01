@@ -3,9 +3,10 @@
  *
  * Synchronises the founder account's password hash in PostgreSQL with the
  * DEV_FOUNDER_PASSWORD value from the repository root .env, and revokes the
- * founder's existing server-side sessions. It updates EXACTLY ONE user row
- * (by DEV_FOUNDER_EMAIL) and only that user's Session rows, inside a single
- * transaction. It does not call the seed and does not touch any other data.
+ * founder's existing server-side sessions and account-scoped login cooldown.
+ * It updates EXACTLY ONE user row (by DEV_FOUNDER_EMAIL), that user's Session
+ * rows, and that account's pseudonymous LOGIN/ACCOUNT bucket in one transaction.
+ * It does not call the seed or clear source-wide abuse state.
  *
  * This is explicitly a developer-convenience tool for rotating an exposed
  * local-dev credential. It must never run against production: the target is
@@ -22,12 +23,13 @@
  *    result is verifiable by the normal login path.
  */
 import { PrismaClient, Prisma } from '@prisma/client';
-import { hashPassword } from '@ventureos/auth';
+import { createAuthAbuseDigest, hashPassword } from '@ventureos/auth';
 import { prisma as defaultPrisma } from './client.js';
 
 export interface ResetFounderParams {
   email: string;
   password: string;
+  abuseDigestSecret: string;
   dryRun: boolean;
   prisma: PrismaClient;
 }
@@ -40,7 +42,7 @@ export interface ResetFounderParams {
 export function resolveInputs(
   argv: string[] = process.argv,
   env: NodeJS.ProcessEnv = process.env,
-): { email: string; password: string; dryRun: boolean } {
+): { email: string; password: string; abuseDigestSecret: string; dryRun: boolean } {
   // Hard runtime guard: this utility must never run against production,
   // regardless of how it is invoked (dry-run or real). Refusal happens
   // before any database access and leaks no environment values.
@@ -56,14 +58,19 @@ export function resolveInputs(
   if (!password || !password.trim()) {
     throw new Error('DEV_FOUNDER_PASSWORD is required (set it in the local .env).');
   }
-  return { email, password, dryRun };
+  const abuseDigestSecret = env.AUTH_ABUSE_DIGEST_SECRET ?? env.AUTH_SECRET;
+  if (!abuseDigestSecret || !abuseDigestSecret.trim()) {
+    throw new Error('An authentication abuse digest secret is required.');
+  }
+  return { email, password, abuseDigestSecret, dryRun };
 }
 
 /**
- * Core, testable rotation logic. Finds exactly one founder user by email,
+ * Core, testable rotation logic. Normalizes the configured email and finds
+ * exactly one founder user by that identifier,
  * then (unless dry-run) recomputes the password hash and updates only that
- * user's passwordHash while deleting only that user's Session rows, all in a
- * single transaction. Never prints or returns the password.
+ * user's passwordHash while deleting that user's Session rows and account login
+ * bucket, all in a single transaction. Never prints or returns the password.
  */
 export async function resetFounderPassword(params: ResetFounderParams): Promise<void> {
   // Defense in depth: refuse production even if called directly (e.g. in a
@@ -72,9 +79,10 @@ export async function resetFounderPassword(params: ResetFounderParams): Promise<
     throw new Error('Founder credential rotation is disabled in production.');
   }
 
-  const { email, password, dryRun, prisma } = params;
+  const { email, password, abuseDigestSecret, dryRun, prisma } = params;
+  const normalizedEmail = email.trim().toLowerCase();
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   if (!user) {
     throw new Error('Founder user not found for the configured DEV_FOUNDER_EMAIL.');
   }
@@ -85,6 +93,7 @@ export async function resetFounderPassword(params: ResetFounderParams): Promise<
   }
 
   const passwordHash = hashPassword(password);
+  const accountDigest = createAuthAbuseDigest(abuseDigestSecret, 'account', normalizedEmail);
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.user.update({
       where: { id: user.id },
@@ -92,6 +101,9 @@ export async function resetFounderPassword(params: ResetFounderParams): Promise<
     });
     await tx.session.deleteMany({
       where: { userId: user.id },
+    });
+    await tx.authAbuseState.deleteMany({
+      where: { channel: 'LOGIN', scope: 'ACCOUNT', keyDigest: accountDigest },
     });
   });
 }
@@ -102,8 +114,8 @@ export async function run(
   argv: string[] = process.argv,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  const { email, password, dryRun } = resolveInputs(argv, env);
-  await resetFounderPassword({ email, password, dryRun, prisma });
+  const { email, password, abuseDigestSecret, dryRun } = resolveInputs(argv, env);
+  await resetFounderPassword({ email, password, abuseDigestSecret, dryRun, prisma });
 }
 
 if (require.main === module) {

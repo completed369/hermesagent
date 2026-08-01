@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createAuthAbuseDigest } from '@ventureos/auth';
 import { resolveInputs, resetFounderPassword, run } from './reset-founder-password.js';
 import type { PrismaClient } from '@prisma/client';
 
@@ -9,10 +10,14 @@ interface UserUpdateArg {
 interface SessionDeleteArg {
   where: { userId: string };
 }
+interface AuthAbuseDeleteArg {
+  where: { channel: 'LOGIN'; scope: 'ACCOUNT'; keyDigest: string };
+}
 
 /** Minimal PrismaClient double covering only what the utility touches. */
 function makePrisma(opts: { userExists?: boolean } = {}) {
-  const captured: { update?: UserUpdateArg; del?: SessionDeleteArg } = {};
+  const captured: { update?: UserUpdateArg; del?: SessionDeleteArg; abuse?: AuthAbuseDeleteArg } =
+    {};
   const userUpdate = vi.fn(async (arg: UserUpdateArg) => {
     captured.update = arg;
     return {};
@@ -21,12 +26,17 @@ function makePrisma(opts: { userExists?: boolean } = {}) {
     captured.del = arg;
     return { count: 3 };
   });
+  const authAbuseDeleteMany = vi.fn(async (arg: AuthAbuseDeleteArg) => {
+    captured.abuse = arg;
+    return { count: 1 };
+  });
   const findUnique = vi.fn(async () =>
     opts.userExists === false ? null : { id: 'founder-id', passwordHash: 'old-hash' },
   );
   const tx = {
     user: { update: userUpdate },
     session: { deleteMany: sessionDeleteMany },
+    authAbuseState: { deleteMany: authAbuseDeleteMany },
   };
   const prisma = {
     user: { findUnique },
@@ -37,12 +47,14 @@ function makePrisma(opts: { userExists?: boolean } = {}) {
     prisma: prisma as unknown as PrismaClient,
     userUpdate,
     sessionDeleteMany,
+    authAbuseDeleteMany,
     findUnique,
     captured,
   };
 }
 
 const SENTINEL_PASSWORD = 'sentinel-local-dev-password';
+const SENTINEL_DIGEST_SECRET = 'sentinel-auth-abuse-digest-secret';
 
 describe('resolveInputs', () => {
   const original = process.env;
@@ -92,6 +104,7 @@ describe('resetFounderPassword', () => {
       resetFounderPassword({
         email: 'missing@ventureos.local',
         password: SENTINEL_PASSWORD,
+        abuseDigestSecret: SENTINEL_DIGEST_SECRET,
         dryRun: false,
         prisma,
       }),
@@ -105,6 +118,7 @@ describe('resetFounderPassword', () => {
     await resetFounderPassword({
       email: 'founder@ventureos.local',
       password: SENTINEL_PASSWORD,
+      abuseDigestSecret: SENTINEL_DIGEST_SECRET,
       dryRun: true,
       prisma,
     });
@@ -113,21 +127,42 @@ describe('resetFounderPassword', () => {
     expect(findUnique).toHaveBeenCalledTimes(1);
   });
 
-  it('success updates only passwordHash and revokes that user’s sessions', async () => {
-    const { prisma, userUpdate, sessionDeleteMany, captured } = makePrisma();
+  it('success updates the password, revokes sessions, and clears account cooldowns', async () => {
+    const { prisma, userUpdate, sessionDeleteMany, authAbuseDeleteMany, captured } = makePrisma();
     await resetFounderPassword({
       email: 'founder@ventureos.local',
       password: SENTINEL_PASSWORD,
+      abuseDigestSecret: SENTINEL_DIGEST_SECRET,
       dryRun: false,
       prisma,
     });
     expect(userUpdate).toHaveBeenCalledTimes(1);
     expect(sessionDeleteMany).toHaveBeenCalledTimes(1);
+    expect(authAbuseDeleteMany).toHaveBeenCalledTimes(1);
 
     expect(captured.update?.where.id).toBe('founder-id');
     expect(typeof captured.update?.data.passwordHash).toBe('string');
     expect(captured.update?.data.passwordHash).not.toBe('old-hash');
     expect(captured.del?.where.userId).toBe('founder-id');
+    expect(captured.abuse?.where).toMatchObject({ channel: 'LOGIN', scope: 'ACCOUNT' });
+    expect(captured.abuse?.where.keyDigest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('normalizes the configured founder email before lookup and cooldown clearing', async () => {
+    const { prisma, findUnique, captured } = makePrisma();
+
+    await resetFounderPassword({
+      email: '  FOUNDER@VENTUREOS.LOCAL  ',
+      password: SENTINEL_PASSWORD,
+      abuseDigestSecret: SENTINEL_DIGEST_SECRET,
+      dryRun: false,
+      prisma,
+    });
+
+    expect(findUnique).toHaveBeenCalledWith({ where: { email: 'founder@ventureos.local' } });
+    expect(captured.abuse?.where.keyDigest).toBe(
+      createAuthAbuseDigest(SENTINEL_DIGEST_SECRET, 'account', 'founder@ventureos.local'),
+    );
   });
 
   it('does not leak the password into console output on success', async () => {
@@ -138,6 +173,7 @@ describe('resetFounderPassword', () => {
       await run(prisma, ['node', 'script'], {
         DEV_FOUNDER_EMAIL: 'founder@ventureos.local',
         DEV_FOUNDER_PASSWORD: SENTINEL_PASSWORD,
+        AUTH_SECRET: SENTINEL_DIGEST_SECRET,
       } as NodeJS.ProcessEnv);
     } finally {
       logSpy.mockRestore();
@@ -186,6 +222,7 @@ describe('production refusal', () => {
         resetFounderPassword({
           email: 'founder@ventureos.local',
           password: SENTINEL_PASSWORD,
+          abuseDigestSecret: SENTINEL_DIGEST_SECRET,
           dryRun: false,
           prisma,
         }),

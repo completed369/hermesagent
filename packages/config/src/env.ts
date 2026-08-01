@@ -28,12 +28,18 @@ export const envSchema = z.object({
 
   API_PORT: z.coerce.number().int().positive().default(3001),
   API_CORS_ORIGIN: z.string().default('http://localhost:3000'),
+  API_TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
   API_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
   API_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
 
   AUTH_SECRET: z.string().min(16, 'AUTH_SECRET must be at least 16 characters'),
+  AUTH_ABUSE_DIGEST_SECRET: z
+    .string()
+    .min(32, 'AUTH_ABUSE_DIGEST_SECRET must be at least 32 characters')
+    .optional(),
+  AUTH_REGISTRATION_MIN_RESPONSE_MS: z.coerce.number().int().min(50).max(2000).default(300),
   AUTH_SESSION_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(604800),
   AUTH_COOKIE_NAME: z.string().default('ventureos_session'),
   DEV_LOGIN_ENABLED: zBoolean(true),

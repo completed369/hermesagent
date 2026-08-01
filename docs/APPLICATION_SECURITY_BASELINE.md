@@ -128,14 +128,17 @@ application and repository-administration blockers below remain open.
    packages. The final production and complete audits both exit zero with no
    finding at any severity. Detailed roots and compatibility evidence are below.
 
-6. **H-06 — Public authentication lacks distributed/account-specific abuse
-   control (unfixed; staging blocker).** Login and registration are protected
-   only by the process-local global limiter. Existing-user failures execute
-   synchronous scrypt while missing-user failures skip it, enabling timing
-   enumeration and distributed password/KDF pressure. A correct fix requires a
-   shared limiter keyed by normalized account and trusted client IP, explicit
-   proxy policy, dummy-hash verification, and moving KDF work off the event
-   loop; a partial in-process decorator was not presented as remediation.
+6. **H-06 — Public authentication abuse and enumeration (fixed in Phase 11).**
+   PostgreSQL-backed normalized-account/source cooldowns coordinate API
+   processes and survive restarts. State keys and event metadata use
+   domain-separated keyed digests rather than raw identifiers or IP addresses.
+   Existing and missing users execute asynchronous scrypt verification; active
+   cooldowns skip KDF work. Forwarding headers are ignored unless an explicit,
+   bounded proxy-hop count is configured. Registration is source-limited and
+   returns the same time-floored generic `202` response without a session for
+   new, existing, and concurrent duplicate-email-race cases. Concurrent
+   workspace-slug conflicts retry transactionally with at most three fresh
+   randomized suffixes; exhaustion returns only a controlled generic failure.
 
 7. **H-07 — Public Temporal health probe starts workflows (unfixed; staging
    blocker when Temporal is connected).** Every unauthenticated
@@ -156,8 +159,9 @@ application and repository-administration blockers below remain open.
 
 1. MFA and account recovery are not implemented. No complete scaffolding exists;
    both remain explicitly deferred rather than partially implemented.
-2. Registration explicitly reports duplicate email; account recovery remains
-   absent.
+2. Account recovery remains absent. Registration no longer reports duplicate
+   identifiers and does not create an authenticated session from the public
+   acceptance response.
 3. API/web security headers are partial. Frame, MIME-sniffing, and referrer
    controls exist on the web, but no reviewed CSP/HSTS/Permissions-Policy
    baseline exists for a real deployment.
@@ -302,12 +306,46 @@ mock providers, and live/paid flags disabled:
 No real AI, marketplace, payment, email, advertising, storage, customer, or
 production account was contacted.
 
+### Phase 11 authentication-abuse validation — 2026-08-01
+
+All values below used disposable PostgreSQL and synthetic credentials:
+
+1. Fresh PostgreSQL migration chain — PASS: 11/11 migrations applied and the
+   `auth_abuse_states` table was present; the fresh container was removed by
+   the command's cleanup trap.
+2. Real-PostgreSQL authentication integration — PASS: transactional account
+   and source thresholds, concurrent increments, cooldown expiry, selective
+   account reset, bounded retention cleanup, controlled `429`/`Retry-After`,
+   forwarding-header rejection at proxy trust `0`, and generic registration.
+3. Two independent API processes — PASS: four failures against process A were
+   followed by a `429` from process B; after both exited, a newly started
+   process C returned the same durable account cooldown and `Retry-After`.
+4. Interleaved asynchronous scrypt timing probe — PASS: real-hash and dummy-hash
+   distributions overlapped (`p10` 35.725/35.569 ms, median 69.980/69.036 ms,
+   `p90` 75.557/74.358 ms). Blocked requests are checked before KDF work.
+5. Registration HTTP comparison — PASS: new and duplicate identifiers both
+   returned `202`, the same body, no session cookie, and measured 311/309 ms
+   with the default 300 ms response floor. A concurrent uniqueness race is
+   covered by a focused regression test. Invalid admitted JSON is rejected with
+   a generic `400`, no cookie, and the same controller-boundary floor; malformed
+   transport bodies and pre-route guard/throttle outcomes are outside this
+   identifier-dependent timing contract.
+6. Fresh final workspace gates — PASS: `format:check`, lint (17/17), typecheck
+   (36/36), unit, integration, build (20/20), and Playwright E2E (4/4).
+7. Value-redacting changed-file scan and `git diff --check` — PASS; flagged
+   password/secret-like values were synthetic test fixtures only.
+
+The original read-only findings report should have been delivered before edits
+began. Implementation started first, so this phase records that sequencing
+violation explicitly rather than presenting the work as procedurally perfect.
+
 ## Residual risks and staging blockers
 
 - The dependency Critical/High gates are closed for the validated lockfile, but
   audits must remain required on future lockfile changes.
 - MFA and account recovery remain deferred product/security work.
-- Login/registration abuse controls and timing equalization remain open.
+- Authentication hardening is implemented; deployment proxy-hop configuration
+  and digest-secret rotation remain explicit operational responsibilities.
 - The Temporal health route must stop creating workflows before public staging.
 - Subscription enforcement and provider kill switches are not wired.
 - Approval decisions require an atomic single-writer transition before real
@@ -316,6 +354,12 @@ production account was contacted.
   verification in repository settings.
 
 ## Readiness flags
+
+`AUTHENTICATION_ABUSE_CONTROL_READY=True`
+
+`AUTHENTICATION_TIMING_EQUALIZATION_READY=True`
+
+`AUTHENTICATION_STAGING_GATE_READY=True`
 
 `APPLICATION_SECURITY_BASELINE_READY=True`
 

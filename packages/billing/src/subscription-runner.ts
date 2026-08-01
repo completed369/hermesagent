@@ -13,6 +13,7 @@ import { DEFAULT_TRIAL_LENGTH_DAYS } from './plans.js';
  * ("cannot be named without a reference to ... this is likely not
  * portable"). Naming the type explicitly avoids that. */
 type SubscriptionWithPlan = Prisma.SubscriptionGetPayload<{ include: { plan: true } }>;
+type SubscriptionClient = Pick<Prisma.TransactionClient, 'plan' | 'subscription'>;
 
 /**
  * Starts a new workspace's subscription on the TRIAL plan. Called once, at
@@ -25,15 +26,18 @@ type SubscriptionWithPlan = Prisma.SubscriptionGetPayload<{ include: { plan: tru
  * in this phase (see docs/DECISIONS.md ADR-010), so no amount is ever
  * actually charged for the trial or any later plan change.
  */
-export async function startTrialSubscription(workspaceId: string): Promise<SubscriptionWithPlan> {
-  const existing = await prisma.subscription.findUnique({ where: { workspaceId } });
+export async function startTrialSubscription(
+  workspaceId: string,
+  client: SubscriptionClient = prisma,
+): Promise<SubscriptionWithPlan> {
+  const existing = await client.subscription.findUnique({ where: { workspaceId } });
   if (existing) {
     throw new SubscriptionAlreadyExistsError(
       `Workspace ${workspaceId} already has a subscription (${existing.id}).`,
     );
   }
 
-  const trialPlan = await prisma.plan.findUnique({ where: { key: 'TRIAL' } });
+  const trialPlan = await client.plan.findUnique({ where: { key: 'TRIAL' } });
   if (!trialPlan) {
     throw new PlanNotFoundError('TRIAL plan is not seeded.');
   }
@@ -42,7 +46,7 @@ export async function startTrialSubscription(workspaceId: string): Promise<Subsc
   const trialEndsAt = new Date(now);
   trialEndsAt.setUTCDate(trialEndsAt.getUTCDate() + DEFAULT_TRIAL_LENGTH_DAYS);
 
-  return prisma.subscription.create({
+  return client.subscription.create({
     data: {
       workspaceId,
       planId: trialPlan.id,

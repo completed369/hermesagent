@@ -35,4 +35,13 @@ describe('resolveSeedFounderCredentials', () => {
       password: VALID_ENV.DEV_FOUNDER_PASSWORD,
     });
   });
+
+  it('normalizes the founder email before any seed lookup or write', () => {
+    expect(
+      resolveSeedFounderCredentials({
+        ...VALID_ENV,
+        DEV_FOUNDER_EMAIL: '  FOUNDER@EXAMPLE.TEST  ',
+      }),
+    ).toMatchObject({ email: 'founder@example.test' });
+  });
 });

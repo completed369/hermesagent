@@ -18,6 +18,26 @@
 - Safe error responses: internal detail (stack traces, DB errors) never
   reaches the client; only a generic message + correlation ID does.
 - Rate limiting (120 req/60s default, configurable).
+- Public-authentication abuse enforcement uses shared PostgreSQL state rather
+  than the process-local global limiter: login is bounded by normalized-account
+  and source-IP cooldowns, registration by source IP. Stored keys and related
+  event metadata are domain-separated keyed digests; raw submitted identifiers
+  and source addresses are not persisted in that state. Active cooldowns return
+  controlled `429` responses with `Retry-After` and survive API restarts.
+- Login verifies both existing and missing accounts through asynchronous scrypt
+  work on libuv's worker pool. Registration returns a generic `202` with no
+  session cookie for new, existing, and duplicate-email-race cases and enforces
+  a validated 300 ms default response floor at the controller boundary for every
+  admitted JSON registration request, including schema rejection. Malformed HTTP
+  bodies and global guard/throttle rejections occur before the route and are not
+  identifier-dependent. Workspace creation first attempts
+  the preferred name-derived slug, then handles a concurrent slug collision with
+  at most three fresh randomized-suffix retries. Every attempt atomically creates
+  the user, founder profile, workspace, membership, and branding; exhaustion is
+  a generic controlled failure that exposes no Prisma constraint detail.
+- Proxy forwarding headers are ignored by default. `API_TRUST_PROXY_HOPS` must
+  be set to the deployment's exact bounded trusted-hop count before Express uses
+  a forwarded client address.
 - CSRF protection: the global `CsrfOriginGuard` rejects authenticated unsafe
   methods unless the browser-supplied `Origin` exactly matches
   `API_CORS_ORIGIN`. Safe methods and cookie-less public authentication
@@ -27,6 +47,9 @@
   rejection (`packages/integrations/src/storage`).
 - Fixture seeding fails closed without explicit non-placeholder founder
   credentials and is disabled in production.
+- The local founder password-reset utility normalizes the configured email before
+  lookup, revokes sessions, and clears only that account's login cooldown in the
+  same transaction; it never clears shared source-IP state.
 - Tenant security-event reads exclude unscoped platform authentication
   telemetry. Experiment results bind workspace, route experiment, variant, and
   metric before insertion.
@@ -45,8 +68,7 @@
 Multi-factor authentication; account recovery; dependency vulnerability
 remediation and SAST/secret scanning in CI;
 malware scanning for uploaded files (integration point noted in code, no
-scanner wired); OpenTelemetry export; shared login/registration abuse controls
-and timing equalization; a non-mutating/internal Temporal health probe; atomic
+scanner wired); OpenTelemetry export; a non-mutating/internal Temporal health probe; atomic
 single-writer approval decisions; subscription/plan enforcement; and fail-closed
 runtime provider kill-switch wiring.
 

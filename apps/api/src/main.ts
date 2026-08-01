@@ -13,6 +13,7 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
+  app.getHttpAdapter().getInstance().set('trust proxy', env.API_TRUST_PROXY_HOPS);
   app.use(cookieParser());
   app.enableCors({ origin: env.API_CORS_ORIGIN, credentials: true });
   app.setGlobalPrefix('api');

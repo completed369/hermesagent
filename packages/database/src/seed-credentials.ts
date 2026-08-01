@@ -16,7 +16,7 @@ export function resolveSeedFounderCredentials(
     throw new Error('Database fixture seeding is disabled in production.');
   }
 
-  const email = env.DEV_FOUNDER_EMAIL?.trim();
+  const email = env.DEV_FOUNDER_EMAIL?.trim().toLowerCase();
   const password = env.DEV_FOUNDER_PASSWORD?.trim();
   if (!email || !password) {
     throw new Error(

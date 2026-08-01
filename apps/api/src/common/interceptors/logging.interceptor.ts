@@ -1,4 +1,10 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import {
+  CallHandler,
+  ExecutionContext,
+  HttpException,
+  Injectable,
+  NestInterceptor,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Observable, tap } from 'rxjs';
 import { StructuredLogger } from '@ventureos/observability';
@@ -17,20 +23,28 @@ export class LoggingInterceptor implements NestInterceptor {
         next: () => {
           logger.info('request completed', {
             method: req.method,
-            path: req.originalUrl,
+            path: req.path,
             statusCode: res.statusCode,
             durationMs: Date.now() - start,
             correlationId: req.correlationId,
           });
         },
         error: (err: unknown) => {
-          logger.error('request failed', {
+          const statusCode = err instanceof HttpException ? err.getStatus() : undefined;
+          const context = {
             method: req.method,
-            path: req.originalUrl,
+            path: req.path,
+            statusCode,
             durationMs: Date.now() - start,
             correlationId: req.correlationId,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          };
+
+          if (statusCode === 401 || statusCode === 429) {
+            logger.warn('controlled client request', context);
+            return;
+          }
+
+          logger.error('request failed', context);
         },
       }),
     );

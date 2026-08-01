@@ -6,8 +6,8 @@ const logger = new StructuredLogger('api');
 
 /**
  * Ensures no internal error detail (stack traces, DB errors, secrets) ever
- * reaches an HTTP client. Full detail is still logged server-side with the
- * request's correlation ID so it can be traced.
+ * reaches an HTTP client or structured log. Correlation ID, status, and path
+ * remain available for tracing without retaining exception payloads.
  */
 @Catch()
 export class SafeExceptionFilter implements ExceptionFilter {
@@ -20,13 +20,29 @@ export class SafeExceptionFilter implements ExceptionFilter {
     const status = isHttp ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const safeMessage = isHttp ? exception.message : 'An unexpected error occurred.';
 
-    logger.error('unhandled exception', {
+    const logContext = {
       correlationId: req.correlationId,
-      path: req.originalUrl,
+      path: req.path,
       status,
-      error: exception instanceof Error ? exception.message : String(exception),
-      stack: exception instanceof Error ? exception.stack : undefined,
-    });
+    };
+    const isControlledClientOutcome =
+      isHttp && (status === HttpStatus.UNAUTHORIZED || status === HttpStatus.TOO_MANY_REQUESTS);
+    if (isControlledClientOutcome) {
+      logger.warn('controlled client exception', logContext);
+    } else {
+      logger.error('request exception', logContext);
+    }
+
+    const retryAfter =
+      typeof exception === 'object' &&
+      exception !== null &&
+      'retryAfterSeconds' in exception &&
+      typeof exception.retryAfterSeconds === 'number'
+        ? Math.min(900, Math.max(1, Math.ceil(exception.retryAfterSeconds)))
+        : undefined;
+    if (status === HttpStatus.TOO_MANY_REQUESTS && retryAfter !== undefined) {
+      res.setHeader('Retry-After', String(retryAfter));
+    }
 
     res.status(status).json({
       statusCode: status,

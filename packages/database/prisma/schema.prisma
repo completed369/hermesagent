@@ -21,6 +21,8 @@ datasource db {
 
 model User {
   id           String    @id @default(uuid()) @db.Uuid
+  /// Canonical lower-case identity; the Phase 11 migration normalizes existing
+  /// rows and enforces this invariant with users_email_normalized_check.
   email        String    @unique
   passwordHash String?
   displayName  String
@@ -224,6 +226,27 @@ model SecurityEvent {
 
   @@index([workspaceId, createdAt])
   @@map("security_events")
+}
+
+/// Durable, instance-shared authentication abuse state. Only one-way account
+/// and source-IP digests are stored; raw identifiers and credentials never
+/// belong in this table.
+model AuthAbuseState {
+  channel         String
+  scope           String
+  keyDigest       String
+  attemptCount    Int       @default(0)
+  windowStartedAt DateTime
+  cooldownLevel   Int       @default(0)
+  cooldownUntil   DateTime?
+  lastAttemptAt   DateTime
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@id([channel, scope, keyDigest])
+  @@index([expiresAt])
+  @@map("auth_abuse_states")
 }
 
 // ---------------------------------------------------------------------------

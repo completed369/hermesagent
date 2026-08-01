@@ -48,10 +48,18 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   in addition to `sameSite=lax` and the CORS allowlist. Deployments must keep a
   single trusted `API_CORS_ORIGIN`; future multi-origin clients will require a
   reviewed allowlist or a synchronizer-token design.
-- **Authentication abuse controls are not staging-ready**: only the
-  process-local global limiter throttles login/registration. There is no shared
-  per-account/trusted-IP limiter; missing-user login skips synchronous scrypt,
-  leaving timing and distributed KDF-pressure paths.
+- **Authentication abuse hardening is implemented but remains deployment-policy
+  sensitive**: PostgreSQL-backed account/source cooldowns survive restarts and
+  coordinate API instances; blocked requests skip KDF work, missing users run the
+  same asynchronous scrypt path, registration responses are generic and
+  time-floored, concurrent workspace-slug conflicts use a bounded transactional
+  randomized retry, and raw identifiers/IPs are not stored in abuse state.
+  Expired abuse rows are removed opportunistically during authentication traffic
+  or an explicit cleanup call; no scheduler is included. Deployments behind a
+  reverse proxy must set the bounded `API_TRUST_PROXY_HOPS` value to the exact
+  trusted hop count; the secure default is `0`, which ignores forwarding headers.
+  Rotating the abuse-digest secret invalidates existing pseudonymous buckets and
+  therefore requires an explicit operational reset decision.
 - **The public Temporal health probe is mutating**: each unauthenticated request
   starts and awaits a real workflow. Replace it with a bounded non-mutating or
   authenticated internal probe before Temporal-backed staging.
@@ -70,8 +78,9 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   audits must remain required for future dependency changes. See
   `APPLICATION_SECURITY_BASELINE.md` for advisory roots and validation evidence.
 - **Database migrations still require normal production change controls**:
-  the ten-migration chain, including in-place hashing of existing session
-  tokens, has been exercised on disposable PostgreSQL. That does not replace a
+  the eleven-migration chain, including in-place hashing of existing session
+  tokens and durable authentication-abuse state, has been exercised on
+  disposable PostgreSQL. That does not replace a
   production backup, restore rehearsal, maintenance plan, or rollback review.
 - **MinIO and live Temporal connectivity remain unverified here.** Disposable
   PostgreSQL migration, seed, unit/integration, and compatibility probes passed;
