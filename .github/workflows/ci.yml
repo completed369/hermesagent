@@ -56,6 +56,9 @@ jobs:
       AUTH_SECRET: ci-only-auth-secret-not-a-real-secret-32chars
       DEV_FOUNDER_EMAIL: founder@ventureos.local
       DEV_FOUNDER_PASSWORD: ci-only-founder-password
+      STORAGE_PROVIDER: mock
+      AI_PROVIDER: mock
+      MARKETPLACE_ETSY_MODE: mock
 
     steps:
       - name: Checkout
