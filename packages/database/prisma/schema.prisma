@@ -1111,7 +1111,7 @@ model PublicationAttempt {
   id               String    @id @default(uuid()) @db.Uuid
   listingVersionId String    @db.Uuid
   marketplace      String
-  status           String    @default("NOT_ATTEMPTED") // NOT_ATTEMPTED | BLOCKED_NO_APPROVAL | BLOCKED_NO_LIVE_INTEGRATION | WOULD_PUBLISH_MOCK | BLOCKED_DISABLED | BLOCKED_RATE_LIMIT | READY_FOR_PUBLISH | PUBLISHED | FAILED
+  status           String    @default("NOT_ATTEMPTED") // NOT_ATTEMPTED | BLOCKED_NO_APPROVAL | BLOCKED_NO_LIVE_INTEGRATION | WOULD_PUBLISH_MOCK | BLOCKED_DISABLED | BLOCKED_RATE_LIMIT | BLOCKED_POLICY | RESERVED | READY_FOR_PUBLISH | PUBLISHED | IDEMPOTENT_REPLAY | FAILED
   blockedReason    String?
   errorMessage     String?
   attemptedAt      DateTime  @default(now())
@@ -1174,12 +1174,12 @@ model MarketplaceAccount {
   @@map("marketplace_accounts")
 }
 
-/// Guarantees every external marketplace write (draft creation, image/file
-/// upload, publish) executes at most once for a given logical operation,
-/// even under retries -- master spec's "duplicate external execution"
-/// threat (docs/THREAT_MODEL.md), previously "Not yet addressed", now real.
-/// A reused key with a different requestHash is a genuine caller error
-/// (never silently treated as a retry of the same operation).
+/// Coordinates every mock marketplace write (draft creation, image/file upload,
+/// publish). Atomic local claims prevent concurrent retry execution, matching
+/// successful replays return the cached snapshot, and conflicting payloads fail.
+/// A future live adapter must propagate this key to a provider-supported
+/// idempotency mechanism because a process crash after external success but before
+/// SUCCEEDED persistence cannot be made exactly-once by a local database alone.
 model IdempotencyKey {
   id                   String    @id @default(uuid()) @db.Uuid
   workspaceId          String    @db.Uuid

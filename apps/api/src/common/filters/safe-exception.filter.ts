@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { isCapabilityPolicyDeniedError } from '@ventureos/database';
 import { StructuredLogger } from '@ventureos/observability';
 
 const logger = new StructuredLogger('api');
@@ -17,8 +18,17 @@ export class SafeExceptionFilter implements ExceptionFilter {
     const req = ctx.getRequest<Request>();
 
     const isHttp = exception instanceof HttpException;
-    const status = isHttp ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
-    const safeMessage = isHttp ? exception.message : 'An unexpected error occurred.';
+    const isPolicyDenied = isCapabilityPolicyDeniedError(exception);
+    const status = isHttp
+      ? exception.getStatus()
+      : isPolicyDenied
+        ? HttpStatus.FORBIDDEN
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+    const safeMessage = isHttp
+      ? exception.message
+      : isPolicyDenied
+        ? 'Operation is not available'
+        : 'An unexpected error occurred.';
 
     const logContext = {
       correlationId: req.correlationId,
@@ -26,7 +36,9 @@ export class SafeExceptionFilter implements ExceptionFilter {
       status,
     };
     const isControlledClientOutcome =
-      isHttp && (status === HttpStatus.UNAUTHORIZED || status === HttpStatus.TOO_MANY_REQUESTS);
+      status === HttpStatus.UNAUTHORIZED ||
+      status === HttpStatus.FORBIDDEN ||
+      status === HttpStatus.TOO_MANY_REQUESTS;
     if (isControlledClientOutcome) {
       logger.warn('controlled client exception', logContext);
     } else {

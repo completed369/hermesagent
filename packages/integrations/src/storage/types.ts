@@ -1,4 +1,5 @@
 export interface UploadFileInput {
+  workspaceId: string;
   key: string;
   contentType: string;
   sizeBytes: number;
@@ -14,10 +15,18 @@ export interface StoredFileMetadata {
   uploadedAt: string;
 }
 
+export function assertWorkspaceStorageKey(workspaceId: string, key: string): void {
+  const requiredPrefix = `workspaces/${workspaceId}/`;
+  if (!key.startsWith(requiredPrefix) || key.includes('..') || key.includes('\\')) {
+    throw new Error('Storage object key is outside the authorized workspace namespace');
+  }
+}
+
 export interface StorageProvider {
+  readonly mode: 'mock' | 'minio' | 's3';
   upload(input: UploadFileInput): Promise<StoredFileMetadata>;
-  getSignedDownloadUrl(key: string, ttlSeconds: number): Promise<string>;
-  exists(key: string): Promise<boolean>;
+  getSignedDownloadUrl(workspaceId: string, key: string, ttlSeconds: number): Promise<string>;
+  exists(workspaceId: string, key: string): Promise<boolean>;
   healthCheck(): Promise<{ healthy: boolean; message?: string }>;
 }
 

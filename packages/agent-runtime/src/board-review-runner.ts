@@ -1,4 +1,9 @@
-import { prisma } from '@ventureos/database';
+import {
+  dispatchWithWorkspaceCapability,
+  enforceWorkspaceCapability,
+  isCapabilityPolicyDeniedError,
+  prisma,
+} from '@ventureos/database';
 import { calculateBoardVotingResult, DEFAULT_AGENT_WEIGHTS } from '@ventureos/policy-engine';
 import { BOARD_AGENT_ROLES, type AgentOutput } from '@ventureos/contracts';
 import { recordModelUsage } from '@ventureos/finance-engine';
@@ -33,6 +38,12 @@ export interface RunBoardReviewResult {
  * imported directly rather than duplicated.
  */
 export async function runBoardReview(params: RunBoardReviewParams): Promise<RunBoardReviewResult> {
+  await enforceWorkspaceCapability({
+    workspaceId: params.workspaceId,
+    capability: 'AI_MODEL_EXECUTION',
+    stage: 'DISPATCH',
+  });
+
   const proposal = await prisma.ventureProposal.findFirst({
     where: { id: params.ventureProposalId, workspaceId: params.workspaceId },
     include: {
@@ -80,7 +91,14 @@ export async function runBoardReview(params: RunBoardReviewParams): Promise<RunB
       evidenceClaimIds,
     };
 
-    const outputs: AgentOutput[] = runAllMockBoardAgents(agentInput);
+    const outputs: AgentOutput[] = await dispatchWithWorkspaceCapability(
+      {
+        workspaceId: params.workspaceId,
+        capability: 'AI_MODEL_EXECUTION',
+        stage: 'DISPATCH',
+      },
+      () => runAllMockBoardAgents(agentInput),
+    );
 
     const agentDefinitions = await prisma.agentDefinition.findMany({
       where: { role: { in: [...BOARD_AGENT_ROLES] } },
@@ -175,6 +193,17 @@ export async function runBoardReview(params: RunBoardReviewParams): Promise<RunB
       decisionSummaryId: decisionSummary.id,
     };
   } catch (err) {
+    if (isCapabilityPolicyDeniedError(err)) {
+      await prisma.boardReview.update({
+        where: { id: boardReview.id },
+        data: {
+          status: 'FAILED',
+          failureReason: 'CAPABILITY_POLICY_DENIED',
+          completedAt: new Date(),
+        },
+      });
+      throw err;
+    }
     await prisma.boardReview.update({
       where: { id: boardReview.id },
       data: {

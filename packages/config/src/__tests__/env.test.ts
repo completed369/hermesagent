@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { envSchema, __resetEnvCacheForTests, loadEnv } from '../env';
 
+const validBaseEnv = {
+  DATABASE_URL: 'postgresql://localhost:5432/ventureos',
+  AUTH_SECRET: 'x'.repeat(32),
+  AI_PROVIDER: 'mock',
+  STORAGE_PROVIDER: 'mock',
+  MARKETPLACE_ETSY_MODE: 'mock',
+} as const;
+
 describe('envSchema', () => {
   it('fails closed when DATABASE_URL is missing', () => {
     const result = envSchema.safeParse({ AUTH_SECRET: 'x'.repeat(32) });
@@ -15,33 +23,48 @@ describe('envSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it.each(['AI_PROVIDER', 'STORAGE_PROVIDER', 'MARKETPLACE_ETSY_MODE'] as const)(
+    'fails closed when required provider selection %s is missing',
+    (providerKey) => {
+      expect(envSchema.safeParse({ ...validBaseEnv, [providerKey]: undefined }).success).toBe(
+        false,
+      );
+    },
+  );
+
   it('applies safe defaults for optional values', () => {
-    const result = envSchema.parse({
-      DATABASE_URL: 'postgresql://localhost:5432/ventureos',
-      AUTH_SECRET: 'x'.repeat(32),
-    });
+    const result = envSchema.parse(validBaseEnv);
     expect(result.NODE_ENV).toBe('development');
     expect(result.AI_PROVIDER).toBe('mock');
     expect(result.FEATURE_LIVE_PUBLISHING_ENABLED).toBe(false);
+    expect(result.FEATURE_STORAGE_UPLOADS_ENABLED).toBe(false);
     expect(result.GOVERNANCE_BOARD_APPROVAL_THRESHOLD).toBe(75);
     expect(result.API_TRUST_PROXY_HOPS).toBe(0);
   });
 
+  it('fails closed for malformed boolean policy configuration', () => {
+    const result = envSchema.safeParse({
+      ...validBaseEnv,
+      FEATURE_LIVE_PUBLISHING_ENABLED: 'yes',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('validates reserved provider selections without enabling unavailable providers', () => {
+    const base = validBaseEnv;
+    expect(envSchema.safeParse({ ...base, ADVERTISING_PROVIDER_MODE: 'live' }).success).toBe(true);
+    expect(envSchema.safeParse({ ...base, ADVERTISING_PROVIDER_MODE: 'mock' }).success).toBe(false);
+  });
+
   it('accepts only a bounded trusted-proxy hop count', () => {
-    const base = {
-      DATABASE_URL: 'postgresql://localhost:5432/ventureos',
-      AUTH_SECRET: 'x'.repeat(32),
-    };
+    const base = validBaseEnv;
     expect(envSchema.parse({ ...base, API_TRUST_PROXY_HOPS: '1' }).API_TRUST_PROXY_HOPS).toBe(1);
     expect(envSchema.safeParse({ ...base, API_TRUST_PROXY_HOPS: '-1' }).success).toBe(false);
     expect(envSchema.safeParse({ ...base, API_TRUST_PROXY_HOPS: '11' }).success).toBe(false);
   });
 
   it('validates an optional dedicated authentication-abuse digest secret', () => {
-    const base = {
-      DATABASE_URL: 'postgresql://localhost:5432/ventureos',
-      AUTH_SECRET: 'x'.repeat(32),
-    };
+    const base = validBaseEnv;
     expect(
       envSchema.parse({ ...base, AUTH_ABUSE_DIGEST_SECRET: 'y'.repeat(32) })
         .AUTH_ABUSE_DIGEST_SECRET,
@@ -52,10 +75,7 @@ describe('envSchema', () => {
   });
 
   it('defaults and bounds the registration response timing floor', () => {
-    const base = {
-      DATABASE_URL: 'postgresql://localhost:5432/ventureos',
-      AUTH_SECRET: 'x'.repeat(32),
-    };
+    const base = validBaseEnv;
     expect(envSchema.parse(base).AUTH_REGISTRATION_MIN_RESPONSE_MS).toBe(300);
     expect(envSchema.safeParse({ ...base, AUTH_REGISTRATION_MIN_RESPONSE_MS: '50' }).success).toBe(
       true,
@@ -70,10 +90,7 @@ describe('envSchema', () => {
 
   it('memoizes loadEnv until reset', () => {
     __resetEnvCacheForTests();
-    const env = loadEnv({
-      DATABASE_URL: 'postgresql://localhost:5432/ventureos',
-      AUTH_SECRET: 'x'.repeat(32),
-    } as NodeJS.ProcessEnv);
+    const env = loadEnv(validBaseEnv as NodeJS.ProcessEnv);
     expect(env.APP_NAME).toBe('VentureOS');
     __resetEnvCacheForTests();
   });

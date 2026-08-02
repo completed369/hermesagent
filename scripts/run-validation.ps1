@@ -7,11 +7,12 @@
 Set-Location (Get-RepoRoot)
 
 $steps = @(
+    @{ Name = "Clean build outputs"; Command = "node"; Args = @("scripts/clean-build-outputs.mjs") },
     @{ Name = "Format check"; Command = "pnpm"; Args = @("run", "format:check") },
     @{ Name = "Lint"; Command = "pnpm"; Args = @("run", "lint") },
     @{ Name = "Typecheck"; Command = "pnpm"; Args = @("run", "typecheck") },
     @{ Name = "Unit tests"; Command = "pnpm"; Args = @("run", "test:unit") },
-    @{ Name = "Integration tests"; Command = "pnpm"; Args = @("--filter", "@ventureos/api", "test:integration") },
+    @{ Name = "Integration tests"; Command = "pnpm"; Args = @("run", "test:integration") },
     @{ Name = "Production build"; Command = "pnpm"; Args = @("run", "build") }
 )
 

@@ -78,13 +78,34 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   forced complete integration, clean-output E2E, reused-state E2E, and immediate
   E2E repeat gates all passed without retry recovery. See
   `APPLICATION_SECURITY_BASELINE.md` for measured evidence.
-- **Commercial/provider gates are incomplete**: subscription/plan helpers and
-  declared global publishing/advertising/paid-integration/dev-login flags are
-  not feature/provider dispatch gates. Current external-call safety derives
-  from hardcoded mock-only implementations.
-- **Approval decisions are not concurrency-safe**: the pending-state check and
-  decision update are not one atomic single-writer transition. Fix before any
-  real publication, spend, or customer side effect is connected.
+- **Subscription/provider enforcement is implemented for current execution
+  paths, but live commercial adapters remain absent**: centralized policy now
+  enforces subscription status, trial expiry, active plans, feature entitlements,
+  venture/marketplace quotas, provider modes, and global switches at admission
+  and again in queued activities, direct runners, or final provider boundaries.
+  Marketplace, advertising, paid-integration, email/notification, payment, and
+  non-mock AI implementations still do not exist. `Integration.writeEnabled`
+  must become an additional final-boundary gate before a live marketplace
+  adapter is introduced; current live modes fail closed as unavailable.
+- **Final-dispatch revalidation is immediate best-effort, not a transactional
+  lease**: research acquisition and every implemented mock marketplace
+  draft/image/file/publication operation reload tenant-bound local state and
+  centralized subscription/provider policy at the last safe point before the
+  adapter. Cached idempotency success is revalidated before a new success record
+  is accepted. The implementation intentionally does not hold a database
+  transaction across provider-shaped execution, so a database or process-config
+  change can still occur after the final check. Real providers require a reviewed
+  provider-specific lease/idempotency/compensation design where stronger
+  atomicity is needed.
+- **Raw mock adapters are package-internal**: package roots expose protected
+  runners rather than provider-shaped adapter functions. Database-backed finance
+  reads and mutations enforce `FINANCE_ACCESS` directly. This protects supported
+  package entry points; it is not a claim that arbitrary source-file imports are
+  a security boundary outside the package export contract.
+- **Approval decisions use a single-winner transition**: the persisted decision
+  is committed with an atomic pending-state compare-and-set. Expiry is enforced
+  at decision and execution boundaries; untouched pending rows are not
+  proactively relabelled by a scheduler.
 - **Dependency Critical/High remediation is complete for the validated
   lockfile**: compatibility-tested Next 15, Nest 11/Express 5, and Vitest 3
   upgrades plus targeted vulnerable-child replacements reduced both production
@@ -97,9 +118,10 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   tokens and durable authentication-abuse state, has been exercised on
   disposable PostgreSQL. That does not replace a
   production backup, restore rehearsal, maintenance plan, or rollback review.
-- **MinIO and live Temporal connectivity remain unverified here.** Disposable
-  PostgreSQL migration, seed, unit/integration, and compatibility probes passed;
-  this is not production infrastructure evidence.
+- **Production MinIO and live Temporal connectivity remain unverified here.**
+  MinIO upload authorization and zero-network denial are unit-tested, and
+  disposable PostgreSQL validation plus mock-provider E2E passed. This is not
+  production infrastructure evidence and no real provider was contacted.
 - **CI has run, but there is still no complete green clean-runner result
   (corrected 2026-07-20, Phase 9.1).** The historical first main-branch run
   failed at build. The current pull-request run for PR #1 at commit

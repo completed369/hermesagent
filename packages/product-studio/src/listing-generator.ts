@@ -1,4 +1,4 @@
-import { prisma } from '@ventureos/database';
+import { enforceWorkspaceCapability, prisma } from '@ventureos/database';
 import type { Listing, ListingVersion } from '@ventureos/database';
 
 export const MOCK_LISTING_GENERATOR_VERSION = 'mock-listing-generator-v1';
@@ -57,6 +57,21 @@ export interface GenerateListingResult {
 export async function generateListing(
   input: ListingGenerationInput,
 ): Promise<GenerateListingResult> {
+  await enforceWorkspaceCapability({
+    workspaceId: input.workspaceId,
+    capability: 'MARKETPLACE_DRAFT',
+    stage: 'DISPATCH',
+  });
+
+  await prisma.product.findFirstOrThrow({
+    where: {
+      id: input.productId,
+      workspaceId: input.workspaceId,
+      versions: { some: { id: input.productVersionId } },
+    },
+    select: { id: true },
+  });
+
   const marketplace = input.marketplace ?? 'etsy';
 
   const listing = await prisma.listing.upsert({

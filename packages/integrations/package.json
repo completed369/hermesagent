@@ -12,6 +12,7 @@
   "dependencies": {
     "minio": "^8.0.2",
     "@ventureos/config": "workspace:*",
+    "@ventureos/database": "workspace:*",
     "@ventureos/security": "workspace:*"
   },
   "devDependencies": {

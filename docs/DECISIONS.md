@@ -293,7 +293,9 @@ NestJS DI container, since none exists in `apps/worker`. It is called
 directly from within each affected Temporal activity, immediately after
 that activity's underlying package-function call succeeds:
 
-- `marketplace-activities.ts`: `PUBLICATION_PREPARED`,
+- `marketplace-activities.ts`: `PUBLICATION_PREPARED` only for a real ready
+  result, otherwise `PUBLICATION_PREPARATION_BLOCKED` or
+  `PUBLICATION_PREPARATION_FAILED`,
   `PUBLICATION_APPROVAL_REQUESTED`, and `PUBLICATION_PUBLISHED` (or
   `PUBLICATION_FAILED`, based on the real result status)
 - `product-listing-activities.ts`: `PRODUCT_GENERATED`, `LISTING_GENERATED`,
@@ -352,6 +354,16 @@ for future maintainers extending `ApprovalRequest.kind`. Verified via the
 integration test suite (54/54 passing) and again via live browser
 verification of a fresh Gate 6 approval (see `docs/EXECUTION_PLAN.md`
 Phase 7 section) — no hash mismatch under a real end-to-end run.
+
+**Phase 14 hardening supersedes the bare-snapshot SCALE scheme.** The Phase 7
+fix above restored internal consistency, but a later adversarial review found
+that it did not bind the experiment evidence that justified increasing spend.
+`SCALE_DECISION` now has an explicit kind-specific revalidation branch and a
+shared canonical hash covering the proposal version/snapshot plus experiment
+definition, variants, metrics, and results. The same package is recomputed at
+request, founder decision, and SCALE execution; post-approval result changes
+therefore invalidate authorization instead of inheriting approval from an
+older evidence set.
 
 **Bug 2 — `serverApiFetch` crashed on a venture's real zero-state.** Found
 via live browser verification (task #86), the first time the Finance

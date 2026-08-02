@@ -9,9 +9,9 @@ import { z } from 'zod';
  */
 function zBoolean(defaultValue: boolean) {
   return z
-    .string()
+    .enum(['true', 'false'])
     .optional()
-    .transform((v) => (v === undefined ? defaultValue : v.trim().toLowerCase() === 'true'));
+    .transform((v) => (v === undefined ? defaultValue : v === 'true'));
 }
 
 /**
@@ -50,7 +50,7 @@ export const envSchema = z.object({
   TEMPORAL_NAMESPACE: z.string().default('ventureos-dev'),
   TEMPORAL_TASK_QUEUE: z.string().default('ventureos-main'),
 
-  STORAGE_PROVIDER: z.enum(['minio', 's3']).default('minio'),
+  STORAGE_PROVIDER: z.enum(['mock', 'minio', 's3']),
   MINIO_ENDPOINT: z.string().default('localhost'),
   MINIO_PORT: z.coerce.number().int().positive().default(9000),
   MINIO_ROOT_USER: z.string().default('ventureos'),
@@ -60,7 +60,7 @@ export const envSchema = z.object({
   STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   STORAGE_MAX_FILE_SIZE_MB: z.coerce.number().int().positive().default(25),
 
-  AI_PROVIDER: z.enum(['mock', 'anthropic']).default('mock'),
+  AI_PROVIDER: z.enum(['mock', 'anthropic']),
   AI_PER_AGENT_TOKEN_LIMIT: z.coerce.number().int().positive().default(8000),
   AI_PER_AGENT_COST_LIMIT_EUR: z.coerce.number().positive().default(0.5),
   AI_PER_WORKFLOW_COST_LIMIT_EUR: z.coerce.number().positive().default(3),
@@ -68,9 +68,13 @@ export const envSchema = z.object({
   AI_PER_WORKSPACE_MONTHLY_LIMIT_EUR: z.coerce.number().positive().default(100),
   ANTHROPIC_API_KEY: z.string().optional(),
 
-  MARKETPLACE_ETSY_MODE: z.enum(['mock', 'live']).default('mock'),
+  MARKETPLACE_ETSY_MODE: z.enum(['mock', 'live']),
+  ADVERTISING_PROVIDER_MODE: z.enum(['live']).optional(),
+  PAID_INTEGRATION_PROVIDER_MODE: z.enum(['live']).optional(),
+  NOTIFICATION_PROVIDER_MODE: z.enum(['live']).optional(),
 
   FEATURE_LIVE_PUBLISHING_ENABLED: zBoolean(false),
+  FEATURE_STORAGE_UPLOADS_ENABLED: zBoolean(false),
   FEATURE_ADVERTISING_ENABLED: zBoolean(false),
   FEATURE_PAID_INTEGRATIONS_ENABLED: zBoolean(false),
   GOVERNANCE_BOARD_APPROVAL_THRESHOLD: z.coerce.number().min(0).max(100).default(75),

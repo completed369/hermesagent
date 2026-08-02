@@ -418,6 +418,9 @@ importers:
       '@ventureos/config':
         specifier: workspace:*
         version: link:../config
+      '@ventureos/database':
+        specifier: workspace:*
+        version: link:../database
       '@ventureos/security':
         specifier: workspace:*
         version: link:../security

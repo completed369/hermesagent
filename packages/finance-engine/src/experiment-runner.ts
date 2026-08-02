@@ -1,7 +1,9 @@
-import { prisma } from '@ventureos/database';
+import { Prisma, prisma } from '@ventureos/database';
 import type { Experiment, ExperimentDecision, ExperimentResult } from '@ventureos/database';
-import { hashObject } from '@ventureos/security';
+import { isApprovalValidForExecution } from '@ventureos/contracts';
+import { hashScaleDecisionArtifact } from '@ventureos/security';
 import { ExperimentInvalidStateError, ExperimentNotFoundError } from './errors.js';
+import { enforceFinanceMutation } from './capability-guard.js';
 
 export interface CreateExperimentParams {
   workspaceId: string;
@@ -17,30 +19,50 @@ export interface CreateExperimentParams {
  * and the metrics that will decide its outcome, defined up front -- never
  * invented after the fact to justify a result. */
 export async function createExperiment(params: CreateExperimentParams): Promise<Experiment> {
-  return prisma.experiment.create({
-    data: {
-      workspaceId: params.workspaceId,
-      ventureProposalId: params.ventureProposalId,
-      listingVersionId: params.listingVersionId,
-      name: params.name,
-      hypothesis: params.hypothesis,
-      status: 'DRAFT',
-      variants: {
-        create: params.variants.map((v) => ({
-          name: v.name,
-          description: v.description,
-          isControl: v.isControl ?? false,
-        })),
+  return prisma.$transaction(async (tx) => {
+    const proposal = await tx.ventureProposal.findFirst({
+      where: { id: params.ventureProposalId, workspaceId: params.workspaceId },
+      select: { id: true },
+    });
+    if (!proposal) throw new ExperimentNotFoundError('Venture proposal not found');
+    if (params.listingVersionId) {
+      const listingVersion = await tx.listingVersion.findFirst({
+        where: { id: params.listingVersionId, listing: { workspaceId: params.workspaceId } },
+        select: { id: true },
+      });
+      if (!listingVersion) throw new ExperimentNotFoundError('Listing version not found');
+    }
+
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:experiment:create:${params.ventureProposalId}`,
+      tx,
+    );
+    return tx.experiment.create({
+      data: {
+        workspaceId: params.workspaceId,
+        ventureProposalId: params.ventureProposalId,
+        listingVersionId: params.listingVersionId,
+        name: params.name,
+        hypothesis: params.hypothesis,
+        status: 'DRAFT',
+        variants: {
+          create: params.variants.map((v) => ({
+            name: v.name,
+            description: v.description,
+            isControl: v.isControl ?? false,
+          })),
+        },
+        metrics: {
+          create: params.metrics.map((m) => ({
+            name: m.name,
+            targetValue: m.targetValue,
+            unit: m.unit,
+          })),
+        },
       },
-      metrics: {
-        create: params.metrics.map((m) => ({
-          name: m.name,
-          targetValue: m.targetValue,
-          unit: m.unit,
-        })),
-      },
-    },
-    include: { variants: true, metrics: true },
+      include: { variants: true, metrics: true },
+    });
   });
 }
 
@@ -48,16 +70,26 @@ export async function startExperiment(
   workspaceId: string,
   experimentId: string,
 ): Promise<Experiment> {
-  const experiment = await prisma.experiment.findFirst({
-    where: { id: experimentId, workspaceId },
-  });
-  if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
-  if (experiment.status !== 'DRAFT') {
-    throw new ExperimentInvalidStateError(`Experiment is already ${experiment.status}`);
-  }
-  return prisma.experiment.update({
-    where: { id: experimentId },
-    data: { status: 'RUNNING', startedAt: new Date() },
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "experiments" WHERE "id" = ${experimentId}::uuid AND "workspaceId" = ${workspaceId}::uuid FOR UPDATE`,
+    );
+    const experiment = await tx.experiment.findFirst({
+      where: { id: experimentId, workspaceId },
+    });
+    if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
+    if (experiment.status !== 'DRAFT') {
+      throw new ExperimentInvalidStateError(`Experiment is already ${experiment.status}`);
+    }
+    await enforceFinanceMutation(workspaceId, `finance:experiment:start:${experimentId}`, tx);
+    const updated = await tx.experiment.updateMany({
+      where: { id: experimentId, workspaceId, status: 'DRAFT' },
+      data: { status: 'RUNNING', startedAt: new Date() },
+    });
+    if (updated.count !== 1) {
+      throw new ExperimentInvalidStateError('Experiment is no longer DRAFT');
+    }
+    return tx.experiment.findUniqueOrThrow({ where: { id: experimentId } });
   });
 }
 
@@ -75,33 +107,43 @@ export interface RecordExperimentResultParams {
 export async function recordExperimentResult(
   params: RecordExperimentResultParams,
 ): Promise<ExperimentResult> {
-  const variant = await prisma.experimentVariant.findFirst({
-    where: { id: params.experimentVariantId },
-    include: { experiment: true },
-  });
-  if (
-    !variant ||
-    variant.experiment.workspaceId !== params.workspaceId ||
-    variant.experimentId !== params.experimentId
-  ) {
-    throw new ExperimentNotFoundError('Experiment variant not found');
-  }
-  const metric = await prisma.experimentMetric.findFirst({
-    where: {
-      id: params.experimentMetricId,
-      experimentId: variant.experimentId,
-    },
-  });
-  if (!metric) {
-    throw new ExperimentNotFoundError('Experiment metric not found');
-  }
-  return prisma.experimentResult.create({
-    data: {
-      experimentVariantId: params.experimentVariantId,
-      experimentMetricId: params.experimentMetricId,
-      value: params.value,
-      sampleSize: params.sampleSize,
-    },
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "experiments" WHERE "id" = ${params.experimentId}::uuid AND "workspaceId" = ${params.workspaceId}::uuid FOR UPDATE`,
+    );
+    const variant = await tx.experimentVariant.findFirst({
+      where: { id: params.experimentVariantId },
+      include: { experiment: true },
+    });
+    if (
+      !variant ||
+      variant.experiment.workspaceId !== params.workspaceId ||
+      variant.experimentId !== params.experimentId
+    ) {
+      throw new ExperimentNotFoundError('Experiment variant not found');
+    }
+    if (variant.experiment.status !== 'RUNNING') {
+      throw new ExperimentInvalidStateError(
+        `Experiment results require RUNNING status (current: ${variant.experiment.status})`,
+      );
+    }
+    const metric = await tx.experimentMetric.findFirst({
+      where: { id: params.experimentMetricId, experimentId: variant.experimentId },
+    });
+    if (!metric) throw new ExperimentNotFoundError('Experiment metric not found');
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:experiment-result:${params.experimentId}`,
+      tx,
+    );
+    return tx.experimentResult.create({
+      data: {
+        experimentVariantId: params.experimentVariantId,
+        experimentMetricId: params.experimentMetricId,
+        value: params.value,
+        sampleSize: params.sampleSize,
+      },
+    });
   });
 }
 
@@ -119,25 +161,18 @@ export interface RequestScaleDecisionApprovalParams {
  * every other irreversible/costed action in this system -- never an
  * automatic "the numbers look good, so scale" action. Uses the SAME
  * `ApprovalRequest`/`decideApprovalRequest` machinery Phases 3/4/6 already
- * use (kind: 'SCALE_DECISION'); `decideApprovalRequest`'s default branch
- * already re-validates hash-binding against the venture proposal's latest
- * version with zero changes needed, since every ApprovalRequest is bound to
- * a ventureProposalId/ventureProposalVersionId regardless of kind.
- * `packageHash` MUST be computed with the exact same scheme as a
- * VENTURE_PROPOSAL request -- `hashObject(latestVersion.snapshot)` alone --
- * because that is exactly what `decideApprovalRequest`'s default branch
- * re-computes at decision time. Wrapping the snapshot in any other object
- * (e.g. together with an experiment-results hash) makes the stored
- * `packageHash` permanently mismatch what gets re-computed, so the approval
- * would fail closed with PACKAGE_HASH_MISMATCH even with zero real drift --
- * a real bug an earlier version of this function had, caught by
- * `finance.integration.spec.ts`.
+ * use (kind: 'SCALE_DECISION'). The approval hash binds both the current
+ * proposal version and the exact experiment definition/results so evidence
+ * appended after the request or decision invalidates execution.
  */
 export async function requestScaleDecisionApproval(
   params: RequestScaleDecisionApprovalParams,
 ): Promise<{ approvalRequestId: string }> {
+  await enforceFinanceMutation(params.workspaceId, `finance:scale-approval:${params.experimentId}`);
+
   const experiment = await prisma.experiment.findFirst({
     where: { id: params.experimentId, workspaceId: params.workspaceId },
+    include: { variants: { include: { results: true } }, metrics: true },
   });
   if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
   if (experiment.status !== 'RUNNING' && experiment.status !== 'COMPLETED') {
@@ -161,7 +196,7 @@ export async function requestScaleDecisionApproval(
   // evidenceArtifactId) -- fetched as a separate query rather than via
   // `include`.
   const proposal = await prisma.ventureProposal.findFirst({
-    where: { id: experiment.ventureProposalId },
+    where: { id: experiment.ventureProposalId, workspaceId: params.workspaceId },
     include: {
       opportunity: true,
       versions: { orderBy: { versionNumber: 'desc' as const }, take: 1 },
@@ -172,38 +207,46 @@ export async function requestScaleDecisionApproval(
   if (!latestVersion) throw new ExperimentNotFoundError('Venture proposal has no versions');
   const opportunity = proposal.opportunity;
 
-  // Same artefact, same hash scheme as a VENTURE_PROPOSAL request -- see the
-  // function doc comment above for why this must not be wrapped in anything
-  // else.
-  const packageHash = hashObject(latestVersion.snapshot);
+  const packageHash = hashScaleDecisionArtifact({
+    proposalVersionId: latestVersion.id,
+    proposalSnapshot: latestVersion.snapshot,
+    experiment,
+  });
 
   const expiresAt = new Date(Date.now() + (params.expiresInHours ?? 168) * 60 * 60 * 1000);
 
-  const approvalRequest = await prisma.approvalRequest.create({
-    data: {
-      workspaceId: params.workspaceId,
-      ventureProposalId: proposal.id,
-      ventureProposalVersionId: latestVersion.id,
-      kind: 'SCALE_DECISION',
-      experimentId: experiment.id,
-      requestedAction: `Increase ad spend for experiment "${experiment.name}"`,
-      explanation:
-        'Experiment results are ready for a scale decision. Founder approval is required before ad spend may be increased -- Gate 6 per master spec section 30.',
-      affectedResources: [`Experiment:${experiment.id}`, `VentureProposal:${proposal.id}`],
-      packageHash,
-      estimatedCostEur: opportunity.estimatedCostEur ?? 0,
-      maxAuthorizedCostEur: opportunity.estimatedCostEur ?? 0,
-      reversible: false,
-      risks: [
-        ...opportunity.risks,
-        'Increasing ad spend on an experiment that may not generalize.',
-      ],
-      evidenceIds: [],
-      state: 'PENDING',
-      requestedBy: params.requestedBy,
-      workflowId: params.workflowId,
-      expiresAt,
-    },
+  const approvalRequest = await prisma.$transaction(async (tx) => {
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:scale-approval:${params.experimentId}`,
+      tx,
+    );
+    return tx.approvalRequest.create({
+      data: {
+        workspaceId: params.workspaceId,
+        ventureProposalId: proposal.id,
+        ventureProposalVersionId: latestVersion.id,
+        kind: 'SCALE_DECISION',
+        experimentId: experiment.id,
+        requestedAction: `Increase ad spend for experiment "${experiment.name}"`,
+        explanation:
+          'Experiment results are ready for a scale decision. Founder approval is required before ad spend may be increased -- Gate 6 per master spec section 30.',
+        affectedResources: [`Experiment:${experiment.id}`, `VentureProposal:${proposal.id}`],
+        packageHash,
+        estimatedCostEur: opportunity.estimatedCostEur ?? 0,
+        maxAuthorizedCostEur: opportunity.estimatedCostEur ?? 0,
+        reversible: false,
+        risks: [
+          ...opportunity.risks,
+          'Increasing ad spend on an experiment that may not generalize.',
+        ],
+        evidenceIds: [],
+        state: 'PENDING',
+        requestedBy: params.requestedBy,
+        workflowId: params.workflowId,
+        expiresAt,
+      },
+    });
   });
 
   return { approvalRequestId: approvalRequest.id };
@@ -224,44 +267,101 @@ export interface RecordExperimentDecisionParams {
 export async function recordExperimentDecision(
   params: RecordExperimentDecisionParams,
 ): Promise<ExperimentDecision> {
-  const experiment = await prisma.experiment.findFirst({
-    where: { id: params.experimentId, workspaceId: params.workspaceId },
-  });
-  if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
-  if (experiment.status === 'DECIDED') {
-    throw new ExperimentInvalidStateError('Experiment has already been decided');
-  }
-
-  if (params.decision === 'SCALE') {
-    if (!params.approvalRequestId) {
-      throw new ExperimentInvalidStateError(
-        'A SCALE decision requires an approved SCALE_DECISION approvalRequestId (Gate 6)',
-      );
-    }
-    const approval = await prisma.approvalRequest.findFirst({
-      where: {
-        id: params.approvalRequestId,
-        workspaceId: params.workspaceId,
-        kind: 'SCALE_DECISION',
-        experimentId: params.experimentId,
-      },
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "experiments" WHERE "id" = ${params.experimentId}::uuid AND "workspaceId" = ${params.workspaceId}::uuid FOR UPDATE`,
+    );
+    const experiment = await tx.experiment.findFirst({
+      where: { id: params.experimentId, workspaceId: params.workspaceId },
+      include: { variants: { include: { results: true } }, metrics: true },
     });
-    if (!approval) {
-      throw new ExperimentInvalidStateError('Scale-decision approval request not found');
+    if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
+    if (experiment.status === 'DECIDED') {
+      throw new ExperimentInvalidStateError('Experiment has already been decided');
     }
-    if (approval.state !== 'APPROVED' && approval.state !== 'APPROVED_WITH_CONDITIONS') {
-      throw new ExperimentInvalidStateError(
-        `Scale-decision approval is not approved (state: ${approval.state}) -- Gate 6 blocks scaling until it is.`,
-      );
-    }
-  }
 
-  const [, decisionRow] = await prisma.$transaction([
-    prisma.experiment.update({
-      where: { id: experiment.id },
+    if (params.decision === 'SCALE') {
+      if (!params.approvalRequestId) {
+        throw new ExperimentInvalidStateError(
+          'A SCALE decision requires an approved SCALE_DECISION approvalRequestId (Gate 6)',
+        );
+      }
+      const approval = await tx.approvalRequest.findFirst({
+        where: {
+          id: params.approvalRequestId,
+          workspaceId: params.workspaceId,
+          ventureProposalId: experiment.ventureProposalId,
+          kind: 'SCALE_DECISION',
+          experimentId: params.experimentId,
+        },
+        include: {
+          decisions: {
+            where: { decision: { in: ['APPROVE', 'APPROVE_WITH_CONDITIONS'] } },
+            orderBy: { decidedAt: 'desc' },
+            take: 1,
+          },
+        },
+      });
+      if (!approval) {
+        throw new ExperimentInvalidStateError('Scale-decision approval request not found');
+      }
+      if (approval.state !== 'APPROVED' && approval.state !== 'APPROVED_WITH_CONDITIONS') {
+        throw new ExperimentInvalidStateError(
+          `Scale-decision approval is not approved (state: ${approval.state}) -- Gate 6 blocks scaling until it is.`,
+        );
+      }
+      const decision = approval.decisions[0];
+      if (!decision) {
+        throw new ExperimentInvalidStateError(
+          'Scale-decision approval has no approving decision evidence',
+        );
+      }
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "venture_proposals" WHERE "id" = ${experiment.ventureProposalId}::uuid AND "workspaceId" = ${params.workspaceId}::uuid FOR UPDATE`,
+      );
+      const proposal = await tx.ventureProposal.findFirst({
+        where: { id: experiment.ventureProposalId, workspaceId: params.workspaceId },
+        include: { versions: { orderBy: { versionNumber: 'desc' }, take: 1 } },
+      });
+      const currentVersion = proposal?.versions[0];
+      if (!currentVersion) {
+        throw new ExperimentInvalidStateError('Scale-decision approval artifact is unavailable');
+      }
+      const validity = isApprovalValidForExecution(
+        {
+          approvedArtifactVersionId: decision.approvedArtifactVersionId,
+          approvedPackageHash: decision.approvedPackageHash,
+          expiresAt: decision.expiresAt.toISOString(),
+        },
+        {
+          artifactVersionId: currentVersion.id,
+          packageHash: hashScaleDecisionArtifact({
+            proposalVersionId: currentVersion.id,
+            proposalSnapshot: currentVersion.snapshot,
+            experiment,
+          }),
+        },
+      );
+      if (!validity.valid) {
+        throw new ExperimentInvalidStateError(
+          `Scale-decision approval is no longer valid: ${validity.reason}`,
+        );
+      }
+    }
+
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:experiment-decision:${params.experimentId}`,
+      tx,
+    );
+    const updated = await tx.experiment.updateMany({
+      where: { id: experiment.id, workspaceId: params.workspaceId, status: { not: 'DECIDED' } },
       data: { status: 'DECIDED', endedAt: new Date() },
-    }),
-    prisma.experimentDecision.create({
+    });
+    if (updated.count !== 1) {
+      throw new ExperimentInvalidStateError('Experiment has already been decided');
+    }
+    return tx.experimentDecision.create({
       data: {
         experimentId: experiment.id,
         approvalRequestId: params.approvalRequestId,
@@ -269,8 +369,6 @@ export async function recordExperimentDecision(
         rationale: params.rationale,
         decidedBy: params.decidedBy,
       },
-    }),
-  ]);
-
-  return decisionRow;
+    });
+  });
 }

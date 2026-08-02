@@ -18,6 +18,7 @@ vi.mock('@ventureos/integrations', () => ({
 }));
 
 const env = {
+  STORAGE_PROVIDER: 'minio',
   MINIO_ENDPOINT: 'storage.internal',
   MINIO_PORT: 9000,
   MINIO_USE_SSL: false,
@@ -71,6 +72,18 @@ describe('HealthService', () => {
     expect(prisma.$queryRaw).toHaveBeenCalledOnce();
     expect(storageHealthCheck).toHaveBeenCalledOnce();
     expect(temporalHealth.runConnectivityCheck).toHaveBeenCalledOnce();
+  });
+
+  it('treats explicit mock storage as ready without constructing or contacting MinIO', async () => {
+    const service = new HealthService({ ...env, STORAGE_PROVIDER: 'mock' }, temporal());
+
+    await expect(service.readiness()).resolves.toMatchObject({
+      status: 'ok',
+      checks: { storage: { status: 'ok' } },
+    });
+
+    expect(MinioStorageProvider).not.toHaveBeenCalled();
+    expect(storageHealthCheck).not.toHaveBeenCalled();
   });
 
   it('reports database unavailability with no internal connection detail', async () => {

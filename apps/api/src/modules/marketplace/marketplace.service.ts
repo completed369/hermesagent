@@ -1,15 +1,22 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { prisma, Prisma } from '@ventureos/database';
+import { CapabilityPolicyDeniedError, prisma, Prisma } from '@ventureos/database';
 import { loadEnv } from '@ventureos/config';
 import { getTemporalClient } from '@ventureos/workflows';
 import {
   prepareListingForPublication,
   requestPublicationApproval,
   publishListing,
+  publicationPreparationAuditAction,
   MarketplaceBlockedError,
 } from '@ventureos/marketplace-connectors';
 import { AuditService } from '../audit/audit.service';
+import { enforceCapabilityAdmission } from '../../common/policy/capability-admission';
 
 const STATUS_INCLUDE = {
   listing: true,
@@ -68,7 +75,15 @@ export class MarketplaceService {
    * re-running the whole workflow).
    */
   async startWorkflow(workspaceId: string, listingVersionId: string, actorId: string) {
-    await this.getScopedListingVersion(workspaceId, listingVersionId);
+    await enforceCapabilityAdmission(workspaceId, 'MARKETPLACE_DRAFT');
+    const listingVersion = await this.getScopedListingVersion(workspaceId, listingVersionId);
+    const existingAccount = await prisma.marketplaceAccount.findFirst({
+      where: { workspaceId, marketplace: listingVersion.listing.marketplace },
+      select: { id: true },
+    });
+    if (!existingAccount) {
+      await enforceCapabilityAdmission(workspaceId, 'MARKETPLACE_CONNECTION');
+    }
 
     const env = loadEnv();
     const client = await getTemporalClient();
@@ -91,12 +106,13 @@ export class MarketplaceService {
   }
 
   async prepare(workspaceId: string, listingVersionId: string, actorId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'MARKETPLACE_DRAFT');
     await this.getScopedListingVersion(workspaceId, listingVersionId);
     try {
       const result = await prepareListingForPublication({ workspaceId, listingVersionId });
       await this.auditService.record(workspaceId, {
         actorId,
-        action: 'PUBLICATION_PREPARED',
+        action: publicationPreparationAuditAction(result.status),
         entityType: 'ListingVersion',
         entityId: listingVersionId,
         after: result as unknown as Record<string, unknown>,
@@ -108,6 +124,7 @@ export class MarketplaceService {
   }
 
   async requestApproval(workspaceId: string, listingVersionId: string, actorId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'MARKETPLACE_DRAFT');
     await this.getScopedListingVersion(workspaceId, listingVersionId);
     try {
       const result = await requestPublicationApproval({
@@ -134,12 +151,17 @@ export class MarketplaceService {
     approvalRequestId: string,
     actorId: string,
   ) {
+    await enforceCapabilityAdmission(workspaceId, 'MARKETPLACE_PUBLICATION');
     await this.getScopedListingVersion(workspaceId, listingVersionId);
     try {
       const result = await publishListing({ workspaceId, listingVersionId, approvalRequestId });
       await this.auditService.record(workspaceId, {
         actorId,
-        action: result.status === 'PUBLISHED' ? 'PUBLICATION_PUBLISHED' : 'PUBLICATION_FAILED',
+        action: result.replayed
+          ? 'PUBLICATION_REPLAYED'
+          : result.status === 'PUBLISHED'
+            ? 'PUBLICATION_PUBLISHED'
+            : 'PUBLICATION_FAILED',
         entityType: 'ListingVersion',
         entityId: listingVersionId,
         after: result as unknown as Record<string, unknown>,
@@ -152,6 +174,9 @@ export class MarketplaceService {
   }
 
   private translateError(err: unknown): Error {
+    if (err instanceof CapabilityPolicyDeniedError) {
+      return new ForbiddenException('Operation is not available');
+    }
     if (err instanceof MarketplaceBlockedError) {
       if (err.message.toLowerCase().includes('not found')) {
         return new NotFoundException(err.message);

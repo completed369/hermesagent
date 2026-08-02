@@ -1,6 +1,10 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma } from '@ventureos/database';
+import { enforceWorkspaceCapability, prisma, Prisma } from '@ventureos/database';
 import { AuditService } from '../audit/audit.service';
+import {
+  enforceCapabilityAdmission,
+  rethrowCapabilityPolicyDenial,
+} from '../../common/policy/capability-admission';
 
 const OPPORTUNITY_INCLUDE = {
   targetCustomers: true,
@@ -82,12 +86,36 @@ export class OpportunitiesService {
   }
 
   async promote(workspaceId: string, id: string, actorId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'VENTURE_CREATE', 'internal');
     const before = await this.loadForMutation(workspaceId, id);
     if (before.status === 'PROMOTED') {
       throw new ForbiddenException('Opportunity is already promoted');
     }
 
     const { after, proposal } = await prisma.$transaction(async (tx) => {
+      // Serialize quota checks for a workspace on the subscription row so two
+      // concurrent promotions cannot both observe the same remaining slot.
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "subscriptions" WHERE "workspaceId" = ${workspaceId}::uuid FOR UPDATE`,
+      );
+      try {
+        await enforceWorkspaceCapability(
+          {
+            workspaceId,
+            capability: 'VENTURE_CREATE',
+            stage: 'DISPATCH',
+            providerMode: 'internal',
+            recordAllow: true,
+            correlationReference: `opportunity-promote:${id}`,
+          },
+          tx,
+          prisma,
+        );
+      } catch (error) {
+        rethrowCapabilityPolicyDenial(error);
+        throw error;
+      }
+
       const updated = await tx.opportunity.update({
         where: { id },
         data: { status: 'PROMOTED', promotedAt: new Date() },

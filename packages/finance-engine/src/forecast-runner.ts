@@ -6,6 +6,7 @@ import {
   toFinancialAssumptions,
   upsertFinancialAssumption,
 } from './assumptions-runner.js';
+import { enforceFinanceMutation, enforceFinanceRead } from './capability-guard.js';
 
 export interface GenerateForecastParams {
   workspaceId: string;
@@ -46,6 +47,11 @@ export async function generateForecast(params: GenerateForecastParams): Promise<
   );
 
   return prisma.$transaction(async (tx) => {
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:forecast:${params.ventureProposalId}`,
+      tx,
+    );
     const forecast = await tx.financialForecast.create({
       data: {
         workspaceId: params.workspaceId,
@@ -102,6 +108,7 @@ export async function compareForecastToActual(
   workspaceId: string,
   ventureProposalId: string,
 ): Promise<ForecastVsActualResult | null> {
+  await enforceFinanceRead(workspaceId, `finance:forecast-read:${ventureProposalId}`);
   const forecast = await prisma.financialForecast.findFirst({
     where: { workspaceId, ventureProposalId },
     orderBy: { createdAt: 'desc' as const },

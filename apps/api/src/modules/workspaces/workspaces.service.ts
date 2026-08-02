@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@ventureos/database';
+import { enforceCapabilityAdmission } from '../../common/policy/capability-admission';
 
 export interface UpdateBrandingInput {
   brandName?: string;
@@ -26,6 +27,7 @@ export class WorkspacesService {
    * row yet -- every workspace created via seed/registration going forward
    * always gets one, but this keeps the endpoint safe either way. */
   async updateBranding(workspaceId: string, input: UpdateBrandingInput) {
+    await enforceCapabilityAdmission(workspaceId, 'WHITE_LABEL_BRANDING', 'internal');
     return prisma.workspaceBranding.upsert({
       where: { workspaceId },
       update: input,

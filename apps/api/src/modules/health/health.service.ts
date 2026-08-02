@@ -54,6 +54,12 @@ export class HealthService {
 
   private async storageReadiness(): Promise<{ status: 'ok' | 'down' }> {
     try {
+      if (this.env.STORAGE_PROVIDER === 'mock') {
+        return { status: 'ok' };
+      }
+      if (this.env.STORAGE_PROVIDER !== 'minio') {
+        return { status: 'down' };
+      }
       const storage = new MinioStorageProvider({
         endPoint: this.env.MINIO_ENDPOINT,
         port: this.env.MINIO_PORT,

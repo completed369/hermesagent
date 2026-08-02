@@ -2,9 +2,11 @@ import {
   prepareListingForPublication,
   requestPublicationApproval,
   publishListing,
+  publicationPreparationAuditAction,
   type PublicationRunResult,
 } from '@ventureos/marketplace-connectors';
 import { writeAuditEvent } from '../lib/write-audit-event';
+import { runWithActivityCapability } from './run-with-activity-capability';
 
 export interface PrepareListingActivityInput {
   workspaceId: string;
@@ -16,10 +18,17 @@ export interface PrepareListingActivityInput {
 export async function prepareListingActivity(
   input: PrepareListingActivityInput,
 ): Promise<PublicationRunResult> {
-  const result = await prepareListingForPublication(input);
+  const result = await runWithActivityCapability(
+    {
+      workspaceId: input.workspaceId,
+      capability: 'MARKETPLACE_DRAFT',
+      stage: 'DISPATCH',
+    },
+    () => prepareListingForPublication(input),
+  );
   await writeAuditEvent(input.workspaceId, {
     actorId: input.actorId,
-    action: 'PUBLICATION_PREPARED',
+    action: publicationPreparationAuditAction(result.status),
     entityType: 'ListingVersion',
     entityId: input.listingVersionId,
     workflowId: input.workflowId,
@@ -38,7 +47,14 @@ export interface RequestPublicationApprovalActivityInput {
 export async function requestPublicationApprovalActivity(
   input: RequestPublicationApprovalActivityInput,
 ): Promise<{ approvalRequestId: string }> {
-  const result = await requestPublicationApproval(input);
+  const result = await runWithActivityCapability(
+    {
+      workspaceId: input.workspaceId,
+      capability: 'MARKETPLACE_DRAFT',
+      stage: 'DISPATCH',
+    },
+    () => requestPublicationApproval(input),
+  );
   await writeAuditEvent(input.workspaceId, {
     actorId: input.requestedBy,
     action: 'PUBLICATION_APPROVAL_REQUESTED',
@@ -61,10 +77,21 @@ export interface PublishListingActivityInput {
 export async function publishListingActivity(
   input: PublishListingActivityInput,
 ): Promise<PublicationRunResult> {
-  const result = await publishListing(input);
+  const result = await runWithActivityCapability(
+    {
+      workspaceId: input.workspaceId,
+      capability: 'MARKETPLACE_PUBLICATION',
+      stage: 'DISPATCH',
+    },
+    () => publishListing(input),
+  );
   await writeAuditEvent(input.workspaceId, {
     actorId: input.actorId,
-    action: result.status === 'PUBLISHED' ? 'PUBLICATION_PUBLISHED' : 'PUBLICATION_FAILED',
+    action: result.replayed
+      ? 'PUBLICATION_REPLAYED'
+      : result.status === 'PUBLISHED'
+        ? 'PUBLICATION_PUBLISHED'
+        : 'PUBLICATION_FAILED',
     entityType: 'ListingVersion',
     entityId: input.listingVersionId,
     workflowId: input.workflowId,

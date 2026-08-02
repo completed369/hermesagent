@@ -17,6 +17,27 @@ This record is not a claim that VentureOS is production secure. The Critical
 and High dependency gates are closed for the validated lockfile, but the
 application and repository-administration blockers below remain open.
 
+### Phase 14 subscription/provider enforcement amendment
+
+- Branch: `security/phase14-subscription-provider-enforcement`
+- Required base: `3ca9cb821b19af32345ffbcbe0fc02829806a712`
+- Validation date: 2026-08-02
+- Environment: disposable PostgreSQL 16 on a non-default local port, synthetic
+  credentials, and explicit mock provider modes. No real provider was contacted.
+- Post-remediation evidence: the canonical clean-output suite passed format,
+  lint, typecheck, unit, disposable-PostgreSQL integration, and production build;
+  root Playwright passed 4/4; and the focused denial/replay/concurrency matrix
+  passed ten consecutive times with retries disabled. Independent exact-tree
+  review remains a separate release gate.
+- Scope: deterministic fail-closed subscription status, trial expiry, active
+  plan, feature, quota, provider mode, global switch, audit, queued-work, direct
+  runner, and implemented final-dispatch enforcement.
+
+This amendment does not establish production readiness. Live commercial
+providers remain absent, marketplace `Integration.writeEnabled` still requires
+its own final-boundary enforcement before a real adapter is introduced, and
+production MinIO/Temporal connectivity was not exercised.
+
 ## Security model observed
 
 - Passwords use salted scrypt and constant-time verification.
@@ -30,17 +51,50 @@ application and repository-administration blockers below remain open.
 - Sensitive controllers use server-side session and permission guards. Founder
   decisions are rechecked in deterministic backend services and queries are
   scoped by the server-derived workspace ID.
-- Request bodies are Zod-validated. Prisma parameterized APIs are used; the only
-  raw query found is a constant `SELECT 1` health probe.
+- Request bodies are Zod-validated. Prisma parameterized APIs are used. Reviewed
+  raw SQL is limited to a constant health `SELECT 1`; parameterized
+  authentication-abuse UPSERTs and bounded `FOR UPDATE SKIP LOCKED` cleanup;
+  parameterized subscription-row `FOR UPDATE` quota locks; and retained
+  parameterized venture-proposal/entity `FOR UPDATE` serialization. No unsafe
+  concatenating raw-query API was found in the reviewed paths.
 - React escaping is retained and no `dangerouslySetInnerHTML`, command-execution,
   insecure-deserialization, path-traversal, or user-controlled SSRF sink was
   reproduced.
-- Storage helpers validate MIME type, size, and object keys; no multipart HTTP
-  upload endpoint is currently exposed.
-- Real marketplace writes, payments, advertising, and AI calls are absent from
-  the implemented runtime paths: those paths invoke hardcoded mocks. The
-  declared global feature flags are not yet consumed by runtime code and must
-  not be treated as effective kill switches for a future real provider.
+- Storage providers validate MIME type, size, and workspace-prefixed object keys.
+  Upload, signed-download, and existence operations perform centralized
+  workspace capability enforcement inside the provider boundary; callers cannot
+  inject a permissive authorizer. No multipart HTTP upload endpoint is exposed.
+- Real marketplace writes, payments, advertising, and non-mock AI calls are
+  absent from implemented runtime paths. Centralized capability policy now
+  consumes the authoritative provider modes and global switches at admission,
+  queued activity, runner, and implemented final-dispatch boundaries. Future
+  live adapters must retain a non-bypassable check at their own boundary.
+- Provider-shaped research and mock-marketplace operations perform an immediate
+  fail-closed revalidation of current tenant-bound resources and centralized
+  policy immediately before each adapter call. Successful idempotency replays are
+  also revalidated before they can create a replay-labelled success record.
+  Research cost and marketplace daily-rate slots are reserved atomically under
+  tenant-owned row locks before dispatch, and research success persistence is one
+  transaction. This narrows but does not eliminate TOCTOU: no database transaction
+  is held across provider execution, and process configuration or other policy
+  state can change after the final read.
+- Raw mock adapters are not exported from package roots. Direct consumers use
+  the protected runners, and database-backed finance reads as well as mutations
+  enforce `FINANCE_ACCESS` at the package boundary. Idempotent publication
+  replays do not reserve or consume a new daily-rate slot.
+- Product generation validates persisted founder-decision evidence against the
+  latest proposal version, snapshot hash, and expiry before mutation and again
+  at the final provider boundary. Manual revenue entries accept only listing
+  versions owned by the same workspace and venture.
+- SCALE approvals canonically bind the current proposal version together with
+  the exact experiment definition, variants, metrics, and results. Founder
+  decision and SCALE execution both recompute that package, so evidence added
+  after request or approval fails closed. Approval state transitions and their
+  decision evidence are committed through one conditional transaction.
+- Late package-boundary capability denials are mapped centrally to a generic
+  HTTP 403 response. Marketplace idempotency serializes local claims and caches
+  successes, but provider-level idempotency remains required for the crash
+  window between provider acceptance and durable local success persistence.
 
 ## Findings
 
@@ -152,13 +206,15 @@ application and repository-administration blockers below remain open.
    history. Server connectivity does not claim worker/task-queue readiness; see
    `docs/HEALTH_CHECKS.md`.
 
-8. **H-08 — Subscription and global provider flags are not enforcement gates
-   (unfixed; commercial blocker).** Plan-limit helpers and subscription
-   status/expiry checks have no feature-path callers. Declared live publishing,
-   advertising, paid-integration, and development-login flags are not consumed
-   by runtime code. Current external-call safety comes from hardcoded mock-only
-   implementations, not those flags. Entitlement checks and fail-closed provider
-   dispatch must be wired before commercial or real-provider staging.
+8. **H-08 — Subscription and provider enforcement is implemented for current
+   execution paths; live adapters remain a commercial blocker.** Central policy
+   now checks status, trial expiry, active plan, feature, quota, required provider
+   selection, and global switches at admission and direct worker/runner/provider
+   boundaries. Implemented provider selections are required startup configuration.
+   Advertising, paid-integration, notification, payment, live marketplace, and
+   non-mock AI adapters remain unavailable and fail closed. A future live
+   marketplace adapter must additionally enforce `Integration.writeEnabled` at
+   its own non-bypassable boundary.
 
 ### Medium
 
@@ -175,10 +231,9 @@ application and repository-administration blockers below remain open.
 5. Repository-level GitHub secret scanning and push protection could not be
    confirmed locally. CI has least-privilege permissions and Dependabot, but no
    secret-scan/SAST gate is present in the inspected workflow.
-6. Approval decisions read `PENDING` before their transaction and perform an
-   unconditional update. Concurrent decisions can both succeed and create
-   contradictory decision rows. Current side effects are mock-only, but this
-   becomes High before any real publication/spend action is connected.
+6. Approval decisions use an atomic pending-state compare-and-set, so concurrent
+   decisions have exactly one winner. Execution revalidates approval status,
+   expiry, artifact binding, and proposal/version hashes before side effects.
 7. License keys are stored, returned, and included in audit payloads as bearer
    values rather than hash/fingerprint-only records.
 
@@ -451,9 +506,10 @@ given time` with the next callback never entered. The login-failure path used
   and digest-secret rotation remain explicit operational responsibilities.
 - Temporal health is non-mutating and readiness-gated. Worker/task-queue
   readiness remains a separately monitored operational limitation.
-- Subscription enforcement and provider kill switches are not wired.
-- Approval decisions require an atomic single-writer transition before real
-  side effects are enabled.
+- Current subscription/provider gates are wired and mock-provider validated;
+  live commercial adapters and production provider connectivity remain absent.
+- Approval decisions use an atomic single-writer transition; execution-time
+  expiry and artifact revalidation remain required before side effects.
 - GitHub secret scanning/push protection and branch protections require owner
   verification in repository settings.
 

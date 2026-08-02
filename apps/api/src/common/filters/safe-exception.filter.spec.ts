@@ -92,4 +92,29 @@ describe('SafeExceptionFilter authentication cooldown response', () => {
     expect(serializedCalls).not.toContain('must-not-be-logged');
     expect(serializedCalls).toContain('/api/auth/login');
   });
+
+  it('maps late capability-policy denials to a generic forbidden response', () => {
+    const warnSpy = vi
+      .spyOn(StructuredLogger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(StructuredLogger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    const { host, response } = createHost();
+    const denial = new Error('internal policy reason must not leak');
+    denial.name = 'CapabilityPolicyDeniedError';
+
+    new SafeExceptionFilter().catch(denial, host);
+
+    expect(response.status).toHaveBeenCalledWith(403);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ statusCode: 403, message: 'Operation is not available' }),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      'controlled client exception',
+      expect.objectContaining({ status: 403 }),
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(JSON.stringify(response.json.mock.calls)).not.toContain('internal policy reason');
+  });
 });

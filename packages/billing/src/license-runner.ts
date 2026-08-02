@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { prisma } from '@ventureos/database';
+import { enforceWorkspaceCapability, prisma } from '@ventureos/database';
 import { LicenseKeyInvalidError, LicenseKeyNotFoundError } from './errors.js';
 
 function generateLicenseKeyValue(): string {
@@ -21,6 +21,15 @@ export async function issueLicenseKey(workspaceId: string, expiresInDays?: numbe
   const expiresAt = expiresInDays
     ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
     : null;
+
+  await enforceWorkspaceCapability({
+    workspaceId,
+    capability: 'LICENSE_EXPORT',
+    stage: 'DISPATCH',
+    providerMode: 'internal',
+    recordAllow: true,
+    correlationReference: 'license:issue',
+  });
 
   return prisma.licenseKey.create({
     data: {
@@ -47,6 +56,14 @@ export async function validateLicenseKey(key: string) {
 
   if (licenseKey.expiresAt && licenseKey.expiresAt < new Date()) {
     if (licenseKey.status !== 'EXPIRED') {
+      await enforceWorkspaceCapability({
+        workspaceId: licenseKey.workspaceId,
+        capability: 'LICENSE_EXPORT',
+        stage: 'DISPATCH',
+        providerMode: 'internal',
+        recordAllow: true,
+        correlationReference: `license:expire:${licenseKey.id}`,
+      });
       await prisma.licenseKey.update({ where: { key }, data: { status: 'EXPIRED' } });
     }
     throw new LicenseKeyInvalidError(
@@ -58,9 +75,27 @@ export async function validateLicenseKey(key: string) {
 }
 
 /** Revokes a license key immediately, regardless of its expiry. */
-export async function revokeLicenseKey(id: string) {
-  return prisma.licenseKey.update({
-    where: { id },
+export async function revokeLicenseKey(workspaceId: string, id: string) {
+  const licenseKey = await prisma.licenseKey.findFirst({
+    where: { id, workspaceId },
+    select: { workspaceId: true, status: true },
+  });
+  if (!licenseKey) throw new LicenseKeyNotFoundError('License key not found.');
+  if (licenseKey.status === 'REVOKED') {
+    throw new LicenseKeyInvalidError('License key is already revoked.');
+  }
+  await enforceWorkspaceCapability({
+    workspaceId: licenseKey.workspaceId,
+    capability: 'LICENSE_EXPORT',
+    stage: 'DISPATCH',
+    providerMode: 'internal',
+    recordAllow: true,
+    correlationReference: `license:revoke:${id}`,
+  });
+  const updated = await prisma.licenseKey.updateMany({
+    where: { id, workspaceId, status: { not: 'REVOKED' } },
     data: { status: 'REVOKED', revokedAt: new Date() },
   });
+  if (updated.count !== 1) throw new LicenseKeyInvalidError('License key is already revoked.');
+  return prisma.licenseKey.findFirstOrThrow({ where: { id, workspaceId } });
 }

@@ -1,6 +1,8 @@
 import { prisma } from '@ventureos/database';
 import type { ModelUsage } from '@ventureos/database';
-import { assertWithinBudget, chargeToBudget, resolveBudgetAllocation } from './budget-guard.js';
+import { chargeToBudgetInTransaction, resolveBudgetAllocation } from './budget-guard.js';
+import { enforceFinanceMutation } from './capability-guard.js';
+import { BudgetNotFoundError } from './errors.js';
 
 export interface RecordModelUsageParams {
   workspaceId: string;
@@ -14,13 +16,7 @@ export interface RecordModelUsageParams {
   costEur?: number;
 }
 
-/**
- * Real for every agent/model invocation, including mock ones (master spec
- * section 41: "the recording mechanism must be real so it's correct the
- * moment real providers are enabled"). The mock provider's cost is always
- * 0, so this never blocks anything today, but it exercises the exact same
- * fail-closed budget-check path a real, non-zero-cost call would hit.
- */
+/** Records model usage and any associated budget charge in one transaction. */
 export async function recordModelUsage(params: RecordModelUsageParams): Promise<ModelUsage> {
   const provider = params.provider ?? 'mock';
   const model = params.model ?? 'mock-v1';
@@ -28,44 +24,69 @@ export async function recordModelUsage(params: RecordModelUsageParams): Promise<
   const completionTokens = params.completionTokens ?? 0;
   const costEur = params.costEur ?? 0;
 
+  if (!Number.isFinite(costEur) || costEur < 0) {
+    throw new BudgetNotFoundError('Model usage cost must be a non-negative finite amount');
+  }
+
   const allocation = await resolveBudgetAllocation(
     params.workspaceId,
     'AI_MODEL_USAGE',
     params.ventureProposalId,
   );
 
-  if (costEur > 0 && allocation) {
-    await assertWithinBudget(allocation.id, costEur);
-  }
+  return prisma.$transaction(async (tx) => {
+    if (params.ventureProposalId) {
+      const proposal = await tx.ventureProposal.findFirst({
+        where: { id: params.ventureProposalId, workspaceId: params.workspaceId },
+        select: { id: true },
+      });
+      if (!proposal) throw new BudgetNotFoundError('Venture proposal not found');
+    }
+    if (params.boardReviewId) {
+      const boardReview = await tx.boardReview.findFirst({
+        where: { id: params.boardReviewId, workspaceId: params.workspaceId },
+        select: { id: true },
+      });
+      if (!boardReview) throw new BudgetNotFoundError('Board review not found');
+    }
 
-  const usage = await prisma.modelUsage.create({
-    data: {
-      workspaceId: params.workspaceId,
-      agentDefinitionId: params.agentDefinitionId,
-      ventureProposalId: params.ventureProposalId,
-      boardReviewId: params.boardReviewId,
-      provider,
-      model,
-      promptTokens,
-      completionTokens,
-      totalTokens: promptTokens + completionTokens,
-      costEur,
-    },
-  });
+    if (costEur === 0) {
+      await enforceFinanceMutation(
+        params.workspaceId,
+        `finance:model-usage:${params.boardReviewId ?? params.ventureProposalId ?? 'workspace'}`,
+        tx,
+      );
+    }
 
-  if (costEur > 0) {
-    await chargeToBudget({
-      workspaceId: params.workspaceId,
-      budgetAllocationId: allocation?.id,
-      ventureProposalId: params.ventureProposalId,
-      category: 'AI_MODEL_USAGE',
-      amountEur: costEur,
-      source: 'agent-runtime:model-usage',
-      referenceType: 'ModelUsage',
-      referenceId: usage.id,
-      description: `${provider}/${model} invocation`,
+    const usage = await tx.modelUsage.create({
+      data: {
+        workspaceId: params.workspaceId,
+        agentDefinitionId: params.agentDefinitionId,
+        ventureProposalId: params.ventureProposalId,
+        boardReviewId: params.boardReviewId,
+        provider,
+        model,
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens,
+        costEur,
+      },
     });
-  }
 
-  return usage;
+    if (costEur > 0) {
+      await chargeToBudgetInTransaction(tx, {
+        workspaceId: params.workspaceId,
+        budgetAllocationId: allocation?.id,
+        ventureProposalId: params.ventureProposalId,
+        category: 'AI_MODEL_USAGE',
+        amountEur: costEur,
+        source: 'agent-runtime:model-usage',
+        referenceType: 'ModelUsage',
+        referenceId: usage.id,
+        description: `${provider}/${model} invocation`,
+      });
+    }
+
+    return usage;
+  });
 }

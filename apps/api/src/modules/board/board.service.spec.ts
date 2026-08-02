@@ -5,6 +5,8 @@ import { BoardService } from './board.service';
 import type { AuditService } from '../audit/audit.service';
 
 vi.mock('@ventureos/database', () => ({
+  CapabilityPolicyDeniedError: class CapabilityPolicyDeniedError extends Error {},
+  enforceWorkspaceCapability: vi.fn().mockResolvedValue(undefined),
   prisma: {
     ventureProposal: { findFirst: vi.fn() },
     boardReview: { findMany: vi.fn(), findFirst: vi.fn() },

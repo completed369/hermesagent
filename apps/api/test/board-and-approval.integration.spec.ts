@@ -9,6 +9,7 @@ import {
   ApprovalAlreadyDecidedError,
   ApprovalInvalidForExecutionError,
 } from '@ventureos/agent-runtime';
+import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
 
 /**
  * Hits a real (dockerized) Postgres, exactly like opportunities.integration.spec.ts.
@@ -44,6 +45,7 @@ describe('Board review + approval decision (integration)', () => {
     workspace = await prisma.workspace.create({
       data: { name: `Test Workspace ${randomUUID()}`, slug: `test-board-${randomUUID()}` },
     });
+    await entitleTestWorkspace(workspace.id);
     actor = await prisma.user.create({
       data: {
         email: `board-integration-actor-${randomUUID()}@ventureos.local`,
@@ -89,6 +91,7 @@ describe('Board review + approval decision (integration)', () => {
     await prisma.ventureProposalVersion.deleteMany({ where: { ventureProposalId: proposal.id } });
     await prisma.ventureProposal.deleteMany({ where: { id: proposal.id } });
     await prisma.opportunity.deleteMany({ where: { id: opportunity.id } });
+    await cleanupEntitledTestWorkspace(workspace.id);
     await prisma.workspace.deleteMany({ where: { id: workspace.id } });
     await prisma.user.delete({ where: { id: actor.id } });
     await prisma.$disconnect();
@@ -157,6 +160,29 @@ describe('Board review + approval decision (integration)', () => {
         decision: 'APPROVE',
       }),
     ).rejects.toThrow(ApprovalAlreadyDecidedError);
+  });
+
+  it('allows exactly one concurrent decision for a pending approval request', async () => {
+    const request = await createApprovalRequest({
+      workspaceId: workspace.id,
+      ventureProposalId: proposal.id,
+      requestedBy: actor.id,
+    });
+    const decide = () =>
+      decideApprovalRequest({
+        workspaceId: workspace.id,
+        approvalRequestId: request.id,
+        founderIdentity: actor.id,
+        decision: 'APPROVE',
+      });
+
+    const settled = await Promise.allSettled([decide(), decide()]);
+
+    expect(settled.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(settled.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await prisma.approvalDecision.count({ where: { approvalRequestId: request.id } })).toBe(
+      1,
+    );
   });
 
   it('revokes a previously approved request', async () => {

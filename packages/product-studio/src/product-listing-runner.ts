@@ -1,6 +1,11 @@
-import { prisma } from '@ventureos/database';
-import { hashObject } from '@ventureos/security';
+import {
+  dispatchWithWorkspaceCapability,
+  enforceWorkspaceCapability,
+  prisma,
+} from '@ventureos/database';
+import { hashObject, hashProductListingBundle } from '@ventureos/security';
 import type { StorageProvider } from '@ventureos/integrations';
+import { isApprovalValidForExecution } from '@ventureos/contracts';
 import {
   generateProductAssets,
   targetAssetKinds,
@@ -26,18 +31,9 @@ export interface GenerateProductResult {
   qaPassed: boolean;
 }
 
-/**
- * Generates (or regenerates) a Product for a VentureProposal. Fails closed
- * (ProductGenerationBlockedError) if the proposal has no founder-approved
- * (APPROVED / APPROVED_WITH_CONDITIONS) Phase 3 ApprovalRequest -- product
- * generation must never run before that gate, matching the master spec's
- * workflow ordering.
- */
-export async function generateProduct(
-  params: GenerateProductParams,
-): Promise<GenerateProductResult> {
+async function getApprovedVentureProposal(workspaceId: string, ventureProposalId: string) {
   const proposal = await prisma.ventureProposal.findFirst({
-    where: { id: params.ventureProposalId, workspaceId: params.workspaceId },
+    where: { id: ventureProposalId, workspaceId },
     include: {
       opportunity: true,
       versions: { orderBy: { versionNumber: 'desc' as const }, take: 1 },
@@ -45,7 +41,10 @@ export async function generateProduct(
   });
   if (!proposal) throw new ProductNotFoundError('Venture proposal not found');
 
-  const approved = await prisma.approvalRequest.findFirst({
+  const latestVersion = proposal.versions[0];
+  if (!latestVersion) throw new ProductNotFoundError('Venture proposal has no versions');
+
+  const approvalRequest = await prisma.approvalRequest.findFirst({
     where: {
       ventureProposalId: proposal.id,
       kind: 'VENTURE_PROPOSAL',
@@ -53,14 +52,67 @@ export async function generateProduct(
     },
     orderBy: { createdAt: 'desc' as const },
   });
-  if (!approved) {
+  if (!approvalRequest) {
     throw new ProductGenerationBlockedError(
-      'Venture proposal has no founder-approved ApprovalRequest; product generation is blocked until the Phase 3 approval gate is passed.',
+      'Venture proposal has no current founder approval; product generation is blocked.',
     );
   }
 
-  const latestVersion = proposal.versions[0];
-  if (!latestVersion) throw new ProductNotFoundError('Venture proposal has no versions');
+  const decision = await prisma.approvalDecision.findFirst({
+    where: {
+      approvalRequestId: approvalRequest.id,
+      decision: { in: ['APPROVE', 'APPROVE_WITH_CONDITIONS'] },
+    },
+    orderBy: { decidedAt: 'desc' as const },
+  });
+  const validity = decision
+    ? isApprovalValidForExecution(
+        {
+          approvedArtifactVersionId: decision.approvedArtifactVersionId,
+          approvedPackageHash: decision.approvedPackageHash,
+          expiresAt: decision.expiresAt.toISOString(),
+        },
+        {
+          artifactVersionId: latestVersion.id,
+          packageHash: hashObject(latestVersion.snapshot),
+        },
+      )
+    : { valid: false };
+  if (!validity.valid) {
+    throw new ProductGenerationBlockedError(
+      'Venture proposal approval is missing, stale, or expired; product generation is blocked.',
+    );
+  }
+
+  return { proposal, latestVersion };
+}
+
+/**
+ * Generates (or regenerates) a Product for a VentureProposal. Fails closed
+ * (ProductGenerationBlockedError) unless a persisted approving decision is
+ * current, unexpired, and bound to the latest proposal version and snapshot.
+ * The binding is revalidated again at the final provider boundary.
+ */
+export async function generateProduct(
+  params: GenerateProductParams,
+): Promise<GenerateProductResult> {
+  await enforceWorkspaceCapability({
+    workspaceId: params.workspaceId,
+    capability: 'PRODUCT_GENERATION',
+    stage: 'DISPATCH',
+    providerMode: 'mock',
+  });
+  await enforceWorkspaceCapability({
+    workspaceId: params.workspaceId,
+    capability: 'STORAGE_UPLOAD',
+    stage: 'DISPATCH',
+    providerMode: params.storageProvider.mode,
+  });
+
+  const { proposal, latestVersion } = await getApprovedVentureProposal(
+    params.workspaceId,
+    params.ventureProposalId,
+  );
 
   const product = await prisma.product.upsert({
     where: { ventureProposalId: proposal.id },
@@ -95,12 +147,23 @@ export async function generateProduct(
     productType,
     suggestedMarketplace: proposal.opportunity.suggestedMarketplace,
   };
-  const { assetVersionIds } = await generateProductAssets(genInput, params.storageProvider);
+  const { assetVersionIds } = await dispatchWithWorkspaceCapability(
+    {
+      workspaceId: params.workspaceId,
+      capability: 'PRODUCT_GENERATION',
+      stage: 'DISPATCH',
+      providerMode: 'mock',
+      beforeFinalCheck: async () => {
+        await getApprovedVentureProposal(params.workspaceId, params.ventureProposalId);
+      },
+    },
+    () => generateProductAssets(genInput, params.storageProvider),
+  );
 
   await prisma.product.update({ where: { id: product.id }, data: { status: 'GENERATED' } });
 
-  const qaResult = await runQualityChecks(productVersion.id);
-  await persistQualityChecks(productVersion.id, qaResult);
+  const qaResult = await runQualityChecks(params.workspaceId, productVersion.id);
+  await persistQualityChecks(params.workspaceId, productVersion.id, qaResult);
 
   await prisma.product.update({
     where: { id: product.id },
@@ -151,6 +214,13 @@ export interface GenerateListingAndApprovalResult {
 export async function generateListingAndApprovalRequest(
   params: GenerateListingAndApprovalParams,
 ): Promise<GenerateListingAndApprovalResult> {
+  await enforceWorkspaceCapability({
+    workspaceId: params.workspaceId,
+    capability: 'PRODUCT_GENERATION',
+    stage: 'DISPATCH',
+    providerMode: 'mock',
+  });
+
   const product = await prisma.product.findFirst({
     where: { id: params.productId, workspaceId: params.workspaceId },
     include: {
@@ -181,7 +251,7 @@ export async function generateListingAndApprovalRequest(
       : null,
   });
 
-  const seo = await runSeoEvaluation(listingVersion.id);
+  const seo = await runSeoEvaluation(params.workspaceId, listingVersion.id);
   await prisma.listing.update({ where: { id: listing.id }, data: { status: 'SEO_EVALUATED' } });
 
   // Phase 4 explicitly never publishes -- record the blocked attempt as a
@@ -205,14 +275,39 @@ export async function generateListingAndApprovalRequest(
     throw new ProductNotFoundError('Product has no package; run product generation first');
   }
 
-  const bundleHash = hashObject({
-    assetVersionIds: [...latestPackage.assetVersionIds].sort(),
-    listing: {
-      title: listingVersion.title,
-      description: listingVersion.description,
-      tags: [...listingVersion.tags].sort(),
-      priceEur: listingVersion.priceEur.toString(),
+  const listingPackageSnapshot = await prisma.listingVersion.findUnique({
+    where: { id: listingVersion.id },
+    select: {
+      title: true,
+      description: true,
+      tags: true,
+      category: true,
+      currency: true,
+      priceEur: true,
+      images: {
+        orderBy: [{ position: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          productAssetVersionId: true,
+          position: true,
+          altText: true,
+        },
+      },
+      files: {
+        orderBy: { id: 'asc' },
+        select: { id: true, productAssetVersionId: true, displayName: true },
+      },
     },
+  });
+  if (!listingPackageSnapshot) {
+    throw new ProductNotFoundError('Listing version is unavailable for packaging');
+  }
+
+  const bundleHash = hashProductListingBundle({
+    assetVersionIds: latestPackage.assetVersionIds,
+    listing: listingPackageSnapshot,
+    images: listingPackageSnapshot.images,
+    files: listingPackageSnapshot.files,
   });
   const bundlePackage = await prisma.productPackage.create({
     data: {

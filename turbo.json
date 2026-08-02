@@ -11,11 +11,25 @@
     "test:unit": {},
     "test:integration": {
       "dependsOn": ["^build"],
-      "env": ["DATABASE_URL", "AUTH_SECRET"]
+      "env": [
+        "ADVERTISING_PROVIDER_MODE",
+        "AI_PROVIDER",
+        "AUTH_SECRET",
+        "DATABASE_URL",
+        "FEATURE_ADVERTISING_ENABLED",
+        "FEATURE_LIVE_PUBLISHING_ENABLED",
+        "FEATURE_PAID_INTEGRATIONS_ENABLED",
+        "FEATURE_STORAGE_UPLOADS_ENABLED",
+        "MARKETPLACE_ETSY_MODE",
+        "NOTIFICATION_PROVIDER_MODE",
+        "PAID_INTEGRATION_PROVIDER_MODE",
+        "STORAGE_PROVIDER"
+      ]
     },
     "test:e2e": {
       "dependsOn": ["build"],
       "env": [
+        "ADVERTISING_PROVIDER_MODE",
         "AI_PROVIDER",
         "API_CORS_ORIGIN",
         "API_PORT",
@@ -28,8 +42,12 @@
         "FEATURE_ADVERTISING_ENABLED",
         "FEATURE_LIVE_PUBLISHING_ENABLED",
         "FEATURE_PAID_INTEGRATIONS_ENABLED",
+        "FEATURE_STORAGE_UPLOADS_ENABLED",
         "MARKETPLACE_ETSY_MODE",
-        "NEXT_PUBLIC_API_BASE_URL"
+        "NEXT_PUBLIC_API_BASE_URL",
+        "NOTIFICATION_PROVIDER_MODE",
+        "PAID_INTEGRATION_PROVIDER_MODE",
+        "STORAGE_PROVIDER"
       ]
     },
     "clean": { "cache": false }

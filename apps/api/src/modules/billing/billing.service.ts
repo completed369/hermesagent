@@ -13,6 +13,7 @@ import {
   LicenseKeyInvalidError,
 } from '@ventureos/billing';
 import { AuditService } from '../audit/audit.service';
+import { enforceCapabilityAdmission } from '../../common/policy/capability-admission';
 
 /**
  * Wraps `@ventureos/billing`'s pure subscription/license logic with
@@ -116,27 +117,30 @@ export class BillingService {
   }
 
   async listLicenseKeys(workspaceId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'LICENSE_EXPORT', 'internal');
     return prisma.licenseKey.findMany({ where: { workspaceId }, orderBy: { issuedAt: 'desc' } });
   }
 
   async issueLicenseKey(workspaceId: string, expiresInDays: number | undefined, actorId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'LICENSE_EXPORT', 'internal');
     const key = await issueLicenseKey(workspaceId, expiresInDays);
     await this.auditService.record(workspaceId, {
       actorId,
       action: 'LICENSE_KEY_ISSUED',
       entityType: 'LicenseKey',
       entityId: key.id,
-      after: { key: key.key, expiresAt: key.expiresAt } as unknown as Record<string, unknown>,
+      after: { expiresAt: key.expiresAt } as unknown as Record<string, unknown>,
     });
     return key;
   }
 
   async revokeLicenseKey(workspaceId: string, id: string, actorId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'LICENSE_EXPORT', 'internal');
     const existing = await prisma.licenseKey.findFirst({ where: { id, workspaceId } });
     if (!existing) {
       throw new NotFoundException('License key not found');
     }
-    const revoked = await revokeLicenseKey(id);
+    const revoked = await revokeLicenseKey(workspaceId, id);
     await this.auditService.record(workspaceId, {
       actorId,
       action: 'LICENSE_KEY_REVOKED',

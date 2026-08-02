@@ -4,6 +4,7 @@ import { prisma } from '@ventureos/database';
 import { NotFoundException } from '@nestjs/common';
 import { OpportunitiesService } from '../src/modules/opportunities/opportunities.service';
 import { AuditService } from '../src/modules/audit/audit.service';
+import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
 
 /**
  * Hits a real (dockerized) Postgres via the real prisma client -- run with
@@ -26,6 +27,7 @@ describe('OpportunitiesService (integration)', () => {
     workspaceB = await prisma.workspace.create({
       data: { name: `Test Workspace B ${randomUUID()}`, slug: `test-b-${randomUUID()}` },
     });
+    await entitleTestWorkspace(workspaceA.id);
     // AuditEvent.actorId is a real foreign key to User -- a random UUID that
     // doesn't correspond to a real user violates audit_events_actorId_fkey
     // (confirmed live: the first run of this suite failed exactly this way).
@@ -53,6 +55,7 @@ describe('OpportunitiesService (integration)', () => {
     await prisma.opportunity.deleteMany({
       where: { workspaceId: { in: [workspaceA.id, workspaceB.id] } },
     });
+    await cleanupEntitledTestWorkspace(workspaceA.id);
     await prisma.workspace.deleteMany({ where: { id: { in: [workspaceA.id, workspaceB.id] } } });
     await prisma.user.delete({ where: { id: actor.id } });
     await prisma.$disconnect();
@@ -120,5 +123,44 @@ describe('OpportunitiesService (integration)', () => {
     await prisma.ventureProposal.deleteMany({ where: { opportunityId: fresh.id } });
     await prisma.auditEvent.deleteMany({ where: { entityId: fresh.id } });
     await prisma.opportunity.deleteMany({ where: { id: fresh.id } });
+  });
+
+  it('serializes concurrent promotions so a one-venture quota cannot be exceeded', async () => {
+    const quotaWorkspace = await prisma.workspace.create({
+      data: { name: `Quota Workspace ${randomUUID()}`, slug: `quota-${randomUUID()}` },
+    });
+    await entitleTestWorkspace(quotaWorkspace.id, { maxVentures: 1 });
+    const opportunities = await Promise.all(
+      [0, 1].map((index) =>
+        prisma.opportunity.create({
+          data: {
+            workspaceId: quotaWorkspace.id,
+            title: `Concurrent promotion ${index} ${randomUUID()}`,
+            description: 'Synthetic quota concurrency proof',
+          },
+        }),
+      ),
+    );
+
+    const results = await Promise.allSettled(
+      opportunities.map((opportunity) =>
+        service.promote(quotaWorkspace.id, opportunity.id, actor.id),
+      ),
+    );
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await prisma.ventureProposal.count({ where: { workspaceId: quotaWorkspace.id } })).toBe(
+      1,
+    );
+
+    await prisma.auditEvent.deleteMany({ where: { workspaceId: quotaWorkspace.id } });
+    await prisma.securityEvent.deleteMany({ where: { workspaceId: quotaWorkspace.id } });
+    await prisma.ventureProposalVersion.deleteMany({
+      where: { opportunityId: { in: opportunities.map((opportunity) => opportunity.id) } },
+    });
+    await prisma.ventureProposal.deleteMany({ where: { workspaceId: quotaWorkspace.id } });
+    await prisma.opportunity.deleteMany({ where: { workspaceId: quotaWorkspace.id } });
+    await cleanupEntitledTestWorkspace(quotaWorkspace.id);
+    await prisma.workspace.delete({ where: { id: quotaWorkspace.id } });
   });
 });

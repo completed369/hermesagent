@@ -5,6 +5,11 @@ import { OpportunitiesService } from './opportunities.service';
 import type { AuditService } from '../audit/audit.service';
 
 vi.mock('@ventureos/database', () => ({
+  CapabilityPolicyDeniedError: class CapabilityPolicyDeniedError extends Error {},
+  enforceWorkspaceCapability: vi.fn().mockResolvedValue(undefined),
+  Prisma: {
+    sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }),
+  },
   prisma: {
     opportunity: {
       findMany: vi.fn(),
@@ -156,6 +161,7 @@ describe('OpportunitiesService', () => {
       vi.mocked(prisma.opportunity.findFirst).mockResolvedValue(before as never);
 
       const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([]),
         opportunity: { update: vi.fn().mockResolvedValue(after) },
         ventureProposal: {
           findUnique: vi.fn().mockResolvedValue(null),
@@ -172,6 +178,9 @@ describe('OpportunitiesService', () => {
 
       const result = await service.promote(WORKSPACE_ID, OPPORTUNITY_ID, ACTOR_ID);
 
+      expect(tx.$queryRaw).toHaveBeenCalledWith(
+        expect.objectContaining({ values: [WORKSPACE_ID] }),
+      );
       expect(tx.ventureProposal.create).toHaveBeenCalledWith({
         data: { workspaceId: WORKSPACE_ID, opportunityId: OPPORTUNITY_ID, status: 'DRAFT' },
       });
@@ -197,6 +206,7 @@ describe('OpportunitiesService', () => {
 
       const existingProposal = { id: 'proposal-1', opportunityId: OPPORTUNITY_ID };
       const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([]),
         opportunity: { update: vi.fn().mockResolvedValue(after) },
         ventureProposal: {
           findUnique: vi.fn().mockResolvedValue(existingProposal),

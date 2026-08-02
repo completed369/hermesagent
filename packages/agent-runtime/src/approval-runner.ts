@@ -1,6 +1,10 @@
-import { prisma } from '@ventureos/database';
+import { enforceWorkspaceCapability, prisma } from '@ventureos/database';
 import type { ApprovalRequest, ApprovalDecision } from '@ventureos/database';
-import { hashObject } from '@ventureos/security';
+import {
+  hashObject,
+  hashProductListingBundle,
+  hashScaleDecisionArtifact,
+} from '@ventureos/security';
 import { isApprovalValidForExecution } from '@ventureos/contracts';
 
 export class ApprovalNotFoundError extends Error {}
@@ -55,6 +59,13 @@ export async function createApprovalRequest(
   const expiresAt = new Date(
     Date.now() + (params.expiresInHours ?? DEFAULT_EXPIRY_HOURS) * 60 * 60 * 1000,
   );
+
+  await enforceWorkspaceCapability({
+    workspaceId: params.workspaceId,
+    capability: 'AI_MODEL_EXECUTION',
+    stage: 'DISPATCH',
+    correlationReference: `approval-request:venture-proposal:${proposal.id}`,
+  });
 
   return prisma.approvalRequest.create({
     data: {
@@ -160,11 +171,44 @@ export async function decideApprovalRequest(
     const latestPackage = await prisma.productPackage.findFirst({
       where: { productVersionId: requestedPackage.productVersionId },
       orderBy: { createdAt: 'desc' as const },
+      include: {
+        listingVersion: {
+          include: {
+            listing: { select: { productVersionId: true, workspaceId: true } },
+            images: {
+              orderBy: [{ position: 'asc' }, { id: 'asc' }],
+              select: {
+                id: true,
+                productAssetVersionId: true,
+                position: true,
+                altText: true,
+              },
+            },
+            files: {
+              orderBy: { id: 'asc' },
+              select: { id: true, productAssetVersionId: true, displayName: true },
+            },
+          },
+        },
+      },
     });
     if (!latestPackage) throw new ApprovalNotFoundError('Product version has no package');
+    const listingVersion = latestPackage.listingVersion;
+    if (
+      !listingVersion ||
+      listingVersion.listing.workspaceId !== request.workspaceId ||
+      listingVersion.listing.productVersionId !== latestPackage.productVersionId
+    ) {
+      throw new ApprovalNotFoundError('Product package listing evidence is unavailable');
+    }
     approvedArtifactVersionId = request.productPackageId;
     currentArtifactVersionId = latestPackage.id;
-    currentHash = latestPackage.packageHash;
+    currentHash = hashProductListingBundle({
+      assetVersionIds: latestPackage.assetVersionIds,
+      listing: listingVersion,
+      images: listingVersion.images,
+      files: listingVersion.files,
+    });
   } else if (request.kind === 'PUBLICATION') {
     if (!request.listingVersionId) {
       throw new ApprovalNotFoundError(
@@ -189,6 +233,30 @@ export async function decideApprovalRequest(
       category: latestVersion.category,
       currency: latestVersion.currency,
       priceEur: latestVersion.priceEur.toString(),
+    });
+  } else if (request.kind === 'SCALE_DECISION') {
+    if (!request.experimentId) {
+      throw new ApprovalNotFoundError(
+        'Scale-decision approval request is missing its experiment reference',
+      );
+    }
+    const experiment = await prisma.experiment.findFirst({
+      where: { id: request.experimentId, workspaceId: request.workspaceId },
+      include: { variants: { include: { results: true } }, metrics: true },
+    });
+    if (!experiment) throw new ApprovalNotFoundError('Experiment not found');
+    const proposal = await prisma.ventureProposal.findUnique({
+      where: { id: request.ventureProposalId },
+      include: { versions: { orderBy: { versionNumber: 'desc' as const }, take: 1 } },
+    });
+    const latestVersion = proposal?.versions[0];
+    if (!latestVersion) throw new ApprovalNotFoundError('Venture proposal has no versions');
+    approvedArtifactVersionId = request.ventureProposalVersionId;
+    currentArtifactVersionId = latestVersion.id;
+    currentHash = hashScaleDecisionArtifact({
+      proposalVersionId: latestVersion.id,
+      proposalSnapshot: latestVersion.snapshot,
+      experiment,
     });
   } else {
     const proposal = await prisma.ventureProposal.findUnique({
@@ -227,9 +295,11 @@ export async function decideApprovalRequest(
     founderIdentity: params.founderIdentity,
   });
 
-  const [updatedRequest, decisionRow] = await prisma.$transaction([
-    prisma.approvalRequest.update({
-      where: { id: request.id },
+  const [updatedRequest, decisionRow] = await prisma.$transaction(async (tx) => {
+    const expectedStates =
+      params.decision === 'REVOKE' ? ['APPROVED', 'APPROVED_WITH_CONDITIONS'] : ['PENDING'];
+    const transitioned = await tx.approvalRequest.updateMany({
+      where: { id: request.id, workspaceId: params.workspaceId, state: { in: expectedStates } },
       data: {
         state: DECISION_TO_STATE[params.decision],
         ...(params.decision === 'REVOKE'
@@ -240,8 +310,15 @@ export async function decideApprovalRequest(
             }
           : {}),
       },
-    }),
-    prisma.approvalDecision.create({
+    });
+    if (transitioned.count !== 1) {
+      if (params.decision === 'REVOKE') {
+        throw new ApprovalNotApprovedError('Only an approved request may be revoked');
+      }
+      throw new ApprovalAlreadyDecidedError('Approval request has already been decided');
+    }
+
+    const decision = await tx.approvalDecision.create({
       data: {
         approvalRequestId: request.id,
         founderIdentity: params.founderIdentity,
@@ -255,22 +332,25 @@ export async function decideApprovalRequest(
         expiresAt: request.expiresAt,
         auditSignature,
       },
-    }),
-  ]);
-
-  if (params.decision === 'REQUEST_REVISION') {
-    await prisma.revisionRequest.create({
-      data: {
-        workspaceId: request.workspaceId,
-        ventureProposalId: request.ventureProposalId,
-        boardReviewId: request.boardReviewId,
-        approvalRequestId: request.id,
-        requestedChanges: params.conditions ?? [],
-        reason: params.comment ?? 'Revision requested by founder.',
-        status: 'OPEN',
-      },
     });
-  }
+
+    if (params.decision === 'REQUEST_REVISION') {
+      await tx.revisionRequest.create({
+        data: {
+          workspaceId: request.workspaceId,
+          ventureProposalId: request.ventureProposalId,
+          boardReviewId: request.boardReviewId,
+          approvalRequestId: request.id,
+          requestedChanges: params.conditions ?? [],
+          reason: params.comment ?? 'Revision requested by founder.',
+          status: 'OPEN',
+        },
+      });
+    }
+
+    const updated = await tx.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
+    return [updated, decision] as const;
+  });
 
   return { approvalRequest: updatedRequest, decision: decisionRow };
 }

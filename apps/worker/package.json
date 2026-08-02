@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "dotenv -e ../../.env -- tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/assert-worker-entrypoint.mjs",
     "start": "dotenv -e ../../.env -- node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run",

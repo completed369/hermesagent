@@ -1,4 +1,4 @@
-import { prisma } from '@ventureos/database';
+import { prisma, type Prisma } from '@ventureos/database';
 import { ResearchCostCapExceededError } from './errors.js';
 
 export interface ResearchCostCapConfig {
@@ -25,6 +25,7 @@ export async function assertWithinResearchCostCaps(
   workspaceId: string,
   estimatedCostEur: number,
   config: ResearchCostCapConfig = DEFAULT_RESEARCH_COST_CAPS,
+  client: Pick<Prisma.TransactionClient, 'dataAcquisitionRun'> = prisma,
 ): Promise<void> {
   if (estimatedCostEur > config.perRunLimitEur) {
     throw new ResearchCostCapExceededError(
@@ -35,8 +36,12 @@ export async function assertWithinResearchCostCaps(
   const startOfDay = new Date();
   startOfDay.setUTCHours(0, 0, 0, 0);
 
-  const todaysRuns = await prisma.dataAcquisitionRun.findMany({
-    where: { workspaceId, createdAt: { gte: startOfDay }, status: 'SUCCEEDED' },
+  const todaysRuns = await client.dataAcquisitionRun.findMany({
+    where: {
+      workspaceId,
+      createdAt: { gte: startOfDay },
+      status: { in: ['RESERVED', 'SUCCEEDED'] },
+    },
     select: { costEur: true },
   });
   const spentToday = todaysRuns.reduce((sum, run) => sum + Number(run.costEur), 0);
