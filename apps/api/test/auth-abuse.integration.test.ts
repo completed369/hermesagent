@@ -2,7 +2,11 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { loadEnv } from '@ventureos/config';
 import { prisma } from '@ventureos/database';
-import { AuthAbuseService, type AuthClock } from '../src/modules/auth/auth-abuse.service';
+import {
+  AuthAbuseService,
+  systemAuthClock,
+  type AuthClock,
+} from '../src/modules/auth/auth-abuse.service';
 
 class MutableClock implements AuthClock {
   constructor(private current: Date) {}
@@ -35,7 +39,7 @@ describe('durable authentication abuse control (integration)', () => {
   }
 
   beforeEach(() => {
-    clock = new MutableClock(new Date('2026-08-01T12:00:00.000Z'));
+    clock = new MutableClock(new Date('2100-08-01T12:00:00.000Z'));
     service = new AuthAbuseService(env, clock);
   });
 
@@ -80,10 +84,20 @@ describe('durable authentication abuse control (integration)', () => {
 
   it('keeps the registration source-IP cooldown enforced across account identifiers', async () => {
     let result = null;
-    for (let attempt = 1; attempt <= 10; attempt += 1) {
+    for (let attempt = 1; attempt < 10; attempt += 1) {
       const context = createContext(`registration-${attempt}@example.test`, '192.0.2.40');
       result = await service.recordAttempt('REGISTER', context);
     }
+
+    const competingService = new AuthAbuseService(env, systemAuthClock);
+    await competingService.recordAttempt(
+      'LOGIN',
+      createContext('unrelated-cleanup@example.test', '192.0.2.41'),
+    );
+    result = await service.recordAttempt(
+      'REGISTER',
+      createContext('registration-10@example.test', '192.0.2.40'),
+    );
 
     expect(result).toEqual({ reasonCode: 'REGISTER_IP_COOLDOWN', retryAfterSeconds: 60 });
   });

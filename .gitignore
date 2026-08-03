@@ -20,3 +20,4 @@ temporal-data/
 .playwright/
 test-results/
 playwright-report/
+.staging/

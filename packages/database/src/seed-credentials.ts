@@ -13,7 +13,19 @@ export function resolveSeedFounderCredentials(
   env: NodeJS.ProcessEnv = process.env,
 ): SeedFounderCredentials {
   if (env.NODE_ENV === 'production') {
-    throw new Error('Database fixture seeding is disabled in production.');
+    const safeStagingSeed =
+      env.DEPLOYMENT_ENVIRONMENT === 'staging' &&
+      env.STAGING_SEED_ENABLED === 'true' &&
+      env.AI_PROVIDER === 'mock' &&
+      env.STORAGE_PROVIDER === 'mock' &&
+      env.MARKETPLACE_ETSY_MODE === 'mock' &&
+      env.FEATURE_LIVE_PUBLISHING_ENABLED === 'false' &&
+      env.FEATURE_STORAGE_UPLOADS_ENABLED === 'false' &&
+      env.FEATURE_ADVERTISING_ENABLED === 'false' &&
+      env.FEATURE_PAID_INTEGRATIONS_ENABLED === 'false';
+    if (!safeStagingSeed) {
+      throw new Error('Database fixture seeding is disabled in production.');
+    }
   }
 
   const email = env.DEV_FOUNDER_EMAIL?.trim().toLowerCase();

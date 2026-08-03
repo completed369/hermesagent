@@ -39,8 +39,19 @@ async function bootstrap() {
     });
   }
 
-  await app.listen(env.API_PORT);
-  logger.info('API started', { port: env.API_PORT, env: env.NODE_ENV });
+  await app.listen(env.API_PORT, '0.0.0.0');
+  logger.info('API started', { port: env.API_PORT, env: env.NODE_ENV, version: '0.1.0' });
+
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info('API graceful shutdown started', { signal });
+    await app.close();
+    logger.info('API graceful shutdown completed', { signal });
+  };
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+  process.once('SIGINT', () => void shutdown('SIGINT'));
 }
 
 bootstrap().catch((err) => {

@@ -21,6 +21,7 @@
     "@ventureos/security": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^22.7.5",
     "typescript": "^5.6.3",
     "vitest": "^3.2.6"
   }

@@ -3,7 +3,11 @@
   "globalDependencies": [".env"],
   "globalEnv": ["NODE_ENV"],
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "env": ["VENTUREOS_STANDALONE_BUILD"]
+    },
     "dev": { "cache": false, "persistent": true, "dependsOn": ["^build"] },
     "lint": { "dependsOn": ["^build"] },
     "typecheck": { "dependsOn": ["^build"] },
@@ -14,8 +18,11 @@
       "env": [
         "ADVERTISING_PROVIDER_MODE",
         "AI_PROVIDER",
+        "API_PUBLIC_ORIGIN",
+        "AUTH_ABUSE_DIGEST_SECRET",
         "AUTH_SECRET",
         "DATABASE_URL",
+        "DEV_LOGIN_ENABLED",
         "FEATURE_ADVERTISING_ENABLED",
         "FEATURE_LIVE_PUBLISHING_ENABLED",
         "FEATURE_PAID_INTEGRATIONS_ENABLED",
@@ -23,7 +30,8 @@
         "MARKETPLACE_ETSY_MODE",
         "NOTIFICATION_PROVIDER_MODE",
         "PAID_INTEGRATION_PROVIDER_MODE",
-        "STORAGE_PROVIDER"
+        "STORAGE_PROVIDER",
+        "WEB_PUBLIC_ORIGIN"
       ]
     },
     "test:e2e": {
@@ -38,6 +46,7 @@
         "DATABASE_URL",
         "DEV_FOUNDER_EMAIL",
         "DEV_FOUNDER_PASSWORD",
+        "E2E_EXTERNAL_SERVERS",
         "E2E_BASE_URL",
         "FEATURE_ADVERTISING_ENABLED",
         "FEATURE_LIVE_PUBLISHING_ENABLED",

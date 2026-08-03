@@ -29,6 +29,28 @@ describe('resolveSeedFounderCredentials', () => {
     );
   });
 
+  it('allows only an explicit mock-only staging fixture seed in a production runtime', () => {
+    const stagingEnv = {
+      ...VALID_ENV,
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      STAGING_SEED_ENABLED: 'true',
+      AI_PROVIDER: 'mock',
+      STORAGE_PROVIDER: 'mock',
+      MARKETPLACE_ETSY_MODE: 'mock',
+      FEATURE_LIVE_PUBLISHING_ENABLED: 'false',
+      FEATURE_STORAGE_UPLOADS_ENABLED: 'false',
+      FEATURE_ADVERTISING_ENABLED: 'false',
+      FEATURE_PAID_INTEGRATIONS_ENABLED: 'false',
+    };
+    expect(resolveSeedFounderCredentials(stagingEnv)).toMatchObject({
+      email: VALID_ENV.DEV_FOUNDER_EMAIL,
+    });
+    expect(() =>
+      resolveSeedFounderCredentials({ ...stagingEnv, FEATURE_LIVE_PUBLISHING_ENABLED: 'true' }),
+    ).toThrow(/disabled in production/i);
+  });
+
   it('returns explicit non-placeholder credentials outside production', () => {
     expect(resolveSeedFounderCredentials(VALID_ENV)).toEqual({
       email: VALID_ENV.DEV_FOUNDER_EMAIL,

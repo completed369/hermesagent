@@ -58,15 +58,15 @@ does not change after repeated requests. Public responses never include
 Temporal addresses, namespaces, task queues, exception messages, or stack
 traces.
 
-## Worker readiness limitation
+## Worker liveness and readiness
 
-Temporal server connectivity does not prove that a VentureOS worker is running,
-that it loaded the expected workflow/activity bundle, or that it will continue
-polling the configured task queue. Task-queue poller observations are transient
-and are not represented as worker readiness. VentureOS will not start an
-application workflow merely to probe a worker. Worker lifecycle monitoring must
-instead use worker process supervision, worker logs/metrics, and Temporal
-poller/task-queue observability.
+The worker exposes private, container-network-only endpoints on its configured
+`WORKER_HEALTH_PORT`: `/health/live` reports that the health server process is
+serving, while `/health/ready` becomes `ok` only after the Temporal connection,
+Worker construction, and task-queue run-loop entry. Shutdown immediately marks
+the worker unready. Neither endpoint starts or mutates a workflow. These signals
+do not replace Temporal task-queue poller, queue-latency, and task-failure
+monitoring in a real staging environment.
 
 ## Exposure and monitoring
 

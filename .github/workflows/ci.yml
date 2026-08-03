@@ -8,7 +8,7 @@ name: CI
 # Prisma client is generated before typecheck/build, and keeps the clean
 # PostgreSQL migration check.
 #
-# CI is authoritative for "does the complete nine-migration chain apply on a
+# CI is authoritative for "does the complete eleven-migration chain apply on a
 # fresh database". The local ./scripts/run-validation.ps1 verifies code
 # quality and build on the developer machine but does NOT apply migrations.
 
@@ -141,3 +141,61 @@ jobs:
             apps/web/test-results/
           if-no-files-found: warn
           retention-days: 14
+
+  staging-security-gate:
+    name: staging-security-gate
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @ventureos/web exec playwright install --with-deps chromium
+
+      - name: Generate disposable synthetic staging environment
+        run: node scripts/generate-staging-env.mjs
+
+      - name: Run staging security gate (no deployment)
+        run: bash scripts/staging-security-gate.sh all
+
+      - name: Upload staging failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-security-gate-failure-${{ github.run_id }}
+          path: |
+            .staging/topology.log
+            apps/web/playwright-report/
+            apps/web/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Tear down staging topology
+        if: always()
+        run: |
+          if ! test -f .staging/phase15.env; then
+            node scripts/generate-staging-env.mjs
+          fi
+          if docker compose --env-file .staging/phase15.env -f docker-compose.staging.yml down --volumes --remove-orphans --timeout 30; then
+            rm -f .staging/phase15.env
+          else
+            echo 'Staging teardown failed; retaining the synthetic environment for recovery.' >&2
+            exit 1
+          fi

@@ -94,4 +94,28 @@ describe('envSchema', () => {
     expect(env.APP_NAME).toBe('VentureOS');
     __resetEnvCacheForTests();
   });
+
+  it('enforces the fail-closed staging production contract', () => {
+    const staging = {
+      ...validBaseEnv,
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'staging',
+      API_PUBLIC_ORIGIN: 'http://localhost:3001',
+      WEB_PUBLIC_ORIGIN: 'http://localhost:3000',
+      API_CORS_ORIGIN: 'http://localhost:3000',
+      AUTH_SECRET: 'a'.repeat(64),
+      AUTH_ABUSE_DIGEST_SECRET: 'b'.repeat(64),
+      DEV_LOGIN_ENABLED: 'false',
+    };
+    expect(envSchema.safeParse(staging).success).toBe(true);
+    expect(envSchema.safeParse({ ...staging, AI_PROVIDER: 'anthropic' }).success).toBe(false);
+    expect(
+      envSchema.safeParse({ ...staging, FEATURE_LIVE_PUBLISHING_ENABLED: 'true' }).success,
+    ).toBe(false);
+    expect(envSchema.safeParse({ ...staging, DEV_LOGIN_ENABLED: 'true' }).success).toBe(false);
+    expect(
+      envSchema.safeParse({ ...staging, AUTH_SECRET: 'change-me-placeholder-secret-value' })
+        .success,
+    ).toBe(false);
+  });
 });

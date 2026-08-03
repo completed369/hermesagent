@@ -1,5 +1,10 @@
 # Deployment
 
+> **Phase 15 update:** the fail-closed local/container staging architecture,
+> production artifacts, environment/secret contracts, startup/cleanup sequence,
+> threat model, and unresolved cloud choices are defined in
+> `STAGING_SECURITY_GATE.md`. It performs no public or production deployment.
+
 ## Local development (only target verified in this build)
 
 Docker Compose (`docker-compose.yml` at repo root) runs PostgreSQL,
@@ -9,20 +14,20 @@ not containerized in Phase 1. See `docs/LOCAL_SETUP_WINDOWS.md`.
 
 ## Future target: affordable European VPS / managed containers (master spec §4)
 
-Not configured yet. When this is built, it must remain a _thin_ layer over
-the same Docker Compose services (or their managed equivalents) — no
-enterprise-only products, usage-based/self-hosted preferred. Candidate
-approach: Dockerfiles per app (not yet written) + a single European VPS
-running the same `docker-compose.yml` plus a reverse proxy (Caddy/Traefik)
-for TLS. Revisit once Phase 6 (marketplace pilot) needs a stable public URL
-for webhook callbacks.
+No cloud target is configured or selected. Phase 15 provides production-mode
+application images and a local/container staging topology, but it deliberately
+does not provide public ingress, TLS, cloud networking, managed persistence, or
+deployment automation. Any later VPS or managed-container deployment must remain
+a thin, founder-approved layer over these artifacts or managed equivalents and
+must satisfy the unresolved controls in `STAGING_SECURITY_GATE.md`.
 
 ## Environments
 
-`NODE_ENV` drives a few behavioral differences today (cookie `secure` flag,
-Prisma log verbosity). A formal staging/production environment split with
-separate `.env` files and separate databases is a Phase 6+ concern — Phase 1
-only needs `development`.
+`NODE_ENV` and `DEPLOYMENT_ENVIRONMENT` drive validated runtime contracts.
+Phase 15 generates an ignored, disposable synthetic staging environment and
+database for its local proof. Real staging and production environments, secret
+stores, and separate databases have not been provisioned and require explicit
+founder-approved infrastructure decisions.
 
 ## What must never happen automatically
 
