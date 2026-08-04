@@ -12,6 +12,7 @@ project=${COMPOSE_PROJECT_NAME:-ventureos-phase15}
 api_image="${project}-api:local"
 worker_image="${project}-worker:local"
 web_image="${project}-web:local"
+tools_image="${project}-tools:local"
 ingress_image="${project}-ingress:local"
 
 check_common() {
@@ -39,6 +40,13 @@ docker run --rm --entrypoint sh "$worker_image" -ec 'test -s /app/dist/index.js'
 
 check_common "$web_image"
 docker run --rm --entrypoint sh "$web_image" -ec 'test -s /app/apps/web/server.js; test -d /app/apps/web/.next/static'
+
+check_common "$tools_image"
+docker run --rm --entrypoint sh "$tools_image" -ec '
+  test -s /app/prisma/schema.prisma
+  test -s /app/node_modules/prisma/build/index.js
+  test ! -d /app/src
+'
 
 check_common "$ingress_image"
 docker run --rm --entrypoint sh "$ingress_image" -ec 'test -s /app/staging-ingress-proxy.mjs'

@@ -1,0 +1,412 @@
+# Phase 21A publication workflow. Disabled unless the founder separately enables the repository variable and approves the protected environment.
+# Do not dispatch until every policy prerequisite in docs/security is satisfied.
+name: Publish immutable VentureOS images
+
+'on':
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed source commit
+        required: true
+      publish_authorized:
+        description: Founder has separately authorized image publication
+        required: true
+        type: boolean
+        default: false
+      authorization_phrase:
+        description: Type PUBLISH-IMMUTABLE-IMAGES exactly
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ventureos-image-publication-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_SOURCE_SHA: ${{ vars.VENTUREOS_APPROVED_PUBLICATION_SHA }}
+  EXPECTED_SOURCE_REF: ${{ vars.VENTUREOS_APPROVED_PUBLICATION_REF }}
+  REGISTRY: ghcr.io
+  NAMESPACE: completed369
+  STAGING_API_ORIGIN: ${{ vars.STAGING_API_ORIGIN }}
+  STAGING_WEB_ORIGIN: ${{ vars.STAGING_WEB_ORIGIN }}
+
+jobs:
+  validate:
+    if: ${{ vars.VENTUREOS_IMAGE_PUBLICATION_ENABLED == 'true' && inputs.publish_authorized == true && inputs.authorization_phrase == 'PUBLISH-IMMUTABLE-IMAGES' }}
+    name: Full validation and source scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_USER: ventureos_ci
+          POSTGRES_PASSWORD: synthetic-ci-password
+          POSTGRES_DB: ventureos_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ventureos_ci -d ventureos_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ventureos_ci:synthetic-ci-password@localhost:5432/ventureos_ci?schema=public
+      AUTH_SECRET: synthetic-ci-auth-secret-not-real-32chars
+      DEV_FOUNDER_EMAIL: synthetic-founder@ventureos.invalid
+      DEV_FOUNDER_PASSWORD: synthetic-founder-password
+      STORAGE_PROVIDER: mock
+      AI_PROVIDER: mock
+      MARKETPLACE_ETSY_MODE: mock
+    steps:
+      - name: Enforce founder authorization, canonical source, and stable origins
+        shell: bash
+        env:
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          INPUT_AUTHORIZED: ${{ inputs.publish_authorized }}
+          INPUT_PHRASE: ${{ inputs.authorization_phrase }}
+          CURRENT_REF: ${{ github.ref }}
+        run: |
+          set -Eeuo pipefail
+          test "$INPUT_AUTHORIZED" = true
+          test "$INPUT_PHRASE" = PUBLISH-IMMUTABLE-IMAGES
+          [[ "$INPUT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$INPUT_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"
+          [[ "$EXPECTED_SOURCE_REF" =~ ^refs/heads/[A-Za-z0-9._/-]+$ ]]
+          test "$CURRENT_REF" = "$EXPECTED_SOURCE_REF"
+          test -n "$STAGING_API_ORIGIN" && test -n "$STAGING_WEB_ORIGIN"
+          [[ "$STAGING_API_ORIGIN" == https://* ]]
+          [[ "$STAGING_WEB_ORIGIN" == https://* ]]
+          test "$STAGING_API_ORIGIN" != "$STAGING_WEB_ORIGIN"
+      - name: Checkout reviewed source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Verify checked-out commit
+        env:
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: test "$(git rev-parse HEAD)" = "$INPUT_SOURCE_SHA"
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm db:generate
+      - name: Validate Prisma schema
+        run: |
+          pnpm --filter @ventureos/database exec prisma format --check --schema prisma/schema.prisma
+          pnpm --filter @ventureos/database exec prisma validate --schema prisma/schema.prisma
+      - name: Format
+        run: pnpm run format:check
+      - name: Lint
+        run: pnpm run lint
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Apply full clean migration chain
+        run: pnpm db:migrate
+      - name: Seed disposable integration fixtures
+        run: pnpm db:seed
+      - name: Unit tests
+        run: pnpm test:unit
+      - name: Integration tests
+        run: pnpm test:integration
+      - name: Production build
+        run: pnpm build
+      - name: Install Playwright Chromium
+        run: pnpm --filter @ventureos/web exec playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: pnpm test:e2e
+      - name: Source secret and IaC scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+
+  staging-security-gate:
+    name: Existing staging security gate
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - run: corepack enable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ventureos/web exec playwright install --with-deps chromium
+      - run: node scripts/generate-staging-env.mjs
+      - name: Run current no-deployment gate
+        run: bash scripts/staging-security-gate.sh all
+      - name: Tear down disposable topology
+        if: always()
+        run: |
+          if ! test -f .staging/phase15.env; then node scripts/generate-staging-env.mjs; fi
+          docker compose --env-file .staging/phase15.env -f docker-compose.staging.yml down --volumes --remove-orphans --timeout 30
+          rm -f .staging/phase15.env
+
+  build-scan:
+    name: Build and scan ${{ matrix.image }} without publishing
+    needs: staging-security-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            target: api
+          - image: web
+            target: web
+          - image: worker
+            target: worker
+          - image: tools
+            target: tools
+          - image: ingress
+            target: ingress
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build exact linux/amd64 image to a runner-local archive
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile.staging
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          push: false
+          no-cache: true
+          tags: local/ventureos-${{ matrix.image }}:${{ inputs.source_sha }}
+          outputs: type=docker,dest=/tmp/ventureos-${{ matrix.image }}.tar
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ env.STAGING_API_ORIGIN }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/completed369/hermesagent
+            org.opencontainers.image.revision=${{ inputs.source_sha }}
+      - name: Generate complete vulnerability JSON evidence
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          input: /tmp/ventureos-${{ matrix.image }}.tar
+          scanners: vuln
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          format: json
+          output: /tmp/ventureos-${{ matrix.image }}.trivy.json
+          exit-code: '0'
+      - name: Enforce fresh scanner database and CISA KEV policy
+        shell: bash
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+        run: |
+          set -Eeuo pipefail
+          trivy version --format json > "/tmp/${IMAGE_NAME}.trivy-version.json"
+          updated="$(jq -er '.VulnerabilityDB.UpdatedAt' "/tmp/${IMAGE_NAME}.trivy-version.json")"
+          updated_epoch="$(date --date="$updated" +%s)"
+          now_epoch="$(date +%s)"
+          age_seconds="$((now_epoch - updated_epoch))"
+          test "$age_seconds" -ge -300
+          test "$age_seconds" -le 86400
+
+          curl --fail --silent --show-error --location --retry 3 \
+            --output /tmp/known_exploited_vulnerabilities.json \
+            https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+          jq -e '.vulnerabilities | type == "array"' /tmp/known_exploited_vulnerabilities.json >/dev/null
+          jq -r '.vulnerabilities[].cveID' /tmp/known_exploited_vulnerabilities.json | sort -u > /tmp/kev.ids
+          jq -r '[.Results[]?.Vulnerabilities[]?.VulnerabilityID] | unique[]' \
+            "/tmp/ventureos-${IMAGE_NAME}.trivy.json" | sort -u > /tmp/findings.ids
+          comm -12 /tmp/findings.ids /tmp/kev.ids > "/tmp/${IMAGE_NAME}.kev-matches.txt"
+          if test -s "/tmp/${IMAGE_NAME}.kev-matches.txt"; then
+            echo 'CISA Known Exploited Vulnerabilities block publication:' >&2
+            sed 's/^/  - /' "/tmp/${IMAGE_NAME}.kev-matches.txt" >&2
+            exit 1
+          fi
+      - name: Gate vulnerabilities, EOL bases, and secrets in image and image config
+        shell: bash
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+        run: |
+          set -Eeuo pipefail
+          trivy image \
+            --input "/tmp/ventureos-${IMAGE_NAME}.tar" \
+            --scanners vuln,secret \
+            --image-config-scanners secret \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed=false \
+            --exit-on-eol 1 \
+            --exit-code 1
+      - name: Generate SPDX JSON SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          input: /tmp/ventureos-${{ matrix.image }}.tar
+          scanners: vuln
+          format: spdx-json
+          output: /tmp/ventureos-${{ matrix.image }}.spdx.json
+          exit-code: '0'
+      - name: Preserve exact scanned bytes, policy evidence, and SBOM
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: scanned-${{ matrix.image }}-${{ inputs.source_sha }}
+          path: |
+            /tmp/ventureos-${{ matrix.image }}.tar
+            /tmp/ventureos-${{ matrix.image }}.trivy.json
+            /tmp/${{ matrix.image }}.trivy-version.json
+            /tmp/${{ matrix.image }}.kev-matches.txt
+            /tmp/known_exploited_vulnerabilities.json
+            /tmp/ventureos-${{ matrix.image }}.spdx.json
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    name: Publish, attest, and sign ${{ matrix.image }}
+    needs: build-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: image-publication
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, web, worker, tools, ingress]
+    steps:
+      - name: Download exact scanned bytes
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: scanned-${{ matrix.image }}-${{ inputs.source_sha }}
+          path: /tmp/scanned
+      - name: Login to GHCR with job-scoped GITHUB_TOKEN
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push immutable SHA tag and record registry digest
+        id: push
+        shell: bash
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          docker load --input "/tmp/scanned/ventureos-${IMAGE_NAME}.tar"
+          ref="${REGISTRY}/${NAMESPACE}/ventureos-${IMAGE_NAME}:sha-${SOURCE_SHA}"
+          docker tag "local/ventureos-${IMAGE_NAME}:${SOURCE_SHA}" "$ref"
+          docker push "$ref" 2>&1 | tee /tmp/docker-push.log
+          mapfile -t reported_digests < <(
+            sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}) size:.*$/\1/p' /tmp/docker-push.log | sort -u
+          )
+          test "${#reported_digests[@]}" -eq 1
+          digest="${reported_digests[0]}"
+          repository="${REGISTRY}/${NAMESPACE}/ventureos-${IMAGE_NAME}"
+          docker buildx imagetools inspect "${repository}@${digest}" >/dev/null
+          printf '%s@%s\n' "$repository" "$digest" > "/tmp/${IMAGE_NAME}.digest"
+          echo "ref=$repository" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Keyless-sign the digest with GitHub Actions OIDC
+        env:
+          IMAGE_REF: ${{ steps.push.outputs.ref }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "${IMAGE_REF}@${IMAGE_DIGEST}"
+      - name: GitHub build-provenance attestation
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-name: ${{ steps.push.outputs.ref }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: GitHub SBOM attestation
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-name: ${{ steps.push.outputs.ref }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: /tmp/scanned/ventureos-${{ matrix.image }}.spdx.json
+          push-to-registry: true
+      - name: Upload digest evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digest-${{ matrix.image }}-${{ inputs.source_sha }}
+          path: /tmp/${{ matrix.image }}.digest
+          if-no-files-found: error
+          retention-days: 90
+
+  manifest:
+    name: Assemble and attest five-image digest manifest
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Verify manifest schema source
+        env:
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: test "$(git rev-parse HEAD)" = "$INPUT_SOURCE_SHA"
+      - run: corepack enable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: digest-*-${{ inputs.source_sha }}
+          path: /tmp/digests
+          merge-multiple: true
+      - name: Require exactly five unique digest-pinned images
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          test "$(find /tmp/digests -name '*.digest' -type f | wc -l)" -eq 5
+          test "$(cat /tmp/digests/*.digest | sort -u | wc -l)" -eq 5
+          jq -n --arg source "$SOURCE_SHA" \
+            --arg api "$(cat /tmp/digests/api.digest)" \
+            --arg web "$(cat /tmp/digests/web.digest)" \
+            --arg worker "$(cat /tmp/digests/worker.digest)" \
+            --arg tools "$(cat /tmp/digests/tools.digest)" \
+            --arg ingress "$(cat /tmp/digests/ingress.digest)" \
+            '{schemaVersion:1,sourceCommit:$source,platform:"linux/amd64",images:{api:$api,web:$web,worker:$worker,tools:$tools,ingress:$ingress}}' \
+            > ventureos-images.json
+          node scripts/validate-image-manifest.mjs ventureos-images.json
+      - name: Attest digest manifest
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: ventureos-images.json
+      - name: Preserve digest manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ventureos-images-${{ inputs.source_sha }}
+          path: ventureos-images.json
+          if-no-files-found: error
+          retention-days: 90

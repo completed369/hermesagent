@@ -68,6 +68,8 @@ test('staging image and topology contracts are fail-closed', () => {
   assert.match(compose, /STORAGE_PROVIDER: mock/);
   assert.match(compose, /AI_PROVIDER: mock/);
   assert.match(compose, /MARKETPLACE_ETSY_MODE: mock/);
+  assert.match(compose, /DEPLOYMENT_ENVIRONMENT: development/);
+  assert.doesNotMatch(compose, /DEPLOYMENT_ENVIRONMENT: staging/);
   assert.match(compose, /FEATURE_LIVE_PUBLISHING_ENABLED: 'false'/);
   assert.match(compose, /read_only: true/g);
   assert.match(compose, /cap_drop: \[ALL\]/g);

@@ -19,6 +19,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: ^7.18.0
         version: 7.18.0(eslint@8.57.1)(typescript@5.9.3)
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       eslint:
         specifier: ^8.57.1
         version: 8.57.1
@@ -377,6 +380,9 @@ importers:
       '@ventureos/security':
         specifier: workspace:*
         version: link:../security
+      prisma:
+        specifier: ^5.20.0
+        version: 5.22.0
     devDependencies:
       '@types/node':
         specifier: ^22.7.5
@@ -384,9 +390,6 @@ importers:
       dotenv-cli:
         specifier: ^7.4.2
         version: 7.4.4
-      prisma:
-        specifier: ^5.20.0
-        version: 5.22.0
       tsx:
         specifier: ^4.19.1
         version: 4.23.1

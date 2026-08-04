@@ -63,6 +63,24 @@ describe('envSchema', () => {
     expect(envSchema.safeParse({ ...base, API_TRUST_PROXY_HOPS: '11' }).success).toBe(false);
   });
 
+  it('defaults worker activity concurrency conservatively and enforces its bounds', () => {
+    expect(envSchema.parse(validBaseEnv).WORKER_MAX_CONCURRENT_ACTIVITIES).toBe(4);
+    expect(
+      envSchema.parse({ ...validBaseEnv, WORKER_MAX_CONCURRENT_ACTIVITIES: '1' })
+        .WORKER_MAX_CONCURRENT_ACTIVITIES,
+    ).toBe(1);
+    expect(
+      envSchema.parse({ ...validBaseEnv, WORKER_MAX_CONCURRENT_ACTIVITIES: '16' })
+        .WORKER_MAX_CONCURRENT_ACTIVITIES,
+    ).toBe(16);
+    expect(
+      envSchema.safeParse({ ...validBaseEnv, WORKER_MAX_CONCURRENT_ACTIVITIES: '0' }).success,
+    ).toBe(false);
+    expect(
+      envSchema.safeParse({ ...validBaseEnv, WORKER_MAX_CONCURRENT_ACTIVITIES: '17' }).success,
+    ).toBe(false);
+  });
+
   it('validates an optional dedicated authentication-abuse digest secret', () => {
     const base = validBaseEnv;
     expect(
@@ -100,14 +118,20 @@ describe('envSchema', () => {
       ...validBaseEnv,
       NODE_ENV: 'production',
       DEPLOYMENT_ENVIRONMENT: 'staging',
-      API_PUBLIC_ORIGIN: 'http://localhost:3001',
-      WEB_PUBLIC_ORIGIN: 'http://localhost:3000',
-      API_CORS_ORIGIN: 'http://localhost:3000',
+      API_PUBLIC_ORIGIN: 'https://api.staging.ventureos.invalid',
+      WEB_PUBLIC_ORIGIN: 'https://web.staging.ventureos.invalid',
+      API_CORS_ORIGIN: 'https://web.staging.ventureos.invalid',
       AUTH_SECRET: 'a'.repeat(64),
       AUTH_ABUSE_DIGEST_SECRET: 'b'.repeat(64),
       DEV_LOGIN_ENABLED: 'false',
     };
     expect(envSchema.safeParse(staging).success).toBe(true);
+    expect(
+      envSchema.safeParse({ ...staging, API_PUBLIC_ORIGIN: 'http://api.internal' }).success,
+    ).toBe(false);
+    expect(
+      envSchema.safeParse({ ...staging, WEB_PUBLIC_ORIGIN: 'http://web.internal' }).success,
+    ).toBe(false);
     expect(envSchema.safeParse({ ...staging, AI_PROVIDER: 'anthropic' }).success).toBe(false);
     expect(
       envSchema.safeParse({ ...staging, FEATURE_LIVE_PUBLISHING_ENABLED: 'true' }).success,

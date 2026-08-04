@@ -4,6 +4,11 @@
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "prisma",
+    "package.json"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "generate": "dotenv -e ../../.env -- prisma generate",
@@ -21,10 +26,10 @@
     "@ventureos/scoring-engine": "workspace:*",
     "@ventureos/security": "workspace:*",
     "@ventureos/policy-engine": "workspace:*",
-    "@ventureos/contracts": "workspace:*"
+    "@ventureos/contracts": "workspace:*",
+    "prisma": "^5.20.0"
   },
   "devDependencies": {
-    "prisma": "^5.20.0",
     "typescript": "^5.6.3",
     "tsx": "^4.19.1",
     "vitest": "^3.2.6",

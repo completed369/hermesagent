@@ -83,9 +83,13 @@ export async function runWorker(): Promise<void> {
       taskQueue: env.TEMPORAL_TASK_QUEUE,
       workflowsPath: require.resolve('./workflows'),
       activities,
+      maxConcurrentActivityTaskExecutions: env.WORKER_MAX_CONCURRENT_ACTIVITIES,
     });
 
-    logger.info('Worker created, starting run loop', { taskQueue: env.TEMPORAL_TASK_QUEUE });
+    logger.info('Worker created, starting run loop', {
+      taskQueue: env.TEMPORAL_TASK_QUEUE,
+      maxConcurrentActivities: env.WORKER_MAX_CONCURRENT_ACTIVITIES,
+    });
     const requestShutdown = (signal: string) => {
       health.ready = false;
       logger.info('Worker graceful shutdown started', { signal });

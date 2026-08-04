@@ -1,0 +1,7 @@
+# Conservative private-staging dynamic configuration for Temporal 1.24.2.
+limit.maxIDLength:
+  - value: 255
+    constraints: {}
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true
+    constraints: {}

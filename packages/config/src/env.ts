@@ -54,6 +54,7 @@ export const envSchema = z
     TEMPORAL_NAMESPACE: z.string().default('ventureos-dev'),
     TEMPORAL_TASK_QUEUE: z.string().default('ventureos-main'),
     WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(3002),
+    WORKER_MAX_CONCURRENT_ACTIVITIES: z.coerce.number().int().min(1).max(16).default(4),
 
     STORAGE_PROVIDER: z.enum(['mock', 'minio', 's3']),
     MINIO_ENDPOINT: z.string().default('localhost'),
@@ -146,6 +147,27 @@ export const envSchema = z
           code: z.ZodIssueCode.custom,
           path: ['NODE_ENV'],
           message: 'staging requires NODE_ENV=production',
+        });
+      }
+      if (!env.API_PUBLIC_ORIGIN?.startsWith('https://')) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['API_PUBLIC_ORIGIN'],
+          message: 'staging API origin must use HTTPS',
+        });
+      }
+      if (!env.WEB_PUBLIC_ORIGIN?.startsWith('https://')) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['WEB_PUBLIC_ORIGIN'],
+          message: 'staging web origin must use HTTPS',
+        });
+      }
+      if (env.API_PUBLIC_ORIGIN === env.WEB_PUBLIC_ORIGIN) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['WEB_PUBLIC_ORIGIN'],
+          message: 'staging API and web origins must be distinct',
         });
       }
       if (env.API_CORS_ORIGIN !== env.WEB_PUBLIC_ORIGIN) {

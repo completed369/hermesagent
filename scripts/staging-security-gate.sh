@@ -44,6 +44,7 @@ build_topology() {
   # Build targets serially so Docker Desktop does not materialize several
   # identical 1+ GiB pnpm builder layers in parallel on constrained disks.
   compose build migrate
+  compose build seed
   compose build api
   compose build worker
   compose build web
