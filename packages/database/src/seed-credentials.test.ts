@@ -51,6 +51,26 @@ describe('resolveSeedFounderCredentials', () => {
     ).toThrow(/disabled in production/i);
   });
 
+  it('allows the explicit mock-only disposable staging gate fixture seed', () => {
+    const disposableGateEnv = {
+      ...VALID_ENV,
+      NODE_ENV: 'production',
+      DEPLOYMENT_ENVIRONMENT: 'development',
+      STAGING_SEED_ENABLED: 'true',
+      AI_PROVIDER: 'mock',
+      STORAGE_PROVIDER: 'mock',
+      MARKETPLACE_ETSY_MODE: 'mock',
+      FEATURE_LIVE_PUBLISHING_ENABLED: 'false',
+      FEATURE_STORAGE_UPLOADS_ENABLED: 'false',
+      FEATURE_ADVERTISING_ENABLED: 'false',
+      FEATURE_PAID_INTEGRATIONS_ENABLED: 'false',
+    };
+
+    expect(resolveSeedFounderCredentials(disposableGateEnv)).toMatchObject({
+      email: VALID_ENV.DEV_FOUNDER_EMAIL,
+    });
+  });
+
   it('returns explicit non-placeholder credentials outside production', () => {
     expect(resolveSeedFounderCredentials(VALID_ENV)).toEqual({
       email: VALID_ENV.DEV_FOUNDER_EMAIL,

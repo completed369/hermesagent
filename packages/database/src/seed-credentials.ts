@@ -14,7 +14,7 @@ export function resolveSeedFounderCredentials(
 ): SeedFounderCredentials {
   if (env.NODE_ENV === 'production') {
     const safeStagingSeed =
-      env.DEPLOYMENT_ENVIRONMENT === 'staging' &&
+      (env.DEPLOYMENT_ENVIRONMENT === 'staging' || env.DEPLOYMENT_ENVIRONMENT === 'development') &&
       env.STAGING_SEED_ENABLED === 'true' &&
       env.AI_PROVIDER === 'mock' &&
       env.STORAGE_PROVIDER === 'mock' &&
