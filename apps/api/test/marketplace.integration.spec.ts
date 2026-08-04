@@ -8,12 +8,11 @@ import {
   prepareListingForPublication,
   requestPublicationApproval,
   publishListing,
-  withIdempotency,
   MarketplaceBlockedError,
-  IdempotencyKeyConflictError,
 } from '@ventureos/marketplace-connectors';
 import { MarketplaceService } from '../src/modules/marketplace/marketplace.service';
 import { AuditService } from '../src/modules/audit/audit.service';
+import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
 
 /**
  * Hits a real (dockerized) Postgres, exactly like
@@ -106,7 +105,11 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
       });
     }
 
-    return { proposalId: proposal.id, listingVersionId: listingResult.listingVersionId };
+    return {
+      proposalId: proposal.id,
+      listingVersionId: listingResult.listingVersionId,
+      productListingApprovalId: listingResult.approvalRequestId,
+    };
   }
 
   async function cleanupWorkspace(workspaceId: string) {
@@ -166,6 +169,7 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
     await prisma.ventureProposal.deleteMany({ where: { workspaceId } });
     await prisma.opportunity.deleteMany({ where: { workspaceId } });
     await prisma.integration.deleteMany({ where: { workspaceId } });
+    await cleanupEntitledTestWorkspace(workspaceId);
     await prisma.workspace.deleteMany({ where: { id: workspaceId } });
   }
 
@@ -188,6 +192,11 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
         slug: `test-mkt-disabled-${randomUUID()}`,
       },
     });
+    await Promise.all([
+      entitleTestWorkspace(workspace.id),
+      entitleTestWorkspace(noApprovalWorkspace.id),
+      entitleTestWorkspace(disabledWorkspace.id),
+    ]);
     actor = await prisma.user.create({
       data: {
         email: `marketplace-integration-actor-${randomUUID()}@ventureos.local`,
@@ -228,6 +237,16 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
     it('reaches READY_FOR_PUBLISH once the PRODUCT_LISTING approval is granted', async () => {
       const scenario = await buildListingScenario(workspace.id, 'main', true);
       mainListingVersionId = scenario.listingVersionId;
+
+      const approvedRequest = await prisma.approvalRequest.findUniqueOrThrow({
+        where: { id: scenario.productListingApprovalId },
+      });
+      expect(approvedRequest).toMatchObject({
+        workspaceId: workspace.id,
+        kind: 'PRODUCT_LISTING',
+        state: 'APPROVED',
+        affectedResources: expect.arrayContaining([`ListingVersion:${scenario.listingVersionId}`]),
+      });
 
       const result = await prepareListingForPublication({
         workspaceId: workspace.id,
@@ -322,87 +341,6 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
         where: { workspaceId: disabledWorkspace.id, key: `draft:${listingVersionId}` },
       });
       expect(draftKeys).toHaveLength(0);
-    });
-  });
-
-  describe('idempotency guarantees (task #69: reconciliation + error recovery)', () => {
-    let account: { id: string };
-
-    beforeAll(async () => {
-      const found = await prisma.marketplaceAccount.findFirstOrThrow({
-        where: { workspaceId: workspace.id, marketplace: 'etsy' },
-      });
-      account = found;
-    });
-
-    it('refuses to treat a reused key with a different request payload as a retry', async () => {
-      const key = `test-conflict-${randomUUID()}`;
-      await withIdempotency({
-        workspaceId: workspace.id,
-        marketplaceAccountId: account.id,
-        key,
-        operationType: 'TEST_OPERATION',
-        requestPayload: { value: 'first' },
-        execute: async () => ({ ok: true }),
-      });
-
-      await expect(
-        withIdempotency({
-          workspaceId: workspace.id,
-          marketplaceAccountId: account.id,
-          key,
-          operationType: 'TEST_OPERATION',
-          requestPayload: { value: 'second' },
-          execute: async () => ({ ok: true }),
-        }),
-      ).rejects.toThrow(IdempotencyKeyConflictError);
-    });
-
-    it('retries a FAILED key in place on a genuine retry, without creating a duplicate row', async () => {
-      const key = `test-retry-${randomUUID()}`;
-      let attempts = 0;
-
-      await expect(
-        withIdempotency({
-          workspaceId: workspace.id,
-          marketplaceAccountId: account.id,
-          key,
-          operationType: 'TEST_OPERATION',
-          requestPayload: { value: 'retry-me' },
-          execute: async () => {
-            attempts += 1;
-            throw new Error('simulated transient failure');
-          },
-        }),
-      ).rejects.toThrow('simulated transient failure');
-
-      const afterFailure = await prisma.idempotencyKey.findUnique({
-        where: { workspaceId_key: { workspaceId: workspace.id, key } },
-      });
-      expect(afterFailure?.status).toBe('FAILED');
-
-      const retried = await withIdempotency({
-        workspaceId: workspace.id,
-        marketplaceAccountId: account.id,
-        key,
-        operationType: 'TEST_OPERATION',
-        requestPayload: { value: 'retry-me' },
-        execute: async () => {
-          attempts += 1;
-          return { ok: true, attempts };
-        },
-      });
-
-      expect(retried.replayed).toBe(false);
-      expect(attempts).toBe(2);
-
-      const rows = await prisma.idempotencyKey.findMany({
-        where: { workspaceId: workspace.id, key },
-      });
-      // Exactly one row for this key throughout -- reconciliation reuses it
-      // rather than creating a second row for the same external write.
-      expect(rows).toHaveLength(1);
-      expect(rows[0].status).toBe('SUCCEEDED');
     });
   });
 

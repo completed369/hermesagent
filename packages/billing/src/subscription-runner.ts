@@ -13,6 +13,7 @@ import { DEFAULT_TRIAL_LENGTH_DAYS } from './plans.js';
  * ("cannot be named without a reference to ... this is likely not
  * portable"). Naming the type explicitly avoids that. */
 type SubscriptionWithPlan = Prisma.SubscriptionGetPayload<{ include: { plan: true } }>;
+type SubscriptionClient = Pick<Prisma.TransactionClient, 'plan' | 'subscription'>;
 
 /**
  * Starts a new workspace's subscription on the TRIAL plan. Called once, at
@@ -25,15 +26,18 @@ type SubscriptionWithPlan = Prisma.SubscriptionGetPayload<{ include: { plan: tru
  * in this phase (see docs/DECISIONS.md ADR-010), so no amount is ever
  * actually charged for the trial or any later plan change.
  */
-export async function startTrialSubscription(workspaceId: string): Promise<SubscriptionWithPlan> {
-  const existing = await prisma.subscription.findUnique({ where: { workspaceId } });
+export async function startTrialSubscription(
+  workspaceId: string,
+  client: SubscriptionClient = prisma,
+): Promise<SubscriptionWithPlan> {
+  const existing = await client.subscription.findUnique({ where: { workspaceId } });
   if (existing) {
     throw new SubscriptionAlreadyExistsError(
       `Workspace ${workspaceId} already has a subscription (${existing.id}).`,
     );
   }
 
-  const trialPlan = await prisma.plan.findUnique({ where: { key: 'TRIAL' } });
+  const trialPlan = await client.plan.findUnique({ where: { key: 'TRIAL' } });
   if (!trialPlan) {
     throw new PlanNotFoundError('TRIAL plan is not seeded.');
   }
@@ -42,7 +46,7 @@ export async function startTrialSubscription(workspaceId: string): Promise<Subsc
   const trialEndsAt = new Date(now);
   trialEndsAt.setUTCDate(trialEndsAt.getUTCDate() + DEFAULT_TRIAL_LENGTH_DAYS);
 
-  return prisma.subscription.create({
+  return client.subscription.create({
     data: {
       workspaceId,
       planId: trialPlan.id,
@@ -88,28 +92,38 @@ export async function changePlan(
  * monthly billing period, recording one mock (always-PAID) invoice for it.
  * No real charge is ever attempted -- `billingMode` stays `'MOCK'`. */
 export async function activateSubscription(workspaceId: string): Promise<SubscriptionWithPlan> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { workspaceId },
-    include: { plan: true },
-  });
-  if (!subscription) {
-    throw new SubscriptionNotFoundError(`Workspace ${workspaceId} has no subscription record.`);
-  }
-
   const periodStart = new Date();
   const periodEnd = new Date(periodStart);
   periodEnd.setUTCMonth(periodEnd.getUTCMonth() + 1);
 
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.subscription.update({
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "subscriptions" WHERE "workspaceId" = ${workspaceId}::uuid FOR UPDATE`,
+    );
+    const subscription = await tx.subscription.findUnique({
       where: { workspaceId },
+      include: { plan: true },
+    });
+    if (!subscription) {
+      throw new SubscriptionNotFoundError(`Workspace ${workspaceId} has no subscription record.`);
+    }
+    if (subscription.status !== 'TRIALING' && subscription.status !== 'PAST_DUE') {
+      throw new SubscriptionNotFoundError(
+        `Subscription cannot be activated from ${subscription.status}.`,
+      );
+    }
+
+    const transitioned = await tx.subscription.updateMany({
+      where: { workspaceId, status: { in: ['TRIALING', 'PAST_DUE'] } },
       data: {
         status: 'ACTIVE',
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
       },
-      include: { plan: true },
     });
+    if (transitioned.count !== 1) {
+      throw new SubscriptionNotFoundError('Subscription state changed before activation.');
+    }
 
     await tx.subscriptionInvoice.create({
       data: {
@@ -121,7 +135,10 @@ export async function activateSubscription(workspaceId: string): Promise<Subscri
       },
     });
 
-    return updated;
+    return tx.subscription.findUniqueOrThrow({
+      where: { workspaceId },
+      include: { plan: true },
+    });
   });
 }
 
@@ -134,9 +151,16 @@ export async function cancelSubscription(workspaceId: string) {
   if (!subscription) {
     throw new SubscriptionNotFoundError(`Workspace ${workspaceId} has no subscription record.`);
   }
+  if (subscription.status === 'CANCELED') {
+    throw new SubscriptionNotFoundError('Subscription is already canceled.');
+  }
 
-  return prisma.subscription.update({
-    where: { workspaceId },
+  const transitioned = await prisma.subscription.updateMany({
+    where: { workspaceId, status: { not: 'CANCELED' } },
     data: { status: 'CANCELED', canceledAt: new Date() },
   });
+  if (transitioned.count !== 1) {
+    throw new SubscriptionNotFoundError('Subscription state changed before cancellation.');
+  }
+  return prisma.subscription.findUniqueOrThrow({ where: { workspaceId } });
 }

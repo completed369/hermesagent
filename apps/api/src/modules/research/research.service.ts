@@ -2,6 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, Prisma } from '@ventureos/database';
 import { runDataAcquisition, ContractNotFoundError } from '@ventureos/research-connectors';
 import { AuditService } from '../audit/audit.service';
+import {
+  enforceCapabilityAdmission,
+  rethrowCapabilityPolicyDenial,
+} from '../../common/policy/capability-admission';
 
 const CONTRACT_LIST_INCLUDE = {
   runs: { orderBy: { createdAt: 'desc' }, take: 5 },
@@ -48,6 +52,7 @@ export class ResearchService {
   }
 
   async triggerRun(workspaceId: string, contractId: string, actorId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'RESEARCH_RUN', 'mock');
     try {
       const result = await runDataAcquisition({ workspaceId, contractId });
 
@@ -61,6 +66,7 @@ export class ResearchService {
 
       return result;
     } catch (err) {
+      rethrowCapabilityPolicyDenial(err);
       if (err instanceof ContractNotFoundError) {
         throw new NotFoundException(err.message);
       }

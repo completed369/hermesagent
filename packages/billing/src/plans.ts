@@ -6,9 +6,8 @@
  *
  * `priceMonthlyEur` is descriptive only in this phase: no real payment
  * processor is connected (see docs/DECISIONS.md ADR-010), so no amount here
- * is ever actually charged. `maxVentures`/`maxWorkspaceMembers`/
- * `maxMarketplaceAccounts` are the only fields with real runtime enforcement
- * (see `plan-guard.ts`).
+ * is ever actually charged. Plan limits and feature entitlements are enforced
+ * by the plan guard and centralized capability policy.
  */
 export interface PlanDefinition {
   key: string;

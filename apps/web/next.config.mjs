@@ -1,6 +1,16 @@
+import { fileURLToPath } from 'node:url';
+
+const standaloneBuild = process.env.VENTUREOS_STANDALONE_BUILD === 'true';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  ...(standaloneBuild
+    ? {
+        output: 'standalone',
+        outputFileTracingRoot: fileURLToPath(new URL('../..', import.meta.url)),
+      }
+    : {}),
   eslint: { ignoreDuringBuilds: false },
   async headers() {
     return [

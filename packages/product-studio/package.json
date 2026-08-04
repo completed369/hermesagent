@@ -10,15 +10,16 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "zod": "^3.23.8",
     "@ventureos/contracts": "workspace:*",
     "@ventureos/database": "workspace:*",
     "@ventureos/integrations": "workspace:*",
     "@ventureos/policy-engine": "workspace:*",
-    "@ventureos/security": "workspace:*"
+    "@ventureos/security": "workspace:*",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/node": "^22.7.5",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.3"
+    "vitest": "^3.2.6"
   }
 }

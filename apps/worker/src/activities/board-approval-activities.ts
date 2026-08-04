@@ -5,6 +5,7 @@ import {
   type RunBoardReviewResult,
 } from '@ventureos/agent-runtime';
 import { writeAuditEvent } from '../lib/write-audit-event';
+import { runWithActivityCapability } from './run-with-activity-capability';
 
 export interface RunBoardReviewActivityInput {
   workspaceId: string;
@@ -16,7 +17,14 @@ export interface RunBoardReviewActivityInput {
 export async function runBoardReviewActivity(
   input: RunBoardReviewActivityInput,
 ): Promise<RunBoardReviewResult> {
-  const result = await runBoardReview(input);
+  const result = await runWithActivityCapability(
+    {
+      workspaceId: input.workspaceId,
+      capability: 'AI_MODEL_EXECUTION',
+      stage: 'DISPATCH',
+    },
+    () => runBoardReview(input),
+  );
   await writeAuditEvent(input.workspaceId, {
     actorId: input.actorId,
     action: 'BOARD_REVIEW_COMPLETED',
@@ -39,7 +47,14 @@ export interface CreateApprovalRequestActivityInput {
 export async function createApprovalRequestActivity(
   input: CreateApprovalRequestActivityInput,
 ): Promise<{ approvalRequestId: string; state: string }> {
-  const request = await createApprovalRequest(input);
+  const request = await runWithActivityCapability(
+    {
+      workspaceId: input.workspaceId,
+      capability: 'AI_MODEL_EXECUTION',
+      stage: 'DISPATCH',
+    },
+    () => createApprovalRequest(input),
+  );
   await writeAuditEvent(input.workspaceId, {
     actorId: input.requestedBy,
     action: 'APPROVAL_REQUESTED',

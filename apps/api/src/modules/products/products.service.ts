@@ -4,6 +4,7 @@ import { prisma, Prisma } from '@ventureos/database';
 import { loadEnv } from '@ventureos/config';
 import { getTemporalClient } from '@ventureos/workflows';
 import { AuditService } from '../audit/audit.service';
+import { enforceCapabilityAdmission } from '../../common/policy/capability-admission';
 
 // `satisfies Prisma.XInclude` (rather than a plain object or `as const`)
 // keeps each nested literal (e.g. 'desc', `files: true`) checked against
@@ -49,6 +50,10 @@ export class ProductsService {
   constructor(private readonly auditService: AuditService) {}
 
   async startGeneration(workspaceId: string, ventureProposalId: string, actorId: string) {
+    const env = loadEnv();
+    await enforceCapabilityAdmission(workspaceId, 'PRODUCT_GENERATION', 'mock');
+    await enforceCapabilityAdmission(workspaceId, 'STORAGE_UPLOAD', env.STORAGE_PROVIDER);
+
     const proposal = await prisma.ventureProposal.findFirst({
       where: { id: ventureProposalId, workspaceId },
     });
@@ -56,7 +61,6 @@ export class ProductsService {
       throw new NotFoundException('Venture proposal not found');
     }
 
-    const env = loadEnv();
     const client = await getTemporalClient();
     const workflowId = `product-listing-${ventureProposalId}-${randomUUID()}`;
     const handle = await client.start('productListingWorkflow', {

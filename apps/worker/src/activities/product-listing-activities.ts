@@ -1,12 +1,18 @@
 import { loadEnv } from '@ventureos/config';
-import { MinioStorageProvider } from '@ventureos/integrations';
+import {
+  MinioStorageProvider,
+  MockStorageProvider,
+  type StorageProvider,
+} from '@ventureos/integrations';
 import {
   generateProduct,
   generateListingAndApprovalRequest,
   type GenerateProductResult,
   type GenerateListingAndApprovalResult,
 } from '@ventureos/product-studio';
+
 import { writeAuditEvent } from '../lib/write-audit-event';
+import { runWithActivityCapability } from './run-with-activity-capability';
 
 /**
  * Constructs the real MinIO-backed StorageProvider from env config -- the
@@ -15,17 +21,21 @@ import { writeAuditEvent } from '../lib/write-audit-event';
  * generateProductAssets(). @ventureos/product-studio stays environment-
  * agnostic; only the caller wires up a real provider.
  */
-function buildStorageProvider(): MinioStorageProvider {
+function buildStorageProvider(): StorageProvider {
   const env = loadEnv();
-  return new MinioStorageProvider({
-    endPoint: env.MINIO_ENDPOINT,
-    port: env.MINIO_PORT,
-    useSSL: env.MINIO_USE_SSL,
-    accessKey: env.MINIO_ROOT_USER,
-    secretKey: env.MINIO_ROOT_PASSWORD,
-    bucket: env.MINIO_BUCKET,
-    maxFileSizeMb: env.STORAGE_MAX_FILE_SIZE_MB,
-  });
+  if (env.STORAGE_PROVIDER === 'mock') return new MockStorageProvider();
+  if (env.STORAGE_PROVIDER === 'minio') {
+    return new MinioStorageProvider({
+      endPoint: env.MINIO_ENDPOINT,
+      port: env.MINIO_PORT,
+      useSSL: env.MINIO_USE_SSL,
+      accessKey: env.MINIO_ROOT_USER,
+      secretKey: env.MINIO_ROOT_PASSWORD,
+      bucket: env.MINIO_BUCKET,
+      maxFileSizeMb: env.STORAGE_MAX_FILE_SIZE_MB,
+    });
+  }
+  throw new Error('Operation is not available');
 }
 
 export interface GenerateProductActivityInput {
@@ -38,11 +48,20 @@ export interface GenerateProductActivityInput {
 export async function generateProductActivity(
   input: GenerateProductActivityInput,
 ): Promise<GenerateProductResult> {
-  const result = await generateProduct({
-    workspaceId: input.workspaceId,
-    ventureProposalId: input.ventureProposalId,
-    storageProvider: buildStorageProvider(),
-  });
+  const result = await runWithActivityCapability(
+    {
+      workspaceId: input.workspaceId,
+      capability: 'PRODUCT_GENERATION',
+      stage: 'DISPATCH',
+      providerMode: 'mock',
+    },
+    () =>
+      generateProduct({
+        workspaceId: input.workspaceId,
+        ventureProposalId: input.ventureProposalId,
+        storageProvider: buildStorageProvider(),
+      }),
+  );
   await writeAuditEvent(input.workspaceId, {
     actorId: input.actorId,
     action: 'PRODUCT_GENERATED',
@@ -64,12 +83,21 @@ export interface GenerateListingActivityInput {
 export async function generateListingActivity(
   input: GenerateListingActivityInput,
 ): Promise<GenerateListingAndApprovalResult> {
-  const result = await generateListingAndApprovalRequest({
-    workspaceId: input.workspaceId,
-    productId: input.productId,
-    requestedBy: input.requestedBy,
-    workflowId: input.workflowId,
-  });
+  const result = await runWithActivityCapability(
+    {
+      workspaceId: input.workspaceId,
+      capability: 'PRODUCT_GENERATION',
+      stage: 'DISPATCH',
+      providerMode: 'mock',
+    },
+    () =>
+      generateListingAndApprovalRequest({
+        workspaceId: input.workspaceId,
+        productId: input.productId,
+        requestedBy: input.requestedBy,
+        workflowId: input.workflowId,
+      }),
+  );
   await writeAuditEvent(input.workspaceId, {
     actorId: input.requestedBy,
     action: 'LISTING_GENERATED',

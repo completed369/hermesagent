@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import {
   GenerateForecastAction,
@@ -97,9 +98,9 @@ function eur(value: string | number) {
 export default async function FinanceVenturePage({
   params,
 }: {
-  params: { ventureProposalId: string };
+  params: Promise<{ ventureProposalId: string }>;
 }) {
-  const ventureProposalId = params.ventureProposalId;
+  const { ventureProposalId } = await params;
 
   const [
     { data: assumption },
@@ -136,9 +137,9 @@ export default async function FinanceVenturePage({
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <div>
-        <a href="/dashboard/finance" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
+        <Link href="/dashboard/finance" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
           ← Back to Finance Centre
-        </a>
+        </Link>
         <h1 style={{ margin: '8px 0 4px', fontSize: 24 }}>Finance</h1>
         <p style={{ color: 'var(--vos-text-muted)', fontSize: 13 }}>
           Venture proposal <span style={{ fontFamily: 'monospace' }}>{ventureProposalId}</span>

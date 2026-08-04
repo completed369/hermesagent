@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { apiFetch, ApiError } from '@/lib/api';
 
 /**
@@ -204,9 +205,9 @@ export function ExperimentPanelActions({
               <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
                 Approval request{' '}
                 <span style={{ fontFamily: 'monospace' }}>{lastApprovalRequestId}</span> created --{' '}
-                <a href="/dashboard/approvals" style={{ color: 'var(--vos-accent)' }}>
+                <Link href="/dashboard/approvals" style={{ color: 'var(--vos-accent)' }}>
                   decide it in the Approval Centre →
-                </a>
+                </Link>
               </p>
             )}
           </div>

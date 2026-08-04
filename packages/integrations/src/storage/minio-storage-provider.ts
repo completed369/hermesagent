@@ -1,7 +1,8 @@
 import { Client as MinioClient } from 'minio';
+import { enforceWorkspaceCapability, hasAuditedCapabilityDispatch } from '@ventureos/database';
 import { hashContent } from '@ventureos/security';
 import type { StorageProvider, StoredFileMetadata, UploadFileInput } from './types.js';
-import { isAllowedMimeType, isWithinSizeLimit } from './types.js';
+import { assertWorkspaceStorageKey, isAllowedMimeType, isWithinSizeLimit } from './types.js';
 
 export interface MinioStorageConfig {
   endPoint: string;
@@ -19,6 +20,7 @@ export interface MinioStorageConfig {
  * can later point at any S3-compatible provider without touching callers.
  */
 export class MinioStorageProvider implements StorageProvider {
+  readonly mode = 'minio' as const;
   private readonly client: MinioClient;
 
   constructor(private readonly config: MinioStorageConfig) {
@@ -32,6 +34,7 @@ export class MinioStorageProvider implements StorageProvider {
   }
 
   async upload(input: UploadFileInput): Promise<StoredFileMetadata> {
+    assertWorkspaceStorageKey(input.workspaceId, input.key);
     if (!isAllowedMimeType(input.contentType)) {
       throw new Error(`Rejected upload: MIME type not allowed: ${input.contentType}`);
     }
@@ -40,14 +43,18 @@ export class MinioStorageProvider implements StorageProvider {
         `Rejected upload: file size ${input.sizeBytes} bytes exceeds limit of ${this.config.maxFileSizeMb}MB`,
       );
     }
-    // Reject path traversal in object keys.
-    if (input.key.includes('..') || input.key.startsWith('/')) {
-      throw new Error(`Rejected upload: unsafe object key: ${input.key}`);
+
+    await this.authorize(input.workspaceId);
+    const maxBytes = this.config.maxFileSizeMb * 1024 * 1024;
+    const buffer = Buffer.isBuffer(input.body)
+      ? input.body
+      : await streamToBuffer(input.body, maxBytes);
+    if (!isWithinSizeLimit(buffer.length, this.config.maxFileSizeMb)) {
+      throw new Error(
+        `Rejected upload: actual file size ${buffer.length} bytes exceeds limit of ${this.config.maxFileSizeMb}MB`,
+      );
     }
-
     await this.ensureBucket();
-
-    const buffer = Buffer.isBuffer(input.body) ? input.body : await streamToBuffer(input.body);
     await this.client.putObject(this.config.bucket, input.key, buffer, buffer.length, {
       'Content-Type': input.contentType,
     });
@@ -62,11 +69,19 @@ export class MinioStorageProvider implements StorageProvider {
     };
   }
 
-  async getSignedDownloadUrl(key: string, ttlSeconds: number): Promise<string> {
+  async getSignedDownloadUrl(
+    workspaceId: string,
+    key: string,
+    ttlSeconds: number,
+  ): Promise<string> {
+    assertWorkspaceStorageKey(workspaceId, key);
+    await this.authorize(workspaceId);
     return this.client.presignedGetObject(this.config.bucket, key, ttlSeconds);
   }
 
-  async exists(key: string): Promise<boolean> {
+  async exists(workspaceId: string, key: string): Promise<boolean> {
+    assertWorkspaceStorageKey(workspaceId, key);
+    await this.authorize(workspaceId);
     try {
       await this.client.statObject(this.config.bucket, key);
       return true;
@@ -90,12 +105,31 @@ export class MinioStorageProvider implements StorageProvider {
       await this.client.makeBucket(this.config.bucket);
     }
   }
+
+  private async authorize(workspaceId: string): Promise<void> {
+    const dispatch = {
+      workspaceId,
+      capability: 'STORAGE_UPLOAD' as const,
+      providerMode: this.mode,
+    };
+    await enforceWorkspaceCapability({
+      ...dispatch,
+      stage: 'DISPATCH',
+      recordAllow: !hasAuditedCapabilityDispatch(dispatch),
+    });
+  }
 }
 
-async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+async function streamToBuffer(stream: NodeJS.ReadableStream, maxBytes: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > maxBytes) {
+      throw new Error(`Rejected upload: actual file size exceeds limit of ${maxBytes} bytes`);
+    }
+    chunks.push(buffer);
   }
   return Buffer.concat(chunks);
 }

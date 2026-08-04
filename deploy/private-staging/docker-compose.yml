@@ -1,0 +1,414 @@
+# Phase 21A private-staging template. It remains non-deployable until every required digest, origin, and secret file is supplied.
+# No host ports are published; the private tunnel is the only edge-network client.
+name: ventureos-private-staging
+
+x-log-small: &log-small
+  driver: local
+  options:
+    max-size: 20m
+    max-file: '5'
+    compress: 'true'
+x-log-db: &log-db
+  driver: local
+  options:
+    max-size: 50m
+    max-file: '5'
+    compress: 'true'
+x-app-hardening: &app-hardening
+  read_only: true
+  init: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  stop_grace_period: 30s
+  pids_limit: 256
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    mem_limit: 2g
+    mem_reservation: 1g
+    memswap_limit: 2g
+    cpus: 1.25
+    pids_limit: 256
+    shm_size: 256m
+    command:
+      [
+        postgres,
+        -c,
+        shared_buffers=256MB,
+        -c,
+        effective_cache_size=1GB,
+        -c,
+        work_mem=8MB,
+        -c,
+        maintenance_work_mem=128MB,
+        -c,
+        max_connections=60,
+        -c,
+        log_min_duration_statement=1000,
+      ]
+    environment:
+      POSTGRES_USER: ventureos_bootstrap
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_bootstrap_password
+    secrets:
+      [
+        postgres_bootstrap_password,
+        postgres_app_password,
+        postgres_migrator_password,
+        postgres_temporal_password,
+        postgres_backup_password,
+      ]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/00-bootstrap.sh:/docker-entrypoint-initdb.d/00-bootstrap.sh:ro
+      - ./postgres:/opt/ventureos/postgres:ro
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /run/postgresql:size=16m,mode=0755
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U ventureos_bootstrap -d postgres]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *log-db
+
+  temporal-schema:
+    image: temporalio/admin-tools:1.24.2-tctl-1.18.1-cli-1.0.0@sha256:a01fe37a4b667677cd8cfaf949193a7be914a8fa5b6bb3a83c7b1f94fb45474c
+    profiles: [initialize]
+    restart: 'no'
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.50
+    pids_limit: 128
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    secrets: [postgres_temporal_password]
+    networks: [data]
+    entrypoint: [/bin/sh, /opt/ventureos/bin/temporal-schema.sh]
+    environment:
+      TEMPORAL_SCHEMA_MODE: initialize
+    volumes:
+      - ./temporal/schema.sh:/opt/ventureos/bin/temporal-schema.sh:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+    logging: *log-small
+
+  temporal-schema-upgrade:
+    image: temporalio/admin-tools:1.24.2-tctl-1.18.1-cli-1.0.0@sha256:a01fe37a4b667677cd8cfaf949193a7be914a8fa5b6bb3a83c7b1f94fb45474c
+    profiles: [upgrade]
+    restart: 'no'
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.50
+    pids_limit: 128
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    secrets: [postgres_temporal_password]
+    networks: [data]
+    entrypoint: [/bin/sh, /opt/ventureos/bin/temporal-schema.sh]
+    environment:
+      TEMPORAL_SCHEMA_MODE: upgrade
+    volumes:
+      - ./temporal/schema.sh:/opt/ventureos/bin/temporal-schema.sh:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+    logging: *log-small
+
+  temporal:
+    image: temporalio/server:1.24.2@sha256:16de74d893e813053b82551eb4463c795b368d2029520b4c8fe2e47e1c336bb9
+    restart: unless-stopped
+    mem_limit: 2500m
+    mem_reservation: 1500m
+    memswap_limit: 2500m
+    cpus: 1.25
+    pids_limit: 512
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    secrets: [postgres_temporal_password]
+    networks: [data, app]
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    entrypoint: [/bin/sh, /opt/ventureos/bin/temporal-entrypoint.sh]
+    environment:
+      DB: postgres12
+      DB_PORT: '5432'
+      POSTGRES_USER: ventureos_temporal
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/staging.yaml
+      NUM_HISTORY_SHARDS: '128'
+      SERVICES: history,matching,frontend,worker
+    volumes:
+      - ./temporal/entrypoint.sh:/opt/ventureos/bin/temporal-entrypoint.sh:ro
+      - ./temporal/staging.yaml:/etc/temporal/config/dynamicconfig/staging.yaml:ro
+    healthcheck:
+      test: [CMD, tctl, --address, 127.0.0.1:7233, cluster, health]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    logging: *log-small
+
+  temporal-namespace:
+    image: temporalio/admin-tools:1.24.2-tctl-1.18.1-cli-1.0.0@sha256:a01fe37a4b667677cd8cfaf949193a7be914a8fa5b6bb3a83c7b1f94fb45474c
+    profiles: [initialize]
+    restart: 'no'
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.20
+    pids_limit: 64
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [temporal, operator, namespace, create, --address, temporal:7233, ventureos-staging]
+    networks: [app]
+    tmpfs: ['/tmp:size=16m,mode=1777']
+    depends_on:
+      temporal: { condition: service_healthy }
+    logging: *log-small
+
+  migrate:
+    image: ghcr.io/completed369/ventureos-tools@${VENTUREOS_TOOLS_DIGEST:?approved digest required}
+    profiles: [migrate]
+    restart: 'no'
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 0.75
+    pids_limit: 256
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      DATABASE_URL_FILE: /run/secrets/ventureos_migrator_database_url
+      VENTUREOS_REQUIRED_DATABASE_ROLE: ventureos_owner
+    secrets: [ventureos_migrator_database_url]
+    networks: [data]
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    logging: *log-small
+
+  postgres-privileges:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    profiles: [grant-runtime]
+    restart: 'no'
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.20
+    pids_limit: 64
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: [sh, -ec]
+    command:
+      - >-
+        export PGPASSWORD="$$(cat /run/secrets/postgres_bootstrap_password)";
+        exec psql --host=postgres --username=ventureos_bootstrap
+        --dbname=postgres --set=ON_ERROR_STOP=1
+        --file=/opt/ventureos/postgres/20-privileges.sql
+    secrets: [postgres_bootstrap_password]
+    volumes:
+      - ./postgres:/opt/ventureos/postgres:ro
+    networks: [data]
+    tmpfs: ['/tmp:size=16m,mode=1777']
+    depends_on:
+      postgres: { condition: service_healthy }
+    logging: *log-small
+
+  api:
+    <<: *app-hardening
+    image: ghcr.io/completed369/ventureos-api@${VENTUREOS_API_DIGEST:?approved digest required}
+    mem_limit: 1g
+    mem_reservation: 512m
+    memswap_limit: 1g
+    cpus: 0.75
+    pids_limit: 256
+    environment:
+      NODE_ENV: production
+      DEPLOYMENT_ENVIRONMENT: staging
+      API_PORT: '3001'
+      API_CORS_ORIGIN: ${STAGING_WEB_ORIGIN:?stable HTTPS origin required}
+      API_PUBLIC_ORIGIN: ${STAGING_API_ORIGIN:?stable HTTPS origin required}
+      WEB_PUBLIC_ORIGIN: ${STAGING_WEB_ORIGIN:?stable HTTPS origin required}
+      API_TRUST_PROXY_HOPS: '1'
+      DATABASE_URL_FILE: /run/secrets/ventureos_app_database_url
+      AUTH_SECRET_FILE: /run/secrets/auth_secret
+      AUTH_ABUSE_DIGEST_SECRET_FILE: /run/secrets/auth_abuse_digest_secret
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ventureos-staging
+      TEMPORAL_TASK_QUEUE: ventureos-main
+      STORAGE_PROVIDER: mock
+      AI_PROVIDER: mock
+      MARKETPLACE_ETSY_MODE: mock
+      DEV_LOGIN_ENABLED: 'false'
+      FEATURE_LIVE_PUBLISHING_ENABLED: 'false'
+      FEATURE_STORAGE_UPLOADS_ENABLED: 'false'
+      FEATURE_ADVERTISING_ENABLED: 'false'
+      FEATURE_PAID_INTEGRATIONS_ENABLED: 'false'
+      STAGING_SEED_ENABLED: 'false'
+      OTEL_ENABLED: 'false'
+      LOG_LEVEL: info
+    secrets: [ventureos_app_database_url, auth_secret, auth_abuse_digest_secret]
+    networks: [data, app]
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    depends_on:
+      postgres: { condition: service_healthy }
+      temporal: { condition: service_healthy }
+    logging: *log-small
+
+  worker:
+    <<: *app-hardening
+    image: ghcr.io/completed369/ventureos-worker@${VENTUREOS_WORKER_DIGEST:?approved digest required}
+    mem_limit: 1250m
+    mem_reservation: 512m
+    memswap_limit: 1250m
+    cpus: 0.75
+    pids_limit: 256
+    environment:
+      NODE_ENV: production
+      DEPLOYMENT_ENVIRONMENT: staging
+      API_CORS_ORIGIN: ${STAGING_WEB_ORIGIN:?stable HTTPS origin required}
+      API_PUBLIC_ORIGIN: ${STAGING_API_ORIGIN:?stable HTTPS origin required}
+      WEB_PUBLIC_ORIGIN: ${STAGING_WEB_ORIGIN:?stable HTTPS origin required}
+      DATABASE_URL_FILE: /run/secrets/ventureos_app_database_url
+      AUTH_SECRET_FILE: /run/secrets/auth_secret
+      AUTH_ABUSE_DIGEST_SECRET_FILE: /run/secrets/auth_abuse_digest_secret
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ventureos-staging
+      TEMPORAL_TASK_QUEUE: ventureos-main
+      WORKER_MAX_CONCURRENT_ACTIVITIES: '4'
+      STORAGE_PROVIDER: mock
+      AI_PROVIDER: mock
+      MARKETPLACE_ETSY_MODE: mock
+      DEV_LOGIN_ENABLED: 'false'
+      FEATURE_LIVE_PUBLISHING_ENABLED: 'false'
+      FEATURE_STORAGE_UPLOADS_ENABLED: 'false'
+      FEATURE_ADVERTISING_ENABLED: 'false'
+      FEATURE_PAID_INTEGRATIONS_ENABLED: 'false'
+      STAGING_SEED_ENABLED: 'false'
+      OTEL_ENABLED: 'false'
+      LOG_LEVEL: info
+    secrets: [ventureos_app_database_url, auth_secret, auth_abuse_digest_secret]
+    networks: [data, app]
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    depends_on:
+      postgres: { condition: service_healthy }
+      temporal: { condition: service_healthy }
+    logging: *log-small
+
+  web:
+    <<: *app-hardening
+    image: ghcr.io/completed369/ventureos-web@${VENTUREOS_WEB_DIGEST:?approved digest required}
+    mem_limit: 768m
+    mem_reservation: 256m
+    memswap_limit: 768m
+    cpus: 0.75
+    pids_limit: 256
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_BASE_URL: http://api:3001
+      NEXT_PUBLIC_API_BASE_URL: ${STAGING_API_ORIGIN:?must match immutable build argument}
+      AUTH_COOKIE_NAME: ventureos_session
+    networks: [app]
+    tmpfs: ['/tmp:size=64m,mode=1777']
+    depends_on:
+      api: { condition: service_healthy }
+    logging: *log-small
+
+  api-ingress:
+    <<: *app-hardening
+    image: ghcr.io/completed369/ventureos-ingress@${VENTUREOS_INGRESS_DIGEST:?approved digest required}
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: 0.20
+    pids_limit: 64
+    environment: { INGRESS_TARGET: api }
+    networks: [app, edge]
+    tmpfs: ['/tmp:size=16m,mode=1777']
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3001/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    logging: *log-small
+
+  web-ingress:
+    <<: *app-hardening
+    image: ghcr.io/completed369/ventureos-ingress@${VENTUREOS_INGRESS_DIGEST:?approved digest required}
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: 0.20
+    pids_limit: 64
+    environment: { INGRESS_TARGET: web }
+    networks: [app, edge]
+    tmpfs: ['/tmp:size=16m,mode=1777']
+    depends_on:
+      web: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    logging: *log-small
+
+  private-tunnel:
+    image: cloudflare/cloudflared:2026.7.0@sha256:5e49861633763e8933475477c20bae6039ed47f32c1d267a34babc347f28f0df
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.20
+    pids_limit: 128
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [tunnel, --no-autoupdate, run, --token-file, /run/secrets/private_access_tunnel_token]
+    secrets: [private_access_tunnel_token]
+    networks: [edge]
+    tmpfs: ['/tmp:size=32m,mode=1777']
+    depends_on:
+      api-ingress: { condition: service_healthy }
+      web-ingress: { condition: service_healthy }
+    logging: *log-small
+
+networks:
+  data: { internal: true }
+  app: { internal: true }
+  edge: {}
+volumes:
+  postgres-data: {}
+secrets:
+  postgres_bootstrap_password:
+    file: '${SECRET_ROOT:?}/postgres_bootstrap_password'
+  postgres_app_password:
+    file: '${SECRET_ROOT:?}/postgres_app_password'
+  postgres_migrator_password:
+    file: '${SECRET_ROOT:?}/postgres_migrator_password'
+  postgres_temporal_password:
+    file: '${SECRET_ROOT:?}/postgres_temporal_password'
+  postgres_backup_password:
+    file: '${SECRET_ROOT:?}/postgres_backup_password'
+  ventureos_app_database_url:
+    file: '${SECRET_ROOT:?}/ventureos_app_database_url'
+  ventureos_migrator_database_url:
+    file: '${SECRET_ROOT:?}/ventureos_migrator_database_url'
+  auth_secret:
+    file: '${SECRET_ROOT:?}/auth_secret'
+  auth_abuse_digest_secret:
+    file: '${SECRET_ROOT:?}/auth_abuse_digest_secret'
+  private_access_tunnel_token:
+    file: '${SECRET_ROOT:?}/private_access_tunnel_token'

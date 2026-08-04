@@ -3,14 +3,62 @@
   "globalDependencies": [".env"],
   "globalEnv": ["NODE_ENV"],
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "env": ["VENTUREOS_STANDALONE_BUILD"]
+    },
     "dev": { "cache": false, "persistent": true, "dependsOn": ["^build"] },
     "lint": { "dependsOn": ["^build"] },
     "typecheck": { "dependsOn": ["^build"] },
     "test": { "dependsOn": ["^build"] },
     "test:unit": {},
-    "test:integration": { "dependsOn": ["^build"] },
-    "test:e2e": { "dependsOn": ["build"] },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "env": [
+        "ADVERTISING_PROVIDER_MODE",
+        "AI_PROVIDER",
+        "API_PUBLIC_ORIGIN",
+        "AUTH_ABUSE_DIGEST_SECRET",
+        "AUTH_SECRET",
+        "DATABASE_URL",
+        "DEV_LOGIN_ENABLED",
+        "FEATURE_ADVERTISING_ENABLED",
+        "FEATURE_LIVE_PUBLISHING_ENABLED",
+        "FEATURE_PAID_INTEGRATIONS_ENABLED",
+        "FEATURE_STORAGE_UPLOADS_ENABLED",
+        "MARKETPLACE_ETSY_MODE",
+        "NOTIFICATION_PROVIDER_MODE",
+        "PAID_INTEGRATION_PROVIDER_MODE",
+        "STORAGE_PROVIDER",
+        "WEB_PUBLIC_ORIGIN"
+      ]
+    },
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "env": [
+        "ADVERTISING_PROVIDER_MODE",
+        "AI_PROVIDER",
+        "API_CORS_ORIGIN",
+        "API_PORT",
+        "AUTH_SECRET",
+        "CI",
+        "DATABASE_URL",
+        "DEV_FOUNDER_EMAIL",
+        "DEV_FOUNDER_PASSWORD",
+        "E2E_EXTERNAL_SERVERS",
+        "E2E_BASE_URL",
+        "FEATURE_ADVERTISING_ENABLED",
+        "FEATURE_LIVE_PUBLISHING_ENABLED",
+        "FEATURE_PAID_INTEGRATIONS_ENABLED",
+        "FEATURE_STORAGE_UPLOADS_ENABLED",
+        "MARKETPLACE_ETSY_MODE",
+        "NEXT_PUBLIC_API_BASE_URL",
+        "NOTIFICATION_PROVIDER_MODE",
+        "PAID_INTEGRATION_PROVIDER_MODE",
+        "STORAGE_PROVIDER"
+      ]
+    },
     "clean": { "cache": false }
   }
 }

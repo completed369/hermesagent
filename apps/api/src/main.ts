@@ -13,6 +13,7 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
+  app.getHttpAdapter().getInstance().set('trust proxy', env.API_TRUST_PROXY_HOPS);
   app.use(cookieParser());
   app.enableCors({ origin: env.API_CORS_ORIGIN, credentials: true });
   app.setGlobalPrefix('api');
@@ -38,8 +39,19 @@ async function bootstrap() {
     });
   }
 
-  await app.listen(env.API_PORT);
-  logger.info('API started', { port: env.API_PORT, env: env.NODE_ENV });
+  await app.listen(env.API_PORT, '0.0.0.0');
+  logger.info('API started', { port: env.API_PORT, env: env.NODE_ENV, version: '0.1.0' });
+
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info('API graceful shutdown started', { signal });
+    await app.close();
+    logger.info('API graceful shutdown completed', { signal });
+  };
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+  process.once('SIGINT', () => void shutdown('SIGINT'));
 }
 
 bootstrap().catch((err) => {

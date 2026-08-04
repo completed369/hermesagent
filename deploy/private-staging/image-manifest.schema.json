@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/completed369/hermesagent/blob/main/deploy/private-staging/image-manifest.schema.json",
+  "title": "VentureOS private-staging immutable image manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sourceCommit", "platform", "images"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "platform": { "const": "linux/amd64" },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api", "web", "worker", "tools", "ingress"],
+      "properties": {
+        "api": { "$ref": "#/$defs/apiImage" },
+        "web": { "$ref": "#/$defs/webImage" },
+        "worker": { "$ref": "#/$defs/workerImage" },
+        "tools": { "$ref": "#/$defs/toolsImage" },
+        "ingress": { "$ref": "#/$defs/ingressImage" }
+      }
+    }
+  },
+  "$defs": {
+    "apiImage": {
+      "type": "string",
+      "pattern": "^ghcr\\.io/completed369/ventureos-api@sha256:[0-9a-f]{64}$"
+    },
+    "webImage": {
+      "type": "string",
+      "pattern": "^ghcr\\.io/completed369/ventureos-web@sha256:[0-9a-f]{64}$"
+    },
+    "workerImage": {
+      "type": "string",
+      "pattern": "^ghcr\\.io/completed369/ventureos-worker@sha256:[0-9a-f]{64}$"
+    },
+    "toolsImage": {
+      "type": "string",
+      "pattern": "^ghcr\\.io/completed369/ventureos-tools@sha256:[0-9a-f]{64}$"
+    },
+    "ingressImage": {
+      "type": "string",
+      "pattern": "^ghcr\\.io/completed369/ventureos-ingress@sha256:[0-9a-f]{64}$"
+    }
+  }
+}

@@ -1,5 +1,11 @@
 # Known Limitations
 
+> **Status note (2026-08-01):** this file began as a Phase 1 sandbox inventory
+> and still contains historical phase/sandbox statements. For current executed
+> release evidence use `TECHNICAL_RELEASE_BASELINE.md`; for the current security
+> findings and gates use `APPLICATION_SECURITY_BASELINE.md`. Historical claims
+> below must not override those newer records.
+
 ## Sandbox-imposed (not a code problem — see SANDBOX_LIMITATIONS.md)
 
 Nothing in this repository has been installed, compiled, migrated, seeded,
@@ -37,30 +43,102 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
 
 ## Code-level gaps, honestly disclosed
 
-- **Session tokens stored as plaintext** in the DB (unique-indexed, not
-  hashed-at-rest). Fine for single-founder dev; must be hardened
-  (hash-and-compare) before any multi-user or production deployment.
-- **No CSRF token**: relies on `sameSite=lax` cookie + CORS origin allowlist
-  only. Adequate for local dev, not a complete CSRF defense.
-- **No login-attempt lockout**: only the global rate limiter throttles
-  repeated login attempts; no per-account/per-IP brute-force lockout yet.
-- **No dependency scanning has ever run** against this repository (no
-  network access in the build sandbox) — the `pnpm-lock.yaml` does not even
-  exist yet, so exact resolved versions (and any known CVEs in them) are
-  unknown until `pnpm install` runs locally.
-- **Prisma migrations have not been generated.** The schema
-  (`schema.prisma`) is hand-written and believed correct but has never been
-  run through `prisma migrate dev` against a real Postgres instance, so
-  subtle issues (e.g. enum vs. string choices, index naming collisions)
-  could surface on first real migration.
-- **MinIO/Temporal/Postgres connectivity code has never executed.** Client
-  configuration (ports, bucket names, connection strings) is believed
-  correct based on each library's documented API but is unverified.
-- **CI workflow is unverified** — written to a reasonable GitHub Actions
-  shape but has never actually run.
-- **Playwright browsers are not installed** in this sandbox; the e2e test
-  file has never executed even once, not even to confirm it parses/compiles
-  correctly under the real Playwright test runner.
+- **CSRF protection is origin-based, not a synchronizer token**: authenticated
+  unsafe methods now require an exact `Origin` match in the API's global guard,
+  in addition to `sameSite=lax` and the CORS allowlist. Deployments must keep a
+  single trusted `API_CORS_ORIGIN`; future multi-origin clients will require a
+  reviewed allowlist or a synchronizer-token design.
+- **Authentication abuse hardening is implemented but remains deployment-policy
+  sensitive**: PostgreSQL-backed account/source cooldowns survive restarts and
+  coordinate API instances; blocked requests skip KDF work, missing users run the
+  same asynchronous scrypt path, registration responses are generic and
+  time-floored, concurrent workspace-slug conflicts use a bounded transactional
+  randomized retry, and raw identifiers/IPs are not stored in abuse state.
+  Expired abuse rows are removed opportunistically during authentication traffic
+  or an explicit cleanup call; no scheduler is included. Deployments behind a
+  reverse proxy must set the bounded `API_TRUST_PROXY_HOPS` value to the exact
+  trusted hop count; the secure default is `0`, which ignores forwarding headers.
+  Rotating the abuse-digest secret invalidates existing pseudonymous buckets and
+  therefore requires an explicit operational reset decision.
+- **Public Temporal health mutation is resolved in Phase 12, with a corrective
+  timeout-lifecycle follow-up after the prior local commit**: the route performs
+  only the standard gRPC Health `Check` under one absolute connection/RPC
+  deadline. The helper owns the connection and awaits cleanup before settling;
+  cleanup may finish after the RPC deadline rather than being abandoned by an
+  outer timeout. The route returns generic status, creates no workflow execution
+  or history, and does not claim worker/task-queue readiness. See
+  `HEALTH_CHECKS.md`.
+- **Authentication transaction and login/dashboard E2E reliability blockers are
+  resolved in Phase 13**: authentication failure counters use an ordered,
+  non-interactive ACCOUNT/IP batch transaction after independent bounded cleanup,
+  removing the resource-sensitive two-second interactive-admission dependency
+  without changing thresholds or adding retries. Playwright login assertions
+  synchronize on the login response before redirect readiness, and duplicate
+  nav/page labels are selected by unique semantic heading role. Focused auth,
+  forced complete integration, clean-output E2E, reused-state E2E, and immediate
+  E2E repeat gates all passed without retry recovery. See
+  `APPLICATION_SECURITY_BASELINE.md` for measured evidence.
+- **Subscription/provider enforcement is implemented for current execution
+  paths, but live commercial adapters remain absent**: centralized policy now
+  enforces subscription status, trial expiry, active plans, feature entitlements,
+  venture/marketplace quotas, provider modes, and global switches at admission
+  and again in queued activities, direct runners, or final provider boundaries.
+  Marketplace, advertising, paid-integration, email/notification, payment, and
+  non-mock AI implementations still do not exist. `Integration.writeEnabled`
+  must become an additional final-boundary gate before a live marketplace
+  adapter is introduced; current live modes fail closed as unavailable.
+- **Final-dispatch revalidation is immediate best-effort, not a transactional
+  lease**: research acquisition and every implemented mock marketplace
+  draft/image/file/publication operation reload tenant-bound local state and
+  centralized subscription/provider policy at the last safe point before the
+  adapter. Cached idempotency success is revalidated before a new success record
+  is accepted. The implementation intentionally does not hold a database
+  transaction across provider-shaped execution, so a database or process-config
+  change can still occur after the final check. Real providers require a reviewed
+  provider-specific lease/idempotency/compensation design where stronger
+  atomicity is needed.
+- **Raw mock adapters are package-internal**: package roots expose protected
+  runners rather than provider-shaped adapter functions. Database-backed finance
+  reads and mutations enforce `FINANCE_ACCESS` directly. This protects supported
+  package entry points; it is not a claim that arbitrary source-file imports are
+  a security boundary outside the package export contract.
+- **Approval decisions use a single-winner transition**: the persisted decision
+  is committed with an atomic pending-state compare-and-set. Expiry is enforced
+  at decision and execution boundaries; untouched pending rows are not
+  proactively relabelled by a scheduler.
+- **Dependency Critical/High remediation is complete for the validated
+  lockfile**: compatibility-tested Next 15, Nest 11/Express 5, and Vitest 3
+  upgrades plus targeted vulnerable-child replacements reduced both production
+  and complete `pnpm audit` results to zero findings at every severity. This is
+  lockfile-specific evidence, not a permanent waiver: frozen install and both
+  audits must remain required for future dependency changes. See
+  `APPLICATION_SECURITY_BASELINE.md` for advisory roots and validation evidence.
+- **Database migrations still require normal production change controls**:
+  the eleven-migration chain, including in-place hashing of existing session
+  tokens and durable authentication-abuse state, has been exercised on
+  disposable PostgreSQL. That does not replace a
+  production backup, restore rehearsal, maintenance plan, or rollback review.
+- **Production MinIO and live Temporal connectivity remain unverified here.**
+  MinIO upload authorization and zero-network denial are unit-tested, and
+  disposable PostgreSQL validation plus mock-provider E2E passed. This is not
+  production infrastructure evidence and no real provider was contacted.
+- **CI has run, but there is still no complete green clean-runner result
+  (corrected 2026-07-20, Phase 9.1).** The historical first main-branch run
+  failed at build. The current pull-request run for PR #1 at commit
+  `0f536c7c9511945a135a5a030f34e8908a5a9f4b` also remains red (GitHub
+  Actions run `29660695312`): dependency installation, Prisma generation,
+  format, lint, and typecheck succeeded; Prisma migrate failed because the CI
+  database connection did not succeed; unit tests, integration tests, and
+  production build were skipped. This records the observed stopping point
+  without asserting why the connection failed, a migration defect, or a
+  verified fix. Historical green local validation is separate evidence and
+  does not make the branch CI-ready. See `docs/CI_GOVERNANCE.md`.
+- **Root E2E build orchestration is fixed and regression-protected**: the root
+  task now performs the production build before Playwright, the API build asserts
+  a non-empty `dist/main.js`, and build-contract tests cover stale incremental
+  state. On the remediated dependency graph, clean-state, reused-state, and
+  immediate repeated root runs each passed build 20/20 and E2E 4/4. Future build
+  script or Turbo graph changes must preserve those regression gates.
 - **No malware scanning** on uploaded files (integration point documented,
   not wired).
 - **No OpenTelemetry exporter** wired despite `OTEL_*` env vars existing —
@@ -68,6 +146,8 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
 
 ## Scope limitations (by design, not oversight)
 
-Everything Phase 2 and later (Opportunity/Evidence/Board/Approval/Product/
-Listing/Finance/Experiments/Marketplace-live/Multi-venture) is intentionally
-absent — see `ROADMAP.md`.
+Later-phase opportunity, board, approval, product, research, finance,
+experiment, billing, and marketplace modules now exist. Real-provider/live
+publication and commercial readiness remain intentionally blocked by the
+controls and residual risks above; see `ROADMAP.md` and
+`APPLICATION_SECURITY_BASELINE.md`.

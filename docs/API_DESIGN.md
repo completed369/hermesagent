@@ -5,19 +5,22 @@ REST, NestJS, global prefix `/api`. OpenAPI docs served at `/api/docs` via
 
 ## Phase 1 endpoints
 
-| Method | Path                    | Auth                   | Purpose                                                     |
-| ------ | ----------------------- | ---------------------- | ----------------------------------------------------------- |
-| POST   | /api/auth/login         | none                   | Email/password login, sets session cookie                   |
-| POST   | /api/auth/logout        | session                | Revokes session, clears cookie                              |
-| GET    | /api/auth/me            | session                | Current authenticated user + permissions                    |
-| GET    | /api/workspaces/current | session                | Workspace summary + integration status                      |
-| GET    | /api/onboarding         | session                | Founder onboarding profile                                  |
-| PUT    | /api/onboarding         | session                | Save onboarding profile                                     |
-| GET    | /api/audit-events       | session + `audit:view` | Append-only audit trail                                     |
-| GET    | /api/security-events    | session + `audit:view` | Security event log                                          |
-| GET    | /api/health/live        | none                   | Liveness probe                                              |
-| GET    | /api/health/ready       | none                   | Readiness (DB + MinIO checks)                               |
-| GET    | /api/health/temporal    | none                   | Starts+awaits `helloWorkflow`, proves Temporal connectivity |
+| Method | Path                    | Auth                   | Purpose                                      |
+| ------ | ----------------------- | ---------------------- | -------------------------------------------- |
+| POST   | /api/auth/login         | none                   | Email/password login, sets session cookie    |
+| POST   | /api/auth/logout        | session                | Revokes session, clears cookie               |
+| GET    | /api/auth/me            | session                | Current authenticated user + permissions     |
+| GET    | /api/workspaces/current | session                | Workspace summary + integration status       |
+| GET    | /api/onboarding         | session                | Founder onboarding profile                   |
+| PUT    | /api/onboarding         | session                | Save onboarding profile                      |
+| GET    | /api/audit-events       | session + `audit:view` | Append-only audit trail                      |
+| GET    | /api/security-events    | session + `audit:view` | Security event log                           |
+| GET    | /api/health/live        | none                   | Process-local liveness; no dependency access |
+| GET    | /api/health/ready       | none                   | Bounded DB, storage, and Temporal readiness  |
+| GET    | /api/health/temporal    | none                   | Non-mutating Temporal gRPC health check      |
+
+Health response, timeout, redaction, and worker-readiness contracts are defined
+in `docs/HEALTH_CHECKS.md`.
 
 ## Conventions
 

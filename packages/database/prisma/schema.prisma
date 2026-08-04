@@ -21,6 +21,8 @@ datasource db {
 
 model User {
   id           String    @id @default(uuid()) @db.Uuid
+  /// Canonical lower-case identity; the Phase 11 migration normalizes existing
+  /// rows and enforces this invariant with users_email_normalized_check.
   email        String    @unique
   passwordHash String?
   displayName  String
@@ -43,12 +45,12 @@ model User {
 /// OAuth/credential provider linkage, kept separate from User for future
 /// multi-provider auth (Better Auth / Auth.js compatible shape).
 model Account {
-  id                String    @id @default(uuid()) @db.Uuid
-  userId            String    @db.Uuid
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @db.Uuid
   provider          String
   providerAccountId String
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -58,14 +60,14 @@ model Account {
 }
 
 model Session {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @db.Uuid
-  sessionToken String   @unique
-  ipAddress    String?
-  userAgent    String?
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
-  revokedAt    DateTime?
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  tokenDigest String    @unique
+  ipAddress   String?
+  userAgent   String?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -74,27 +76,27 @@ model Session {
 }
 
 model Workspace {
-  id        String    @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String    @unique
-  mode      String    @default("SINGLE_FOUNDER") // future: MULTI_TENANT
-  baseCurrency String @default("EUR")
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String    @unique
+  mode         String    @default("SINGLE_FOUNDER") // future: MULTI_TENANT
+  baseCurrency String    @default("EUR")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
-  members         WorkspaceMember[]
-  securityEvents  SecurityEvent[]
-  auditEvents     AuditEvent[]
-  workflowRuns    WorkflowRun[]
-  integrations    Integration[]
-  onboardingProfile FounderOnboardingProfile?
-  evidenceArtifacts EvidenceArtifact[]
-  evidenceClaims    EvidenceClaim[]
-  opportunities     Opportunity[]
-  ventureProposals  VentureProposal[]
-  products          Product[]
-  listings          Listing[]
+  members                  WorkspaceMember[]
+  securityEvents           SecurityEvent[]
+  auditEvents              AuditEvent[]
+  workflowRuns             WorkflowRun[]
+  integrations             Integration[]
+  onboardingProfile        FounderOnboardingProfile?
+  evidenceArtifacts        EvidenceArtifact[]
+  evidenceClaims           EvidenceClaim[]
+  opportunities            Opportunity[]
+  ventureProposals         VentureProposal[]
+  products                 Product[]
+  listings                 Listing[]
   dataAcquisitionContracts DataAcquisitionContract[]
   dataAcquisitionRuns      DataAcquisitionRun[]
   marketplaceAccounts      MarketplaceAccount[]
@@ -181,26 +183,26 @@ model FounderProfile {
 /// Founder onboarding answers (master spec section 23.2). One per workspace
 /// for the single-founder-workspace Phase 1 default.
 model FounderOnboardingProfile {
-  id                     String   @id @default(uuid()) @db.Uuid
-  workspaceId            String   @unique @db.Uuid
+  id                     String    @id @default(uuid()) @db.Uuid
+  workspaceId            String    @unique @db.Uuid
   businessObjectives     String?
-  availableBudgetEur     Decimal? @db.Decimal(10, 2)
-  riskTolerance          String?  // LOW | MEDIUM | HIGH
-  preferredCategories    String[] @default([])
-  excludedCategories     String[] @default([])
-  targetRegions          String[] @default([])
-  preferredLanguages     String[] @default(["en"])
+  availableBudgetEur     Decimal?  @db.Decimal(10, 2)
+  riskTolerance          String? // LOW | MEDIUM | HIGH
+  preferredCategories    String[]  @default([])
+  excludedCategories     String[]  @default([])
+  targetRegions          String[]  @default([])
+  preferredLanguages     String[]  @default(["en"])
   weeklyTimeHours        Int?
-  existingSkills         String[] @default([])
-  marketplacePreferences String[] @default(["etsy"])
-  advertisingPreference  String   @default("DISABLED")
-  approvalThresholdEur   Decimal? @db.Decimal(10, 2)
-  refundThresholdEur     Decimal? @db.Decimal(10, 2)
-  targetProfitEur        Decimal? @db.Decimal(10, 2)
-  targetLaunchDate        DateTime?
-  completedAt             DateTime?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  existingSkills         String[]  @default([])
+  marketplacePreferences String[]  @default(["etsy"])
+  advertisingPreference  String    @default("DISABLED")
+  approvalThresholdEur   Decimal?  @db.Decimal(10, 2)
+  refundThresholdEur     Decimal?  @db.Decimal(10, 2)
+  targetProfitEur        Decimal?  @db.Decimal(10, 2)
+  targetLaunchDate       DateTime?
+  completedAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -211,7 +213,7 @@ model SecurityEvent {
   id          String   @id @default(uuid()) @db.Uuid
   workspaceId String?  @db.Uuid
   userId      String?  @db.Uuid
-  type        String   // e.g. LOGIN_SUCCESS, LOGIN_FAILURE, RATE_LIMIT_HIT, AUTH_ERROR
+  type        String // e.g. LOGIN_SUCCESS, LOGIN_FAILURE, RATE_LIMIT_HIT, AUTH_ERROR
   severity    String   @default("INFO") // INFO | WARN | CRITICAL
   description String
   ipAddress   String?
@@ -226,6 +228,27 @@ model SecurityEvent {
   @@map("security_events")
 }
 
+/// Durable, instance-shared authentication abuse state. Only one-way account
+/// and source-IP digests are stored; raw identifiers and credentials never
+/// belong in this table.
+model AuthAbuseState {
+  channel         String
+  scope           String
+  keyDigest       String
+  attemptCount    Int       @default(0)
+  windowStartedAt DateTime
+  cooldownLevel   Int       @default(0)
+  cooldownUntil   DateTime?
+  lastAttemptAt   DateTime
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@id([channel, scope, keyDigest])
+  @@index([expiresAt])
+  @@map("auth_abuse_states")
+}
+
 // ---------------------------------------------------------------------------
 // Audit (append-only)
 // ---------------------------------------------------------------------------
@@ -233,21 +256,21 @@ model SecurityEvent {
 /// Append-only by application convention: the API layer must only ever
 /// create rows here, never update or delete. See docs/SECURITY.md.
 model AuditEvent {
-  id               String   @id @default(uuid()) @db.Uuid
-  workspaceId      String?  @db.Uuid
-  actorId          String?  @db.Uuid
-  action           String
-  entityType       String
-  entityId         String
-  before           Json?
-  after            Json?
-  correlationId    String?
-  workflowId       String?
-  policyResult     Json?
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String?  @db.Uuid
+  actorId           String?  @db.Uuid
+  action            String
+  entityType        String
+  entityId          String
+  before            Json?
+  after             Json?
+  correlationId     String?
+  workflowId        String?
+  policyResult      Json?
   approvalReference String?
-  ipOrSessionId    String?
-  integrityHash    String
-  createdAt        DateTime @default(now())
+  ipOrSessionId     String?
+  integrityHash     String
+  createdAt         DateTime @default(now())
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   actor     User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
@@ -262,17 +285,17 @@ model AuditEvent {
 // ---------------------------------------------------------------------------
 
 model WorkflowRun {
-  id               String    @id @default(uuid()) @db.Uuid
-  workspaceId      String?   @db.Uuid
-  workflowType     String
-  temporalWorkflowId String  @unique
-  temporalRunId    String?
-  status           String    @default("RUNNING") // RUNNING | COMPLETED | FAILED | CANCELLED | TERMINATED
-  input            Json?
-  output           Json?
-  correlationId    String?
-  startedAt        DateTime  @default(now())
-  completedAt      DateTime?
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String?   @db.Uuid
+  workflowType       String
+  temporalWorkflowId String    @unique
+  temporalRunId      String?
+  status             String    @default("RUNNING") // RUNNING | COMPLETED | FAILED | CANCELLED | TERMINATED
+  input              Json?
+  output             Json?
+  correlationId      String?
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
 
   workspace Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   steps     WorkflowStep[]
@@ -305,19 +328,19 @@ model WorkflowStep {
 // ---------------------------------------------------------------------------
 
 model Integration {
-  id               String   @id @default(uuid()) @db.Uuid
-  workspaceId      String   @db.Uuid
-  provider         String   // e.g. etsy, minio, anthropic-mock
-  mode             String   @default("MOCK") // MOCK | READ_ONLY | WRITE_ENABLED
-  writeEnabled     Boolean  @default(false)
-  status           String   @default("DISCONNECTED") // DISCONNECTED | CONNECTED | ERROR
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @db.Uuid
+  provider          String // e.g. etsy, minio, anthropic-mock
+  mode              String    @default("MOCK") // MOCK | READ_ONLY | WRITE_ENABLED
+  writeEnabled      Boolean   @default(false)
+  status            String    @default("DISCONNECTED") // DISCONNECTED | CONNECTED | ERROR
   lastHealthCheckAt DateTime?
-  lastHealthStatus String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  lastHealthStatus  String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  secrets   SecretReference[]
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  secrets             SecretReference[]
   marketplaceAccounts MarketplaceAccount[]
 
   @@unique([workspaceId, provider])
@@ -331,7 +354,7 @@ model SecretReference {
   integrationId String   @db.Uuid
   label         String
   storageMethod String   @default("ENV_VAR") // ENV_VAR | EXTERNAL_SECRET_MANAGER
-  reference     String   // e.g. env var name, never the secret itself
+  reference     String // e.g. env var name, never the secret itself
   createdAt     DateTime @default(now())
 
   integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
@@ -346,16 +369,16 @@ model SecretReference {
 /// Where an EvidenceArtifact was retrieved from. Phase 2 only ever creates
 /// these for seeded/mock data; real research connectors are Phase 5.
 model DataSource {
-  id                         String   @id @default(uuid()) @db.Uuid
-  name                       String
-  sourceType                 String // OFFICIAL_API | PUBLIC_EXPORT | FOUNDER_PROVIDED | MANUAL_IMPORT
-  url                        String?
-  accessMethod               String   @default("MANUAL_IMPORT")
-  dataAcquisitionContractId  String?  @db.Uuid
-  createdAt                  DateTime @default(now())
+  id                        String   @id @default(uuid()) @db.Uuid
+  name                      String
+  sourceType                String // OFFICIAL_API | PUBLIC_EXPORT | FOUNDER_PROVIDED | MANUAL_IMPORT
+  url                       String?
+  accessMethod              String   @default("MANUAL_IMPORT")
+  dataAcquisitionContractId String?  @db.Uuid
+  createdAt                 DateTime @default(now())
 
-  evidenceArtifacts        EvidenceArtifact[]
-  dataAcquisitionContract  DataAcquisitionContract? @relation(fields: [dataAcquisitionContractId], references: [id], onDelete: SetNull)
+  evidenceArtifacts       EvidenceArtifact[]
+  dataAcquisitionContract DataAcquisitionContract? @relation(fields: [dataAcquisitionContractId], references: [id], onDelete: SetNull)
 
   @@map("data_sources")
 }
@@ -382,7 +405,7 @@ model EvidenceArtifact {
   personalDataClassification String    @default("NONE") // NONE | PSEUDONYMOUS | PERSONAL
   contentHash                String
   processingHistory          Json?
-  storageLocation             String?
+  storageLocation            String?
   reviewDate                 DateTime?
   expiryDate                 DateTime?
   createdAt                  DateTime  @default(now())
@@ -512,10 +535,10 @@ model VentureProposal {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  workspace   Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  opportunity Opportunity              @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-  versions    VentureProposalVersion[]
-  product     Product?
+  workspace            Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  opportunity          Opportunity              @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  versions             VentureProposalVersion[]
+  product              Product?
   financialAssumptions FinancialAssumption[]
 
   @@map("venture_proposals")
@@ -529,8 +552,8 @@ model VentureProposalVersion {
   snapshot          Json
   createdAt         DateTime @default(now())
 
-  ventureProposal VentureProposal @relation(fields: [ventureProposalId], references: [id], onDelete: Cascade)
-  opportunity     Opportunity     @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  ventureProposal  VentureProposal   @relation(fields: [ventureProposalId], references: [id], onDelete: Cascade)
+  opportunity      Opportunity       @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
   boardReviews     BoardReview[]
   approvalRequests ApprovalRequest[]
 
@@ -547,20 +570,20 @@ model VentureProposalVersion {
 /// in @ventureos/policy-engine before this table did; this table is the
 /// persisted, queryable, versionable record of the same roles.
 model AgentDefinition {
-  id                 String   @id @default(uuid()) @db.Uuid
-  role               String   @unique // one of BOARD_AGENT_ROLES, or DECISION_SYNTHESISER
-  name               String
-  isVoting           Boolean  @default(true) // false for the Decision Synthesiser
-  weight             Int? // null for the Decision Synthesiser (non-voting)
-  responsibilities   String[] @default([])
-  toolAllowlist      String[] @default([])
-  prohibitedActions  String[] @default([])
-  modelProvider      String   @default("mock")
-  modelName          String   @default("mock-v1")
-  costLimitEur       Decimal? @db.Decimal(10, 2)
-  timeoutMs          Int      @default(30000)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(uuid()) @db.Uuid
+  role              String   @unique // one of BOARD_AGENT_ROLES, or DECISION_SYNTHESISER
+  name              String
+  isVoting          Boolean  @default(true) // false for the Decision Synthesiser
+  weight            Int? // null for the Decision Synthesiser (non-voting)
+  responsibilities  String[] @default([])
+  toolAllowlist     String[] @default([])
+  prohibitedActions String[] @default([])
+  modelProvider     String   @default("mock")
+  modelName         String   @default("mock-v1")
+  costLimitEur      Decimal? @db.Decimal(10, 2)
+  timeoutMs         Int      @default(30000)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   promptVersions AgentPromptVersion[]
   boardVotes     BoardVote[]
@@ -593,7 +616,7 @@ model BoardReview {
   status                   String    @default("PENDING") // PENDING | RUNNING | COMPLETED | FAILED
   votingResult             Json?
   blocked                  Boolean?
-  meetsThreshold            Boolean?
+  meetsThreshold           Boolean?
   failureReason            String?
   startedAt                DateTime?
   completedAt              DateTime?
@@ -657,14 +680,14 @@ model BoardVeto {
 /// last paragraph: summarise only, never vote/approve/override/execute).
 /// One per BoardReview.
 model DecisionSummary {
-  id                   String   @id @default(uuid()) @db.Uuid
-  boardReviewId        String   @unique @db.Uuid
-  agreementSummary     String
-  disagreementSummary  String
-  vetoSummary          String
-  overallConfidence    Int
-  recommendation       String // APPROVE | REVISE | REJECT -- informational text only, not a decision
-  generatedAt          DateTime
+  id                  String   @id @default(uuid()) @db.Uuid
+  boardReviewId       String   @unique @db.Uuid
+  agreementSummary    String
+  disagreementSummary String
+  vetoSummary         String
+  overallConfidence   Int
+  recommendation      String // APPROVE | REVISE | REJECT -- informational text only, not a decision
+  generatedAt         DateTime
 
   boardReview BoardReview @relation(fields: [boardReviewId], references: [id], onDelete: Cascade)
 
@@ -897,7 +920,7 @@ model ProductAssetVersion {
   contentHash    String
   generatedAt    DateTime @default(now())
 
-  productAsset  ProductAsset    @relation(fields: [productAssetId], references: [id], onDelete: Cascade)
+  productAsset  ProductAsset   @relation(fields: [productAssetId], references: [id], onDelete: Cascade)
   listingImages ListingImage[]
   listingFiles  ListingFile[]
   licenceRecord LicenceRecord?
@@ -1009,7 +1032,7 @@ model ListingVersion {
   priceEur      Decimal  @db.Decimal(10, 2)
   createdAt     DateTime @default(now())
 
-  listing             Listing               @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listing             Listing              @relation(fields: [listingId], references: [id], onDelete: Cascade)
   images              ListingImage[]
   files               ListingFile[]
   priceProposals      PriceProposal[]
@@ -1085,17 +1108,17 @@ model SEOEvaluation {
 /// status here in Phase 6 means the mock adapter simulated a real publish
 /// end-to-end, not that a real Etsy listing exists.
 model PublicationAttempt {
-  id                   String   @id @default(uuid()) @db.Uuid
-  listingVersionId     String   @db.Uuid
-  marketplace          String
-  status               String   @default("NOT_ATTEMPTED") // NOT_ATTEMPTED | BLOCKED_NO_APPROVAL | BLOCKED_NO_LIVE_INTEGRATION | WOULD_PUBLISH_MOCK | BLOCKED_DISABLED | BLOCKED_RATE_LIMIT | READY_FOR_PUBLISH | PUBLISHED | FAILED
-  blockedReason        String?
-  errorMessage         String?
-  attemptedAt          DateTime  @default(now())
-  completedAt          DateTime?
+  id               String    @id @default(uuid()) @db.Uuid
+  listingVersionId String    @db.Uuid
+  marketplace      String
+  status           String    @default("NOT_ATTEMPTED") // NOT_ATTEMPTED | BLOCKED_NO_APPROVAL | BLOCKED_NO_LIVE_INTEGRATION | WOULD_PUBLISH_MOCK | BLOCKED_DISABLED | BLOCKED_RATE_LIMIT | BLOCKED_POLICY | RESERVED | READY_FOR_PUBLISH | PUBLISHED | IDEMPOTENT_REPLAY | FAILED
+  blockedReason    String?
+  errorMessage     String?
+  attemptedAt      DateTime  @default(now())
+  completedAt      DateTime?
 
-  marketplaceAccountId String?  @db.Uuid
-  idempotencyKeyId     String?  @db.Uuid
+  marketplaceAccountId String? @db.Uuid
+  idempotencyKeyId     String? @db.Uuid
   externalListingId    String? // mock-generated in Phase 6 -- never a real Etsy id while mock-only
   externalListingUrl   String? // mock-generated in Phase 6 -- never a real Etsy url while mock-only
 
@@ -1128,7 +1151,7 @@ model MarketplaceAccount {
 
   externalShopId       String? // populated only if/when a real account is connected
   externalShopName     String?
-  scopes               String[] @default([]) // OAuth scopes granted, e.g. ["listings_r","listings_w","shops_r"]
+  scopes               String[]  @default([]) // OAuth scopes granted, e.g. ["listings_r","listings_w","shops_r"]
   accessTokenExpiresAt DateTime? // real-mode only; the token itself lives behind SecretReference
 
   rateLimitPerSecond Int? // learned from Etsy's real QPS limit once connected; unused while mock-only
@@ -1142,8 +1165,8 @@ model MarketplaceAccount {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  integration         Integration           @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  integration         Integration          @relation(fields: [integrationId], references: [id], onDelete: Cascade)
   publicationAttempts PublicationAttempt[]
   idempotencyKeys     IdempotencyKey[]
 
@@ -1151,12 +1174,12 @@ model MarketplaceAccount {
   @@map("marketplace_accounts")
 }
 
-/// Guarantees every external marketplace write (draft creation, image/file
-/// upload, publish) executes at most once for a given logical operation,
-/// even under retries -- master spec's "duplicate external execution"
-/// threat (docs/THREAT_MODEL.md), previously "Not yet addressed", now real.
-/// A reused key with a different requestHash is a genuine caller error
-/// (never silently treated as a retry of the same operation).
+/// Coordinates every mock marketplace write (draft creation, image/file upload,
+/// publish). Atomic local claims prevent concurrent retry execution, matching
+/// successful replays return the cached snapshot, and conflicting payloads fail.
+/// A future live adapter must propagate this key to a provider-supported
+/// idempotency mechanism because a process crash after external success but before
+/// SUCCEEDED persistence cannot be made exactly-once by a local database alone.
 model IdempotencyKey {
   id                   String    @id @default(uuid()) @db.Uuid
   workspaceId          String    @db.Uuid
@@ -1169,8 +1192,8 @@ model IdempotencyKey {
   createdAt            DateTime  @default(now())
   completedAt          DateTime?
 
-  workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  marketplaceAccount  MarketplaceAccount    @relation(fields: [marketplaceAccountId], references: [id], onDelete: Cascade)
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  marketplaceAccount  MarketplaceAccount   @relation(fields: [marketplaceAccountId], references: [id], onDelete: Cascade)
   publicationAttempts PublicationAttempt[]
 
   @@unique([workspaceId, key])
@@ -1186,8 +1209,8 @@ model IdempotencyKey {
 /// Nothing acquires data without a real DataAcquisitionContract row backing
 /// it (fail closed: a missing or disabled contract blocks every run).
 model DataAcquisitionContract {
-  id           String @id @default(uuid()) @db.Uuid
-  workspaceId  String @db.Uuid
+  id          String @id @default(uuid()) @db.Uuid
+  workspaceId String @db.Uuid
 
   name    String // human label, e.g. "Etsy public listings (permitted browse)"
   purpose String // why this data is acquired
@@ -1209,13 +1232,13 @@ model DataAcquisitionContract {
   retryPolicy               String @default("EXPONENTIAL_BACKOFF_3_ATTEMPTS")
   failureHandling           String @default("FAIL_CLOSED") // FAIL_CLOSED | FAIL_OPEN_WITH_FLAG
 
-  retentionDays               Int     @default(365)
-  personalDataClassification  String  @default("NONE") // NONE | PSEUDONYMOUS | PERSONAL
-  termsOfUseNote               String?
-  geographicLimitations         String?
-  monitoringNote                String? // how source health is monitored (Integration Health row keyed by provider = `research:<slug>`)
+  retentionDays              Int     @default(365)
+  personalDataClassification String  @default("NONE") // NONE | PSEUDONYMOUS | PERSONAL
+  termsOfUseNote             String?
+  geographicLimitations      String?
+  monitoringNote             String? // how source health is monitored (Integration Health row keyed by provider = `research:<slug>`)
 
-  disabled       Boolean  @default(false) // hard kill switch -- fail closed the moment this is true
+  disabled       Boolean @default(false) // hard kill switch -- fail closed the moment this is true
   disabledReason String?
 
   costPerRunEurEstimate Decimal @default(0) @db.Decimal(10, 4) // mock providers cost 0 until a real paid API is enabled
@@ -1223,7 +1246,7 @@ model DataAcquisitionContract {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   dataSources DataSource[]
   runs        DataAcquisitionRun[]
 
@@ -1244,8 +1267,8 @@ model DataAcquisitionRun {
   startedAt   DateTime  @default(now())
   completedAt DateTime?
 
-  costEur         Decimal @default(0) @db.Decimal(10, 4)
-  itemsRetrieved  Int     @default(0)
+  costEur        Decimal @default(0) @db.Decimal(10, 4)
+  itemsRetrieved Int     @default(0)
 
   promptInjectionFlagged Boolean  @default(false)
   promptInjectionMatches String[] @default([])
@@ -1278,9 +1301,9 @@ model DataAcquisitionRun {
 /// `supersededAt`, so every `FinancialForecast` can still point at the exact
 /// assumption set that produced it.
 model FinancialAssumption {
-  id                String    @id @default(uuid()) @db.Uuid
-  workspaceId       String    @db.Uuid
-  ventureProposalId String    @db.Uuid
+  id                String @id @default(uuid()) @db.Uuid
+  workspaceId       String @db.Uuid
+  ventureProposalId String @db.Uuid
 
   productPriceEur              Decimal @db.Decimal(10, 2)
   marketplaceFeeRate           Decimal @db.Decimal(5, 4)
@@ -1299,8 +1322,8 @@ model FinancialAssumption {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  ventureProposal VentureProposal   @relation(fields: [ventureProposalId], references: [id], onDelete: Cascade)
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ventureProposal VentureProposal     @relation(fields: [ventureProposalId], references: [id], onDelete: Cascade)
   forecasts       FinancialForecast[]
 
   @@index([workspaceId, ventureProposalId])
@@ -1312,21 +1335,21 @@ model FinancialAssumption {
 /// estimates changed over time. `breakEvenUnits`/`breakEvenRevenueEur`/
 /// `fixedCostsEur` mirror `calculateBreakEven`'s real output exactly.
 model FinancialForecast {
-  id                     String  @id @default(uuid()) @db.Uuid
-  workspaceId            String  @db.Uuid
-  ventureProposalId      String  @db.Uuid
-  financialAssumptionId  String  @db.Uuid
+  id                    String @id @default(uuid()) @db.Uuid
+  workspaceId           String @db.Uuid
+  ventureProposalId     String @db.Uuid
+  financialAssumptionId String @db.Uuid
 
   baseUnitsSold       Int
-  breakEvenUnits       Int? // null represents Infinity (contribution margin <= 0)
+  breakEvenUnits      Int? // null represents Infinity (contribution margin <= 0)
   breakEvenRevenueEur Decimal? @db.Decimal(12, 2)
   fixedCostsEur       Decimal  @db.Decimal(10, 2)
 
   createdAt DateTime @default(now())
 
-  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  financialAssumption FinancialAssumption  @relation(fields: [financialAssumptionId], references: [id], onDelete: Cascade)
-  scenarios            FinancialScenario[]
+  workspace           Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  financialAssumption FinancialAssumption @relation(fields: [financialAssumptionId], references: [id], onDelete: Cascade)
+  scenarios           FinancialScenario[]
 
   @@index([workspaceId, ventureProposalId])
   @@map("financial_forecasts")
@@ -1335,17 +1358,17 @@ model FinancialForecast {
 /// Exactly 3 rows per FinancialForecast (LOW/BASE/HIGH), mirroring
 /// `finance-engine`'s `ScenarioProjection` shape field-for-field.
 model FinancialScenario {
-  id                    String  @id @default(uuid()) @db.Uuid
-  financialForecastId   String  @db.Uuid
-  scenario              String // LOW | BASE | HIGH
-  unitsSold             Int
-  grossRevenueEur       Decimal @db.Decimal(12, 2)
-  netRevenueEur         Decimal @db.Decimal(12, 2)
-  totalVariableCostEur  Decimal @db.Decimal(12, 2)
-  fixedCostsEur         Decimal @db.Decimal(10, 2)
-  grossProfitEur        Decimal @db.Decimal(12, 2)
-  netProfitEur          Decimal @db.Decimal(12, 2)
-  createdAt             DateTime @default(now())
+  id                   String   @id @default(uuid()) @db.Uuid
+  financialForecastId  String   @db.Uuid
+  scenario             String // LOW | BASE | HIGH
+  unitsSold            Int
+  grossRevenueEur      Decimal  @db.Decimal(12, 2)
+  netRevenueEur        Decimal  @db.Decimal(12, 2)
+  totalVariableCostEur Decimal  @db.Decimal(12, 2)
+  fixedCostsEur        Decimal  @db.Decimal(10, 2)
+  grossProfitEur       Decimal  @db.Decimal(12, 2)
+  netProfitEur         Decimal  @db.Decimal(12, 2)
+  createdAt            DateTime @default(now())
 
   financialForecast FinancialForecast @relation(fields: [financialForecastId], references: [id], onDelete: Cascade)
 
@@ -1359,16 +1382,16 @@ model FinancialScenario {
 /// enforcement ledger that every costed action writes to regardless of
 /// whether it's ever surfaced as a P&L line item.
 model Expense {
-  id                String    @id @default(uuid()) @db.Uuid
-  workspaceId       String    @db.Uuid
-  ventureProposalId String?   @db.Uuid
+  id                String  @id @default(uuid()) @db.Uuid
+  workspaceId       String  @db.Uuid
+  ventureProposalId String? @db.Uuid
 
   category    String // AI_GENERATION | MARKETPLACE_FEE | RESEARCH | ADVERTISING | OVERHEAD | OTHER
-  amountEur   Decimal   @db.Decimal(10, 2)
+  amountEur   Decimal  @db.Decimal(10, 2)
   description String
-  source      String    @default("MANUAL") // MANUAL | SYSTEM_GENERATED
+  source      String   @default("MANUAL") // MANUAL | SYSTEM_GENERATED
   incurredAt  DateTime
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -1385,21 +1408,21 @@ model RevenueEntry {
   ventureProposalId String  @db.Uuid
   listingVersionId  String? @db.Uuid
 
-  unitsSold                Int
-  grossRevenueEur          Decimal @db.Decimal(12, 2)
-  marketplaceFeeEur        Decimal @default(0) @db.Decimal(10, 2)
-  paymentProcessingFeeEur  Decimal @default(0) @db.Decimal(10, 2)
-  listingFeeEur            Decimal @default(0) @db.Decimal(10, 2)
-  vatEur                   Decimal @default(0) @db.Decimal(10, 2)
-  refundsEur               Decimal @default(0) @db.Decimal(10, 2)
-  netRevenueEur            Decimal @db.Decimal(12, 2)
+  unitsSold               Int
+  grossRevenueEur         Decimal @db.Decimal(12, 2)
+  marketplaceFeeEur       Decimal @default(0) @db.Decimal(10, 2)
+  paymentProcessingFeeEur Decimal @default(0) @db.Decimal(10, 2)
+  listingFeeEur           Decimal @default(0) @db.Decimal(10, 2)
+  vatEur                  Decimal @default(0) @db.Decimal(10, 2)
+  refundsEur              Decimal @default(0) @db.Decimal(10, 2)
+  netRevenueEur           Decimal @db.Decimal(12, 2)
 
   source     String   @default("MANUAL") // MANUAL | MOCK_MARKETPLACE_SYNC
   occurredAt DateTime
   recordedBy String?
   createdAt  DateTime @default(now())
 
-  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   fees      MarketplaceFee[]
   refunds   RefundRequest[]
 
@@ -1411,10 +1434,10 @@ model RevenueEntry {
 /// Finance Centre can show "why" net revenue is lower than gross, not just
 /// the aggregate.
 model MarketplaceFee {
-  id             String  @id @default(uuid()) @db.Uuid
-  revenueEntryId String  @db.Uuid
+  id             String   @id @default(uuid()) @db.Uuid
+  revenueEntryId String   @db.Uuid
   feeType        String // MARKETPLACE_COMMISSION | PAYMENT_PROCESSING | LISTING_FEE | OTHER
-  amountEur      Decimal @db.Decimal(10, 2)
+  amountEur      Decimal  @db.Decimal(10, 2)
   description    String?
   createdAt      DateTime @default(now())
 
@@ -1449,17 +1472,17 @@ model RefundRequest {
 /// same fail-closed pattern as `DataAcquisitionContract`/Phase 5's cost
 /// caps and Phase 6's fail-closed publication gating.
 model Budget {
-  id                String    @id @default(uuid()) @db.Uuid
-  workspaceId       String    @db.Uuid
-  ventureProposalId String?   @db.Uuid
+  id                String  @id @default(uuid()) @db.Uuid
+  workspaceId       String  @db.Uuid
+  ventureProposalId String? @db.Uuid
 
-  name           String
-  periodStart    DateTime
-  periodEnd      DateTime
-  totalLimitEur  Decimal   @db.Decimal(10, 2)
-  status         String    @default("ACTIVE") // ACTIVE | CLOSED
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  name          String
+  periodStart   DateTime
+  periodEnd     DateTime
+  totalLimitEur Decimal  @db.Decimal(10, 2)
+  status        String   @default("ACTIVE") // ACTIVE | CLOSED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   allocations BudgetAllocation[]
@@ -1483,7 +1506,7 @@ model BudgetAllocation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  budget            Budget             @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  budget            Budget            @relation(fields: [budgetId], references: [id], onDelete: Cascade)
   costLedgerEntries CostLedgerEntry[]
 
   @@unique([budgetId, category])
@@ -1501,7 +1524,7 @@ model CostLedgerEntry {
   ventureProposalId  String? @db.Uuid
 
   category      String // AI_MODEL_USAGE | RESEARCH | ADVERTISING | PRODUCT_GENERATION | OTHER
-  amountEur     Decimal @db.Decimal(10, 4)
+  amountEur     Decimal  @db.Decimal(10, 4)
   source        String // module/action that incurred the cost, e.g. "agent-runtime:board-review"
   referenceType String? // e.g. "BoardReview", "DataAcquisitionRun", "ModelUsage"
   referenceId   String?
@@ -1527,11 +1550,11 @@ model ModelUsage {
   ventureProposalId String? @db.Uuid
   boardReviewId     String? @db.Uuid
 
-  provider         String @default("mock")
-  model            String @default("mock-v1")
-  promptTokens     Int    @default(0)
-  completionTokens Int    @default(0)
-  totalTokens      Int    @default(0)
+  provider         String  @default("mock")
+  model            String  @default("mock-v1")
+  promptTokens     Int     @default(0)
+  completionTokens Int     @default(0)
+  totalTokens      Int     @default(0)
   costEur          Decimal @default(0) @db.Decimal(10, 6)
 
   createdAt DateTime @default(now())
@@ -1546,13 +1569,13 @@ model ModelUsage {
 /// `MarketplacePolicyPack`. Used to compute `ModelUsage.costEur` once a real
 /// (non-mock) provider is enabled; unused while `AI_PROVIDER=mock`.
 model ModelCost {
-  id                              String   @id @default(uuid()) @db.Uuid
-  provider                        String
-  model                           String
-  inputCostPerMillionTokensEur    Decimal  @db.Decimal(10, 4)
-  outputCostPerMillionTokensEur   Decimal  @db.Decimal(10, 4)
-  effectiveFrom                   DateTime @default(now())
-  createdAt                       DateTime @default(now())
+  id                            String   @id @default(uuid()) @db.Uuid
+  provider                      String
+  model                         String
+  inputCostPerMillionTokensEur  Decimal  @db.Decimal(10, 4)
+  outputCostPerMillionTokensEur Decimal  @db.Decimal(10, 4)
+  effectiveFrom                 DateTime @default(now())
+  createdAt                     DateTime @default(now())
 
   @@unique([provider, model, effectiveFrom])
   @@map("model_costs")
@@ -1562,10 +1585,10 @@ model ModelCost {
 /// master spec section 30 Gate 5/6 metrics. `status` lifecycle:
 /// DRAFT -> RUNNING -> COMPLETED -> DECIDED.
 model Experiment {
-  id                String    @id @default(uuid()) @db.Uuid
-  workspaceId       String    @db.Uuid
-  ventureProposalId String    @db.Uuid
-  listingVersionId  String?   @db.Uuid
+  id                String  @id @default(uuid()) @db.Uuid
+  workspaceId       String  @db.Uuid
+  ventureProposalId String  @db.Uuid
+  listingVersionId  String? @db.Uuid
 
   name       String
   hypothesis String
@@ -1575,7 +1598,7 @@ model Experiment {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  workspace        Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   variants         ExperimentVariant[]
   metrics          ExperimentMetric[]
   decisions        ExperimentDecision[]
@@ -1586,15 +1609,15 @@ model Experiment {
 }
 
 model ExperimentVariant {
-  id                     String  @id @default(uuid()) @db.Uuid
-  experimentId           String  @db.Uuid
-  name                   String
-  description            String?
-  isControl              Boolean @default(false)
+  id                       String   @id @default(uuid()) @db.Uuid
+  experimentId             String   @db.Uuid
+  name                     String
+  description              String?
+  isControl                Boolean  @default(false)
   trafficAllocationPercent Decimal? @db.Decimal(5, 2)
-  createdAt              DateTime @default(now())
+  createdAt                DateTime @default(now())
 
-  experiment Experiment          @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  experiment Experiment         @relation(fields: [experimentId], references: [id], onDelete: Cascade)
   results    ExperimentResult[]
 
   @@unique([experimentId, name])
@@ -1611,7 +1634,7 @@ model ExperimentMetric {
   unit         String? // e.g. "%", "EUR", "count"
   createdAt    DateTime @default(now())
 
-  experiment Experiment          @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  experiment Experiment         @relation(fields: [experimentId], references: [id], onDelete: Cascade)
   results    ExperimentResult[]
 
   @@unique([experimentId, name])
@@ -1646,14 +1669,14 @@ model ExperimentResult {
 /// decisions do not require a separate approval since they only ever reduce
 /// or hold spend, never increase it.
 model ExperimentDecision {
-  id                String    @id @default(uuid()) @db.Uuid
-  experimentId      String    @db.Uuid
-  approvalRequestId String?   @db.Uuid
+  id                String   @id @default(uuid()) @db.Uuid
+  experimentId      String   @db.Uuid
+  approvalRequestId String?  @db.Uuid
   decision          String // SCALE | KILL | ITERATE | HOLD
   rationale         String
   decidedBy         String
-  decidedAt         DateTime  @default(now())
-  createdAt         DateTime  @default(now())
+  decidedAt         DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   experiment      Experiment       @relation(fields: [experimentId], references: [id], onDelete: Cascade)
   approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
@@ -1712,8 +1735,8 @@ model Subscription {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  workspace Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  plan      Plan                   @relation(fields: [planId], references: [id])
+  workspace Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      Plan                  @relation(fields: [planId], references: [id])
   invoices  SubscriptionInvoice[]
 
   @@map("subscriptions")

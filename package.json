@@ -9,6 +9,14 @@
     "pnpm": ">=9.0.0"
   },
   "packageManager": "pnpm@9.12.0",
+  "pnpm": {
+    "overrides": {
+      "js-yaml": "5.2.2",
+      "postcss": "8.5.18",
+      "sharp": "0.35.0",
+      "vite": "6.4.3"
+    }
+  },
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -17,9 +25,10 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,md,json,yml,yaml}\" --ignore-path .gitignore",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:unit": "turbo run test:unit",
+    "test:unit": "node --test scripts/*.test.mjs && turbo run test:unit",
     "test:integration": "turbo run test:integration",
-    "test:e2e": "turbo run test:e2e",
+    "test:e2e": "pnpm run build && pnpm --filter @ventureos/web run test:e2e",
+    "test:build-orchestration": "node scripts/verify-api-build.mjs",
     "db:generate": "pnpm --filter @ventureos/database run generate",
     "db:migrate": "pnpm --filter @ventureos/database run migrate",
     "db:migrate:dev": "pnpm --filter @ventureos/database run migrate:dev",
@@ -29,13 +38,14 @@
     "clean": "turbo run clean && rimraf node_modules"
   },
   "devDependencies": {
-    "turbo": "^2.1.3",
-    "typescript": "^5.6.3",
-    "prettier": "^3.3.3",
-    "eslint": "^8.57.1",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
+    "ajv": "8.20.0",
+    "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
-    "rimraf": "^6.0.1"
+    "prettier": "^3.3.3",
+    "rimraf": "^6.0.1",
+    "turbo": "^2.1.3",
+    "typescript": "^5.6.3"
   }
 }

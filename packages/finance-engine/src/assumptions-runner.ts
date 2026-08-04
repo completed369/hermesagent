@@ -1,7 +1,8 @@
-import { prisma } from '@ventureos/database';
+import { Prisma, prisma } from '@ventureos/database';
 import type { FinancialAssumption } from '@ventureos/database';
 import { DEFAULT_FINANCIAL_ASSUMPTIONS, FinancialAssumptionsSchema } from './assumptions.js';
 import type { FinancialAssumptions } from './assumptions.js';
+import { enforceFinanceMutation, enforceFinanceRead } from './capability-guard.js';
 
 export interface UpsertFinancialAssumptionParams {
   workspaceId: string;
@@ -21,31 +22,56 @@ export interface UpsertFinancialAssumptionParams {
 export async function upsertFinancialAssumption(
   params: UpsertFinancialAssumptionParams,
 ): Promise<FinancialAssumption> {
-  const current = await getActiveFinancialAssumption(params.workspaceId, params.ventureProposalId);
-  const merged = FinancialAssumptionsSchema.parse({
-    ...DEFAULT_FINANCIAL_ASSUMPTIONS,
-    ...(current
-      ? {
-          productPriceEur: Number(current.productPriceEur),
-          marketplaceFeeRate: Number(current.marketplaceFeeRate),
-          paymentProcessingFeeRate: Number(current.paymentProcessingFeeRate),
-          listingFeeEur: Number(current.listingFeeEur),
-          refundRate: Number(current.refundRate),
-          discountRate: Number(current.discountRate),
-          vatRate: Number(current.vatRate),
-          aiGenerationCostEur: Number(current.aiGenerationCostEur),
-          monthlyOverheadAllocationEur: Number(current.monthlyOverheadAllocationEur),
-          forecastPeriodDays: current.forecastPeriodDays,
-          targetContributionMarginRate: Number(current.targetContributionMarginRate),
-          minimumProfitConfidence: Number(current.minimumProfitConfidence),
-        }
-      : {}),
-    ...params.assumptions,
-  });
-
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "venture_proposals" WHERE "id" = ${params.ventureProposalId}::uuid AND "workspaceId" = ${params.workspaceId}::uuid FOR UPDATE`,
+    );
+    const proposal = await tx.ventureProposal.findFirst({
+      where: { id: params.ventureProposalId, workspaceId: params.workspaceId },
+      select: { id: true },
+    });
+    if (!proposal) throw new Error('Venture proposal not found');
+
+    const current = await tx.financialAssumption.findFirst({
+      where: {
+        workspaceId: params.workspaceId,
+        ventureProposalId: params.ventureProposalId,
+        supersededAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const merged = FinancialAssumptionsSchema.parse({
+      ...DEFAULT_FINANCIAL_ASSUMPTIONS,
+      ...(current
+        ? {
+            productPriceEur: Number(current.productPriceEur),
+            marketplaceFeeRate: Number(current.marketplaceFeeRate),
+            paymentProcessingFeeRate: Number(current.paymentProcessingFeeRate),
+            listingFeeEur: Number(current.listingFeeEur),
+            refundRate: Number(current.refundRate),
+            discountRate: Number(current.discountRate),
+            vatRate: Number(current.vatRate),
+            aiGenerationCostEur: Number(current.aiGenerationCostEur),
+            monthlyOverheadAllocationEur: Number(current.monthlyOverheadAllocationEur),
+            forecastPeriodDays: current.forecastPeriodDays,
+            targetContributionMarginRate: Number(current.targetContributionMarginRate),
+            minimumProfitConfidence: Number(current.minimumProfitConfidence),
+          }
+        : {}),
+      ...params.assumptions,
+    });
+
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:assumption:${params.ventureProposalId}`,
+      tx,
+    );
     await tx.financialAssumption.updateMany({
-      where: { ventureProposalId: params.ventureProposalId, supersededAt: null },
+      where: {
+        workspaceId: params.workspaceId,
+        ventureProposalId: params.ventureProposalId,
+        supersededAt: null,
+      },
       data: { supersededAt: new Date() },
     });
     return tx.financialAssumption.create({
@@ -73,6 +99,7 @@ export async function getActiveFinancialAssumption(
   workspaceId: string,
   ventureProposalId: string,
 ): Promise<FinancialAssumption | null> {
+  await enforceFinanceRead(workspaceId, `finance:assumption-read:${ventureProposalId}`);
   return prisma.financialAssumption.findFirst({
     where: { workspaceId, ventureProposalId, supersededAt: null },
     orderBy: { createdAt: 'desc' as const },

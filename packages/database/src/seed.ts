@@ -16,6 +16,7 @@ import {
 } from '@ventureos/scoring-engine';
 import { DEFAULT_AGENT_WEIGHTS } from '@ventureos/policy-engine';
 import { BOARD_AGENT_ROLES } from '@ventureos/contracts';
+import { resolveSeedFounderCredentials } from './seed-credentials.js';
 
 // Phase 8: mirrors packages/billing/src/plans.ts's DEFAULT_PLANS exactly,
 // duplicated here rather than imported because @ventureos/database cannot
@@ -136,6 +137,11 @@ const PERMISSIONS = [
 ];
 
 async function main() {
+  // Validate the complete seed safety boundary before the first database read
+  // or write. Missing, placeholder, or production credentials must leave the
+  // target database untouched.
+  const { email: founderEmail, password: founderPassword } = resolveSeedFounderCredentials();
+
   console.log('[seed] starting VentureOS Phase 1 seed...');
 
   // --- Permissions (idempotent upsert) ---
@@ -169,10 +175,7 @@ async function main() {
     create: { key: 'VIEWER', name: 'Viewer', description: 'Read-only access' },
   });
 
-  // --- Founder user (from env, never hardcoded real credentials) ---
-  const founderEmail = process.env.DEV_FOUNDER_EMAIL ?? 'founder@ventureos.local';
-  const founderPassword = process.env.DEV_FOUNDER_PASSWORD ?? 'change-me-dev-only';
-
+  // --- Founder user (explicit non-placeholder env credentials only) ---
   const founderUser = await prisma.user.upsert({
     where: { email: founderEmail },
     update: {},

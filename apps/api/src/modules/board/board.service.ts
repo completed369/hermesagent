@@ -4,6 +4,7 @@ import { prisma } from '@ventureos/database';
 import { loadEnv } from '@ventureos/config';
 import { getTemporalClient } from '@ventureos/workflows';
 import { AuditService } from '../audit/audit.service';
+import { enforceCapabilityAdmission } from '../../common/policy/capability-admission';
 
 const BOARD_REVIEW_INCLUDE = {
   votes: { orderBy: { agentRole: 'asc' as const } },
@@ -24,6 +25,8 @@ export class BoardService {
   constructor(private readonly auditService: AuditService) {}
 
   async startReview(workspaceId: string, ventureProposalId: string, actorId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'AI_MODEL_EXECUTION');
+
     const proposal = await prisma.ventureProposal.findFirst({
       where: { id: ventureProposalId, workspaceId },
     });

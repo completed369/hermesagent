@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { prisma } from '@ventureos/database';
+import { enforceWorkspaceCapability, prisma, Prisma } from '@ventureos/database';
 import {
   upsertFinancialAssumption,
   getActiveFinancialAssumption,
@@ -29,6 +29,7 @@ import type {
   DecideExperimentInput,
 } from './finance.dto';
 import { AuditService } from '../audit/audit.service';
+import { enforceCapabilityAdmission } from '../../common/policy/capability-admission';
 
 /**
  * Phase 7 API surface. All real arithmetic/persistence lives in
@@ -42,7 +43,33 @@ import { AuditService } from '../audit/audit.service';
 export class FinanceService {
   constructor(private readonly auditService: AuditService) {}
 
+  private async runFinalFinanceMutation<T>(
+    workspaceId: string,
+    correlationReference: string,
+    mutation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "subscriptions" WHERE "workspaceId" = ${workspaceId}::uuid FOR UPDATE`,
+      );
+      await enforceWorkspaceCapability(
+        {
+          workspaceId,
+          capability: 'FINANCE_ACCESS',
+          stage: 'DISPATCH',
+          providerMode: 'internal',
+          recordAllow: true,
+          correlationReference,
+        },
+        tx,
+        prisma,
+      );
+      return mutation(tx);
+    });
+  }
+
   private async getScopedVentureProposal(workspaceId: string, ventureProposalId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'FINANCE_ACCESS', 'internal');
     const proposal = await prisma.ventureProposal.findFirst({
       where: { id: ventureProposalId, workspaceId },
     });
@@ -136,17 +163,23 @@ export class FinanceService {
     actorId: string,
   ) {
     if (ventureProposalId) await this.getScopedVentureProposal(workspaceId, ventureProposalId);
-    const expense = await prisma.expense.create({
-      data: {
-        workspaceId,
-        ventureProposalId,
-        category: input.category,
-        amountEur: input.amountEur,
-        description: input.description,
-        source: 'MANUAL',
-        incurredAt: new Date(input.incurredAt),
-      },
-    });
+    else await enforceCapabilityAdmission(workspaceId, 'FINANCE_ACCESS', 'internal');
+    const expense = await this.runFinalFinanceMutation(
+      workspaceId,
+      `expense:${ventureProposalId ?? 'workspace'}`,
+      (tx) =>
+        tx.expense.create({
+          data: {
+            workspaceId,
+            ventureProposalId,
+            category: input.category,
+            amountEur: input.amountEur,
+            description: input.description,
+            source: 'MANUAL',
+            incurredAt: new Date(input.incurredAt),
+          },
+        }),
+    );
     await this.auditService.record(workspaceId, {
       actorId,
       action: 'EXPENSE_RECORDED',
@@ -158,6 +191,7 @@ export class FinanceService {
   }
 
   async listExpenses(workspaceId: string, ventureProposalId?: string) {
+    await enforceCapabilityAdmission(workspaceId, 'FINANCE_ACCESS', 'internal');
     return prisma.expense.findMany({
       where: { workspaceId, ventureProposalId },
       orderBy: { incurredAt: 'desc' as const },
@@ -171,6 +205,19 @@ export class FinanceService {
     actorId: string,
   ) {
     await this.getScopedVentureProposal(workspaceId, ventureProposalId);
+    if (input.listingVersionId) {
+      const listingVersion = await prisma.listingVersion.findFirst({
+        where: {
+          id: input.listingVersionId,
+          listing: {
+            workspaceId,
+            product: { ventureProposalId },
+          },
+        },
+        select: { id: true },
+      });
+      if (!listingVersion) throw new NotFoundException('Listing version not found');
+    }
     const netRevenueEur =
       input.grossRevenueEur -
       input.marketplaceFeeEur -
@@ -179,24 +226,29 @@ export class FinanceService {
       input.vatEur -
       input.refundsEur;
 
-    const entry = await prisma.revenueEntry.create({
-      data: {
-        workspaceId,
-        ventureProposalId,
-        listingVersionId: input.listingVersionId,
-        unitsSold: input.unitsSold,
-        grossRevenueEur: input.grossRevenueEur,
-        marketplaceFeeEur: input.marketplaceFeeEur,
-        paymentProcessingFeeEur: input.paymentProcessingFeeEur,
-        listingFeeEur: input.listingFeeEur,
-        vatEur: input.vatEur,
-        refundsEur: input.refundsEur,
-        netRevenueEur,
-        source: 'MANUAL',
-        occurredAt: new Date(input.occurredAt),
-        recordedBy: actorId,
-      },
-    });
+    const entry = await this.runFinalFinanceMutation(
+      workspaceId,
+      `revenue:${ventureProposalId}`,
+      (tx) =>
+        tx.revenueEntry.create({
+          data: {
+            workspaceId,
+            ventureProposalId,
+            listingVersionId: input.listingVersionId,
+            unitsSold: input.unitsSold,
+            grossRevenueEur: input.grossRevenueEur,
+            marketplaceFeeEur: input.marketplaceFeeEur,
+            paymentProcessingFeeEur: input.paymentProcessingFeeEur,
+            listingFeeEur: input.listingFeeEur,
+            vatEur: input.vatEur,
+            refundsEur: input.refundsEur,
+            netRevenueEur,
+            source: 'MANUAL',
+            occurredAt: new Date(input.occurredAt),
+            recordedBy: actorId,
+          },
+        }),
+    );
     await this.auditService.record(workspaceId, {
       actorId,
       action: 'REVENUE_RECORDED',
@@ -220,21 +272,31 @@ export class FinanceService {
   async createBudget(workspaceId: string, input: CreateBudgetInput, actorId: string) {
     if (input.ventureProposalId) {
       await this.getScopedVentureProposal(workspaceId, input.ventureProposalId);
+    } else {
+      await enforceCapabilityAdmission(workspaceId, 'FINANCE_ACCESS', 'internal');
     }
-    const budget = await prisma.budget.create({
-      data: {
-        workspaceId,
-        ventureProposalId: input.ventureProposalId,
-        name: input.name,
-        periodStart: new Date(input.periodStart),
-        periodEnd: new Date(input.periodEnd),
-        totalLimitEur: input.totalLimitEur,
-        allocations: {
-          create: input.allocations.map((a) => ({ category: a.category, limitEur: a.limitEur })),
-        },
-      },
-      include: { allocations: true },
-    });
+    const budget = await this.runFinalFinanceMutation(
+      workspaceId,
+      `budget:${input.ventureProposalId ?? 'workspace'}`,
+      (tx) =>
+        tx.budget.create({
+          data: {
+            workspaceId,
+            ventureProposalId: input.ventureProposalId,
+            name: input.name,
+            periodStart: new Date(input.periodStart),
+            periodEnd: new Date(input.periodEnd),
+            totalLimitEur: input.totalLimitEur,
+            allocations: {
+              create: input.allocations.map((a) => ({
+                category: a.category,
+                limitEur: a.limitEur,
+              })),
+            },
+          },
+          include: { allocations: true },
+        }),
+    );
     await this.auditService.record(workspaceId, {
       actorId,
       action: 'BUDGET_CREATED',
@@ -246,6 +308,7 @@ export class FinanceService {
   }
 
   async listBudgets(workspaceId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'FINANCE_ACCESS', 'internal');
     return prisma.budget.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'desc' as const },
@@ -254,6 +317,7 @@ export class FinanceService {
   }
 
   async listCostLedger(workspaceId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'FINANCE_ACCESS', 'internal');
     return prisma.costLedgerEntry.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'desc' as const },
@@ -262,6 +326,7 @@ export class FinanceService {
   }
 
   async listModelUsage(workspaceId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'FINANCE_ACCESS', 'internal');
     return prisma.modelUsage.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'desc' as const },
@@ -307,6 +372,7 @@ export class FinanceService {
   }
 
   private async getScopedExperiment(workspaceId: string, experimentId: string) {
+    await enforceCapabilityAdmission(workspaceId, 'FINANCE_ACCESS', 'internal');
     const experiment = await prisma.experiment.findFirst({
       where: { id: experimentId, workspaceId },
       include: {
@@ -354,6 +420,7 @@ export class FinanceService {
     try {
       const result = await recordExperimentResult({
         workspaceId,
+        experimentId,
         experimentVariantId: input.experimentVariantId,
         experimentMetricId: input.experimentMetricId,
         value: input.value,

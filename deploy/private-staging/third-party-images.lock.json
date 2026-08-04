@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "resolvedAt": "2026-08-03T21:30:10+03:00",
+  "platform": "linux/amd64",
+  "images": {
+    "nodeBuildAndRuntime": "node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46",
+    "postgres": "postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
+    "temporalServer": "temporalio/server:1.24.2@sha256:16de74d893e813053b82551eb4463c795b368d2029520b4c8fe2e47e1c336bb9",
+    "temporalAdminTools": "temporalio/admin-tools:1.24.2-tctl-1.18.1-cli-1.0.0@sha256:a01fe37a4b667677cd8cfaf949193a7be914a8fa5b6bb3a83c7b1f94fb45474c",
+    "temporalAutoSetupTestOnly": "temporalio/auto-setup:1.24.2@sha256:10e8c557ace5fa4aa99217637e7b9969316e89b929a3bfb117853a5417eef25c",
+    "temporalUiDevelopmentOnly": "temporalio/ui:2.31.2@sha256:28bb3ea5a6ea3e09f16b521f32ab727c96470f7f1e420c66a6cbfb02001a8aa2",
+    "minioDevelopmentOnly": "minio/minio:RELEASE.2024-10-13T13-34-11Z@sha256:9535594ad4122b7a78c6632788a989b96d9199b483d3bd71a5ceae73a922cdfa",
+    "cloudflared": "cloudflare/cloudflared:2026.7.0@sha256:5e49861633763e8933475477c20bae6039ed47f32c1d267a34babc347f28f0df"
+  }
+}

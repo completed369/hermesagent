@@ -6,12 +6,9 @@ import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
 
 /**
- * Phase 8: real signup for a brand-new customer workspace -- distinct from
- * the founder dev-seed login, this is what makes VentureOS actually
- * resellable rather than single-founder-only. Calls POST /auth/register,
- * which creates the User + Workspace + WorkspaceMember + a TRIAL
- * subscription and logs the new user straight in, so a successful submit
- * here lands directly in the onboarding wizard.
+ * Public signup requests a new customer workspace. The API deliberately
+ * returns the same accepted response for new and existing identifiers and
+ * creates no session; successful submissions therefore continue at login.
  */
 export default function RegisterPage() {
   const router = useRouter();
@@ -31,7 +28,7 @@ export default function RegisterPage() {
         method: 'POST',
         body: JSON.stringify({ email, password, displayName, workspaceName }),
       });
-      router.push('/dashboard/onboarding');
+      router.push('/login');
       router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.');

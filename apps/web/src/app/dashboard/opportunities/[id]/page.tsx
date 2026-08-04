@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import { OpportunityActions } from '@/components/opportunity-actions';
 
@@ -66,8 +67,13 @@ function claimBadgeClass(claimType: string) {
   return 'vos-badge--mock';
 }
 
-export default async function OpportunityDetailPage({ params }: { params: { id: string } }) {
-  const { data, status } = await serverApiFetch<OpportunityDetail>(`/opportunities/${params.id}`);
+export default async function OpportunityDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const { data, status } = await serverApiFetch<OpportunityDetail>(`/opportunities/${id}`);
   if (status === 404 || !data) {
     notFound();
   }
@@ -76,9 +82,12 @@ export default async function OpportunityDetailPage({ params }: { params: { id: 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <div>
-        <a href="/dashboard/opportunities" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
+        <Link
+          href="/dashboard/opportunities"
+          style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}
+        >
           ← Back to Opportunity Feed
-        </a>
+        </Link>
         <h1 style={{ margin: '8px 0 4px', fontSize: 24 }}>{opportunity.title}</h1>
         <p style={{ color: 'var(--vos-text-muted)', fontSize: 14, maxWidth: 720 }}>
           {opportunity.description}

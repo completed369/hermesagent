@@ -1,28 +1,49 @@
 name: CI
 
-# Status: written to a reasonable GitHub Actions shape but NEVER RUN.
-# This repository was built in a sandbox with no network/CI access to
-# validate this workflow file end to end. Treat the first real run as a
-# test of this file itself, not just of the application code.
+# Phase 9.1 hardened validation pipeline.
+# Status: runs on GitHub Actions (first run at commit 22357e1 FAILED at the
+# build step due to a missing-artifact cascade on the cold runner — see
+# docs/CI_GOVERNANCE.md). This revision pins official actions, scopes
+# permissions to least privilege, adds timeouts and concurrency, ensures the
+# Prisma client is generated before typecheck/build, and keeps the clean
+# PostgreSQL migration check.
+#
+# CI is authoritative for "does the complete eleven-migration chain apply on a
+# fresh database". The local ./scripts/run-validation.ps1 verifies code
+# quality and build on the developer machine but does NOT apply migrations.
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+# Least privilege: this workflow only reads code and runs CI. It never writes
+# to the repository, packages, deployments, or issues.
+permissions:
+  contents: read
+
+# Cancel superseded runs for the same ref/PR to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
+    name: build-and-test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_USER: ventureos
           POSTGRES_PASSWORD: ci-only-password
           POSTGRES_DB: ventureos
-        ports: ['5432:5432']
+        ports:
+          - '5432:5432'
         options: >-
           --health-cmd "pg_isready -U ventureos -d ventureos"
           --health-interval 5s
@@ -33,19 +54,42 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://ventureos:ci-only-password@localhost:5432/ventureos?schema=public
       AUTH_SECRET: ci-only-auth-secret-not-a-real-secret-32chars
+      DEV_FOUNDER_EMAIL: founder@ventureos.local
+      DEV_FOUNDER_PASSWORD: ci-only-founder-password
+      STORAGE_PROVIDER: mock
+      AI_PROVIDER: mock
+      MARKETPLACE_ETSY_MODE: mock
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Enable Corepack (pnpm)
         run: corepack enable
 
-      - name: Install dependencies
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # Use the exact pnpm version declared in package.json
+          # (packageManager: pnpm@9.12.0) via corepack.
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
+
+      # Generate the Prisma client BEFORE typecheck/build so downstream
+      # packages can resolve @ventureos/database's type declarations on a
+      # clean runner. Without this, a missing-artifact cascade causes
+      # spurious "cannot find module" / implicit-any failures.
+      - name: Prisma client generation
+        run: pnpm db:generate
+
+      - name: Prisma format check
+        run: pnpm --filter @ventureos/database exec prisma format --check --schema prisma/schema.prisma
+
+      - name: Prisma validate
+        run: pnpm --filter @ventureos/database exec prisma validate --schema prisma/schema.prisma
 
       - name: Format check
         run: pnpm run format:check
@@ -56,16 +100,102 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
-      - name: Prisma generate + migrate
-        run: |
-          pnpm db:generate
-          pnpm db:migrate
+      # Apply the full migration chain to the fresh CI PostgreSQL. This is the
+      # authoritative clean-database migration verification.
+      - name: Prisma migrate (apply chain)
+        run: pnpm db:migrate
+
+      # Integration suites explicitly require the idempotent baseline fixtures
+      # (FOUNDER role/workspace and voting AgentDefinitions). Credentials above
+      # are disposable CI-only values for this ephemeral database.
+      - name: Seed integration fixtures
+        run: pnpm db:seed
 
       - name: Unit tests
         run: pnpm test:unit
 
+      # Use the root integration command so every package's integration suite
+      # is exercised (not only @ventureos/api). Requires the Postgres service.
       - name: Integration tests
-        run: pnpm --filter @ventureos/api test:integration
+        run: pnpm test:integration
 
-      - name: Build
+      - name: Production build
         run: pnpm build
+
+      # Install only the browser exercised by apps/web/playwright.config.ts.
+      # Playwright's webServer configuration owns deterministic API/web
+      # readiness and tears both processes down when the suite exits.
+      - name: Install Playwright Chromium
+        run: pnpm --filter @ventureos/web exec playwright install --with-deps chromium
+
+      - name: Application E2E
+        run: pnpm test:e2e
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-e2e-failure-${{ github.run_id }}
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+  staging-security-gate:
+    name: staging-security-gate
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @ventureos/web exec playwright install --with-deps chromium
+
+      - name: Generate disposable synthetic staging environment
+        run: node scripts/generate-staging-env.mjs
+
+      - name: Run staging security gate (no deployment)
+        run: bash scripts/staging-security-gate.sh all
+
+      - name: Upload staging failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-security-gate-failure-${{ github.run_id }}
+          path: |
+            .staging/topology.log
+            apps/web/playwright-report/
+            apps/web/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Tear down staging topology
+        if: always()
+        run: |
+          if ! test -f .staging/phase15.env; then
+            node scripts/generate-staging-env.mjs
+          fi
+          if docker compose --env-file .staging/phase15.env -f docker-compose.staging.yml down --volumes --remove-orphans --timeout 30; then
+            rm -f .staging/phase15.env
+          else
+            echo 'Staging teardown failed; retaining the synthetic environment for recovery.' >&2
+            exit 1
+          fi

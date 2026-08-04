@@ -13,6 +13,7 @@ import {
   ProductGenerationBlockedError,
   ListingGenerationBlockedError,
 } from '@ventureos/product-studio';
+import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
 
 /**
  * Hits a real (dockerized) Postgres, exactly like
@@ -26,7 +27,6 @@ import {
  */
 describe('Product generation + listing + second approval gate (integration)', () => {
   const storageProvider = new MockStorageProvider();
-
   let workspace: { id: string };
   let actor: { id: string };
   let approvedProposal: { id: string };
@@ -68,6 +68,7 @@ describe('Product generation + listing + second approval gate (integration)', ()
     workspace = await prisma.workspace.create({
       data: { name: `Test Workspace ${randomUUID()}`, slug: `test-product-${randomUUID()}` },
     });
+    await entitleTestWorkspace(workspace.id);
     actor = await prisma.user.create({
       data: {
         email: `product-integration-actor-${randomUUID()}@ventureos.local`,
@@ -166,6 +167,7 @@ describe('Product generation + listing + second approval gate (integration)', ()
     });
     await prisma.ventureProposal.deleteMany({ where: { id: { in: proposalIds } } });
     await prisma.opportunity.deleteMany({ where: { workspaceId: workspace.id } });
+    await cleanupEntitledTestWorkspace(workspace.id);
     await prisma.workspace.deleteMany({ where: { id: workspace.id } });
     await prisma.user.delete({ where: { id: actor.id } });
     await prisma.$disconnect();

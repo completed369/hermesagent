@@ -1,4 +1,8 @@
-import { prisma } from '@ventureos/database';
+import {
+  dispatchWithWorkspaceCapability,
+  enforceWorkspaceCapability,
+  prisma,
+} from '@ventureos/database';
 import type { StorageProvider } from '@ventureos/integrations';
 
 export const MOCK_GENERATOR_VERSION = 'mock-product-generator-v1';
@@ -162,17 +166,39 @@ export async function generateProductAssets(
   input: ProductGenerationInput,
   storageProvider: StorageProvider,
 ): Promise<GenerateProductAssetsResult> {
+  await enforceWorkspaceCapability({
+    workspaceId: input.workspaceId,
+    capability: 'PRODUCT_GENERATION',
+    stage: 'DISPATCH',
+    providerMode: 'mock',
+  });
+
+  await prisma.productVersion.findFirstOrThrow({
+    where: { id: input.productVersionId, product: { workspaceId: input.workspaceId } },
+    select: { id: true },
+  });
+
   const assetVersionIds: string[] = [];
 
   for (const spec of ASSET_SPECS) {
     const buffer = spec.buildContent(input);
-    const key = `products/${input.productVersionId}/${spec.label}-${spec.fileName}`;
-    const uploaded = await storageProvider.upload({
-      key,
-      contentType: spec.mimeType,
-      sizeBytes: buffer.length,
-      body: buffer,
-    });
+    const key = `workspaces/${input.workspaceId}/products/${input.productVersionId}/${spec.label}-${spec.fileName}`;
+    const uploaded = await dispatchWithWorkspaceCapability(
+      {
+        workspaceId: input.workspaceId,
+        capability: 'STORAGE_UPLOAD',
+        stage: 'DISPATCH',
+        providerMode: storageProvider.mode,
+      },
+      () =>
+        storageProvider.upload({
+          workspaceId: input.workspaceId,
+          key,
+          contentType: spec.mimeType,
+          sizeBytes: buffer.length,
+          body: buffer,
+        }),
+    );
 
     const asset = await prisma.productAsset.upsert({
       where: {

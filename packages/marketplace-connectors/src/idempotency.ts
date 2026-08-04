@@ -1,6 +1,6 @@
 import { prisma } from '@ventureos/database';
 import { hashObject } from '@ventureos/security';
-import { IdempotencyKeyConflictError } from './errors.js';
+import { IdempotencyKeyConflictError, MarketplaceAccountNotFoundError } from './errors.js';
 
 export interface WithIdempotencyParams<T> {
   workspaceId: string;
@@ -9,6 +9,12 @@ export interface WithIdempotencyParams<T> {
   operationType: string;
   requestPayload: unknown;
   execute: () => Promise<T>;
+  /** Revalidates current policy/local state before a cached success is reused. */
+  beforeReplay?: () => Promise<void> | void;
+  /** Runs only after a fresh/failed key is claimed and before external execution. */
+  beforeExecute?: (claim: { idempotencyKeyId: string }) => Promise<void> | void;
+  /** Runs synchronously as soon as external execution returns successfully. */
+  onExecutionSuccess?: (result: T) => void;
 }
 
 export interface WithIdempotencyResult<T> {
@@ -18,9 +24,10 @@ export interface WithIdempotencyResult<T> {
 }
 
 /**
- * Guarantees an external marketplace write executes at most once per
- * (workspaceId, key), addressing docs/THREAT_MODEL.md's "duplicate external
- * execution" threat (previously "Not yet addressed") for real.
+ * Serializes an external marketplace write per (workspaceId, key) and caches
+ * successful responses. Provider-level idempotency remains necessary for the
+ * crash window where the provider accepts a write before local success can be
+ * persisted.
  *
  * - An existing row with a MATCHING requestHash and status SUCCEEDED replays
  *   the cached response instead of re-executing (a genuine retry).
@@ -35,11 +42,31 @@ export interface WithIdempotencyResult<T> {
 export async function withIdempotency<T>(
   params: WithIdempotencyParams<T>,
 ): Promise<WithIdempotencyResult<T>> {
+  const account = await prisma.marketplaceAccount.findFirst({
+    where: { id: params.marketplaceAccountId, workspaceId: params.workspaceId },
+    select: { id: true },
+  });
+  if (!account) {
+    throw new MarketplaceAccountNotFoundError(
+      'Marketplace account was not found in this workspace',
+    );
+  }
+
   const requestHash = hashObject(params.requestPayload);
 
   const existing = await prisma.idempotencyKey.findUnique({
     where: { workspaceId_key: { workspaceId: params.workspaceId, key: params.key } },
   });
+
+  if (
+    existing &&
+    (existing.marketplaceAccountId !== params.marketplaceAccountId ||
+      existing.operationType !== params.operationType)
+  ) {
+    throw new IdempotencyKeyConflictError(
+      `Idempotency key "${params.key}" was already bound to a different marketplace operation.`,
+    );
+  }
 
   if (existing && existing.requestHash !== requestHash) {
     throw new IdempotencyKeyConflictError(
@@ -48,6 +75,7 @@ export async function withIdempotency<T>(
   }
 
   if (existing && existing.status === 'SUCCEEDED') {
+    await params.beforeReplay?.();
     return {
       result: existing.responseSnapshot as T,
       idempotencyKeyId: existing.id,
@@ -61,13 +89,22 @@ export async function withIdempotency<T>(
     );
   }
 
-  const row =
-    existing && existing.status === 'FAILED'
-      ? await prisma.idempotencyKey.update({
-          where: { id: existing.id },
-          data: { status: 'PENDING', completedAt: null },
-        })
-      : await prisma.idempotencyKey.create({
+  let row;
+  if (existing && existing.status === 'FAILED') {
+    const claimed = await prisma.idempotencyKey.updateMany({
+      where: { id: existing.id, status: 'FAILED' },
+      data: { status: 'PENDING', completedAt: null },
+    });
+    if (claimed.count !== 1) {
+      throw new IdempotencyKeyConflictError(
+        `Idempotency key "${params.key}" already has a request in flight.`,
+      );
+    }
+    row = { ...existing, status: 'PENDING' as const, completedAt: null };
+  } else {
+    row = await (async () => {
+      try {
+        return await prisma.idempotencyKey.create({
           data: {
             workspaceId: params.workspaceId,
             marketplaceAccountId: params.marketplaceAccountId,
@@ -77,9 +114,28 @@ export async function withIdempotency<T>(
             status: 'PENDING',
           },
         });
+      } catch (error) {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          error.code === 'P2002'
+        ) {
+          return null;
+        }
+        throw error;
+      }
+    })();
 
+    if (!row) return withIdempotency(params);
+  }
+
+  let executionCompleted = false;
   try {
+    await params.beforeExecute?.({ idempotencyKeyId: row.id });
     const result = await params.execute();
+    executionCompleted = true;
+    params.onExecutionSuccess?.(result);
     await prisma.idempotencyKey.update({
       where: { id: row.id },
       data: {
@@ -92,10 +148,14 @@ export async function withIdempotency<T>(
     });
     return { result, idempotencyKeyId: row.id, replayed: false };
   } catch (err) {
-    await prisma.idempotencyKey.update({
-      where: { id: row.id },
-      data: { status: 'FAILED', completedAt: new Date() },
-    });
+    // Once external execution returns successfully, keep the claim PENDING if
+    // caching fails. Marking it FAILED would make a retry repeat the write.
+    if (!executionCompleted) {
+      await prisma.idempotencyKey.update({
+        where: { id: row.id },
+        data: { status: 'FAILED', completedAt: new Date() },
+      });
+    }
     throw err;
   }
 }

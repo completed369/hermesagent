@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { prisma } from '@ventureos/database';
-import { isSessionExpired } from '@ventureos/auth';
+import { hashSessionToken, isSessionExpired } from '@ventureos/auth';
 import { ENV_TOKEN } from '../../config/env.provider';
 import type { Env } from '@ventureos/config';
 
@@ -38,7 +38,7 @@ export class SessionAuthGuard implements CanActivate {
     }
 
     const session = await prisma.session.findUnique({
-      where: { sessionToken: token },
+      where: { tokenDigest: hashSessionToken(token) },
       include: {
         user: {
           include: {

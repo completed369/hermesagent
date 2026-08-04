@@ -7,18 +7,20 @@ enforced by policy (`.env.example` comments, master spec rule "real
 customer data during development: prohibited") rather than by a technical
 filter, since Phase 1 has no customer-facing data collection surface at
 all. The only personal data in Phase 1 is the founder's own account
-(email, display name) and session metadata (IP, user agent) — necessary for
-authentication and security auditing.
+(email, display name) and limited session/security metadata necessary for
+authentication and security auditing. New Phase 11 login sessions do not
+persist the source IP.
 
 ## Data inventory (Phase 1)
 
-| Data                                            | Purpose                 | Retention                                                                                                                                         |
-| ----------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| User.email, displayName                         | Authentication, display | Until account deletion (soft delete)                                                                                                              |
-| User.passwordHash                               | Authentication          | Until account deletion                                                                                                                            |
-| Session.ipAddress, userAgent                    | Security auditing       | Until session expiry/revocation                                                                                                                   |
-| SecurityEvent.ipAddress, userAgent, description | Security auditing       | Indefinite (append-only) — retention policy TBD Phase 2+                                                                                          |
-| AuditEvent.before/after (JSON)                  | Governance auditing     | Indefinite (append-only) — must never contain secrets (enforced by convention + redaction at the logging layer, not yet at the audit-write layer) |
+| Data                                            | Purpose                          | Retention                                                                                                                                                                               |
+| ----------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User.email, displayName                         | Authentication, display          | Until account deletion (soft delete)                                                                                                                                                    |
+| User.passwordHash                               | Authentication                   | Until account deletion                                                                                                                                                                  |
+| Session.userAgent; nullable legacy ipAddress    | Security auditing                | Until session expiry/revocation                                                                                                                                                         |
+| SecurityEvent.ipAddress, userAgent, description | Security auditing                | Indefinite (append-only) — retention policy TBD Phase 2+                                                                                                                                |
+| AuthAbuseState keyed digests and counters       | Authentication abuse enforcement | Pseudonymous state expires after 24 hours plus the maximum cooldown; opportunistic cleanup deletes at most 500 expired rows per batch. No raw account identifier or source IP is stored |
+| AuditEvent.before/after (JSON)                  | Governance auditing              | Indefinite (append-only) — must never contain secrets (enforced by convention + redaction at the logging layer, not yet at the audit-write layer)                                       |
 
 ## Not yet implemented
 

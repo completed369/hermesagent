@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { prisma } from '@ventureos/database';
+import { Prisma, prisma } from '@ventureos/database';
 import { buildAuditEventRecord, type AuditEventInput } from '@ventureos/observability';
 
 /**
@@ -10,10 +10,14 @@ import { buildAuditEventRecord, type AuditEventInput } from '@ventureos/observab
  */
 @Injectable()
 export class AuditService {
-  async record(workspaceId: string | undefined, input: AuditEventInput): Promise<void> {
+  async record(
+    workspaceId: string | undefined,
+    input: AuditEventInput,
+    client: Pick<Prisma.TransactionClient, 'auditEvent'> = prisma,
+  ): Promise<void> {
     const id = randomUUID();
     const record = buildAuditEventRecord(input, id);
-    await prisma.auditEvent.create({
+    await client.auditEvent.create({
       data: {
         id: record.id,
         workspaceId,

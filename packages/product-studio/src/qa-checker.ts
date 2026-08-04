@@ -1,4 +1,4 @@
-import { prisma } from '@ventureos/database';
+import { enforceWorkspaceCapability, prisma } from '@ventureos/database';
 
 export type QualityCheckType =
   | 'COMPLETENESS'
@@ -214,7 +214,15 @@ export function evaluateQuality(
 
 /** Thin DB-touching wrapper: fetches a ProductVersion's current assets/licence
  * records and delegates the actual rule evaluation to evaluateQuality(). */
-export async function runQualityChecks(productVersionId: string): Promise<RunQualityChecksResult> {
+export async function runQualityChecks(
+  workspaceId: string,
+  productVersionId: string,
+): Promise<RunQualityChecksResult> {
+  await prisma.productVersion.findFirstOrThrow({
+    where: { id: productVersionId, product: { workspaceId } },
+    select: { id: true },
+  });
+
   const assets = await prisma.productAsset.findMany({
     where: { productVersionId },
     include: { versions: { orderBy: { attempt: 'desc' as const }, take: 1 } },
@@ -243,9 +251,21 @@ export async function runQualityChecks(productVersionId: string): Promise<RunQua
 
 /** Persists the QualityCheck + QualityCheckResult rows for a completed run. */
 export async function persistQualityChecks(
+  workspaceId: string,
   productVersionId: string,
   result: RunQualityChecksResult,
 ): Promise<void> {
+  await enforceWorkspaceCapability({
+    workspaceId,
+    capability: 'PRODUCT_GENERATION',
+    stage: 'DISPATCH',
+  });
+
+  await prisma.productVersion.findFirstOrThrow({
+    where: { id: productVersionId, product: { workspaceId } },
+    select: { id: true },
+  });
+
   for (const check of result.checks) {
     const record = await prisma.qualityCheck.create({
       data: {

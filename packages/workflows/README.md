@@ -4,10 +4,12 @@
 
 - `src/client.ts` - shared Temporal `WorkflowClient` factory, used by
   `apps/api` (to start/query workflows) so the API never needs to depend on
-  the worker process directly.
+  the worker process directly. It also exposes the bounded, non-mutating gRPC
+  Health `Check` used by API readiness.
 - The Phase 1 connectivity-proof workflow itself (`helloWorkflow`) is
   implemented in `apps/worker/src/workflows/hello-workflow.ts`, registered
-  with the worker's task queue, and started via `GET /api/health/temporal`.
+  with the worker's task queue, and reserved for explicit development tests.
+  Health endpoints never start it.
 
 The full **Opportunity-to-Product Draft Workflow** (master spec section 24)
 belongs here and is planned for Phase 3 onward, once the Board/Approval/

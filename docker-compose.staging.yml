@@ -1,0 +1,331 @@
+name: ${COMPOSE_PROJECT_NAME:-ventureos-phase15}
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  # This is a disposable localhost security gate, not the private-staging deployment.
+  DEPLOYMENT_ENVIRONMENT: development
+  APP_NAME: VentureOS
+  LOG_LEVEL: info
+  API_PORT: '3001'
+  API_PUBLIC_ORIGIN: http://localhost:3001
+  WEB_PUBLIC_ORIGIN: http://localhost:3000
+  API_CORS_ORIGIN: http://localhost:3000
+  API_TRUST_PROXY_HOPS: '0'
+  DATABASE_URL: postgresql://${STAGING_POSTGRES_USER:?required}:${STAGING_POSTGRES_PASSWORD:?required}@postgres:5432/${STAGING_POSTGRES_DB:?required}?schema=public
+  AUTH_SECRET: ${STAGING_AUTH_SECRET:?required}
+  AUTH_ABUSE_DIGEST_SECRET: ${STAGING_AUTH_ABUSE_DIGEST_SECRET:?required}
+  AUTH_COOKIE_NAME: ventureos_staging_session
+  DEV_LOGIN_ENABLED: 'false'
+  DEV_FOUNDER_EMAIL: ${STAGING_FOUNDER_EMAIL:?required}
+  DEV_FOUNDER_PASSWORD: ${STAGING_FOUNDER_PASSWORD:?required}
+  TEMPORAL_ADDRESS: temporal:7233
+  TEMPORAL_NAMESPACE: ventureos-staging
+  TEMPORAL_TASK_QUEUE: ventureos-staging-main
+  WORKER_HEALTH_PORT: '3002'
+  STORAGE_PROVIDER: mock
+  MINIO_ENDPOINT: minio
+  MINIO_PORT: '9000'
+  MINIO_ROOT_USER: ${STAGING_MINIO_USER:?required}
+  MINIO_ROOT_PASSWORD: ${STAGING_MINIO_PASSWORD:?required}
+  MINIO_BUCKET: ventureos-staging
+  MINIO_USE_SSL: 'false'
+  AI_PROVIDER: mock
+  MARKETPLACE_ETSY_MODE: mock
+  FEATURE_LIVE_PUBLISHING_ENABLED: 'false'
+  FEATURE_STORAGE_UPLOADS_ENABLED: 'false'
+  FEATURE_ADVERTISING_ENABLED: 'false'
+  FEATURE_PAID_INTEGRATIONS_ENABLED: 'false'
+  OTEL_ENABLED: 'false'
+  STAGING_SEED_ENABLED: 'true'
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${STAGING_POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${STAGING_POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${STAGING_POSTGRES_DB:?required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [staging-private]
+
+  temporal:
+    image: temporalio/auto-setup:1.24.2@sha256:10e8c557ace5fa4aa99217637e7b9969316e89b929a3bfb117853a5417eef25c
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: '5432'
+      POSTGRES_USER: ${STAGING_POSTGRES_USER:?required}
+      POSTGRES_PWD: ${STAGING_POSTGRES_PASSWORD:?required}
+      POSTGRES_SEEDS: postgres
+    healthcheck:
+      test: ['CMD-SHELL', 'tctl --address "$$(hostname -i):7233" namespace list >/dev/null']
+      interval: 10s
+      timeout: 8s
+      retries: 30
+    networks: [staging-private]
+
+  temporal-namespace:
+    image: temporalio/auto-setup:1.24.2@sha256:10e8c557ace5fa4aa99217637e7b9969316e89b929a3bfb117853a5417eef25c
+    restart: 'no'
+    entrypoint: ['/bin/sh']
+    command:
+      - -ec
+      - >-
+        tctl --address temporal:7233 --namespace ventureos-staging namespace describe >/dev/null 2>&1 ||
+        tctl --address temporal:7233 --namespace ventureos-staging namespace register --retention 3
+    depends_on:
+      temporal:
+        condition: service_healthy
+    networks: [staging-private]
+
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z@sha256:9535594ad4122b7a78c6632788a989b96d9199b483d3bd71a5ceae73a922cdfa
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${STAGING_MINIO_USER:?required}
+      MINIO_ROOT_PASSWORD: ${STAGING_MINIO_PASSWORD:?required}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:9000/minio/health/live']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [staging-private]
+
+  migrate:
+    image: ${COMPOSE_PROJECT_NAME:-ventureos-phase15}-tools:local
+    build:
+      context: .
+      dockerfile: Dockerfile.staging
+      target: tools
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+    restart: 'no'
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [staging-private]
+
+  seed:
+    image: ${COMPOSE_PROJECT_NAME:-ventureos-phase15}-test-tools:local
+    build:
+      context: .
+      dockerfile: Dockerfile.staging
+      target: test-tools
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+    restart: 'no'
+    environment: *app-environment
+    command: ['pnpm', 'db:seed']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [staging-private]
+
+  test-runner:
+    image: ${COMPOSE_PROJECT_NAME:-ventureos-phase15}-test-tools:local
+    restart: 'no'
+    # The build workspace is root-owned. This disposable test-only container
+    # must rebuild package outputs/Turbo logs; application containers remain
+    # non-root and read-only.
+    user: '0:0'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment: *app-environment
+    command: ['pnpm', 'test:integration']
+    volumes:
+      - ./apps/api/test:/workspace/apps/api/test:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    networks: [staging-private]
+
+  api:
+    image: ${COMPOSE_PROJECT_NAME:-ventureos-phase15}-api:local
+    build:
+      context: .
+      dockerfile: Dockerfile.staging
+      target: api
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/api/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+    stop_grace_period: 30s
+    networks: [staging-private]
+
+  worker:
+    image: ${COMPOSE_PROJECT_NAME:-ventureos-phase15}-worker:local
+    build:
+      context: .
+      dockerfile: Dockerfile.staging
+      target: worker
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3002/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+    stop_grace_period: 30s
+    networks: [staging-private]
+
+  web:
+    image: ${COMPOSE_PROJECT_NAME:-ventureos-phase15}-web:local
+    build:
+      context: .
+      dockerfile: Dockerfile.staging
+      target: web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: '3000'
+      API_INTERNAL_BASE_URL: http://api:3001
+      AUTH_COOKIE_NAME: ventureos_staging_session
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+    stop_grace_period: 30s
+    networks: [staging-private]
+
+  api-ingress:
+    image: ${COMPOSE_PROJECT_NAME:-ventureos-phase15}-ingress:local
+    build:
+      context: .
+      dockerfile: Dockerfile.staging
+      target: ingress
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      INGRESS_TARGET: api
+    ports:
+      - '127.0.0.1:3001:3001'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+    networks: [staging-private, staging-ingress]
+
+  web-ingress:
+    image: ${COMPOSE_PROJECT_NAME:-ventureos-phase15}-ingress:local
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      INGRESS_TARGET: web
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+    networks: [staging-private, staging-ingress]
+
+networks:
+  staging-private:
+    internal: true
+  staging-ingress:
+    internal: false
+
+volumes:
+  postgres-data:
+  minio-data:

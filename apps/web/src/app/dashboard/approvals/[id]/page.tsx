@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import { ApprovalActions } from '@/components/approval-actions';
 
@@ -26,10 +27,9 @@ interface ApprovalRequestDetail {
   decisions: ApprovalDecisionRecord[];
 }
 
-export default async function ApprovalDetailPage({ params }: { params: { id: string } }) {
-  const { data, status } = await serverApiFetch<ApprovalRequestDetail>(
-    `/approval-requests/${params.id}`,
-  );
+export default async function ApprovalDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const { data, status } = await serverApiFetch<ApprovalRequestDetail>(`/approval-requests/${id}`);
   if (status === 404 || !data) {
     notFound();
   }
@@ -38,9 +38,9 @@ export default async function ApprovalDetailPage({ params }: { params: { id: str
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <div>
-        <a href="/dashboard/approvals" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
+        <Link href="/dashboard/approvals" style={{ fontSize: 13, color: 'var(--vos-text-muted)' }}>
           ← Back to Approval Centre
-        </a>
+        </Link>
         <h1 style={{ margin: '8px 0 4px', fontSize: 24 }}>{request.requestedAction}</h1>
         <p style={{ color: 'var(--vos-text-muted)', fontSize: 14, maxWidth: 720 }}>
           {request.explanation}

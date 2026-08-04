@@ -23,6 +23,7 @@ import {
 import { decideApprovalRequest } from '@ventureos/agent-runtime';
 import { FinanceService } from '../src/modules/finance/finance.service';
 import { AuditService } from '../src/modules/audit/audit.service';
+import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
 
 /**
  * Hits a real (dockerized) Postgres, exactly like
@@ -85,6 +86,7 @@ describe('Finance and Analytics (integration)', () => {
     // VentureProposalVersion) -- deleting the Workspace row cascades
     // everything else in one statement (verified against schema.prisma's
     // onDelete rules).
+    await cleanupEntitledTestWorkspace(workspaceId);
     await prisma.workspace.delete({ where: { id: workspaceId } });
   }
 
@@ -98,6 +100,10 @@ describe('Finance and Analytics (integration)', () => {
         slug: `test-fin-other-${randomUUID()}`,
       },
     });
+    await Promise.all([
+      entitleTestWorkspace(workspace.id),
+      entitleTestWorkspace(otherWorkspace.id),
+    ]);
     actor = await prisma.user.create({
       data: {
         email: `finance-integration-actor-${randomUUID()}@ventureos.local`,
@@ -141,6 +147,52 @@ describe('Finance and Analytics (integration)', () => {
 
       const active = await getActiveFinancialAssumption(workspace.id, proposalId);
       expect(active?.id).toBe(second.id);
+    });
+
+    it('rejects a foreign proposal without superseding its assumptions', async () => {
+      const { proposalId } = await buildVentureProposal(otherWorkspace.id, 'foreign-assumption');
+      const foreign = await upsertFinancialAssumption({
+        workspaceId: otherWorkspace.id,
+        ventureProposalId: proposalId,
+      });
+
+      await expect(
+        upsertFinancialAssumption({
+          workspaceId: workspace.id,
+          ventureProposalId: proposalId,
+          assumptions: { productPriceEur: 99 },
+        }),
+      ).rejects.toThrow('Venture proposal not found');
+
+      const reloaded = await prisma.financialAssumption.findUnique({ where: { id: foreign.id } });
+      expect(reloaded?.supersededAt).toBeNull();
+      expect(
+        await prisma.financialAssumption.count({
+          where: { workspaceId: workspace.id, ventureProposalId: proposalId },
+        }),
+      ).toBe(0);
+    });
+
+    it('serializes concurrent upserts so exactly one assumption remains active', async () => {
+      const { proposalId } = await buildVentureProposal(workspace.id, 'concurrent-assumption');
+      await Promise.all([
+        upsertFinancialAssumption({
+          workspaceId: workspace.id,
+          ventureProposalId: proposalId,
+          assumptions: { productPriceEur: 20 },
+        }),
+        upsertFinancialAssumption({
+          workspaceId: workspace.id,
+          ventureProposalId: proposalId,
+          assumptions: { productPriceEur: 30 },
+        }),
+      ]);
+
+      expect(
+        await prisma.financialAssumption.count({
+          where: { workspaceId: workspace.id, ventureProposalId: proposalId, supersededAt: null },
+        }),
+      ).toBe(1);
     });
   });
 
@@ -198,7 +250,9 @@ describe('Finance and Analytics (integration)', () => {
 
   describe('Budget hard-stop enforcement (task #79)', () => {
     it('fails closed with BudgetNotFoundError when the allocation does not exist', async () => {
-      await expect(assertWithinBudget(randomUUID(), 10)).rejects.toThrow(BudgetNotFoundError);
+      await expect(assertWithinBudget(workspace.id, randomUUID(), 10)).rejects.toThrow(
+        BudgetNotFoundError,
+      );
     });
 
     it('allows charges within the limit and blocks a charge that would exceed it, with no partial side effect', async () => {
@@ -215,7 +269,7 @@ describe('Finance and Analytics (integration)', () => {
       });
       const allocation = budget.allocations[0];
 
-      await assertWithinBudget(allocation.id, 4);
+      await assertWithinBudget(workspace.id, allocation.id, 4);
       await chargeToBudget({
         workspaceId: workspace.id,
         budgetAllocationId: allocation.id,
@@ -228,7 +282,9 @@ describe('Finance and Analytics (integration)', () => {
       expect(Number(reloaded?.spentEur)).toBe(4);
 
       // 4 already spent + 7 more would be 11, over the 10 limit -- fail closed.
-      await expect(assertWithinBudget(allocation.id, 7)).rejects.toThrow(BudgetLimitExceededError);
+      await expect(assertWithinBudget(workspace.id, allocation.id, 7)).rejects.toThrow(
+        BudgetLimitExceededError,
+      );
       await expect(
         chargeToBudget({
           workspaceId: workspace.id,
@@ -245,6 +301,86 @@ describe('Finance and Analytics (integration)', () => {
         where: { id: allocation.id },
       });
       expect(Number(stillReloaded?.spentEur)).toBe(4);
+    });
+
+    it('rejects cross-workspace allocation IDs without mutating either tenant', async () => {
+      const foreignBudget = await prisma.budget.create({
+        data: {
+          workspaceId: otherWorkspace.id,
+          name: 'Foreign Budget',
+          periodStart: new Date(),
+          periodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          totalLimitEur: 10,
+          allocations: { create: [{ category: 'RESEARCH', limitEur: 10 }] },
+        },
+        include: { allocations: true },
+      });
+
+      await expect(
+        chargeToBudget({
+          workspaceId: workspace.id,
+          budgetAllocationId: foreignBudget.allocations[0].id,
+          category: 'RESEARCH',
+          amountEur: 1,
+          source: 'test:cross-tenant',
+        }),
+      ).rejects.toThrow(BudgetNotFoundError);
+
+      const allocation = await prisma.budgetAllocation.findUnique({
+        where: { id: foreignBudget.allocations[0].id },
+      });
+      expect(Number(allocation?.spentEur)).toBe(0);
+      expect(await prisma.costLedgerEntry.count({ where: { source: 'test:cross-tenant' } })).toBe(
+        0,
+      );
+    });
+
+    it('serializes concurrent charges so the hard limit cannot be overspent', async () => {
+      const budget = await prisma.budget.create({
+        data: {
+          workspaceId: workspace.id,
+          name: `Concurrent Budget ${randomUUID()}`,
+          periodStart: new Date(),
+          periodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          totalLimitEur: 10,
+          allocations: { create: [{ category: 'OTHER', limitEur: 10 }] },
+        },
+        include: { allocations: true },
+      });
+      const charge = (source: string) =>
+        chargeToBudget({
+          workspaceId: workspace.id,
+          budgetAllocationId: budget.allocations[0].id,
+          category: 'OTHER',
+          amountEur: 6,
+          source,
+        });
+
+      const results = await Promise.allSettled([
+        charge('test:concurrent-a'),
+        charge('test:concurrent-b'),
+      ]);
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+
+      const allocation = await prisma.budgetAllocation.findUnique({
+        where: { id: budget.allocations[0].id },
+      });
+      expect(Number(allocation?.spentEur)).toBe(6);
+    });
+
+    it('rejects non-positive charges before writing the ledger', async () => {
+      await expect(
+        chargeToBudget({
+          workspaceId: workspace.id,
+          category: 'OTHER',
+          amountEur: -1,
+          source: 'test:negative-charge',
+        }),
+      ).rejects.toThrow(BudgetLimitExceededError);
+      expect(
+        await prisma.costLedgerEntry.count({ where: { source: 'test:negative-charge' } }),
+      ).toBe(0);
     });
 
     it('prefers a venture-scoped ACTIVE budget allocation over the workspace-wide one', async () => {
@@ -411,6 +547,7 @@ describe('Finance and Analytics (integration)', () => {
 
       const result = await recordExperimentResult({
         workspaceId: workspace.id,
+        experimentId: experiment.id,
         experimentVariantId: control.id,
         experimentMetricId: ctrMetric.id,
         value: 2.5,
@@ -420,6 +557,7 @@ describe('Finance and Analytics (integration)', () => {
       await expect(
         recordExperimentResult({
           workspaceId: otherWorkspace.id,
+          experimentId: experiment.id,
           experimentVariantId: variantB.id,
           experimentMetricId: ctrMetric.id,
           value: 3.1,
@@ -429,6 +567,69 @@ describe('Finance and Analytics (integration)', () => {
   });
 
   describe('Gate 6: Scale Decision approval gate (task #83)', () => {
+    it('serializes concurrent result insertion against an approved SCALE decision', async () => {
+      const { proposalId } = await buildVentureProposal(workspace.id, 'gate6-result-race');
+      const experiment = await createExperiment({
+        workspaceId: workspace.id,
+        ventureProposalId: proposalId,
+        name: 'Concurrent evidence boundary',
+        hypothesis: 'Decision evidence remains immutable under concurrency',
+        variants: [{ name: 'Control', isControl: true }],
+        metrics: [{ name: 'CONVERSION', unit: '%' }],
+      });
+      await startExperiment(workspace.id, experiment.id);
+      const { approvalRequestId } = await requestScaleDecisionApproval({
+        workspaceId: workspace.id,
+        experimentId: experiment.id,
+        requestedBy: actor.id,
+      });
+      await decideApprovalRequest({
+        workspaceId: workspace.id,
+        approvalRequestId,
+        founderIdentity: actor.id,
+        decision: 'APPROVE',
+      });
+
+      const [resultWrite, decisionWrite] = await Promise.allSettled([
+        recordExperimentResult({
+          workspaceId: workspace.id,
+          experimentId: experiment.id,
+          experimentVariantId: experiment.variants[0].id,
+          experimentMetricId: experiment.metrics[0].id,
+          value: 12.5,
+        }),
+        recordExperimentDecision({
+          workspaceId: workspace.id,
+          experimentId: experiment.id,
+          decision: 'SCALE',
+          rationale: 'Concurrent decision attempt',
+          decidedBy: actor.id,
+          approvalRequestId,
+        }),
+      ]);
+
+      expect(
+        [resultWrite.status, decisionWrite.status].filter((status) => status === 'fulfilled'),
+      ).toHaveLength(1);
+      const reloaded = await prisma.experiment.findUniqueOrThrow({
+        where: { id: experiment.id },
+      });
+      const [results, decision] = await Promise.all([
+        prisma.experimentResult.findMany({
+          where: { variant: { experimentId: experiment.id } },
+        }),
+        prisma.experimentDecision.findFirst({ where: { experimentId: experiment.id } }),
+      ]);
+      if (decisionWrite.status === 'fulfilled') {
+        expect(reloaded.status).toBe('DECIDED');
+        expect(results).toHaveLength(0);
+      } else {
+        expect(reloaded.status).toBe('RUNNING');
+        expect(results).toHaveLength(1);
+        expect(decision).toBeNull();
+      }
+    });
+
     it('refuses to request a scale-decision approval before the experiment is RUNNING or COMPLETED', async () => {
       const { proposalId } = await buildVentureProposal(workspace.id, 'gate6-draft');
       const experiment = await createExperiment({
@@ -495,6 +696,56 @@ describe('Finance and Analytics (integration)', () => {
           experimentId: experiment.id,
           decision: 'SCALE',
           rationale: 'Trying to scale before approval is granted',
+          decidedBy: actor.id,
+          approvalRequestId,
+        }),
+      ).rejects.toThrow(ExperimentInvalidStateError);
+    });
+
+    it('invalidates an approved SCALE decision when experiment evidence changes afterward', async () => {
+      const { proposalId } = await buildVentureProposal(workspace.id, 'gate6-result-drift');
+      const experiment = await createExperiment({
+        workspaceId: workspace.id,
+        ventureProposalId: proposalId,
+        name: 'Evidence-bound scale test',
+        hypothesis: 'Scaling follows measured conversion',
+        variants: [{ name: 'Control', isControl: true }],
+        metrics: [{ name: 'CONVERSION', unit: '%' }],
+      });
+      await startExperiment(workspace.id, experiment.id);
+      const { approvalRequestId } = await requestScaleDecisionApproval({
+        workspaceId: workspace.id,
+        experimentId: experiment.id,
+        requestedBy: actor.id,
+      });
+      await decideApprovalRequest({
+        workspaceId: workspace.id,
+        approvalRequestId,
+        founderIdentity: actor.id,
+        decision: 'APPROVE',
+      });
+      const variant = await prisma.experimentVariant.findFirstOrThrow({
+        where: { experimentId: experiment.id },
+      });
+      const metric = await prisma.experimentMetric.findFirstOrThrow({
+        where: { experimentId: experiment.id },
+      });
+
+      await recordExperimentResult({
+        workspaceId: workspace.id,
+        experimentId: experiment.id,
+        experimentVariantId: variant.id,
+        experimentMetricId: metric.id,
+        value: 12.5,
+        sampleSize: 100,
+      });
+
+      await expect(
+        recordExperimentDecision({
+          workspaceId: workspace.id,
+          experimentId: experiment.id,
+          decision: 'SCALE',
+          rationale: 'Attempt to reuse approval after evidence changed',
           decidedBy: actor.id,
           approvalRequestId,
         }),

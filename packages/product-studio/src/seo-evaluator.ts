@@ -1,4 +1,4 @@
-import { prisma, Prisma } from '@ventureos/database';
+import { enforceWorkspaceCapability, prisma, Prisma } from '@ventureos/database';
 
 export const SEO_EVALUATOR_VERSION = 'mock-seo-evaluator-v1';
 
@@ -98,9 +98,18 @@ export function evaluateSeoContent(input: SeoEvaluationInput): SeoEvaluationResu
   return { score: Math.max(0, Math.min(100, score)), checks };
 }
 
-export async function runSeoEvaluation(listingVersionId: string): Promise<SeoEvaluationResult> {
-  const listingVersion = await prisma.listingVersion.findUniqueOrThrow({
-    where: { id: listingVersionId },
+export async function runSeoEvaluation(
+  workspaceId: string,
+  listingVersionId: string,
+): Promise<SeoEvaluationResult> {
+  await enforceWorkspaceCapability({
+    workspaceId,
+    capability: 'MARKETPLACE_DRAFT',
+    stage: 'DISPATCH',
+  });
+
+  const listingVersion = await prisma.listingVersion.findFirstOrThrow({
+    where: { id: listingVersionId, listing: { workspaceId } },
   });
   const result = evaluateSeoContent({
     title: listingVersion.title,

@@ -2,7 +2,7 @@ name: ventureos
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     container_name: ventureos-postgres
     restart: unless-stopped
     environment:
@@ -20,7 +20,7 @@ services:
       retries: 10
 
   temporal:
-    image: temporalio/auto-setup:1.24.2
+    image: temporalio/auto-setup:1.24.2@sha256:10e8c557ace5fa4aa99217637e7b9969316e89b929a3bfb117853a5417eef25c
     container_name: ventureos-temporal
     restart: unless-stopped
     depends_on:
@@ -36,7 +36,7 @@ services:
       - '7233:7233'
 
   temporal-ui:
-    image: temporalio/ui:2.31.2
+    image: temporalio/ui:2.31.2@sha256:28bb3ea5a6ea3e09f16b521f32ab727c96470f7f1e420c66a6cbfb02001a8aa2
     container_name: ventureos-temporal-ui
     restart: unless-stopped
     depends_on:
@@ -48,7 +48,7 @@ services:
       - '${TEMPORAL_UI_PORT:-8088}:8080'
 
   minio:
-    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z@sha256:9535594ad4122b7a78c6632788a989b96d9199b483d3bd71a5ceae73a922cdfa
     container_name: ventureos-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"

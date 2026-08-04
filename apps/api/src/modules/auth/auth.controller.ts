@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { ApiTags } from '@nestjs/swagger';
@@ -47,36 +58,29 @@ export class AuthController {
   }
 
   /**
-   * Phase 8: public signup for a brand-new customer workspace -- no
-   * SessionAuthGuard, since the caller has no session yet. Mirrors
-   * `login`'s cookie-setting so a freshly registered user lands directly in
-   * their own new workspace's onboarding flow, already authenticated.
+   * Public signup returns an identical accepted response for new and
+   * duplicate identifiers and deliberately creates no session cookie.
    */
   @Post('register')
-  @HttpCode(201)
-  async register(
-    @Body() body: unknown,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const { email, password, displayName, workspaceName } = registerSchema.parse(body);
-    const result = await this.authService.register(
-      email,
-      password,
-      displayName,
-      workspaceName,
-      req,
-    );
+  @HttpCode(202)
+  async register(@Body() body: unknown, @Req() req: Request) {
+    const responseStartedAt = Date.now();
+    try {
+      const parsed = registerSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new BadRequestException('Invalid registration request');
+      }
 
-    res.cookie(this.env.AUTH_COOKIE_NAME, result.sessionToken, {
-      httpOnly: true,
-      secure: this.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      expires: result.expiresAt,
-      path: '/',
-    });
-
-    return { user: result.user, workspace: result.workspace };
+      const { email, password, displayName, workspaceName } = parsed.data;
+      await this.authService.register(email, password, displayName, workspaceName, req);
+      return { message: 'Registration request accepted. Sign in to continue.' };
+    } finally {
+      const remainingMs =
+        this.env.AUTH_REGISTRATION_MIN_RESPONSE_MS - (Date.now() - responseStartedAt);
+      if (remainingMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingMs));
+      }
+    }
   }
 
   @Post('logout')

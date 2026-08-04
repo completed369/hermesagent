@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@ventureos/database';
 import { runDataAcquisition, ContractNotFoundError } from '@ventureos/research-connectors';
+import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
 
 /**
  * Hits a real (dockerized) Postgres, same approach as
@@ -27,6 +28,7 @@ describe('Research connector acquisition runs (integration)', () => {
         purpose: 'Created by research-connectors.integration.spec.ts',
         sourceType: 'PERMITTED_BROWSER_RESEARCH',
         accessMethod: 'MANUAL_IMPORT',
+        allowedOperations: ['READ_PUBLIC_LISTING_TITLE'],
         freshnessRequirementHours: 24,
         ...overrides,
       },
@@ -42,6 +44,7 @@ describe('Research connector acquisition runs (integration)', () => {
         slug: `test-research-${randomUUID()}`,
       },
     });
+    await entitleTestWorkspace(workspace.id);
   });
 
   afterAll(async () => {
@@ -61,6 +64,7 @@ describe('Research connector acquisition runs (integration)', () => {
     await prisma.dataAcquisitionRun.deleteMany({ where: { contractId: { in: contractIds } } });
     await prisma.integration.deleteMany({ where: { workspaceId: workspace.id } });
     await prisma.dataAcquisitionContract.deleteMany({ where: { id: { in: contractIds } } });
+    await cleanupEntitledTestWorkspace(workspace.id);
     await prisma.workspace.deleteMany({ where: { id: workspace.id } });
     await prisma.$disconnect();
   });
