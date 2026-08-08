@@ -6,6 +6,24 @@ import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 
+const dockerStage = (dockerfile, name) => {
+  const marker = new RegExp(`^FROM [^\\n]+ AS ${name}\\n`, 'm');
+  const match = marker.exec(dockerfile);
+  assert.ok(match, `missing ${name} Docker stage`);
+  const tail = dockerfile.slice(match.index + match[0].length);
+  const next = tail.search(/^FROM /m);
+  return next === -1 ? tail : tail.slice(0, next);
+};
+
+const composeService = (compose, name) => {
+  const marker = `  ${name}:\n`;
+  const start = compose.indexOf(marker);
+  assert.notEqual(start, -1, `missing ${name} service`);
+  const tail = compose.slice(start + marker.length);
+  const next = tail.search(/^  [a-z][a-z0-9-]*:\n/m);
+  return next === -1 ? tail : tail.slice(0, next);
+};
+
 test('staging image and topology contracts are fail-closed', () => {
   const dockerfile = read('Dockerfile.staging');
   const compose = read('docker-compose.staging.yml');
@@ -17,20 +35,14 @@ test('staging image and topology contracts are fail-closed', () => {
   const ci = read('.github/workflows/ci.yml');
   const turbo = JSON.parse(read('turbo.json'));
 
-  const service = (name) => {
-    const marker = `  ${name}:\n`;
-    const start = compose.indexOf(marker);
-    assert.notEqual(start, -1, `missing ${name} service`);
-    const tail = compose.slice(start + marker.length);
-    const next = tail.search(/^  [a-z][a-z0-9-]*:\n/m);
-    return next === -1 ? tail : tail.slice(0, next);
-  };
-
   for (const target of ['AS api', 'AS worker', 'AS web', 'AS tools', 'AS ingress']) {
     assert.match(dockerfile, new RegExp(target));
   }
   assert.match(dockerfile, /pnpm install --frozen-lockfile/);
-  assert.match(dockerfile, /USER node/g);
+  for (const target of ['api', 'worker', 'tools', 'web', 'ingress']) {
+    const stage = dockerStage(dockerfile, target);
+    assert.match(stage, /^USER 65532:65532$/m, `${target} must declare the exact runtime user`);
+  }
   assert.match(dockerfile, /dist\/main\.js/);
   assert.match(dockerfile, /dist\/index\.js/);
   assert.match(dockerfile, /apps\/web\/server\.js/);
@@ -49,18 +61,26 @@ test('staging image and topology contracts are fail-closed', () => {
   assert.match(compose, /127\.0\.0\.1:3000:3000/);
   assert.match(compose, /127\.0\.0\.1:3001:3001/);
   for (const name of ['api', 'web']) {
-    assert.doesNotMatch(service(name), /ports:/);
-    assert.match(service(name), /networks: \[staging-private\]/);
-    assert.doesNotMatch(service(name), /staging-ingress/);
+    assert.doesNotMatch(composeService(compose, name), /ports:/);
+    assert.match(composeService(compose, name), /networks: \[staging-private\]/);
+    assert.doesNotMatch(composeService(compose, name), /staging-ingress/);
   }
   for (const name of ['api-ingress', 'web-ingress']) {
     assert.match(
-      service(name),
+      composeService(compose, name),
       /image: \$\{COMPOSE_PROJECT_NAME:-ventureos-phase15\}-ingress:local/,
     );
-    assert.match(service(name), /read_only: true/);
-    assert.match(service(name), /cap_drop: \[ALL\]/);
-    assert.match(service(name), /networks: \[staging-private, staging-ingress\]/);
+    assert.match(composeService(compose, name), /read_only: true/);
+    assert.match(composeService(compose, name), /cap_drop: \[ALL\]/);
+    assert.match(composeService(compose, name), /networks: \[staging-private, staging-ingress\]/);
+  }
+  for (const name of ['api', 'worker', 'web', 'api-ingress', 'web-ingress']) {
+    const healthcheck = composeService(compose, name).match(
+      /healthcheck:\n([\s\S]*?)(?=\n    [a-z]|$)/,
+    );
+    assert.ok(healthcheck, `${name} must declare a healthcheck`);
+    assert.match(healthcheck[0], /['"]\/nodejs\/bin\/node['"]/);
+    assert.doesNotMatch(healthcheck[0], /['"]node['"]/);
   }
   assert.match(compose, /API_INTERNAL_BASE_URL: http:\/\/api:3001/);
   assert.doesNotMatch(compose, /55432:5432/);
@@ -96,4 +116,76 @@ test('the immutable migration chain contains exactly eleven migrations', () => {
     withFileTypes: true,
   }).filter((entry) => entry.isDirectory());
   assert.equal(migrations.length, 11);
+});
+
+test('the API integration timeout is explicit, bounded, and isolated from unit tests', () => {
+  const apiPackage = JSON.parse(read('apps/api/package.json'));
+  const integrationCommand = apiPackage.scripts['test:integration'];
+  const unitCommand = apiPackage.scripts['test:unit'];
+
+  assert.match(integrationCommand, /(?:^|\s)--testTimeout=15000(?:\s|$)/);
+  assert.doesNotMatch(unitCommand, /--testTimeout(?:=|\s)/);
+  assert.equal(
+    Object.entries(apiPackage.scripts).filter(([, command]) => command.includes('--testTimeout'))
+      .length,
+    1,
+  );
+});
+
+test('subscription-provider teardown uses bounded bulk cleanup without a hook timeout', () => {
+  const source = read('apps/api/test/subscription-provider-policy.integration.spec.ts');
+  const hook = source.match(/afterAll\(async \(\) => \{([\s\S]*?)\n  \}\);/);
+  assert.ok(hook, 'subscription-provider policy integration test must declare afterAll cleanup');
+
+  assert.doesNotMatch(hook[1], /for\s*\(/);
+  assert.doesNotMatch(hook[1], /cleanupEntitledTestWorkspace/);
+  assert.match(hook[1], /workspaceIds\s*=\s*\[\.\.\.new Set\(/);
+  assert.match(hook[1], /contractIds\s*=\s*\[\.\.\.new Set\(/);
+  assert.match(hook[1], /planKeys\s*=\s*workspaceIds\.map\(/);
+  assert.match(hook[1], /workspaceId:\s*\{\s*in:\s*workspaceIds\s*\}/);
+  assert.match(
+    hook[1],
+    /(?:contractId|dataAcquisitionContractId|id):\s*\{\s*in:\s*contractIds\s*\}/,
+  );
+  assert.match(
+    hook[1],
+    /prisma\.subscription\.deleteMany\(\{\s*where:\s*\{\s*workspaceId:\s*\{\s*in:\s*workspaceIds/,
+  );
+  assert.match(hook[1], /prisma\.plan\.deleteMany\(\{\s*where:\s*\{\s*key:\s*\{\s*in:\s*planKeys/);
+
+  const apiPackage = read('apps/api/package.json');
+  const apiVitestConfigs = readdirSync(resolve(root, 'apps/api'), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /vitest.*config/i.test(entry.name))
+    .map((entry) => read(`apps/api/${entry.name}`));
+  for (const configuration of [apiPackage, source, ...apiVitestConfigs]) {
+    assert.doesNotMatch(configuration, /hookTimeout/);
+  }
+});
+
+test('type-only runtime pruning is target-specific and fail-closed', () => {
+  const dockerfile = read('Dockerfile.staging');
+  const deployer = dockerStage(dockerfile, 'deployer');
+  const web = dockerStage(dockerfile, 'web');
+
+  assert.match(deployer, /prune_runtime_package\(\)/);
+  assert.match(deployer, /prune_runtime_package \/runtime\/api '@types\+node@\*' '@types\/node'/);
+  for (const [virtualStorePackage, packagePath] of [
+    ['@types+node@*', '@types/node'],
+    ['@types+estree@*', '@types/estree'],
+    ['@types+json-schema@*', '@types/json-schema'],
+  ]) {
+    assert.ok(
+      deployer.includes(
+        `prune_runtime_package /runtime/worker '${virtualStorePackage}' '${packagePath}'`,
+      ),
+      `worker must prune ${packagePath}`,
+    );
+  }
+  assert.match(deployer, /cp -R \/workspace\/apps\/web\/\.next\/standalone \/runtime\/web/);
+  assert.match(deployer, /prune_runtime_package \/runtime\/web 'typescript@\*' 'typescript'/);
+  assert.match(deployer, /test -e "\$1"/);
+  assert.match(deployer, /find "\$runtime\/node_modules" -type l -path/);
+  assert.match(deployer, /test -z "\$\(find "\$runtime\/node_modules" -path/);
+  assert.match(web, /COPY --from=deployer --chown=65532:65532 \/runtime\/web\/ \./);
+  assert.doesNotMatch(web, /COPY --from=builder .*\/\.next\/standalone/);
 });

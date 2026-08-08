@@ -31,71 +31,86 @@ ENV NODE_ENV=test
 USER node
 
 FROM builder AS deployer
-RUN pnpm --filter @ventureos/api deploy --prod /runtime/api \
- && pnpm --filter @ventureos/worker deploy --prod /runtime/worker \
- && pnpm --filter @ventureos/database deploy --prod /runtime/tools \
- && generated_client="$(echo /workspace/node_modules/.pnpm/@prisma+client@*/node_modules/.prisma)" \
- && for runtime in /runtime/api /runtime/worker /runtime/tools; do \
+RUN set -eu; \
+    pnpm --filter @ventureos/api deploy --prod /runtime/api; \
+    pnpm --filter @ventureos/worker deploy --prod /runtime/worker; \
+    pnpm --filter @ventureos/database deploy --prod /runtime/tools; \
+    cp -R /workspace/apps/web/.next/standalone /runtime/web; \
+    prune_runtime_package() { \
+      runtime=$1; \
+      virtual_store_pattern=$2; \
+      package_path=$3; \
+      set -- "$runtime/node_modules/.pnpm"/$virtual_store_pattern; \
+      test -e "$1"; \
+      find "$runtime/node_modules" -type l -path "*/node_modules/$package_path" -delete; \
+      for package_store in "$@"; do \
+        test -e "$package_store"; \
+        rm -rf "$package_store"; \
+      done; \
+      test -z "$(find "$runtime/node_modules" -path "*/node_modules/$package_path" -print -quit)"; \
+    }; \
+    prune_runtime_package /runtime/api '@types+node@*' '@types/node'; \
+    prune_runtime_package /runtime/worker '@types+node@*' '@types/node'; \
+    prune_runtime_package /runtime/worker '@types+estree@*' '@types/estree'; \
+    prune_runtime_package /runtime/worker '@types+json-schema@*' '@types/json-schema'; \
+    prune_runtime_package /runtime/web 'typescript@*' 'typescript'; \
+    core_bridge="$(echo /runtime/worker/node_modules/.pnpm/@temporalio+core-bridge@*/node_modules/@temporalio/core-bridge)"; \
+    test -f "$core_bridge/Cargo.lock"; \
+    rm -rf "$core_bridge/sdk-core" "$core_bridge/bridge-macros" \
+      "$core_bridge/Cargo.lock" "$core_bridge/Cargo.toml"; \
+    generated_client="$(echo /workspace/node_modules/.pnpm/@prisma+client@*/node_modules/.prisma)"; \
+    for runtime in /runtime/api /runtime/worker /runtime/tools; do \
       client_parent="$(echo "$runtime"/node_modules/.pnpm/@prisma+client@*/node_modules)"; \
       mkdir -p "$client_parent/.prisma"; \
       cp -R "$generated_client/." "$client_parent/.prisma/"; \
     done
 
-FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS tools
+FROM gcr.io/distroless/nodejs22-debian13@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167 AS tools
 ENV NODE_ENV=production
 WORKDIR /app
-RUN apt-get update \
- && apt-get install --yes --no-install-recommends ca-certificates openssl \
- && rm -rf /var/lib/apt/lists/*
-COPY --from=deployer --chown=node:node /runtime/tools/ ./
-COPY --chown=node:node scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
-USER node
-ENTRYPOINT ["node", "/usr/local/bin/runtime-secret-entrypoint.mjs", "--"]
-CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", "prisma/schema.prisma"]
+COPY --from=deployer --chown=65532:65532 /runtime/tools/ ./
+COPY --chown=65532:65532 scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
+USER 65532:65532
+ENTRYPOINT ["/nodejs/bin/node", "/usr/local/bin/runtime-secret-entrypoint.mjs", "--"]
+CMD ["/nodejs/bin/node", "node_modules/prisma/build/index.js", "migrate", "deploy", "--schema", "prisma/schema.prisma"]
 
-FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS api
+FROM gcr.io/distroless/nodejs22-debian13@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167 AS api
 ENV NODE_ENV=production
 WORKDIR /app
-RUN apt-get update \
- && apt-get install --yes --no-install-recommends ca-certificates openssl \
- && rm -rf /var/lib/apt/lists/*
-COPY --from=deployer --chown=node:node /runtime/api/ ./
-COPY --chown=node:node scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
-USER node
+COPY --from=deployer --chown=65532:65532 /runtime/api/ ./
+COPY --chown=65532:65532 scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
+USER 65532:65532
 EXPOSE 3001
-HEALTHCHECK --interval=10s --timeout=3s --retries=12 CMD ["node", "-e", "fetch('http://127.0.0.1:3001/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-ENTRYPOINT ["node", "/usr/local/bin/runtime-secret-entrypoint.mjs", "--"]
-CMD ["node", "dist/main.js"]
+HEALTHCHECK --interval=10s --timeout=3s --retries=12 CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:3001/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+ENTRYPOINT ["/nodejs/bin/node", "/usr/local/bin/runtime-secret-entrypoint.mjs", "--"]
+CMD ["/nodejs/bin/node", "dist/main.js"]
 
-FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS worker
+FROM gcr.io/distroless/nodejs22-debian13@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167 AS worker
 ENV NODE_ENV=production
 WORKDIR /app
-RUN apt-get update \
- && apt-get install --yes --no-install-recommends ca-certificates openssl \
- && rm -rf /var/lib/apt/lists/*
-COPY --from=deployer --chown=node:node /runtime/worker/ ./
-COPY --chown=node:node scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
-USER node
+COPY --from=deployer --chown=65532:65532 /runtime/worker/ ./
+COPY --chown=65532:65532 scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
+USER 65532:65532
 EXPOSE 3002
-HEALTHCHECK --interval=10s --timeout=3s --retries=12 CMD ["node", "-e", "fetch('http://127.0.0.1:3002/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-ENTRYPOINT ["node", "/usr/local/bin/runtime-secret-entrypoint.mjs", "--"]
-CMD ["node", "dist/index.js"]
+HEALTHCHECK --interval=10s --timeout=3s --retries=12 CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:3002/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+ENTRYPOINT ["/nodejs/bin/node", "/usr/local/bin/runtime-secret-entrypoint.mjs", "--"]
+CMD ["/nodejs/bin/node", "dist/index.js"]
 
-FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS web
+FROM gcr.io/distroless/nodejs22-debian13@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167 AS web
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 WORKDIR /app
-COPY --from=builder --chown=node:node /workspace/apps/web/.next/standalone/ ./
-COPY --from=builder --chown=node:node /workspace/apps/web/.next/static/ ./apps/web/.next/static/
-USER node
+COPY --from=deployer --chown=65532:65532 /runtime/web/ ./
+COPY --from=builder --chown=65532:65532 /workspace/apps/web/.next/static/ ./apps/web/.next/static/
+USER 65532:65532
 EXPOSE 3000
-HEALTHCHECK --interval=10s --timeout=3s --retries=12 CMD ["node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-CMD ["node", "apps/web/server.js"]
+HEALTHCHECK --interval=10s --timeout=3s --retries=12 CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+CMD ["apps/web/server.js"]
 
-FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS ingress
+FROM gcr.io/distroless/nodejs22-debian13@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167 AS ingress
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --chown=node:node scripts/staging-ingress-proxy.mjs ./
-USER node
-CMD ["node", "staging-ingress-proxy.mjs"]
+COPY --chown=65532:65532 scripts/staging-ingress-proxy.mjs ./
+USER 65532:65532
+CMD ["staging-ingress-proxy.mjs"]
