@@ -49,11 +49,22 @@ RUN set -eu; \
       done; \
       test -z "$(find "$runtime/node_modules" -path "*/node_modules/$package_path" -print -quit)"; \
     }; \
+    prune_scarf_compile_cache() { \
+      runtime=$1; \
+      set -- "$runtime/node_modules/.pnpm"/@scarf+scarf@*/node_modules/@scarf/scarf; \
+      test -d "$1"; \
+      for scarf_store in "$@"; do \
+        test -d "$scarf_store"; \
+        rm -rf "$scarf_store/node-compile-cache"; \
+      done; \
+      test -z "$(find "$runtime/node_modules/.pnpm" -path '*/@scarf/scarf/node-compile-cache' -print -quit)"; \
+    }; \
     prune_runtime_package /runtime/api '@types+node@*' '@types/node'; \
     prune_runtime_package /runtime/worker '@types+node@*' '@types/node'; \
     prune_runtime_package /runtime/worker '@types+estree@*' '@types/estree'; \
     prune_runtime_package /runtime/worker '@types+json-schema@*' '@types/json-schema'; \
     prune_runtime_package /runtime/web 'typescript@*' 'typescript'; \
+    prune_scarf_compile_cache /runtime/api; \
     core_bridge="$(echo /runtime/worker/node_modules/.pnpm/@temporalio+core-bridge@*/node_modules/@temporalio/core-bridge)"; \
     test -f "$core_bridge/Cargo.lock"; \
     rm -rf "$core_bridge/sdk-core" "$core_bridge/bridge-macros" \

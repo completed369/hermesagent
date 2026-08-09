@@ -90,6 +90,15 @@ def temporal_prohibited_content(parts: tuple[str, ...]) -> str | None:
     return None
 
 
+def scarf_compile_cache(parts: tuple[str, ...]) -> bool:
+    for index in range(len(parts) - 3):
+        if parts[index : index + 3] != ("node_modules", "@scarf", "scarf"):
+            continue
+        if "node-compile-cache" in parts[index + 3 :]:
+            return True
+    return False
+
+
 def main() -> None:
     if len(sys.argv) != 2 or sys.argv[1] not in TARGETS:
         fail("usage: verify-image-rootfs.py <api|worker|web|tools|ingress>")
@@ -132,6 +141,8 @@ def main() -> None:
             temporal_content = temporal_prohibited_content(parts) if target == "worker" else None
             if temporal_content:
                 fail(f"{target}: scan-only Temporal {temporal_content} remains: {name}")
+            if scarf_compile_cache(parts):
+                fail(f"{target}: generated Scarf node-compile-cache remains: {name}")
             if target == "tools" and (name == "app/src" or name.startswith("app/src/")):
                 fail(f"{target}: forbidden source directory: {name}")
 

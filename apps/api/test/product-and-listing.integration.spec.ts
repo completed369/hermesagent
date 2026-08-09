@@ -13,7 +13,7 @@ import {
   ProductGenerationBlockedError,
   ListingGenerationBlockedError,
 } from '@ventureos/product-studio';
-import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
+import { entitleTestWorkspace } from './helpers/entitled-workspace';
 
 /**
  * Hits a real (dockerized) Postgres, exactly like
@@ -98,78 +98,113 @@ describe('Product generation + listing + second approval gate (integration)', ()
 
   afterAll(async () => {
     const proposalIds = [approvedProposal.id, unapprovedProposal.id];
-    await prisma.publicationAttempt.deleteMany({
-      where: {
-        listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
-      },
-    });
-    await prisma.sEOEvaluation.deleteMany({
-      where: {
-        listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
-      },
-    });
-    await prisma.priceProposal.deleteMany({
-      where: {
-        listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
-      },
-    });
-    await prisma.listingImage.deleteMany({
-      where: {
-        listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
-      },
-    });
-    await prisma.listingFile.deleteMany({
-      where: {
-        listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
-      },
-    });
-    await prisma.listingVersion.deleteMany({
-      where: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
-    });
-    await prisma.listing.deleteMany({
-      where: { product: { ventureProposalId: { in: proposalIds } } },
-    });
-    await prisma.approvalDecision.deleteMany({
-      where: { approvalRequest: { ventureProposalId: { in: proposalIds } } },
-    });
-    await prisma.approvalRequest.deleteMany({ where: { ventureProposalId: { in: proposalIds } } });
-    await prisma.productPackage.deleteMany({
-      where: { productVersion: { product: { ventureProposalId: { in: proposalIds } } } },
-    });
-    await prisma.licenceRecord.deleteMany({
-      where: { productVersion: { product: { ventureProposalId: { in: proposalIds } } } },
-    });
-    await prisma.qualityCheckResult.deleteMany({
-      where: {
-        qualityCheck: { productVersion: { product: { ventureProposalId: { in: proposalIds } } } },
-      },
-    });
-    await prisma.qualityCheck.deleteMany({
-      where: { productVersion: { product: { ventureProposalId: { in: proposalIds } } } },
-    });
-    await prisma.productAssetVersion.deleteMany({
-      where: {
-        productAsset: { productVersion: { product: { ventureProposalId: { in: proposalIds } } } },
-      },
-    });
-    await prisma.productAsset.deleteMany({
-      where: { productVersion: { product: { ventureProposalId: { in: proposalIds } } } },
-    });
-    await prisma.productBrief.deleteMany({
-      where: { productVersion: { product: { ventureProposalId: { in: proposalIds } } } },
-    });
+    const planKey = `INTEGRATION_TEST_${workspace.id}`;
+    const listingVersionScope = {
+      listing: { product: { ventureProposalId: { in: proposalIds } } },
+    };
+    const productVersionScope = {
+      product: { ventureProposalId: { in: proposalIds } },
+    };
+
+    // Layer 1: independent leaves. Each relation points only to a parent that
+    // remains present until a later layer.
+    await Promise.all([
+      prisma.publicationAttempt.deleteMany({
+        where: {
+          listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
+        },
+      }),
+      prisma.sEOEvaluation.deleteMany({
+        where: {
+          listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
+        },
+      }),
+      prisma.priceProposal.deleteMany({
+        where: {
+          listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
+        },
+      }),
+      prisma.listingImage.deleteMany({
+        where: {
+          listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
+        },
+      }),
+      prisma.listingFile.deleteMany({
+        where: {
+          listingVersion: { listing: { product: { ventureProposalId: { in: proposalIds } } } },
+        },
+      }),
+      prisma.approvalDecision.deleteMany({
+        where: { approvalRequest: { ventureProposalId: { in: proposalIds } } },
+      }),
+      prisma.licenceRecord.deleteMany({ where: { productVersion: productVersionScope } }),
+      prisma.qualityCheckResult.deleteMany({
+        where: {
+          qualityCheck: {
+            productVersion: { product: { ventureProposalId: { in: proposalIds } } },
+          },
+        },
+      }),
+    ]);
+
+    // Layer 2: direct parents of the approval and QA leaves.
+    await Promise.all([
+      prisma.approvalRequest.deleteMany({
+        where: { workspaceId: workspace.id, ventureProposalId: { in: proposalIds } },
+      }),
+      prisma.qualityCheck.deleteMany({ where: { productVersion: productVersionScope } }),
+    ]);
+
+    // ProductPackage references ListingVersion with onDelete: SetNull, so
+    // remove packages first rather than racing the two sides of that FK.
+    await prisma.productPackage.deleteMany({ where: { productVersion: productVersionScope } });
+
+    // Layer 3: listing versions and asset versions are now independent: all
+    // attachment rows, licences, approvals, packages, and QA rows are absent.
+    await Promise.all([
+      prisma.listingVersion.deleteMany({ where: listingVersionScope }),
+      prisma.productAssetVersion.deleteMany({
+        where: { productAsset: { productVersion: productVersionScope } },
+      }),
+    ]);
+
+    // Layer 4: independent direct children of ProductVersion.
+    await Promise.all([
+      prisma.listing.deleteMany({
+        where: {
+          workspaceId: workspace.id,
+          product: { ventureProposalId: { in: proposalIds } },
+        },
+      }),
+      prisma.productAsset.deleteMany({ where: { productVersion: productVersionScope } }),
+      prisma.productBrief.deleteMany({ where: { productVersion: productVersionScope } }),
+    ]);
+
     await prisma.productVersion.deleteMany({
       where: { product: { ventureProposalId: { in: proposalIds } } },
     });
-    await prisma.product.deleteMany({ where: { ventureProposalId: { in: proposalIds } } });
+    await prisma.product.deleteMany({
+      where: { workspaceId: workspace.id, ventureProposalId: { in: proposalIds } },
+    });
     await prisma.ventureProposalVersion.deleteMany({
       where: { ventureProposalId: { in: proposalIds } },
     });
-    await prisma.ventureProposal.deleteMany({ where: { id: { in: proposalIds } } });
+    await prisma.ventureProposal.deleteMany({
+      where: { workspaceId: workspace.id, id: { in: proposalIds } },
+    });
     await prisma.opportunity.deleteMany({ where: { workspaceId: workspace.id } });
-    await cleanupEntitledTestWorkspace(workspace.id);
+
+    // Fold cleanupEntitledTestWorkspace's three queries into the suite cleanup
+    // so independent workspace leaves are deleted together.
+    await Promise.all([
+      prisma.securityEvent.deleteMany({ where: { workspaceId: workspace.id } }),
+      prisma.subscription.deleteMany({ where: { workspaceId: workspace.id } }),
+    ]);
+    await Promise.all([
+      prisma.plan.deleteMany({ where: { key: planKey } }),
+      prisma.user.deleteMany({ where: { id: actor.id } }),
+    ]);
     await prisma.workspace.deleteMany({ where: { id: workspace.id } });
-    await prisma.user.delete({ where: { id: actor.id } });
     await prisma.$disconnect();
   });
 

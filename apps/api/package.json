@@ -8,7 +8,7 @@
     "start": "dotenv -e ../../.env -- node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --dir src",
-    "test:integration": "dotenv -e ../../.env -- vitest run --dir test --testTimeout=15000",
+    "test:integration": "dotenv -e ../../.env -- vitest run --dir test --testTimeout=15000 --maxWorkers=1",
     "clean": "rimraf dist"
   },
   "dependencies": {

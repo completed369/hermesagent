@@ -132,6 +132,14 @@ class RootfsPolicyTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("secret-like content detected", result.stderr.decode())
 
+    def test_rejects_generated_scarf_node_compile_cache(self) -> None:
+        self.assert_rejected(
+            "api",
+            "app/node_modules/.pnpm/@scarf+scarf@1.4.0/node_modules/"
+            "@scarf/scarf/node-compile-cache/v22.23.2-x64/cache-entry",
+            "generated Scarf node-compile-cache",
+        )
+
     def test_rejects_temporal_sdk_core(self) -> None:
         self.assert_rejected(
             "worker", temporal_path("sdk-core/src/lib.rs"), "Temporal sdk-core remains"

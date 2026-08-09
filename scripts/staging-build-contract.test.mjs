@@ -118,6 +118,20 @@ test('the immutable migration chain contains exactly eleven migrations', () => {
   assert.equal(migrations.length, 11);
 });
 
+test('the API egress probe uses distroless Node and remains fail-closed', () => {
+  const gate = read('scripts/staging-security-gate.sh');
+  const probe = gate.match(
+    /if compose exec -T api [^\n]+https:\/\/example\.com[^\n]+; then\n([\s\S]*?)\n  fi/,
+  );
+
+  assert.ok(probe, 'staging gate must contain the API external-egress probe');
+  assert.match(probe[0], /compose exec -T api \/nodejs\/bin\/node -e/);
+  assert.doesNotMatch(probe[0], /compose exec -T api node -e/);
+  assert.match(probe[0], /then\(\(\)=>process\.exit\(0\)\)/);
+  assert.match(probe[1], /External network egress is available to the API container/);
+  assert.match(probe[1], /return 1/);
+});
+
 test('the API integration timeout is explicit, bounded, and isolated from unit tests', () => {
   const apiPackage = JSON.parse(read('apps/api/package.json'));
   const integrationCommand = apiPackage.scripts['test:integration'];
@@ -188,4 +202,33 @@ test('type-only runtime pruning is target-specific and fail-closed', () => {
   assert.match(deployer, /test -z "\$\(find "\$runtime\/node_modules" -path/);
   assert.match(web, /COPY --from=deployer --chown=65532:65532 \/runtime\/web\/ \./);
   assert.doesNotMatch(web, /COPY --from=builder .*\/\.next\/standalone/);
+});
+
+test('generated Scarf compile-cache pruning is API-only, narrow, and fail-closed', () => {
+  const dockerfile = read('Dockerfile.staging');
+  const deployer = dockerStage(dockerfile, 'deployer');
+  const rootfsChecker = read('scripts/verify-image-rootfs.py');
+
+  assert.match(deployer, /prune_scarf_compile_cache\(\)/);
+  assert.match(
+    deployer,
+    /"\$runtime\/node_modules\/\.pnpm"\/@scarf\+scarf@\*\/node_modules\/@scarf\/scarf/,
+  );
+  assert.match(deployer, /rm -rf "\$scarf_store\/node-compile-cache"/);
+  assert.match(
+    deployer,
+    /find "\$runtime\/node_modules\/\.pnpm" -path '\*\/@scarf\/scarf\/node-compile-cache'/,
+  );
+  assert.match(deployer, /prune_scarf_compile_cache \/runtime\/api/);
+  for (const target of ['worker', 'web', 'tools']) {
+    assert.doesNotMatch(deployer, new RegExp(`prune_scarf_compile_cache /runtime/${target}`));
+  }
+
+  assert.match(rootfsChecker, /def scarf_compile_cache\(/);
+  assert.match(rootfsChecker, /generated Scarf node-compile-cache/);
+  assert.match(
+    rootfsChecker,
+    /rb"BEGIN \[A-Z \]\*PRIVATE KEY\|gh\[pousr\]_\[A-Za-z0-9\]\{20\}\|sk-ant-\[A-Za-z0-9_-\]\{20\}"/,
+  );
+  assert.doesNotMatch(rootfsChecker, /scarf[^\n]*(?:allow|exclude|whitelist)/i);
 });

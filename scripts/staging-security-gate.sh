@@ -88,7 +88,7 @@ run_gate() {
   wait_http http://localhost:3001/api/health/ready
   wait_http http://localhost:3000/login
 
-  if compose exec -T api node -e "fetch('https://example.com',{signal:AbortSignal.timeout(5000)}).then(()=>process.exit(0)).catch(()=>process.exit(1))"; then
+  if compose exec -T api /nodejs/bin/node -e "fetch('https://example.com',{signal:AbortSignal.timeout(5000)}).then(()=>process.exit(0)).catch(()=>process.exit(1))"; then
     echo 'External network egress is available to the API container' >&2
     return 1
   fi
