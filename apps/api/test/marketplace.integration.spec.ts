@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@ventureos/database';
-import { MockStorageProvider } from '@ventureos/integrations';
-import { createApprovalRequest, decideApprovalRequest } from '@ventureos/agent-runtime';
-import { generateProduct, generateListingAndApprovalRequest } from '@ventureos/product-studio';
+import { decideApprovalRequest } from '@ventureos/agent-runtime';
+import { hashProductListingBundle } from '@ventureos/security';
 import {
   prepareListingForPublication,
   requestPublicationApproval,
@@ -12,7 +11,7 @@ import {
 } from '@ventureos/marketplace-connectors';
 import { MarketplaceService } from '../src/modules/marketplace/marketplace.service';
 import { AuditService } from '../src/modules/audit/audit.service';
-import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
+import { entitleTestWorkspace } from './helpers/entitled-workspace';
 
 /**
  * Hits a real (dockerized) Postgres, exactly like
@@ -25,7 +24,6 @@ import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/en
  * (marketplace.service.ts's STATUS_INCLUDE).
  */
 describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integration)', () => {
-  const storageProvider = new MockStorageProvider();
   const auditService = new AuditService();
   const marketplaceService = new MarketplaceService(auditService);
 
@@ -33,164 +31,262 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
   let noApprovalWorkspace: { id: string };
   let disabledWorkspace: { id: string };
   let actor: { id: string };
+  let mainListingVersionId: string;
 
-  /** Builds a QA_PASSED product + generated listing, optionally deciding the
-   * Phase 4 PRODUCT_LISTING approval (APPROVE) so the listing version is
-   * ready for Phase 6 preparation -- mirrors
-   * product-and-listing.integration.spec.ts's setup exactly. */
-  async function buildListingScenario(
+  /**
+   * Creates the minimal persisted state at the Phase 6 boundary. The upstream
+   * product-generation, QA, listing-generation, and PRODUCT_LISTING
+   * hash-binding paths are exercised end-to-end in
+   * product-and-listing.integration.spec.ts; this suite starts at marketplace
+   * preparation and keeps each marketplace security scenario isolated.
+   */
+  async function createMarketplaceScenario(
     workspaceId: string,
     suffix: string,
-    decideApproval: boolean,
+    productListingApproved: boolean,
   ) {
-    const opp = await prisma.opportunity.create({
-      data: {
-        workspaceId,
-        title: `Marketplace Test Opportunity ${suffix}`,
-        description: 'Created by marketplace.integration.spec.ts',
-        status: 'PROMOTED',
-        suggestedProductType: 'DIGITAL_TEMPLATE_BUNDLE',
-        suggestedMarketplace: 'etsy',
-        latestOpportunityScore: 90,
-        latestProfitConfidence: 85,
-        isSpeculative: false,
-        estimatedCostEur: 50,
-        estimatedRevenueEur: 900,
-        estimatedProfitEur: 850,
-        risks: [],
-      },
+    const opportunityId = randomUUID();
+    const proposalId = randomUUID();
+    const proposalVersionId = randomUUID();
+    const productId = randomUUID();
+    const productVersionId = randomUUID();
+    const listingId = randomUUID();
+    const listingVersionId = randomUUID();
+    const productPackageId = randomUUID();
+    const productListingApprovalId = randomUUID();
+    const listing = {
+      title: `Marketplace Test Listing ${suffix}`,
+      description: 'Synthetic marketplace integration fixture',
+      tags: ['marketplace', 'test'],
+      category: 'Digital Prints & Templates',
+      currency: 'EUR',
+      priceEur: 9.99,
+    };
+    const packageHash = hashProductListingBundle({
+      assetVersionIds: [],
+      listing,
+      images: [],
+      files: [],
     });
-    const proposal = await prisma.ventureProposal.create({
-      data: { workspaceId, opportunityId: opp.id, status: 'DRAFT' },
-    });
-    await prisma.ventureProposalVersion.create({
-      data: {
-        ventureProposalId: proposal.id,
-        opportunityId: opp.id,
-        versionNumber: 1,
-        snapshot: { note: 'v' + randomUUID() },
-      },
-    });
+    const approvalExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-    const phase3Request = await createApprovalRequest({
-      workspaceId,
-      ventureProposalId: proposal.id,
-      requestedBy: actor.id,
-    });
-    await decideApprovalRequest({
-      workspaceId,
-      approvalRequestId: phase3Request.id,
-      founderIdentity: actor.id,
-      decision: 'APPROVE',
-    });
-
-    const productResult = await generateProduct({
-      workspaceId,
-      ventureProposalId: proposal.id,
-      storageProvider,
-    });
-
-    const listingResult = await generateListingAndApprovalRequest({
-      workspaceId,
-      productId: productResult.productId,
-      requestedBy: actor.id,
-    });
-
-    if (decideApproval) {
-      await decideApprovalRequest({
-        workspaceId,
-        approvalRequestId: listingResult.approvalRequestId,
-        founderIdentity: actor.id,
-        decision: 'APPROVE',
-      });
-    }
+    await prisma.$transaction([
+      prisma.opportunity.create({
+        data: {
+          id: opportunityId,
+          workspaceId,
+          title: `Marketplace Test Opportunity ${suffix}`,
+          description: 'Created by marketplace.integration.spec.ts',
+          status: 'PROMOTED',
+          suggestedProductType: 'DIGITAL_TEMPLATE_BUNDLE',
+          suggestedMarketplace: 'etsy',
+          latestOpportunityScore: 90,
+          latestProfitConfidence: 85,
+          isSpeculative: false,
+          estimatedCostEur: 50,
+          estimatedRevenueEur: 900,
+          estimatedProfitEur: 850,
+          risks: [],
+        },
+      }),
+      prisma.ventureProposal.create({
+        data: { id: proposalId, workspaceId, opportunityId, status: 'APPROVED' },
+      }),
+      prisma.ventureProposalVersion.create({
+        data: {
+          id: proposalVersionId,
+          ventureProposalId: proposalId,
+          opportunityId,
+          versionNumber: 1,
+          snapshot: { note: `marketplace-${suffix}` },
+        },
+      }),
+      prisma.product.create({
+        data: {
+          id: productId,
+          workspaceId,
+          ventureProposalId: proposalId,
+          title: `Marketplace Test Product ${suffix}`,
+          status: 'QA_PASSED',
+        },
+      }),
+      prisma.productVersion.create({
+        data: { id: productVersionId, productId, versionNumber: 1 },
+      }),
+      prisma.listing.create({
+        data: {
+          id: listingId,
+          workspaceId,
+          productId,
+          productVersionId,
+          marketplace: 'etsy',
+          status: 'SEO_EVALUATED',
+        },
+      }),
+      prisma.listingVersion.create({
+        data: {
+          id: listingVersionId,
+          listingId,
+          versionNumber: 1,
+          ...listing,
+        },
+      }),
+      prisma.productPackage.create({
+        data: {
+          id: productPackageId,
+          productVersionId,
+          listingVersionId,
+          packageHash,
+          assetVersionIds: [],
+        },
+      }),
+      prisma.approvalRequest.create({
+        data: {
+          id: productListingApprovalId,
+          workspaceId,
+          ventureProposalId: proposalId,
+          ventureProposalVersionId: proposalVersionId,
+          kind: 'PRODUCT_LISTING',
+          productPackageId,
+          listingVersionId,
+          requestedAction: `Approve marketplace fixture ${suffix}`,
+          explanation: 'Synthetic approved Phase 4 boundary for marketplace integration tests.',
+          affectedResources: [`Product:${productId}`, `ListingVersion:${listingVersionId}`],
+          packageHash,
+          estimatedCostEur: 0,
+          maxAuthorizedCostEur: 0,
+          reversible: true,
+          risks: [],
+          evidenceIds: [],
+          state: productListingApproved ? 'APPROVED' : 'PENDING',
+          requestedBy: actor.id,
+          expiresAt: approvalExpiresAt,
+        },
+      }),
+      ...(productListingApproved
+        ? [
+            prisma.approvalDecision.create({
+              data: {
+                approvalRequestId: productListingApprovalId,
+                founderIdentity: actor.id,
+                decidedAt: new Date(),
+                decision: 'APPROVE',
+                conditions: [],
+                approvedArtifactVersionId: productPackageId,
+                approvedPackageHash: packageHash,
+                expiresAt: approvalExpiresAt,
+                auditSignature: `marketplace-test-${productListingApprovalId}`,
+              },
+            }),
+          ]
+        : []),
+    ]);
 
     return {
-      proposalId: proposal.id,
-      listingVersionId: listingResult.listingVersionId,
-      productListingApprovalId: listingResult.approvalRequestId,
+      listingVersionId,
+      productListingApprovalId,
     };
   }
 
-  async function cleanupWorkspace(workspaceId: string) {
-    await prisma.auditEvent.deleteMany({ where: { workspaceId } });
-    await prisma.idempotencyKey.deleteMany({ where: { workspaceId } });
+  async function cleanupWorkspaces(workspaceIds: string[]) {
+    const planKeys = workspaceIds.map((workspaceId) => `INTEGRATION_TEST_${workspaceId}`);
+
+    await prisma.auditEvent.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.idempotencyKey.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await prisma.publicationAttempt.deleteMany({
-      where: { listingVersion: { listing: { product: { ventureProposal: { workspaceId } } } } },
+      where: {
+        listingVersion: { listing: { workspaceId: { in: workspaceIds } } },
+      },
     });
     await prisma.approvalDecision.deleteMany({
-      where: { approvalRequest: { workspaceId } },
+      where: { approvalRequest: { workspaceId: { in: workspaceIds } } },
     });
-    await prisma.approvalRequest.deleteMany({ where: { workspaceId } });
-    await prisma.marketplaceAccount.deleteMany({ where: { workspaceId } });
+    await prisma.approvalRequest.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.marketplaceAccount.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await prisma.listingImage.deleteMany({
-      where: { listingVersion: { listing: { product: { ventureProposal: { workspaceId } } } } },
+      where: {
+        listingVersion: { listing: { workspaceId: { in: workspaceIds } } },
+      },
     });
     await prisma.listingFile.deleteMany({
-      where: { listingVersion: { listing: { product: { ventureProposal: { workspaceId } } } } },
+      where: {
+        listingVersion: { listing: { workspaceId: { in: workspaceIds } } },
+      },
     });
     await prisma.priceProposal.deleteMany({
-      where: { listingVersion: { listing: { product: { ventureProposal: { workspaceId } } } } },
+      where: {
+        listingVersion: { listing: { workspaceId: { in: workspaceIds } } },
+      },
     });
     await prisma.sEOEvaluation.deleteMany({
-      where: { listingVersion: { listing: { product: { ventureProposal: { workspaceId } } } } },
+      where: {
+        listingVersion: { listing: { workspaceId: { in: workspaceIds } } },
+      },
     });
     await prisma.listingVersion.deleteMany({
-      where: { listing: { product: { ventureProposal: { workspaceId } } } },
+      where: { listing: { workspaceId: { in: workspaceIds } } },
     });
-    await prisma.listing.deleteMany({ where: { product: { ventureProposal: { workspaceId } } } });
+    await prisma.listing.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await prisma.qualityCheckResult.deleteMany({
       where: {
-        qualityCheck: { productVersion: { product: { ventureProposal: { workspaceId } } } },
+        qualityCheck: { productVersion: { product: { workspaceId: { in: workspaceIds } } } },
       },
     });
     await prisma.qualityCheck.deleteMany({
-      where: { productVersion: { product: { ventureProposal: { workspaceId } } } },
+      where: { productVersion: { product: { workspaceId: { in: workspaceIds } } } },
     });
     await prisma.licenceRecord.deleteMany({
-      where: { productVersion: { product: { ventureProposal: { workspaceId } } } },
+      where: { productVersion: { product: { workspaceId: { in: workspaceIds } } } },
     });
     await prisma.productAssetVersion.deleteMany({
       where: {
-        productAsset: { productVersion: { product: { ventureProposal: { workspaceId } } } },
+        productAsset: { productVersion: { product: { workspaceId: { in: workspaceIds } } } },
       },
     });
     await prisma.productAsset.deleteMany({
-      where: { productVersion: { product: { ventureProposal: { workspaceId } } } },
+      where: { productVersion: { product: { workspaceId: { in: workspaceIds } } } },
     });
     await prisma.productBrief.deleteMany({
-      where: { productVersion: { product: { ventureProposal: { workspaceId } } } },
+      where: { productVersion: { product: { workspaceId: { in: workspaceIds } } } },
     });
     await prisma.productVersion.deleteMany({
-      where: { product: { ventureProposal: { workspaceId } } },
+      where: { product: { workspaceId: { in: workspaceIds } } },
     });
-    await prisma.product.deleteMany({ where: { ventureProposal: { workspaceId } } });
-    await prisma.ventureProposalVersion.deleteMany({ where: { ventureProposal: { workspaceId } } });
-    await prisma.ventureProposal.deleteMany({ where: { workspaceId } });
-    await prisma.opportunity.deleteMany({ where: { workspaceId } });
-    await prisma.integration.deleteMany({ where: { workspaceId } });
-    await cleanupEntitledTestWorkspace(workspaceId);
-    await prisma.workspace.deleteMany({ where: { id: workspaceId } });
+    await prisma.product.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.ventureProposalVersion.deleteMany({
+      where: { ventureProposal: { workspaceId: { in: workspaceIds } } },
+    });
+    await prisma.ventureProposal.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.opportunity.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.integration.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.securityEvent.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.subscription.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.plan.deleteMany({ where: { key: { in: planKeys } } });
+    await prisma.workspace.deleteMany({ where: { id: { in: workspaceIds } } });
   }
 
   beforeAll(async () => {
-    workspace = await prisma.workspace.create({
-      data: {
-        name: `Marketplace Test Workspace ${randomUUID()}`,
-        slug: `test-mkt-${randomUUID()}`,
-      },
-    });
-    noApprovalWorkspace = await prisma.workspace.create({
-      data: {
-        name: `Marketplace Test Workspace (no approval) ${randomUUID()}`,
-        slug: `test-mkt-noappr-${randomUUID()}`,
-      },
-    });
-    disabledWorkspace = await prisma.workspace.create({
-      data: {
-        name: `Marketplace Test Workspace (disabled) ${randomUUID()}`,
-        slug: `test-mkt-disabled-${randomUUID()}`,
-      },
+    workspace = { id: randomUUID() };
+    noApprovalWorkspace = { id: randomUUID() };
+    disabledWorkspace = { id: randomUUID() };
+    await prisma.workspace.createMany({
+      data: [
+        {
+          id: workspace.id,
+          name: `Marketplace Test Workspace ${randomUUID()}`,
+          slug: `test-mkt-${randomUUID()}`,
+        },
+        {
+          id: noApprovalWorkspace.id,
+          name: `Marketplace Test Workspace (no approval) ${randomUUID()}`,
+          slug: `test-mkt-noappr-${randomUUID()}`,
+        },
+        {
+          id: disabledWorkspace.id,
+          name: `Marketplace Test Workspace (disabled) ${randomUUID()}`,
+          slug: `test-mkt-disabled-${randomUUID()}`,
+        },
+      ],
     });
     await Promise.all([
       entitleTestWorkspace(workspace.id),
@@ -206,16 +302,14 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
   });
 
   afterAll(async () => {
-    await cleanupWorkspace(workspace.id);
-    await cleanupWorkspace(noApprovalWorkspace.id);
-    await cleanupWorkspace(disabledWorkspace.id);
+    await cleanupWorkspaces([workspace.id, noApprovalWorkspace.id, disabledWorkspace.id]);
     await prisma.user.delete({ where: { id: actor.id } });
     await prisma.$disconnect();
   });
 
   describe('Stage 1: prepareListingForPublication', () => {
     it('persists a BLOCKED_NO_APPROVAL attempt when the PRODUCT_LISTING approval has not been decided', async () => {
-      const { listingVersionId } = await buildListingScenario(
+      const { listingVersionId } = await createMarketplaceScenario(
         noApprovalWorkspace.id,
         'no-approval',
         false,
@@ -231,11 +325,10 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
       expect(result.externalListingId).toBeNull();
     });
 
-    let mainListingVersionId: string;
     let firstExternalListingId: string;
 
     it('reaches READY_FOR_PUBLISH once the PRODUCT_LISTING approval is granted', async () => {
-      const scenario = await buildListingScenario(workspace.id, 'main', true);
+      const scenario = await createMarketplaceScenario(workspace.id, 'main', true);
       mainListingVersionId = scenario.listingVersionId;
 
       const approvedRequest = await prisma.approvalRequest.findUniqueOrThrow({
@@ -293,7 +386,7 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
 
   describe('Fail-closed gating', () => {
     it('persists a BLOCKED_DISABLED attempt and never calls the mock marketplace when the account is disabled', async () => {
-      const { listingVersionId } = await buildListingScenario(
+      const { listingVersionId } = await createMarketplaceScenario(
         disabledWorkspace.id,
         'disabled',
         true,
@@ -349,13 +442,11 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
     let approvalRequestId: string;
 
     beforeAll(async () => {
-      const scenario = await buildListingScenario(workspace.id, 'publish-flow', true);
-      listingVersionId = scenario.listingVersionId;
-      await prepareListingForPublication({ workspaceId: workspace.id, listingVersionId });
+      listingVersionId = mainListingVersionId;
     });
 
     it('refuses to raise a PUBLICATION approval before a READY_FOR_PUBLISH attempt exists', async () => {
-      const { listingVersionId: freshId } = await buildListingScenario(
+      const { listingVersionId: freshId } = await createMarketplaceScenario(
         workspace.id,
         'publish-flow-unprepared',
         true,
@@ -425,7 +516,7 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
     });
 
     it('re-validates the approval hash at execution time: content drift after approval blocks publish and expires the approval', async () => {
-      const scenario = await buildListingScenario(workspace.id, 'publish-flow-drift', true);
+      const scenario = await createMarketplaceScenario(workspace.id, 'publish-flow-drift', true);
       await prepareListingForPublication({
         workspaceId: workspace.id,
         listingVersionId: scenario.listingVersionId,
@@ -467,7 +558,7 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
 
   describe('audit trail (task #70)', () => {
     it('records a distinct, queryable audit event for prepare, request-approval, and publish', async () => {
-      const scenario = await buildListingScenario(workspace.id, 'audit-flow', true);
+      const scenario = await createMarketplaceScenario(workspace.id, 'audit-flow', true);
 
       await marketplaceService.prepare(workspace.id, scenario.listingVersionId, actor.id);
       const prepareEvents = await prisma.auditEvent.findMany({
@@ -520,7 +611,7 @@ describe('Marketplace Pilot: prepare -> PUBLICATION approval -> publish (integra
     });
 
     it('scopes marketplace status lookups to the requesting workspace only', async () => {
-      const scenario = await buildListingScenario(workspace.id, 'scoping', true);
+      const scenario = await createMarketplaceScenario(workspace.id, 'scoping', true);
       await expect(
         marketplaceService.getStatus(noApprovalWorkspace.id, scenario.listingVersionId),
       ).rejects.toThrow();

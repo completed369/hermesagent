@@ -73,12 +73,42 @@ test('all staging Docker targets use immutable bases and the minimized tools run
   assert.doesNotMatch(dockerfile, /FROM builder AS tools/);
   assert.match(dockerfile, /deploy --prod \/runtime\/tools/);
   assert.match(dockerfile, /runtime-secret-entrypoint\.mjs/);
-  assert.match(dockerfile, /ENTRYPOINT \["node", "\/usr\/local\/bin\/runtime-secret-entrypoint\.mjs"/);
+  assert.match(
+    dockerfile,
+    /ENTRYPOINT \["\/nodejs\/bin\/node", "\/usr\/local\/bin\/runtime-secret-entrypoint\.mjs"/,
+  );
 
   const scan = read('scripts/verify-staging-images.sh');
   assert.match(scan, /tools_image/);
   assert.match(scan, /check_common "\$tools_image"/);
   assert.match(scan, /check_common "\$ingress_image"/);
+});
+
+test('publication runtimes exclude the vulnerable build toolchain and scan-only Temporal sources', () => {
+  const dockerfile = read('Dockerfile.staging');
+  const runtimeBase =
+    'gcr.io/distroless/nodejs22-debian13@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167';
+
+  for (const target of ['tools', 'api', 'worker', 'web', 'ingress']) {
+    assert.match(dockerfile, new RegExp(`FROM ${runtimeBase} AS ${target}\\b`));
+  }
+  assert.match(dockerfile, /@temporalio\+core-bridge@\*\/node_modules\/@temporalio\/core-bridge/);
+  assert.match(dockerfile, /rm -rf "\$core_bridge\/sdk-core" "\$core_bridge\/bridge-macros"/);
+  assert.match(dockerfile, /"\$core_bridge\/Cargo\.lock" "\$core_bridge\/Cargo\.toml"/);
+
+  const scan = read('scripts/verify-staging-images.sh');
+  assert.doesNotMatch(scan, /docker run --rm --entrypoint sh/);
+  assert.match(scan, /docker export/);
+  assert.match(scan, /verify-image-rootfs\.py/);
+  assert.match(scan, /STAGING_IMAGE_CONTENT_SCAN_PASS/);
+
+  const rootfsScan = read('scripts/verify-image-rootfs.py');
+  for (const prohibited of ['sdk-core', 'bridge-macros', 'Cargo.lock', 'Cargo.toml']) {
+    assert.match(rootfsScan, new RegExp(`"${prohibited.replace('.', '\\.')}"`));
+  }
+  assert.match(rootfsScan, /SECRET_PATTERN/);
+  assert.match(rootfsScan, /is_third_party_pnpm_content/);
+  assert.match(rootfsScan, /DEVELOPMENT_ONLY_PACKAGES/);
 });
 
 test('every third-party build and Compose runtime image is locked by digest', () => {
@@ -119,7 +149,10 @@ test('private-staging deployment template is digest-only, private, and resource 
   assert.doesNotMatch(compose, /tmpfs: \[[^\]\n]+,\s+mode=/);
   assert.doesNotMatch(compose, /temporalio\/auto-setup/);
   assert.match(compose, /entrypoint: \[\/bin\/sh, \/opt\/ventureos\/bin\/temporal-schema\.sh\]/);
-  assert.match(compose, /entrypoint: \[\/bin\/sh, \/opt\/ventureos\/bin\/temporal-entrypoint\.sh\]/);
+  assert.match(
+    compose,
+    /entrypoint: \[\/bin\/sh, \/opt\/ventureos\/bin\/temporal-entrypoint\.sh\]/,
+  );
   assert.match(compose, /STAGING_API_ORIGIN:\?stable HTTPS origin required/);
   assert.match(compose, /STAGING_WEB_ORIGIN:\?stable HTTPS origin required/);
   assert.match(compose, /WORKER_MAX_CONCURRENT_ACTIVITIES: ['"]4['"]/);
@@ -147,6 +180,12 @@ test('private-staging deployment template is digest-only, private, and resource 
   assert.match(compose, /max-file: ['"]5['"]/);
   assert.match(compose, /DATABASE_URL_FILE: \/run\/secrets\//);
   assert.match(compose, /AUTH_SECRET_FILE: \/run\/secrets\//);
+  for (const name of ['api-ingress', 'web-ingress']) {
+    const service = serviceBlock(compose, name);
+    assert.match(service, /healthcheck:/);
+    assert.match(service, /\/nodejs\/bin\/node/);
+    assert.doesNotMatch(service, /^\s+node,?$/m);
+  }
 });
 
 test('PostgreSQL templates keep bootstrap, owner, runtime, migration, Temporal, and backup privileges separate', () => {

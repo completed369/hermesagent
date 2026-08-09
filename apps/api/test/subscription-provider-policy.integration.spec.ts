@@ -6,7 +6,7 @@ import {
   prisma,
 } from '@ventureos/database';
 import { ContractNotFoundError, runDataAcquisition } from '@ventureos/research-connectors';
-import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
+import { entitleTestWorkspace } from './helpers/entitled-workspace';
 import { enforceCapabilityAdmission } from '../src/common/policy/capability-admission';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { BillingService } from '../src/modules/billing/billing.service';
@@ -45,20 +45,31 @@ describe('subscription and provider policy enforcement (integration)', () => {
   }
 
   afterAll(async () => {
-    for (const { workspaceId, contractId } of scenarios) {
-      await prisma.securityEvent.deleteMany({ where: { workspaceId } });
-      await prisma.evidenceClaim.deleteMany({
-        where: { evidenceArtifact: { workspaceId } },
-      });
-      await prisma.evidenceArtifact.deleteMany({ where: { workspaceId } });
-      await prisma.dataSource.deleteMany({ where: { dataAcquisitionContractId: contractId } });
-      await prisma.dataAcquisitionRun.deleteMany({ where: { contractId } });
-      await prisma.integration.deleteMany({ where: { workspaceId } });
-      await prisma.marketplaceAccount.deleteMany({ where: { workspaceId } });
-      await prisma.dataAcquisitionContract.deleteMany({ where: { id: contractId } });
-      await cleanupEntitledTestWorkspace(workspaceId);
-      await prisma.workspace.deleteMany({ where: { id: workspaceId } });
+    const workspaceIds = [...new Set(scenarios.map(({ workspaceId }) => workspaceId))];
+    const contractIds = [...new Set(scenarios.map(({ contractId }) => contractId))];
+
+    if (workspaceIds.length === 0) {
+      await prisma.$disconnect();
+      return;
     }
+
+    const planKeys = workspaceIds.map((workspaceId) => `INTEGRATION_TEST_${workspaceId}`);
+
+    await prisma.securityEvent.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.evidenceClaim.deleteMany({
+      where: { evidenceArtifact: { workspaceId: { in: workspaceIds } } },
+    });
+    await prisma.evidenceArtifact.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.dataSource.deleteMany({
+      where: { dataAcquisitionContractId: { in: contractIds } },
+    });
+    await prisma.dataAcquisitionRun.deleteMany({ where: { contractId: { in: contractIds } } });
+    await prisma.integration.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.marketplaceAccount.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.dataAcquisitionContract.deleteMany({ where: { id: { in: contractIds } } });
+    await prisma.subscription.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.plan.deleteMany({ where: { key: { in: planKeys } } });
+    await prisma.workspace.deleteMany({ where: { id: { in: workspaceIds } } });
     await prisma.$disconnect();
   });
 
