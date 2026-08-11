@@ -52,6 +52,7 @@ export class AuthController {
       sameSite: 'lax',
       expires: result.expiresAt,
       path: '/',
+      domain: this.env.AUTH_COOKIE_DOMAIN,
     });
 
     return { user: result.user };
@@ -88,7 +89,10 @@ export class AuthController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = req.cookies?.[this.env.AUTH_COOKIE_NAME];
     if (token) await this.authService.logout(token);
-    res.clearCookie(this.env.AUTH_COOKIE_NAME, { path: '/' });
+    res.clearCookie(this.env.AUTH_COOKIE_NAME, {
+      path: '/',
+      domain: this.env.AUTH_COOKIE_DOMAIN,
+    });
     return { success: true };
   }
 
