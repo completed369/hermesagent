@@ -46,6 +46,7 @@ export const envSchema = z
     AUTH_REGISTRATION_MIN_RESPONSE_MS: z.coerce.number().int().min(50).max(2000).default(300),
     AUTH_SESSION_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(604800),
     AUTH_COOKIE_NAME: z.string().default('ventureos_session'),
+    AUTH_COOKIE_DOMAIN: z.string().min(1).optional(),
     DEV_LOGIN_ENABLED: zBoolean(true),
     DEV_FOUNDER_EMAIL: z.string().email().optional(),
     DEV_FOUNDER_PASSWORD: z.string().optional(),
@@ -177,6 +178,26 @@ export const envSchema = z
           message: 'staging CORS must exactly match WEB_PUBLIC_ORIGIN',
         });
       }
+      if (!env.AUTH_COOKIE_DOMAIN) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AUTH_COOKIE_DOMAIN'],
+          message: 'staging requires a shared session cookie domain',
+        });
+      } else if (env.API_PUBLIC_ORIGIN && env.WEB_PUBLIC_ORIGIN) {
+        const cookieDomain = env.AUTH_COOKIE_DOMAIN.replace(/^\./, '').toLowerCase();
+        const apiHostname = new URL(env.API_PUBLIC_ORIGIN).hostname.toLowerCase();
+        const webHostname = new URL(env.WEB_PUBLIC_ORIGIN).hostname.toLowerCase();
+        const containsHostname = (hostname: string) =>
+          hostname === cookieDomain || hostname.endsWith(`.${cookieDomain}`);
+        if (!containsHostname(apiHostname) || !containsHostname(webHostname)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['AUTH_COOKIE_DOMAIN'],
+            message: 'staging cookie domain must contain both API and web hostnames',
+          });
+        }
+      }
       if (
         env.STORAGE_PROVIDER !== 'mock' ||
         env.AI_PROVIDER !== 'mock' ||
@@ -221,8 +242,7 @@ let cachedEnv: Env | undefined;
 
 /**
  * Parses and validates process.env. Throws (fails closed) on the first call
- * if configuration is invalid, rather than allowing the app to boot in an
- * unsafe or undefined state.
+ * if configuration is invalid, rather than allowing the app to boot in an unsafe or undefined state.
  */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (cachedEnv) return cachedEnv;
