@@ -121,11 +121,16 @@ describe('envSchema', () => {
       API_PUBLIC_ORIGIN: 'https://api.staging.ventureos.invalid',
       WEB_PUBLIC_ORIGIN: 'https://web.staging.ventureos.invalid',
       API_CORS_ORIGIN: 'https://web.staging.ventureos.invalid',
+      AUTH_COOKIE_DOMAIN: 'ventureos.invalid',
       AUTH_SECRET: 'a'.repeat(64),
       AUTH_ABUSE_DIGEST_SECRET: 'b'.repeat(64),
       DEV_LOGIN_ENABLED: 'false',
     };
     expect(envSchema.safeParse(staging).success).toBe(true);
+    expect(envSchema.safeParse({ ...staging, AUTH_COOKIE_DOMAIN: undefined }).success).toBe(false);
+    expect(envSchema.safeParse({ ...staging, AUTH_COOKIE_DOMAIN: 'example.invalid' }).success).toBe(
+      false,
+    );
     expect(
       envSchema.safeParse({ ...staging, API_PUBLIC_ORIGIN: 'http://api.internal' }).success,
     ).toBe(false);
