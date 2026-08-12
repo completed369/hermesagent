@@ -28,6 +28,37 @@ const registerSchema = z.object({
   workspaceName: z.string().min(1),
 });
 
+function sessionTokensFromRequest(req: Request, cookieName: string): string[] {
+  const tokens = new Set<string>();
+
+  const parsedToken = req.cookies?.[cookieName];
+  if (typeof parsedToken === 'string' && parsedToken.length > 0) {
+    tokens.add(parsedToken);
+  }
+
+  const rawCookieHeader = req.headers.cookie;
+  if (typeof rawCookieHeader === 'string') {
+    for (const segment of rawCookieHeader.split(';')) {
+      const separator = segment.indexOf('=');
+      if (separator < 0) continue;
+
+      const name = segment.slice(0, separator).trim();
+      if (name !== cookieName) continue;
+
+      const rawValue = segment.slice(separator + 1).trim();
+      if (!rawValue) continue;
+
+      try {
+        tokens.add(decodeURIComponent(rawValue));
+      } catch {
+        tokens.add(rawValue);
+      }
+    }
+  }
+
+  return [...tokens];
+}
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -87,12 +118,22 @@ export class AuthController {
   @Post('logout')
   @HttpCode(200)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const token = req.cookies?.[this.env.AUTH_COOKIE_NAME];
-    if (token) await this.authService.logout(token);
+    const tokens = sessionTokensFromRequest(req, this.env.AUTH_COOKIE_NAME);
+    await Promise.all(tokens.map((token) => this.authService.logout(token)));
+
+    // Clear the current shared-domain cookie.
     res.clearCookie(this.env.AUTH_COOKIE_NAME, {
       path: '/',
       domain: this.env.AUTH_COOKIE_DOMAIN,
     });
+
+    // Also clear the legacy host-only cookie left by pre-shared-domain
+    // private-staging releases. Browsers can otherwise send both cookies
+    // with the same name and cause logout to revoke the wrong session.
+    if (this.env.AUTH_COOKIE_DOMAIN) {
+      res.clearCookie(this.env.AUTH_COOKIE_NAME, { path: '/' });
+    }
+
     return { success: true };
   }
 

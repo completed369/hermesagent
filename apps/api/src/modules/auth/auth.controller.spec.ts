@@ -66,15 +66,32 @@ describe('AuthController session cookie scope', () => {
     );
   });
 
-  it('clears the session cookie using the same shared domain', async () => {
+  it('clears both shared-domain and legacy host-only session cookies', async () => {
     const { controller, authService, request, response, clearCookie } = setup('ventureos.site');
 
     await controller.logout(request, response);
 
     expect(authService.logout).toHaveBeenCalledWith('session-token');
-    expect(clearCookie).toHaveBeenCalledWith('ventureos_session', {
+    expect(clearCookie).toHaveBeenNthCalledWith(1, 'ventureos_session', {
       path: '/',
       domain: 'ventureos.site',
     });
+    expect(clearCookie).toHaveBeenNthCalledWith(2, 'ventureos_session', {
+      path: '/',
+    });
+  });
+
+  it('revokes every duplicate session cookie value during cookie-scope migration', async () => {
+    const { controller, authService, request, response } = setup('ventureos.site');
+
+    request.cookies = { ventureos_session: 'legacy-token' };
+    request.headers.cookie =
+      'ventureos_session=legacy-token; ventureos_session=shared-domain-token';
+
+    await controller.logout(request, response);
+
+    expect(authService.logout).toHaveBeenCalledTimes(2);
+    expect(authService.logout).toHaveBeenCalledWith('legacy-token');
+    expect(authService.logout).toHaveBeenCalledWith('shared-domain-token');
   });
 });
