@@ -276,6 +276,7 @@ services:
       DATABASE_URL_FILE: /run/secrets/ventureos_app_database_url
       AUTH_SECRET_FILE: /run/secrets/auth_secret
       AUTH_ABUSE_DIGEST_SECRET_FILE: /run/secrets/auth_abuse_digest_secret
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:?shared staging cookie domain required}
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: ventureos-staging
       TEMPORAL_TASK_QUEUE: ventureos-main
