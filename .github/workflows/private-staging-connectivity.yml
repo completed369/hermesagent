@@ -1,0 +1,80 @@
+name: Private staging VPS connectivity
+
+'on':
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact main commit to verify
+        required: true
+        type: string
+      connectivity_authorized:
+        description: Founder has authorized the staging SSH connectivity check
+        required: true
+        type: boolean
+        default: false
+      authorization_phrase:
+        description: Type TEST-PRIVATE-STAGING-SSH exactly
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ventureos-private-staging-connectivity
+  cancel-in-progress: false
+
+jobs:
+  connectivity:
+    if: ${{ inputs.connectivity_authorized == true && inputs.authorization_phrase == 'TEST-PRIVATE-STAGING-SSH' }}
+    name: Verify protected SSH connectivity only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: private-staging
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+      VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+      INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - name: Enforce exact main source and required staging configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "${GITHUB_REF}" = refs/heads/main
+          [[ "${INPUT_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          test "${INPUT_SOURCE_SHA}" = "${GITHUB_SHA}"
+          test -n "${VPS_HOST}"
+          test -n "${VPS_USER}"
+          test -n "${VPS_KNOWN_HOSTS}"
+          test -n "${VPS_SSH_PRIVATE_KEY}"
+
+      - name: Install pinned SSH identity and host key
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 700 "${HOME}/.ssh"
+          umask 077
+          printf '%s\n' "${VPS_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/ventureos-private-staging"
+          printf '%s\n' "${VPS_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/ventureos-private-staging" "${HOME}/.ssh/known_hosts"
+
+      - name: Verify read-only VPS connectivity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh \
+            -i "${HOME}/.ssh/ventureos-private-staging" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" \
+            -o ConnectTimeout=10 \
+            "${VPS_USER}@${VPS_HOST}" \
+            'set -eu; printf "SSH_CONNECTIVITY=PASS\nUSER=%s\nHOST=%s\n" "$(id -un)" "$(hostname)"; docker ps --format "table {{.Names}}\t{{.Status}}"'
+
+      - name: Remove runner SSH material
+        if: always()
+        shell: bash
+        run: rm -rf "${HOME}/.ssh"
