@@ -142,6 +142,10 @@ services:
       DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/staging.yaml
       NUM_HISTORY_SHARDS: '128'
       SERVICES: history,matching,frontend,worker
+      SQL_MAX_CONNS: '4'
+      SQL_MAX_IDLE_CONNS: '4'
+      SQL_VIS_MAX_CONNS: '2'
+      SQL_VIS_MAX_IDLE_CONNS: '2'
     volumes:
       - ./temporal/entrypoint.sh:/opt/ventureos/bin/temporal-entrypoint.sh:ro
       - ./temporal/staging.yaml:/etc/temporal/config/dynamicconfig/staging.yaml:ro
