@@ -11,7 +11,9 @@ if (!EMAIL || !PASSWORD) throw new Error('Synthetic staging founder credentials 
 
 function percentile(values, p) {
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))] ?? 0;
+  return sorted[
+    Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))
+  ] ?? 0;
 }
 
 async function fetchTimed(path, options = {}) {
@@ -67,7 +69,9 @@ const login = await fetchTimed('/auth/login', {
   method: 'POST',
   body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
 });
-if (login.response.status !== 200) throw new Error(`Synthetic founder login failed: ${login.response.status}`);
+if (login.response.status !== 200) {
+  throw new Error(`Synthetic founder login failed: ${login.response.status}`);
+}
 const setCookie = login.response.headers.get('set-cookie');
 if (!setCookie) throw new Error('Login did not return a session cookie');
 const cookie = setCookie.split(';', 1)[0];
@@ -75,7 +79,13 @@ const authHeaders = { cookie };
 
 const results = [];
 results.push(
-  await runConcurrent('api-liveness', 200, 20, () => fetchTimed('/health/live'), (status) => status === 200),
+  await runConcurrent(
+    'api-liveness',
+    200,
+    20,
+    () => fetchTimed('/health/live'),
+    (status) => status === 200,
+  ),
 );
 results.push(
   await runConcurrent(
@@ -88,7 +98,11 @@ results.push(
 );
 
 const opportunities = await fetchTimed('/opportunities', { headers: authHeaders });
-if (opportunities.response.status !== 200 || !Array.isArray(opportunities.body) || opportunities.body.length === 0) {
+if (
+  opportunities.response.status !== 200 ||
+  !Array.isArray(opportunities.body) ||
+  opportunities.body.length === 0
+) {
   throw new Error('Seeded opportunity is unavailable for board load testing');
 }
 const opportunityId = opportunities.body[0].id;
@@ -106,7 +120,11 @@ results.push(
     'board-review-start',
     20,
     20,
-    () => fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, { method: 'POST', headers: authHeaders }),
+    () =>
+      fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, {
+        method: 'POST',
+        headers: authHeaders,
+      }),
     (status) => status === 200 || status === 201,
   ),
 );
@@ -114,14 +132,18 @@ results.push(
 let completedReviews = 0;
 const reviewDeadline = Date.now() + 120_000;
 while (Date.now() < reviewDeadline) {
-  const reviews = await fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, { headers: authHeaders });
+  const reviews = await fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, {
+    headers: authHeaders,
+  });
   if (reviews.response.status === 200 && Array.isArray(reviews.body)) {
     completedReviews = reviews.body.filter((review) => review.status === 'COMPLETED').length;
     if (completedReviews >= 20) break;
   }
   await new Promise((resolve) => setTimeout(resolve, 1000));
 }
-if (completedReviews < 20) throw new Error(`Only ${completedReviews}/20 board reviews completed within 120s`);
+if (completedReviews < 20) {
+  throw new Error(`Only ${completedReviews}/20 board reviews completed within 120s`);
+}
 
 const contracts = await fetchTimed('/research/contracts', { headers: authHeaders });
 if (contracts.response.status !== 200 || !Array.isArray(contracts.body) || contracts.body.length === 0) {
@@ -133,11 +155,26 @@ results.push(
     'research-acquisition',
     20,
     20,
-    () => fetchTimed(`/research/contracts/${contract.id}/run`, { method: 'POST', headers: authHeaders }),
+    () =>
+      fetchTimed(`/research/contracts/${contract.id}/run`, {
+        method: 'POST',
+        headers: authHeaders,
+      }),
     (status, body) =>
-      (status === 200 || status === 201) && body && !['FAILED', 'BLOCKED_POLICY'].includes(body.status),
+      (status === 200 || status === 201) &&
+      body &&
+      !['FAILED', 'BLOCKED_POLICY'].includes(body.status),
   ),
 );
+
+const report = {
+  generatedAt: new Date().toISOString(),
+  apiBase: API_BASE,
+  boardReviewsCompleted: completedReviews,
+  results,
+};
+mkdirSync(dirname(RESULT_FILE), { recursive: true });
+writeFileSync(RESULT_FILE, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 
 const thresholds = {
   'api-liveness': 1000,
@@ -152,12 +189,4 @@ for (const result of results) {
   }
 }
 
-const report = {
-  generatedAt: new Date().toISOString(),
-  apiBase: API_BASE,
-  boardReviewsCompleted: completedReviews,
-  results,
-};
-mkdirSync(dirname(RESULT_FILE), { recursive: true });
-writeFileSync(RESULT_FILE, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 console.log(`STAGING_LOAD_TEST_PASS ${RESULT_FILE}`);
