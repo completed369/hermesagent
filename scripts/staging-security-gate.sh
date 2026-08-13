@@ -109,6 +109,12 @@ run_gate() {
   CI=true E2E_EXTERNAL_SERVERS=true E2E_BASE_URL=http://localhost:3000 \
     pnpm --filter @ventureos/web run test:e2e
 
+  # Stage 5 performance gate: drive the disposable staging topology with
+  # 20 concurrent workers across health, authenticated reads, Temporal board
+  # workflow starts, and research acquisitions. Results are written as JSON
+  # for CI evidence and later comparison.
+  node scripts/staging-load-test.mjs
+
   local users_before users_after
   users_before=$(compose exec -T postgres psql -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" -Atc 'select count(*) from users')
   compose restart api worker
