@@ -13,7 +13,7 @@ export const NAV_ITEMS = [
   { href: '/dashboard/products', label: 'Product Studio', available: true },
   { href: '/dashboard/research', label: 'Research Connectors', available: true },
   { href: '/dashboard/finance', label: 'Finance Centre', available: true },
-  { href: '#', label: 'Workflow Centre', available: false },
+  { href: '#', label: 'Workflow Centre', available: false, statusLabel: 'Planned' },
 ];
 
 export function DashboardNav() {
@@ -39,10 +39,10 @@ export function DashboardNav() {
               display: 'flex',
               justifyContent: 'space-between',
             }}
-            title="Planned for a later phase - not available yet"
+            title="Planned capability - not available yet"
           >
             <span>{item.label}</span>
-            <span className="vos-badge vos-badge--mock">Phase 2+</span>
+            <span className="vos-badge vos-badge--mock">{'statusLabel' in item ? item.statusLabel : 'Planned'}</span>
           </div>
         ),
       )}
