@@ -97,17 +97,29 @@ cd "$RELEASE_COMPOSE_DIR"
 docker compose --env-file .env config --quiet
 printf 'COMPOSE_CONFIG=PASS\n'
 
-docker compose --env-file .env --profile upgrade --profile migrate --profile grant-runtime pull
+docker compose --env-file .env --profile upgrade --profile migrate pull
 printf 'IMAGE_PULL=PASS\n'
 
+POSTGRES_CONTAINER='ventureos-private-staging-postgres-1'
+postgres_health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$POSTGRES_CONTAINER" 2>/dev/null || true)"
+[ "$postgres_health" = healthy ] || stop "PostgreSQL must already be healthy before maintenance; got: $postgres_health"
+printf 'POSTGRES_HEALTH_PRE_MAINTENANCE=PASS\n'
+
 # Existing staging is already initialized. Never run the initialize profile here.
-docker compose --env-file .env --profile upgrade run --rm temporal-schema-upgrade
+# --no-deps prevents maintenance jobs from recreating the already-running database.
+docker compose --env-file .env --profile upgrade run --rm --no-deps temporal-schema-upgrade
 printf 'TEMPORAL_SCHEMA_UPGRADE=PASS\n'
 
-docker compose --env-file .env --profile migrate run --rm migrate
+docker compose --env-file .env --profile migrate run --rm --no-deps migrate
 printf 'APP_MIGRATION=PASS\n'
 
-docker compose --env-file .env --profile grant-runtime run --rm postgres-privileges
+# File-backed Compose secrets retain host filesystem ownership/mode. Execute the
+# reviewed grants through the already-running PostgreSQL container, which already
+# has approved access to the bootstrap secret, and stream this release's SQL.
+test -f ./postgres/20-privileges.sql || stop 'Runtime grants SQL is missing.'
+docker compose --env-file .env exec -T -u 0 postgres sh -ec \
+  'export PGPASSWORD="$(cat /run/secrets/postgres_bootstrap_password)"; exec psql --host=127.0.0.1 --username=ventureos_bootstrap --dbname=postgres --set=ON_ERROR_STOP=1 --file=-' \
+  < ./postgres/20-privileges.sql
 printf 'RUNTIME_GRANTS=PASS\n'
 
 ROLLBACK_NEEDED=0
