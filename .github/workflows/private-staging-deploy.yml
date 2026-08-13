@@ -4,7 +4,7 @@ name: Deploy immutable VentureOS to private staging
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Exact current main commit to deploy
+        description: Exact previously published main commit to deploy
         required: true
         type: string
       deploy_authorized:
@@ -39,13 +39,12 @@ jobs:
       VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
       INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
     steps:
-      - name: Enforce exact current main source and protected staging configuration
+      - name: Enforce main operator source and protected staging configuration
         shell: bash
         run: |
           set -Eeuo pipefail
           test "${GITHUB_REF}" = refs/heads/main
           [[ "${INPUT_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
-          test "${INPUT_SOURCE_SHA}" = "${GITHUB_SHA}"
           test -n "${VPS_HOST}"
           test -n "${VPS_USER}"
           test -n "${VPS_KNOWN_HOSTS}"
@@ -76,10 +75,17 @@ jobs:
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           printf 'PUBLICATION_RUN_ID=%s\n' "$run_id"
 
-      - name: Checkout exact deployed source
+      - name: Checkout current reviewed deployment operator
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Checkout exact immutable release source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.source_sha }}
+          path: release-source
           persist-credentials: false
 
       - name: Download exact five-image publication manifest
@@ -113,11 +119,12 @@ jobs:
           done
           printf 'PUBLICATION_MANIFEST=PASS\n'
 
-      - name: Package exact reviewed source for immutable release directory
+      - name: Package exact immutable release source
         shell: bash
         run: |
           set -Eeuo pipefail
           tar \
+            -C release-source \
             --exclude=.git \
             --exclude=.staging \
             -czf /tmp/ventureos-source.tgz .
@@ -132,7 +139,7 @@ jobs:
           printf '%s\n' "${VPS_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
           chmod 600 "${HOME}/.ssh/ventureos-private-staging" "${HOME}/.ssh/known_hosts"
 
-      - name: Stage exact source, manifest, and reviewed deploy script on VPS
+      - name: Stage exact source, manifest, and current reviewed deploy script on VPS
         id: stage
         shell: bash
         run: |
