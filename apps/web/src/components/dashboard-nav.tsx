@@ -42,7 +42,9 @@ export function DashboardNav() {
             title="Planned capability - not available yet"
           >
             <span>{item.label}</span>
-            <span className="vos-badge vos-badge--mock">{'statusLabel' in item ? item.statusLabel : 'Planned'}</span>
+            <span className="vos-badge vos-badge--mock">
+              {'statusLabel' in item ? item.statusLabel : 'Planned'}
+            </span>
           </div>
         ),
       )}
