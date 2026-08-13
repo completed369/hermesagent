@@ -1,5 +1,6 @@
 import { serverApiFetch } from '@/lib/server-api';
 import {
+  COMMAND_CENTRE_STATUS_COPY,
   ventureProposalCount,
   pendingApprovalCount,
   currentBudgetUtilisation,
@@ -137,13 +138,9 @@ export default async function CommandCentrePage() {
       </div>
 
       <div className="vos-card">
-        <h2 style={{ fontSize: 16, margin: '0 0 8px' }}>What&apos;s real vs. planned</h2>
+        <h2 style={{ fontSize: 16, margin: '0 0 8px' }}>What&apos;s available vs. gated</h2>
         <p style={{ fontSize: 13, color: 'var(--vos-text-muted)', margin: 0 }}>
-          VentureOS is a verified local development build. Opportunity research, board review,
-          approvals, product and listing workflows, finance, billing and multi-venture features are
-          implemented locally. Real AI providers, live Etsy publication, real payments, advertising
-          expenditure and production deployment remain disabled or pending. Founder approval remains
-          required for sensitive actions.
+          {COMMAND_CENTRE_STATUS_COPY}
         </p>
       </div>
     </div>
