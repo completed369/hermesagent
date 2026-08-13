@@ -1,0 +1,202 @@
+name: Deploy immutable VentureOS to private staging
+
+'on':
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact current main commit to deploy
+        required: true
+        type: string
+      deploy_authorized:
+        description: Founder has authorized private-staging deployment
+        required: true
+        type: boolean
+        default: false
+      authorization_phrase:
+        description: Type DEPLOY-PRIVATE-STAGING exactly
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ventureos-private-staging-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ inputs.deploy_authorized == true && inputs.authorization_phrase == 'DEPLOY-PRIVATE-STAGING' }}
+    name: Deploy attested immutable release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: private-staging
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+      VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+      INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - name: Enforce exact current main source and protected staging configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "${GITHUB_REF}" = refs/heads/main
+          [[ "${INPUT_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          test "${INPUT_SOURCE_SHA}" = "${GITHUB_SHA}"
+          test -n "${VPS_HOST}"
+          test -n "${VPS_USER}"
+          test -n "${VPS_KNOWN_HOSTS}"
+          test -n "${VPS_SSH_PRIVATE_KEY}"
+
+      - name: Locate successful immutable publication for this exact source SHA
+        id: publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          runs="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/publish-images.yml/runs?event=workflow_dispatch&branch=main&status=success&per_page=100")"
+          run_id="$(jq -er --arg sha "${INPUT_SOURCE_SHA}" \
+            '[.workflow_runs[] | select(.head_sha == $sha and .conclusion == "success")] | sort_by(.created_at) | last | .id' \
+            <<<"$runs")"
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+          details="$(gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+          jq -e --arg sha "${INPUT_SOURCE_SHA}" '
+            .event == "workflow_dispatch" and
+            .conclusion == "success" and
+            .head_branch == "main" and
+            .head_sha == $sha and
+            .path == ".github/workflows/publish-images.yml"
+          ' <<<"$details" >/dev/null
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          printf 'PUBLICATION_RUN_ID=%s\n' "$run_id"
+
+      - name: Checkout exact deployed source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Download exact five-image publication manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ventureos-images-${{ inputs.source_sha }}
+          path: /tmp/ventureos-release-manifest
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.publication.outputs.run_id }}
+
+      - name: Validate manifest and extract immutable digests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          manifest=/tmp/ventureos-release-manifest/ventureos-images.json
+          test -f "$manifest"
+          jq -e --arg sha "${INPUT_SOURCE_SHA}" '
+            .schemaVersion == 1 and
+            .sourceCommit == $sha and
+            .platform == "linux/amd64" and
+            (.images | keys | sort) == ["api","ingress","tools","web","worker"]
+          ' "$manifest" >/dev/null
+
+          for image in api web worker tools ingress; do
+            ref="$(jq -er --arg image "$image" '.images[$image]' "$manifest")"
+            [[ "$ref" =~ ^ghcr\.io/completed369/ventureos-${image}@sha256:[0-9a-f]{64}$ ]]
+            digest="${ref##*@}"
+            upper="$(printf '%s' "$image" | tr '[:lower:]' '[:upper:]')"
+            printf 'VENTUREOS_%s_DIGEST=%s\n' "$upper" "$digest" >> "$GITHUB_ENV"
+          done
+          printf 'PUBLICATION_MANIFEST=PASS\n'
+
+      - name: Package exact reviewed source for immutable release directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tar \
+            --exclude=.git \
+            --exclude=.staging \
+            -czf /tmp/ventureos-source.tgz .
+
+      - name: Install pinned SSH identity and host key
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 700 "${HOME}/.ssh"
+          umask 077
+          printf '%s\n' "${VPS_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/ventureos-private-staging"
+          printf '%s\n' "${VPS_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/ventureos-private-staging" "${HOME}/.ssh/known_hosts"
+
+      - name: Stage exact source, manifest, and reviewed deploy script on VPS
+        id: stage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          remote_inbox="/home/${VPS_USER}/ventureos-deploy-inbox/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ssh_opts=(
+            -i "${HOME}/.ssh/ventureos-private-staging"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="${HOME}/.ssh/known_hosts"
+            -o ConnectTimeout=10
+          )
+          ssh "${ssh_opts[@]}" "${VPS_USER}@${VPS_HOST}" \
+            "umask 077; mkdir -p '${remote_inbox}'; test -d '${remote_inbox}'"
+          scp "${ssh_opts[@]}" /tmp/ventureos-source.tgz \
+            "${VPS_USER}@${VPS_HOST}:${remote_inbox}/source.tgz"
+          scp "${ssh_opts[@]}" /tmp/ventureos-release-manifest/ventureos-images.json \
+            "${VPS_USER}@${VPS_HOST}:${remote_inbox}/ventureos-images.json"
+          scp "${ssh_opts[@]}" scripts/private-staging-deploy.sh \
+            "${VPS_USER}@${VPS_HOST}:${remote_inbox}/deploy.sh"
+          echo "remote_inbox=$remote_inbox" >> "$GITHUB_OUTPUT"
+
+      - name: Execute reviewed deployment with fail-closed rollback
+        shell: bash
+        env:
+          REMOTE_INBOX: ${{ steps.stage.outputs.remote_inbox }}
+        run: |
+          set -Eeuo pipefail
+          ssh_opts=(
+            -i "${HOME}/.ssh/ventureos-private-staging"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="${HOME}/.ssh/known_hosts"
+            -o ConnectTimeout=10
+          )
+          ssh "${ssh_opts[@]}" "${VPS_USER}@${VPS_HOST}" \
+            "chmod 700 '${REMOTE_INBOX}/deploy.sh' && '${REMOTE_INBOX}/deploy.sh' \
+            '${INPUT_SOURCE_SHA}' \
+            '${REMOTE_INBOX}' \
+            '${VENTUREOS_API_DIGEST}' \
+            '${VENTUREOS_WEB_DIGEST}' \
+            '${VENTUREOS_WORKER_DIGEST}' \
+            '${VENTUREOS_TOOLS_DIGEST}' \
+            '${VENTUREOS_INGRESS_DIGEST}' \
+            '${GITHUB_RUN_ID}'"
+
+      - name: Verify deployed container state from a fresh SSH command
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh_opts=(
+            -i "${HOME}/.ssh/ventureos-private-staging"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="${HOME}/.ssh/known_hosts"
+            -o ConnectTimeout=10
+          )
+          ssh "${ssh_opts[@]}" "${VPS_USER}@${VPS_HOST}" \
+            'set -eu; readlink -f "$HOME/ventureos-current"; docker ps --format "table {{.Names}}\t{{.Status}}"'
+
+      - name: Remove runner SSH material
+        if: always()
+        shell: bash
+        run: rm -rf "${HOME}/.ssh"
