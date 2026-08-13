@@ -4,7 +4,12 @@ import { NAV_ITEMS } from '@/components/dashboard-nav';
 // NAV_ITEMS is a named export; assert routing without pulling in Next.js
 // <Link> (which requires a React DOM env).
 describe('Dashboard navigation', () => {
-  const nav = NAV_ITEMS as Array<{ href: string; label: string; available: boolean }>;
+  const nav = NAV_ITEMS as Array<{
+    href: string;
+    label: string;
+    available: boolean;
+    statusLabel?: string;
+  }>;
 
   it('has exactly one item pointing to /dashboard/board-room', () => {
     const boardRoom = nav.filter((i) => i.href === '/dashboard/board-room');
@@ -21,5 +26,11 @@ describe('Dashboard navigation', () => {
   it('has no duplicate destinations among available items', () => {
     const availableHrefs = nav.filter((i) => i.available).map((i) => i.href);
     expect(new Set(availableHrefs).size).toBe(availableHrefs.length);
+  });
+
+  it('uses a durable planned label instead of stale phase numbering', () => {
+    const workflowCentre = nav.find((i) => i.label === 'Workflow Centre');
+    expect(workflowCentre).toMatchObject({ available: false, statusLabel: 'Planned' });
+    expect(workflowCentre?.statusLabel).not.toMatch(/phase/i);
   });
 });
