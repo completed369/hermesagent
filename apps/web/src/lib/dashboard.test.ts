@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COMMAND_CENTRE_STATUS_COPY,
   ventureProposalCount,
   pendingApprovalCount,
   currentBudgetUtilisation,
@@ -7,6 +8,13 @@ import {
 } from '@/lib/dashboard';
 
 describe('Command Centre calculations', () => {
+  it('uses environment-neutral deployment status copy', () => {
+    expect(COMMAND_CENTRE_STATUS_COPY).not.toMatch(/verified local development build/i);
+    expect(COMMAND_CENTRE_STATUS_COPY).not.toMatch(/production deployment remain/i);
+    expect(COMMAND_CENTRE_STATUS_COPY).toMatch(/core workflows are available/i);
+    expect(COMMAND_CENTRE_STATUS_COPY).toMatch(/founder approval remains required/i);
+  });
+
   describe('ventureProposalCount', () => {
     it('returns the workspace ventureCount when available', () => {
       expect(ventureProposalCount(7)).toBe(7);
@@ -47,7 +55,6 @@ describe('Command Centre calculations', () => {
     });
 
     it('returns null when there are no matching current active budgets', () => {
-      // CLOSED budget only.
       const budgets = [
         {
           status: 'CLOSED',
@@ -69,7 +76,6 @@ describe('Command Centre calculations', () => {
           totalLimitEur: 999,
           allocations: [{ spentEur: 999 }],
         },
-        // future budget
         {
           status: 'ACTIVE',
           periodStart: '2027-01-01',
@@ -77,7 +83,6 @@ describe('Command Centre calculations', () => {
           totalLimitEur: 500,
           allocations: [{ spentEur: 50 }],
         },
-        // past budget
         {
           status: 'ACTIVE',
           periodStart: '2025-01-01',
@@ -85,7 +90,6 @@ describe('Command Centre calculations', () => {
           totalLimitEur: 500,
           allocations: [{ spentEur: 50 }],
         },
-        // current active
         {
           status: 'ACTIVE',
           periodStart: '2026-01-01',
