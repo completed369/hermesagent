@@ -19,7 +19,7 @@ test('registration creates an isolated TRIAL workspace', async ({ page }) => {
   await page.getByTestId('login-password').fill(password);
   await page.getByTestId('login-submit').click();
   await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByText(workspaceName, { exact: false })).toBeVisible();
+  await expect(page.getByText(workspaceName, { exact: true })).toBeVisible();
 
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByText('Trial', { exact: true })).toBeVisible();
