@@ -7,6 +7,9 @@
  * budget limit).
  */
 
+export const COMMAND_CENTRE_STATUS_COPY =
+  'VentureOS core workflows are available in this environment. Opportunity research, board review, approvals, product and listing workflows, finance, billing and multi-venture features are implemented. Real AI providers, live Etsy publication, real payments and advertising expenditure remain disabled unless explicitly enabled and approved. Founder approval remains required for sensitive actions.';
+
 export interface IntegrationLike {
   status: string;
 }
