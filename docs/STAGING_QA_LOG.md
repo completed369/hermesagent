@@ -75,12 +75,12 @@ Authoritative merge-head evidence:
 
 Observed 20-concurrent-user results from `.staging/load-results.json`:
 
-| Workload | Requests | Success | p50 | p95 | Max |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| API liveness | 20 | 20/20 HTTP 200 | 39 ms | 47 ms | 48 ms |
-| Authenticated workspace read | 20 | 20/20 HTTP 200 | 67 ms | 76 ms | 76 ms |
-| Board-review start | 20 | 20/20 HTTP 201 | 202 ms | 262 ms | 271 ms |
-| Research acquisition | 20 | 20/20 HTTP 201 | 245 ms | 270 ms | 274 ms |
+| Workload                     | Requests |        Success |    p50 |    p95 |    Max |
+| ---------------------------- | -------: | -------------: | -----: | -----: | -----: |
+| API liveness                 |       20 | 20/20 HTTP 200 |  39 ms |  47 ms |  48 ms |
+| Authenticated workspace read |       20 | 20/20 HTTP 200 |  67 ms |  76 ms |  76 ms |
+| Board-review start           |       20 | 20/20 HTTP 201 | 202 ms | 262 ms | 271 ms |
+| Research acquisition         |       20 | 20/20 HTTP 201 | 245 ms | 270 ms | 274 ms |
 
 The load runner also observed `boardReviewsCompletedBefore=0`, `boardReviewsCompletedAfter=20`, and `boardReviewsNewlyCompleted=20`.
 

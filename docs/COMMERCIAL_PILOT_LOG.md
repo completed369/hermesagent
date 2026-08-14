@@ -21,12 +21,12 @@ This log is the Stage-6 evidence record for one real VentureOS pilot venture. Do
 
 ## Founder approval checkpoints
 
-| Checkpoint | ApprovalRequest ID | Decision | Decided at | Evidence |
-| --- | --- | --- | --- | --- |
-| Opportunity / Venture Proposal | TBD | TBD | TBD | TBD |
-| Product + Listing | TBD | TBD | TBD | TBD |
-| Publication | TBD | TBD | TBD | TBD |
-| Scale / spend increase | TBD | TBD | TBD | TBD |
+| Checkpoint                     | ApprovalRequest ID | Decision | Decided at | Evidence |
+| ------------------------------ | ------------------ | -------- | ---------- | -------- |
+| Opportunity / Venture Proposal | TBD                | TBD      | TBD        | TBD      |
+| Product + Listing              | TBD                | TBD      | TBD        | TBD      |
+| Publication                    | TBD                | TBD      | TBD        | TBD      |
+| Scale / spend increase         | TBD                | TBD      | TBD        | TBD      |
 
 No checkpoint may be filled from chat history alone. Record the persisted VentureOS approval request/decision.
 
