@@ -12,7 +12,7 @@ Separately, the engineering project can benefit from a coding-agent harness that
 
 ### 1. Product memory remains VentureOS-native
 
-Create `@ventureos/memory` as an application-owned package. It must not depend on Pi or any third-party coding-agent memory extension.
+Define the initial memory contract inside the existing `@ventureos/agent-runtime` package. The contract remains application-owned and must not depend on Pi or any third-party coding-agent memory extension. A dedicated persistence package may be split out later if the database implementation warrants it; the public contract should remain stable either way.
 
 Memory records are workspace-scoped and carry workspace identity, memory kind (`FACT`, `DECISION`, `EPISODE`, `PROCEDURE`), subject/key, structured payload, provenance/source reference, confidence, sensitivity classification, creator actor/agent, timestamps, optional expiry/retention metadata, and revocation/supersession metadata.
 
@@ -32,7 +32,7 @@ The default Pi environment receives no production secrets. Live provider credent
 
 ### 4. No unreviewed Pi packages
 
-Third-party Pi packages/extensions are not installed automatically. Each package requires source review and a pinned version before adoption. Pi developer-memory extensions, if adopted, remain separate from `@ventureos/memory` and do not become a production data dependency.
+Third-party Pi packages/extensions are not installed automatically. Each package requires source review and a pinned version before adoption. Pi developer-memory extensions, if adopted, remain separate from VentureOS product memory and do not become a production data dependency.
 
 ## Consequences
 
