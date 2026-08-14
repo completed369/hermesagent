@@ -3,6 +3,8 @@ import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
 const API_BASE = process.env.STAGING_LOAD_API_BASE_URL ?? 'http://localhost:3001/api';
+const WEB_ORIGIN =
+  process.env.STAGING_LOAD_WEB_ORIGIN ?? process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const EMAIL = process.env.STAGING_FOUNDER_EMAIL ?? process.env.DEV_FOUNDER_EMAIL;
 const PASSWORD = process.env.STAGING_FOUNDER_PASSWORD ?? process.env.DEV_FOUNDER_PASSWORD;
 const RESULT_FILE = resolve(process.env.STAGING_LOAD_RESULT_FILE ?? '.staging/load-results.json');
@@ -85,6 +87,10 @@ const setCookie = login.response.headers.get('set-cookie');
 if (!setCookie) throw new Error('Login did not return a session cookie');
 const cookie = setCookie.split(';', 1)[0];
 const authHeaders = { cookie };
+// Cookie-authenticated unsafe requests are protected by the same global
+// same-origin guard used by the browser. Model a legitimate browser request
+// rather than weakening/bypassing CSRF protection for the load test.
+const authMutationHeaders = { cookie, origin: WEB_ORIGIN };
 
 const results = [];
 results.push(
@@ -129,7 +135,7 @@ if (!proposalId) {
   if (!opportunity?.id) throw new Error('Canonical seeded opportunity is unavailable');
   const promotion = await fetchTimed(`/opportunities/${opportunity.id}/promote`, {
     method: 'POST',
-    headers: authHeaders,
+    headers: authMutationHeaders,
   });
   if (![200, 201].includes(promotion.response.status) || !promotion.body?.proposal?.id) {
     throw new Error(`Opportunity promotion failed: ${promotion.response.status}`);
@@ -154,7 +160,7 @@ results.push(
     () =>
       fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, {
         method: 'POST',
-        headers: authHeaders,
+        headers: authMutationHeaders,
       }),
     (status) => status === 200 || status === 201,
   ),
@@ -197,7 +203,7 @@ results.push(
     () =>
       fetchTimed(`/research/contracts/${contract.id}/run`, {
         method: 'POST',
-        headers: authHeaders,
+        headers: authMutationHeaders,
       }),
     (status, body) =>
       (status === 200 || status === 201) &&
@@ -211,6 +217,7 @@ results.push(
 const report = {
   generatedAt: new Date().toISOString(),
   apiBase: API_BASE,
+  webOrigin: WEB_ORIGIN,
   boardReviewsCompletedBefore: completedBefore,
   boardReviewsCompletedAfter: completedReviews,
   boardReviewsNewlyCompleted: newlyCompletedReviews,
