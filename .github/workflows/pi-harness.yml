@@ -1,0 +1,25 @@
+name: Pi Harness
+
+on:
+  pull_request:
+    paths:
+      - 'tools/pi/**'
+      - '.github/workflows/pi-harness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-pi-harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build reviewed Pi harness
+        run: docker build --pull -t ventureos-pi:ci -f tools/pi/Dockerfile .
+
+      - name: Verify Pi CLI
+        run: docker run --rm --network none ventureos-pi:ci --version
