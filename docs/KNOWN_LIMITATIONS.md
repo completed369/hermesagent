@@ -6,13 +6,29 @@
 > findings and gates use `APPLICATION_SECURITY_BASELINE.md`. Historical claims
 > below must not override those newer records.
 
-## Sandbox-imposed (not a code problem — see SANDBOX_LIMITATIONS.md)
+## Historical sandbox-imposed limitations (obsolete as current-state evidence — see SANDBOX_LIMITATIONS.md)
 
-Nothing in this repository has been installed, compiled, migrated, seeded,
-started, or tested. All "implemented" claims in this documentation mean
-"real source code exists and was manually/structurally reviewed" — not
-"verified working." Local verification is required before any acceptance
-criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
+The original Phase 0/1 source was authored in a sandbox where dependencies,
+Docker, migrations, builds, and tests could not be executed. At that time,
+"implemented" meant "source exists and was manually/structurally reviewed," not
+"verified working."
+
+That statement is preserved as historical context only. It does **not** describe
+the later repository state recorded in `TECHNICAL_RELEASE_BASELINE.md`,
+`APPLICATION_SECURITY_BASELINE.md`, `STAGING_SECURITY_GATE.md`, and
+`CI_GOVERNANCE.md`. Current claims must distinguish:
+
+- repository source/configuration state;
+- local development validation evidence;
+- GitHub CI evidence;
+- local/container staging-gate evidence;
+- private-staging deployment capability/templates;
+- externally verified staging deployment state;
+- production deployment state.
+
+Repository evidence alone does not establish the current operational state of any
+externally deployed staging environment, and it does not establish production
+deployment or production readiness.
 
 ## Fixed during local verification
 
@@ -122,17 +138,15 @@ criterion can be honestly marked complete; see LOCAL_VERIFICATION_CHECKLIST.md.
   MinIO upload authorization and zero-network denial are unit-tested, and
   disposable PostgreSQL validation plus mock-provider E2E passed. This is not
   production infrastructure evidence and no real provider was contacted.
-- **CI has run, but there is still no complete green clean-runner result
-  (corrected 2026-07-20, Phase 9.1).** The historical first main-branch run
-  failed at build. The current pull-request run for PR #1 at commit
-  `0f536c7c9511945a135a5a030f34e8908a5a9f4b` also remains red (GitHub
-  Actions run `29660695312`): dependency installation, Prisma generation,
-  format, lint, and typecheck succeeded; Prisma migrate failed because the CI
-  database connection did not succeed; unit tests, integration tests, and
-  production build were skipped. This records the observed stopping point
-  without asserting why the connection failed, a migration defect, or a
-  verified fix. Historical green local validation is separate evidence and
-  does not make the branch CI-ready. See `docs/CI_GOVERNANCE.md`.
+- **Historical Phase 9.1 CI evidence is preserved but superseded for current
+  status.** The first main-branch run failed at build, and the Phase 9.1 PR #1
+  run at commit `0f536c7c9511945a135a5a030f34e8908a5a9f4b` remained red at
+  Prisma migrate (GitHub Actions run `29660695312`) with later stages skipped.
+  This records the observed stopping point for that historical run only. Current
+  CI configuration and any current GitHub Actions status must be checked through
+  `.github/workflows/ci.yml`, `docs/CI_GOVERNANCE.md`, and run-specific GitHub
+  evidence; historical local validation, historical red CI, local/container
+  staging-gate evidence, and external deployment state are separate claims.
 - **Root E2E build orchestration is fixed and regression-protected**: the root
   task now performs the production build before Playwright, the API build asserts
   a non-empty `dist/main.js`, and build-contract tests cover stale incremental
