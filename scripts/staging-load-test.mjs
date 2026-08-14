@@ -108,15 +108,27 @@ if (
 ) {
   throw new Error('Seeded opportunity is unavailable for board load testing');
 }
-const opportunityId = opportunities.body[0].id;
-const promotion = await fetchTimed(`/opportunities/${opportunityId}/promote`, {
-  method: 'POST',
-  headers: authHeaders,
-});
-if (![200, 201].includes(promotion.response.status) || !promotion.body?.proposal?.id) {
-  throw new Error(`Opportunity promotion failed: ${promotion.response.status}`);
+
+// The disposable staging gate runs the integration suite before this load
+// test. Those tests are allowed to promote the idempotently-seeded opportunity,
+// and re-seeding deliberately does not rewrite its workflow state. Reuse the
+// existing proposal when present; otherwise promote exactly once here. This
+// makes the load runner independent of prior test ordering without bypassing
+// the application promotion policy.
+const opportunity = opportunities.body.find((item) => item?.proposal?.id) ?? opportunities.body[0];
+let proposalId = opportunity?.proposal?.id ?? null;
+if (!proposalId) {
+  const opportunityId = opportunity?.id;
+  if (!opportunityId) throw new Error('Seeded opportunity has no id');
+  const promotion = await fetchTimed(`/opportunities/${opportunityId}/promote`, {
+    method: 'POST',
+    headers: authHeaders,
+  });
+  if (![200, 201].includes(promotion.response.status) || !promotion.body?.proposal?.id) {
+    throw new Error(`Opportunity promotion failed: ${promotion.response.status}`);
+  }
+  proposalId = promotion.body.proposal.id;
 }
-const proposalId = promotion.body.proposal.id;
 
 results.push(
   await runConcurrent(
