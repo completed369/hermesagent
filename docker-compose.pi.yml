@@ -1,0 +1,27 @@
+services:
+  pi:
+    build:
+      context: .
+      dockerfile: tools/pi/Dockerfile
+      args:
+        PI_VERSION: 0.83.0
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 4g
+    tmpfs:
+      - /tmp:rw,nosuid,size=512m
+    volumes:
+      - .:/workspace:rw
+      - ventureos-pi-home:/home/node/.pi/agent:rw
+    environment:
+      PI_SKIP_VERSION_CHECK: "1"
+
+volumes:
+  ventureos-pi-home:
