@@ -62,7 +62,9 @@ function normaliseRow(row: RawMemoryRow): MemoryRecord {
     ...row,
     confidence: Number(row.confidence),
     importance: Number(row.importance),
-    tags: Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+    tags: Array.isArray(row.tags)
+      ? row.tags.filter((tag): tag is string => typeof tag === 'string')
+      : [],
   };
 }
 
@@ -89,7 +91,9 @@ async function insertMemory(
   input: z.output<typeof memoryInputSchema>,
 ): Promise<MemoryRecord> {
   const id = randomUUID();
-  const tagsJson = JSON.stringify([...new Set(input.tags.map((tag) => tag.toLowerCase()))].sort());
+  const tagsJson = JSON.stringify(
+    [...new Set(input.tags.map((tag) => tag.toLowerCase()))].sort(),
+  );
   const contentJson = JSON.stringify(input.content ?? null);
   const metadataJson = input.metadata === undefined ? null : JSON.stringify(input.metadata);
 
