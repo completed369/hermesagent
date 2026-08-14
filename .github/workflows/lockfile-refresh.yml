@@ -8,17 +8,26 @@ name: Temporary lockfile refresh
       - .github/workflows/lockfile-refresh.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh-lockfile:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      EXPECTED_HEAD_REF: security/nanoid-3.3.18
+      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
     steps:
-      - name: Checkout
+      - name: Enforce isolated feature branch
+        run: |
+          set -Eeuo pipefail
+          test "$PR_HEAD_REF" = "$EXPECTED_HEAD_REF"
+          test "$GITHUB_REPOSITORY" = completed369/hermesagent
+      - name: Checkout feature branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: true
       - name: Enable Corepack
         run: corepack enable
       - name: Setup Node
@@ -34,10 +43,19 @@ jobs:
           grep -q '^  nanoid: 3.3.18$' pnpm-lock.yaml
           grep -q '^  nanoid@3.3.18:$' pnpm-lock.yaml
           ! grep -q '^  nanoid@3.3.17:$' pnpm-lock.yaml
-      - name: Upload generated lockfile
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: nanoid-3.3.18-lockfile
-          path: pnpm-lock.yaml
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit generated lockfile only
+        run: |
+          set -Eeuo pipefail
+          git diff -- . ':!pnpm-lock.yaml' | grep -q '^$' || {
+            echo 'Unexpected file changed during lockfile generation' >&2
+            exit 1
+          }
+          git add pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo 'Lockfile already current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(security): refresh nanoid 3.3.18 lockfile'
+          git push origin "HEAD:${PR_HEAD_REF}"
