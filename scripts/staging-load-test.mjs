@@ -114,19 +114,26 @@ results.push(
   ),
 );
 
-const opportunities = await fetchTimed('/opportunities', { headers: authHeaders });
-if (
-  opportunities.response.status !== 200 ||
-  !Array.isArray(opportunities.body) ||
-  opportunities.body.length === 0
-) {
-  throw new Error('Seeded opportunity is unavailable for board load testing');
+// Integration tests run before this workload and may already have promoted the
+// seeded opportunity. Promotion is intentionally one-way, so recover the
+// existing workspace-scoped VentureProposal through the public read API first.
+// Only promote if this is a pristine disposable stack with no existing venture.
+const ventures = await fetchTimed('/ventures', { headers: authHeaders });
+if (ventures.response.status !== 200 || !Array.isArray(ventures.body)) {
+  throw new Error(`Workspace ventures are unavailable: ${ventures.response.status}`);
 }
 
-const opportunity = opportunities.body.find((item) => item?.proposal?.id) ?? opportunities.body[0];
-let proposalId = opportunity?.proposal?.id ?? null;
+let proposalId = ventures.body[0]?.id ?? null;
 if (!proposalId) {
-  const opportunityId = opportunity?.id;
+  const opportunities = await fetchTimed('/opportunities', { headers: authHeaders });
+  if (
+    opportunities.response.status !== 200 ||
+    !Array.isArray(opportunities.body) ||
+    opportunities.body.length === 0
+  ) {
+    throw new Error('Seeded opportunity is unavailable for board load testing');
+  }
+  const opportunityId = opportunities.body[0]?.id;
   if (!opportunityId) throw new Error('Seeded opportunity has no id');
   const promotion = await fetchTimed(`/opportunities/${opportunityId}/promote`, {
     method: 'POST',
@@ -137,6 +144,15 @@ if (!proposalId) {
   }
   proposalId = promotion.body.proposal.id;
 }
+
+const reviewsBefore = await fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, {
+  headers: authHeaders,
+});
+if (reviewsBefore.response.status !== 200 || !Array.isArray(reviewsBefore.body)) {
+  throw new Error(`Existing board reviews are unavailable: ${reviewsBefore.response.status}`);
+}
+const completedBefore = reviewsBefore.body.filter((review) => review.status === 'COMPLETED').length;
+const completedTarget = completedBefore + 20;
 
 results.push(
   await runConcurrent(
@@ -152,7 +168,7 @@ results.push(
   ),
 );
 
-let completedReviews = 0;
+let completedReviews = completedBefore;
 const reviewDeadline = Date.now() + 120_000;
 while (Date.now() < reviewDeadline) {
   const reviews = await fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, {
@@ -160,12 +176,13 @@ while (Date.now() < reviewDeadline) {
   });
   if (reviews.response.status === 200 && Array.isArray(reviews.body)) {
     completedReviews = reviews.body.filter((review) => review.status === 'COMPLETED').length;
-    if (completedReviews >= 20) break;
+    if (completedReviews >= completedTarget) break;
   }
   await sleep(1000);
 }
-if (completedReviews < 20) {
-  throw new Error(`Only ${completedReviews}/20 board reviews completed within 120s`);
+const newlyCompletedReviews = completedReviews - completedBefore;
+if (newlyCompletedReviews < 20) {
+  throw new Error(`Only ${newlyCompletedReviews}/20 new board reviews completed within 120s`);
 }
 
 const contracts = await fetchTimed('/research/contracts', { headers: authHeaders });
@@ -193,7 +210,9 @@ results.push(
 const report = {
   generatedAt: new Date().toISOString(),
   apiBase: API_BASE,
-  boardReviewsCompleted: completedReviews,
+  boardReviewsCompletedBefore: completedBefore,
+  boardReviewsCompletedAfter: completedReviews,
+  boardReviewsNewlyCompleted: newlyCompletedReviews,
   results,
 };
 mkdirSync(dirname(RESULT_FILE), { recursive: true });
