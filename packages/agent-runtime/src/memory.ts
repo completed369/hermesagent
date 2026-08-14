@@ -95,7 +95,8 @@ async function insertMemory(
     [...new Set(input.tags.map((tag) => tag.toLowerCase()))].sort(),
   );
   const contentJson = JSON.stringify(input.content ?? null);
-  const metadataJson = input.metadata === undefined ? null : JSON.stringify(input.metadata);
+  const metadataJson =
+    input.metadata === undefined ? null : JSON.stringify(input.metadata);
 
   await client.$executeRaw(Prisma.sql`
     INSERT INTO "memory_entries" (
@@ -117,8 +118,16 @@ async function insertMemory(
       ${input.importance},
       ${input.expiresAt ?? null},
       'ACTIVE',
-      ${input.supersedesId ? Prisma.sql`CAST(${input.supersedesId} AS uuid)` : Prisma.sql`NULL`},
-      ${metadataJson === null ? Prisma.sql`NULL` : Prisma.sql`CAST(${metadataJson} AS jsonb)`}
+      ${
+        input.supersedesId
+          ? Prisma.sql`CAST(${input.supersedesId} AS uuid)`
+          : Prisma.sql`NULL`
+      },
+      ${
+        metadataJson === null
+          ? Prisma.sql`NULL`
+          : Prisma.sql`CAST(${metadataJson} AS jsonb)`
+      }
     )
   `);
 
@@ -132,7 +141,9 @@ async function insertMemory(
  * sourceType/sourceRef. The function exposes no arbitrary update path; durable
  * corrections are represented by supersession instead of silent mutation.
  */
-export async function rememberMemory(input: RememberMemoryInput): Promise<MemoryRecord> {
+export async function rememberMemory(
+  input: RememberMemoryInput,
+): Promise<MemoryRecord> {
   const parsed = memoryInputSchema.parse(input);
   return insertMemory(prisma, parsed);
 }
@@ -153,10 +164,15 @@ export type RecallMemoriesInput = z.input<typeof recallInputSchema>;
  * memory is excluded unless the caller deliberately opts in. Tag filtering is
  * applied after the bounded database query so the SQL surface remains narrow.
  */
-export async function recallMemories(input: RecallMemoriesInput): Promise<MemoryRecord[]> {
+export async function recallMemories(
+  input: RecallMemoriesInput,
+): Promise<MemoryRecord[]> {
   const parsed = recallInputSchema.parse(input);
   const searchPattern = parsed.query ? `%${parsed.query}%` : '';
-  const candidateLimit = Math.min(100, Math.max(parsed.limit, parsed.limit * 4));
+  const candidateLimit = Math.min(
+    100,
+    Math.max(parsed.limit, parsed.limit * 4),
+  );
 
   const rows = await prisma.$queryRaw<RawMemoryRow[]>(Prisma.sql`
     SELECT
@@ -192,7 +208,9 @@ export interface SupersedeMemoryInput {
  * Replace a memory without rewriting history. The existing row is locked and
  * marked SUPERSEDED in the same transaction that creates its replacement.
  */
-export async function supersedeMemory(input: SupersedeMemoryInput): Promise<MemoryRecord> {
+export async function supersedeMemory(
+  input: SupersedeMemoryInput,
+): Promise<MemoryRecord> {
   const workspaceId = z.string().uuid().parse(input.workspaceId);
   const memoryId = z.string().uuid().parse(input.memoryId);
   const replacement = memoryInputSchema.parse({
@@ -202,13 +220,15 @@ export async function supersedeMemory(input: SupersedeMemoryInput): Promise<Memo
   });
 
   return prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<Array<{ id: string; status: MemoryStatus }>>(Prisma.sql`
-      SELECT "id", "status"
-      FROM "memory_entries"
-      WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
-        AND "id" = CAST(${memoryId} AS uuid)
-      FOR UPDATE
-    `);
+    const locked = await tx.$queryRaw<Array<{ id: string; status: MemoryStatus }>>(
+      Prisma.sql`
+        SELECT "id", "status"
+        FROM "memory_entries"
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "id" = CAST(${memoryId} AS uuid)
+        FOR UPDATE
+      `,
+    );
     if (!locked[0] || locked[0].status !== 'ACTIVE') {
       throw new Error('Active memory not found in workspace');
     }
