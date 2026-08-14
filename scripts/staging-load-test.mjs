@@ -189,7 +189,20 @@ const contracts = await fetchTimed('/research/contracts', { headers: authHeaders
 if (contracts.response.status !== 200 || !Array.isArray(contracts.body) || contracts.body.length === 0) {
   throw new Error('Research contracts are unavailable for load testing');
 }
-const contract = contracts.body.find((item) => !item.disabled) ?? contracts.body[0];
+
+// The permitted Etsy contract intentionally enforces 5 runs/minute. Its cap is
+// covered by dedicated concurrency/security regressions and must not be
+// weakened for a throughput test. Prefer a dispatchable synthetic contract
+// whose own contract-level rate limits are unbounded, such as the seeded
+// founder-provided notes source.
+const contract =
+  contracts.body.find(
+    (item) => !item.disabled && item.rateLimitPerMinute == null && item.rateLimitPerDay == null,
+  ) ?? null;
+if (!contract?.id) {
+  throw new Error('No uncapped synthetic research contract is available for load testing');
+}
+
 results.push(
   await runConcurrent(
     'research-acquisition',
@@ -203,7 +216,9 @@ results.push(
     (status, body) =>
       (status === 200 || status === 201) &&
       body &&
-      !['FAILED', 'BLOCKED_POLICY'].includes(body.status),
+      typeof body.status === 'string' &&
+      !body.status.startsWith('BLOCKED_') &&
+      body.status !== 'FAILED',
   ),
 );
 
@@ -213,6 +228,7 @@ const report = {
   boardReviewsCompletedBefore: completedBefore,
   boardReviewsCompletedAfter: completedReviews,
   boardReviewsNewlyCompleted: newlyCompletedReviews,
+  researchContract: contract.name ?? contract.id,
   results,
 };
 mkdirSync(dirname(RESULT_FILE), { recursive: true });
