@@ -1,0 +1,37 @@
+name: Pi Engineering Environment
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pi-engineering.yml'
+      - '.pi/**'
+      - 'docker-compose.pi.yml'
+      - 'tools/pi/**'
+      - 'docs/PI_ENGINEERING_AGENT.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pi-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build isolated Pi image
+        run: docker compose -f docker-compose.pi.yml build pi
+
+      - name: Verify Pi CLI
+        run: docker compose -f docker-compose.pi.yml run --rm --no-deps pi --version
+
+      - name: Verify no privileged host mounts
+        shell: bash
+        run: |
+          rendered="$(docker compose -f docker-compose.pi.yml config)"
+          if grep -Eq '/var/run/docker.sock|/\.ssh|/etc:/|privileged: true' <<<"$rendered"; then
+            echo 'Unsafe host mount or privileged mode detected in Pi compose config.' >&2
+            exit 1
+          fi
