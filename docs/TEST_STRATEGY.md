@@ -2,9 +2,8 @@
 
 ## Current automated coverage
 
-VentureOS now has an executed, layered validation pipeline rather than a
-paper-only test plan. Pull requests to `main` run the complete CI workflow in
-`.github/workflows/ci.yml`.
+VentureOS has an executed, layered validation pipeline. Pull requests to `main`
+run the complete CI workflow in `.github/workflows/ci.yml`.
 
 ### Unit tests
 
@@ -14,10 +13,9 @@ security/hashing, observability, auth/RBAC, storage, agent-runtime behavior,
 research sanitization/scoring/cost guards, marketplace idempotency, billing,
 and focused API/worker logic.
 
-The project intentionally puts the heaviest unit-test investment around
-arithmetic and fail-closed policy logic: an agent's prose can be imperfect,
-but a wrong budget, scoring, approval, or break-even calculation must not
-silently pass.
+The heaviest unit-test investment is intentionally around arithmetic and
+fail-closed policy logic: an agent's prose can be imperfect, but a wrong budget,
+scoring, approval, or break-even calculation must not silently pass.
 
 ### Integration tests
 
@@ -27,16 +25,20 @@ board/approval hash binding, product/listing generation, research controls,
 marketplace publication/idempotency, finance/analytics, billing, capability
 policy, audit behavior, and cross-workspace denial paths.
 
-Stage 5 adds explicit concurrency regressions:
+Stage 5 adds explicit pilot-scale concurrency regressions:
 
 - 20 simultaneous budget charges contend on one allocation; exactly the
   allowed charges may commit and spend may never exceed the hard limit.
-- two simultaneous paid-research reservations contend on the workspace
-  serialization lock; the daily cap permits exactly one reservation and
-  blocks the other before provider dispatch.
+- simultaneous paid-research reservations contend on the workspace
+  serialization lock; the daily cap admits only the permitted reservation
+  before provider dispatch.
+- 20 simultaneous login-failure admissions from one source IP across distinct
+  account identifiers preserve all durable counter increments and activate the
+  shared source-IP cooldown; separate auth-abuse tests also verify the account
+  threshold, cooldown expiry, and cross-instance durability.
 
-These tests exist specifically to prevent check-then-charge races from
-turning cost caps into advisory limits under concurrent traffic.
+These tests exist specifically to prevent check-then-charge and check-then-block
+races from turning cost/security controls into advisory limits under load.
 
 ### End-to-end tests
 
@@ -46,8 +48,8 @@ handling, navigation to audit/security pages, and Stage 5 registration/tenant
 isolation.
 
 The registration test creates a disposable unique workspace, logs in with the
-new account, verifies the `Trial` plan/limits, and proves that the seeded
-founder workspace's opportunity is not visible to the new tenant.
+new account, verifies the `Trial` plan/limits, and proves that the seeded founder
+workspace's opportunity is not visible to the new tenant.
 
 ## Disposable staging security gate
 
@@ -68,21 +70,34 @@ production data are used by this gate.
 
 ## Stage 5 load testing
 
-`scripts/staging-load-test.mjs` runs inside the disposable staging topology
-after the first E2E pass. It uses the generated synthetic founder account and
-drives the actual API/Temporal worker with 20 concurrent workers.
+The committed workload is `load-tests/staging.mjs`. It runs inside the
+disposable production-shaped staging topology after the first E2E pass and uses
+the generated synthetic founder account to drive the actual API/Temporal worker.
 
-Current workloads:
+The gate first waits one configured global API-rate-limit window because all
+localhost synthetic traffic intentionally shares one limiter key when proxy
+trust is disabled. This isolates the measured workload from setup/E2E traffic
+without weakening or bypassing the real limiter.
 
-- 200 API liveness requests, concurrency 20;
-- 100 authenticated workspace reads, concurrency 20;
-- 20 simultaneous board-review workflow starts followed by a requirement that
-  all 20 reviews reach `COMPLETED` within 120 seconds;
-- 20 simultaneous research-acquisition requests.
+Current workloads are one pilot-scale wave each:
 
-The runner records request counts, HTTP status distributions, p50, p95, and
-maximum latency to `.staging/load-results.json`. CI uploads that file as a
-30-day `staging-load-results-*` artifact even when a threshold fails.
+- 20 API liveness requests at concurrency 20;
+- 20 authenticated workspace reads at concurrency 20;
+- 20 simultaneous board-review workflow starts, followed by a requirement that
+  20 **new** reviews above the pre-test baseline reach `COMPLETED` within 120
+  seconds;
+- 20 simultaneous research-acquisition requests against the seeded uncapped
+  synthetic founder-notes contract.
+
+The deliberately capped Etsy research contract is not weakened to make the
+throughput workload pass. Contract-level research cost/rate-cap behavior is
+proved separately by the concurrency integration tests described above.
+
+The runner records request counts, HTTP status distributions, p50, p95, maximum
+latency, board-review completion deltas, and the chosen research contract in
+`.staging/load-results.json`. CI uploads that file as a 30-day
+`staging-load-results-*` artifact, including when a threshold fails after the
+report has been written.
 
 Initial pre-pilot thresholds are deliberately conservative for the expected
 small pilot scale:
@@ -92,19 +107,18 @@ small pilot scale:
 - board-review start p95 <= 3000 ms;
 - research-acquisition p95 <= 3000 ms;
 - zero unexpected HTTP status codes;
-- all 20 board reviews complete within 120 seconds.
+- 20 new board reviews complete within 120 seconds.
 
-Observed results are copied into `docs/STAGING_QA_LOG.md` after a successful
-CI run so Stage 5 has durable evidence rather than only transient workflow
-logs.
+Observed successful results are copied into `docs/STAGING_QA_LOG.md` so Stage 5
+has durable repository evidence rather than only transient workflow logs.
 
 ## Real private-staging validation
 
 The private VPS deployment is separately validated through the protected
 immutable-deployment workflow and manual/browser acceptance recorded in
-`docs/STAGING_QA_LOG.md`. This proves DNS/TLS/Cloudflare Access, session
-cookies, real network latency, the deployed database/Temporal stack, and
-Phase 1-8 product workflows in the actual private staging environment.
+`docs/STAGING_QA_LOG.md`. This proves DNS/TLS/Cloudflare Access, session cookies,
+real network latency, the deployed database/Temporal stack, and Phase 1-8
+product workflows in the actual private staging environment.
 
 A future Cloudflare Access service token can make the same browser/load checks
 fully unattended against the public staging hostnames. Until such a token is
@@ -117,5 +131,5 @@ External providers are always tested against explicit interfaces and mock
 implementations unless a founder-approved real integration exists. Mock mode
 must be visible in state/UI and must never be described as live provider
 validation. Integration, E2E, concurrency, Docker staging, and VPS acceptance
-use real local infrastructure while keeping AI/Etsy/payment/advertising
-network effects disabled.
+use real local infrastructure while keeping AI/Etsy/payment/advertising network
+effects disabled.
