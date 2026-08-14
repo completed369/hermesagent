@@ -1,8 +1,9 @@
 name: Temporary docs format helper
 
 'on':
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - docs/stage5-stage6-prep
     paths:
       - docs/COMMERCIAL_PILOT_LOG.md
       - docs/COMMERCIAL_VALIDATION.md
@@ -14,7 +15,7 @@ permissions:
 
 jobs:
   format-docs:
-    if: ${{ github.event.pull_request.head.ref == 'docs/stage5-stage6-prep' }}
+    if: ${{ github.ref == 'refs/heads/docs/stage5-stage6-prep' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
