@@ -46,10 +46,11 @@ jobs:
       - name: Commit generated lockfile only
         run: |
           set -Eeuo pipefail
-          git diff -- . ':!pnpm-lock.yaml' | grep -q '^$' || {
-            echo 'Unexpected file changed during lockfile generation' >&2
+          if test -n "$(git diff -- . ':!pnpm-lock.yaml')"; then
+            echo 'Unexpected tracked file changed during lockfile generation' >&2
+            git diff -- . ':!pnpm-lock.yaml'
             exit 1
-          }
+          fi
           git add pnpm-lock.yaml
           if git diff --cached --quiet; then
             echo 'Lockfile already current.'
