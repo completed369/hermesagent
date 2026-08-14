@@ -278,6 +278,9 @@ importers:
       '@ventureos/finance-engine':
         specifier: workspace:*
         version: link:../finance-engine
+      '@ventureos/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@ventureos/policy-engine':
         specifier: workspace:*
         version: link:../policy-engine

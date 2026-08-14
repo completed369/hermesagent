@@ -6,8 +6,11 @@ import {
   runBoardReview,
   createApprovalRequest,
   decideApprovalRequest,
+  captureApprovalDecisionMemory,
   ApprovalAlreadyDecidedError,
   ApprovalInvalidForExecutionError,
+  PrismaMemoryStore,
+  type MemoryStore,
 } from '@ventureos/agent-runtime';
 import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
 
@@ -74,6 +77,11 @@ describe('Board review + approval decision (integration)', () => {
   });
 
   afterAll(async () => {
+    if (!workspace?.id || !proposal?.id || !opportunity?.id || !actor?.id) {
+      await prisma.$disconnect();
+      return;
+    }
+    await prisma.memoryEntry.deleteMany({ where: { workspaceId: workspace.id } });
     await prisma.approvalDecision.deleteMany({
       where: { approvalRequest: { ventureProposalId: proposal.id } },
     });
@@ -115,6 +123,62 @@ describe('Board review + approval decision (integration)', () => {
     });
     expect(summary).not.toBeNull();
     expect(summary?.recommendation).toBe('APPROVE');
+
+    const memory = await new PrismaMemoryStore().query({
+      workspaceId: workspace.id,
+      kinds: ['EPISODE'],
+      subject: `venture-proposal:${proposal.id}`,
+      keys: [`board-review:${result.boardReviewId}`],
+    });
+    expect(memory).toHaveLength(1);
+    expect(memory[0]).toMatchObject({
+      workspaceId: workspace.id,
+      kind: 'EPISODE',
+      sourceRef: `decision-summary:${summary?.id}`,
+      sensitivity: 'INTERNAL',
+    });
+    expect(memory[0]?.payload).toMatchObject({
+      boardReviewId: result.boardReviewId,
+      ventureProposalId: proposal.id,
+      decisionSummaryId: summary?.id,
+      blocked: false,
+      meetsThreshold: true,
+      recommendation: 'APPROVE',
+    });
+  });
+
+  it('does not rewrite a completed board review when advisory memory capture fails', async () => {
+    const failingMemoryStore: MemoryStore = {
+      put: async () => {
+        throw new Error('memory unavailable');
+      },
+      query: async () => [],
+      revoke: async () => {
+        throw new Error('not used');
+      },
+      supersede: async () => {
+        throw new Error('not used');
+      },
+    };
+
+    const result = await runBoardReview({
+      workspaceId: workspace.id,
+      ventureProposalId: proposal.id,
+      memoryStore: failingMemoryStore,
+    });
+    expect(result.status).toBe('COMPLETED');
+
+    const review = await prisma.boardReview.findUnique({ where: { id: result.boardReviewId } });
+    expect(review?.status).toBe('COMPLETED');
+    expect(review?.failureReason).toBeNull();
+
+    const memory = await new PrismaMemoryStore().query({
+      workspaceId: workspace.id,
+      kinds: ['EPISODE'],
+      subject: `venture-proposal:${proposal.id}`,
+      keys: [`board-review:${result.boardReviewId}`],
+    });
+    expect(memory).toEqual([]);
   });
 
   it('creates an approval request whose packageHash matches the current version snapshot', async () => {
@@ -150,6 +214,28 @@ describe('Board review + approval decision (integration)', () => {
     expect(decision.decision).toBe('APPROVE');
     expect(decision.approvedPackageHash).toBe(request.packageHash);
 
+    const memory = await new PrismaMemoryStore().query({
+      workspaceId: workspace.id,
+      kinds: ['DECISION'],
+      subject: `venture-proposal:${proposal.id}`,
+      keys: [`approval-request:${request.id}`],
+    });
+    expect(memory).toHaveLength(1);
+    expect(memory[0]).toMatchObject({
+      workspaceId: workspace.id,
+      kind: 'DECISION',
+      key: `approval-request:${request.id}`,
+      sourceRef: `approval-decision:${decision.id}`,
+    });
+    expect(memory[0]?.payload).toMatchObject({
+      approvalRequestId: request.id,
+      approvalDecisionId: decision.id,
+      kind: 'VENTURE_PROPOSAL',
+      decision: 'APPROVE',
+      conditions: [],
+      approvedArtifactVersionId: decision.approvedArtifactVersionId,
+    });
+
     // Deciding an already-decided request must fail closed, never silently
     // re-apply or overwrite the prior decision.
     await expect(
@@ -160,6 +246,50 @@ describe('Board review + approval decision (integration)', () => {
         decision: 'APPROVE',
       }),
     ).rejects.toThrow(ApprovalAlreadyDecidedError);
+  });
+
+  it('does not roll back an authoritative founder decision when advisory memory capture fails', async () => {
+    const request = await createApprovalRequest({
+      workspaceId: workspace.id,
+      ventureProposalId: proposal.id,
+      requestedBy: actor.id,
+    });
+    const failingMemoryStore: MemoryStore = {
+      put: async () => {
+        throw new Error('memory unavailable');
+      },
+      query: async () => {
+        throw new Error('memory unavailable');
+      },
+      revoke: async () => {
+        throw new Error('not used');
+      },
+      supersede: async () => {
+        throw new Error('not used');
+      },
+    };
+
+    const { approvalRequest, decision } = await decideApprovalRequest({
+      workspaceId: workspace.id,
+      approvalRequestId: request.id,
+      founderIdentity: actor.id,
+      decision: 'APPROVE',
+      memoryStore: failingMemoryStore,
+    });
+
+    expect(approvalRequest.state).toBe('APPROVED');
+    expect(decision.decision).toBe('APPROVE');
+    expect(await prisma.approvalDecision.count({ where: { approvalRequestId: request.id } })).toBe(
+      1,
+    );
+
+    const memory = await new PrismaMemoryStore().query({
+      workspaceId: workspace.id,
+      kinds: ['DECISION'],
+      subject: `venture-proposal:${proposal.id}`,
+      keys: [`approval-request:${request.id}`],
+    });
+    expect(memory).toEqual([]);
   });
 
   it('allows exactly one concurrent decision for a pending approval request', async () => {
@@ -198,7 +328,7 @@ describe('Board review + approval decision (integration)', () => {
       decision: 'APPROVE',
     });
 
-    const { approvalRequest } = await decideApprovalRequest({
+    const { approvalRequest, decision: revokeDecision } = await decideApprovalRequest({
       workspaceId: workspace.id,
       approvalRequestId: request.id,
       founderIdentity: actor.id,
@@ -208,6 +338,162 @@ describe('Board review + approval decision (integration)', () => {
 
     expect(approvalRequest.state).toBe('REVOKED');
     expect(approvalRequest.revokedBy).toBe(actor.id);
+
+    const store = new PrismaMemoryStore();
+    const active = await store.query({
+      workspaceId: workspace.id,
+      kinds: ['DECISION'],
+      subject: `venture-proposal:${proposal.id}`,
+      keys: [`approval-request:${request.id}`],
+    });
+    expect(active).toHaveLength(1);
+    expect(active[0]?.sourceRef).toBe(`approval-decision:${revokeDecision.id}`);
+    expect(active[0]?.payload).toMatchObject({ decision: 'REVOKE' });
+
+    const historical = await prisma.memoryEntry.findMany({
+      where: {
+        workspaceId: workspace.id,
+        subject: `venture-proposal:${proposal.id}`,
+        key: `approval-request:${request.id}`,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(historical).toHaveLength(2);
+    expect(historical[0]?.supersededById).toBe(active[0]?.id);
+    expect(historical[1]?.supersededById).toBeNull();
+
+    await expect(
+      store.supersede(
+        randomUUID(),
+        active[0]!.id,
+        {
+          workspaceId: workspace.id,
+          kind: 'DECISION',
+          subject: `venture-proposal:${proposal.id}`,
+          key: `approval-request:${request.id}`,
+          payload: { decision: 'CROSS_WORKSPACE_SHOULD_FAIL' },
+          sourceRef: 'approval-decision:cross-workspace',
+          confidence: 1,
+          sensitivity: 'INTERNAL',
+          createdBy: 'test:cross-workspace',
+        },
+        'test:cross-workspace',
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('serializes concurrent approval memory capture through real PostgreSQL', async () => {
+    const request = await createApprovalRequest({
+      workspaceId: workspace.id,
+      ventureProposalId: proposal.id,
+      requestedBy: actor.id,
+    });
+    const equalDecidedAt = new Date('2026-08-14T12:00:00.000Z');
+    const [approveDecision, revokeDecision] = await Promise.all([
+      prisma.approvalDecision.create({
+        data: {
+          approvalRequestId: request.id,
+          founderIdentity: actor.id,
+          decidedAt: equalDecidedAt,
+          decision: 'APPROVE',
+          conditions: [],
+          approvedArtifactVersionId: request.ventureProposalVersionId,
+          approvedPackageHash: request.packageHash,
+          expiresAt: request.expiresAt,
+          auditSignature: hashObject({ requestId: request.id, decision: 'APPROVE' }),
+        },
+      }),
+      prisma.approvalDecision.create({
+        data: {
+          approvalRequestId: request.id,
+          founderIdentity: actor.id,
+          decidedAt: equalDecidedAt,
+          decision: 'REVOKE',
+          conditions: [],
+          approvedArtifactVersionId: request.ventureProposalVersionId,
+          approvedPackageHash: request.packageHash,
+          expiresAt: request.expiresAt,
+          auditSignature: hashObject({ requestId: request.id, decision: 'REVOKE' }),
+        },
+      }),
+    ]);
+    const otherWorkspace = await prisma.workspace.create({
+      data: {
+        name: `Other Memory Workspace ${randomUUID()}`,
+        slug: `other-memory-${randomUUID()}`,
+      },
+    });
+    const store = new PrismaMemoryStore();
+    const subject = `venture-proposal:${proposal.id}`;
+    const key = `approval-request:${request.id}`;
+    const otherWorkspaceMemory = await store.put({
+      workspaceId: otherWorkspace.id,
+      kind: 'DECISION',
+      subject,
+      key,
+      payload: { decision: 'OTHER_WORKSPACE_UNTOUCHED' },
+      sourceRef: 'approval-decision:other-workspace',
+      confidence: 1,
+      sensitivity: 'INTERNAL',
+      createdBy: 'test:other-workspace',
+    });
+
+    try {
+      await Promise.all([
+        captureApprovalDecisionMemory({
+          approvalRequest: request,
+          approvalDecision: approveDecision,
+          store,
+        }),
+        captureApprovalDecisionMemory({
+          approvalRequest: request,
+          approvalDecision: revokeDecision,
+          store,
+        }),
+      ]);
+
+      const active = await store.query({
+        workspaceId: workspace.id,
+        kinds: ['DECISION'],
+        subject,
+        keys: [key],
+      });
+      expect(active).toHaveLength(1);
+      expect(active[0]?.payload).toMatchObject({ decision: 'REVOKE' });
+
+      const rows = await prisma.memoryEntry.findMany({
+        where: { workspaceId: workspace.id, subject, key },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(rows).toHaveLength(2);
+      const activeRows = rows.filter((row) => !row.revokedAt && !row.supersededById);
+      expect(activeRows).toHaveLength(1);
+      expect(activeRows[0]?.payload).toMatchObject({ decision: 'REVOKE' });
+      const approveRow = rows.find(
+        (row) => (row.payload as { decision?: string }).decision === 'APPROVE',
+      );
+      expect(approveRow?.supersededById).toBe(activeRows[0]?.id);
+      expect(
+        await prisma.approvalDecision.count({ where: { approvalRequestId: request.id } }),
+      ).toBe(2);
+
+      const otherWorkspaceRow = await prisma.memoryEntry.findUnique({
+        where: { id: otherWorkspaceMemory.id },
+      });
+      expect(otherWorkspaceRow?.supersededById).toBeNull();
+      expect(otherWorkspaceRow?.revokedAt).toBeNull();
+      expect(
+        await store.query({
+          workspaceId: otherWorkspace.id,
+          kinds: ['DECISION'],
+          subject,
+          keys: [key],
+        }),
+      ).toHaveLength(1);
+    } finally {
+      await prisma.memoryEntry.deleteMany({ where: { workspaceId: otherWorkspace.id } });
+      await prisma.workspace.delete({ where: { id: otherWorkspace.id } });
+    }
   });
 
   it('invalidates a request and blocks the decision when the proposal changed since the request was raised', async () => {
@@ -232,5 +518,13 @@ describe('Board review + approval decision (integration)', () => {
 
     const reloaded = await prisma.approvalRequest.findUnique({ where: { id: request.id } });
     expect(reloaded?.state).toBe('EXPIRED');
+
+    const memory = await new PrismaMemoryStore().query({
+      workspaceId: workspace.id,
+      kinds: ['DECISION'],
+      subject: `venture-proposal:${proposal.id}`,
+      keys: [`approval-request:${request.id}`],
+    });
+    expect(memory).toEqual([]);
   });
 });

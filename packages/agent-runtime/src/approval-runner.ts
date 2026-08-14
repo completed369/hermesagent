@@ -6,6 +6,8 @@ import {
   hashScaleDecisionArtifact,
 } from '@ventureos/security';
 import { isApprovalValidForExecution } from '@ventureos/contracts';
+import { captureApprovalDecisionMemory } from './memory-capture.js';
+import type { MemoryStore } from './memory.js';
 
 export class ApprovalNotFoundError extends Error {}
 export class ApprovalAlreadyDecidedError extends Error {}
@@ -99,6 +101,7 @@ export interface DecideApprovalParams {
   conditions?: string[];
   comment?: string;
   approvedAmountEur?: number;
+  memoryStore?: MemoryStore;
 }
 
 const DECISION_TO_STATE: Record<DecideApprovalParams['decision'], string> = {
@@ -350,6 +353,12 @@ export async function decideApprovalRequest(
 
     const updated = await tx.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
     return [updated, decision] as const;
+  });
+
+  await captureApprovalDecisionMemory({
+    approvalRequest: updatedRequest,
+    approvalDecision: decisionRow,
+    ...(params.memoryStore ? { store: params.memoryStore } : {}),
   });
 
   return { approvalRequest: updatedRequest, decision: decisionRow };

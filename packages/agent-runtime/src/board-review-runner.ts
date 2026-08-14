@@ -9,6 +9,8 @@ import { BOARD_AGENT_ROLES, type AgentOutput } from '@ventureos/contracts';
 import { recordModelUsage } from '@ventureos/finance-engine';
 import { runAllMockBoardAgents, type BoardAgentInput } from './mock-provider.js';
 import { synthesiseDecision } from './decision-synthesiser.js';
+import { captureBoardReviewMemory } from './memory-capture.js';
+import type { MemoryStore } from './memory.js';
 
 export class BoardReviewNotFoundError extends Error {}
 export class BoardReviewInvalidOutputError extends Error {}
@@ -16,6 +18,7 @@ export class BoardReviewInvalidOutputError extends Error {}
 export interface RunBoardReviewParams {
   workspaceId: string;
   ventureProposalId: string;
+  memoryStore?: MemoryStore;
 }
 
 export interface RunBoardReviewResult {
@@ -175,7 +178,7 @@ export async function runBoardReview(params: RunBoardReviewParams): Promise<RunB
       },
     });
 
-    await prisma.boardReview.update({
+    const completedBoardReview = await prisma.boardReview.update({
       where: { id: boardReview.id },
       data: {
         status: 'COMPLETED',
@@ -184,6 +187,12 @@ export async function runBoardReview(params: RunBoardReviewParams): Promise<RunB
         meetsThreshold: votingResult.meetsThreshold,
         completedAt: new Date(),
       },
+    });
+
+    await captureBoardReviewMemory({
+      boardReview: completedBoardReview,
+      decisionSummary,
+      ...(params.memoryStore ? { store: params.memoryStore } : {}),
     });
 
     return {
