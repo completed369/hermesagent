@@ -71,7 +71,11 @@ async function readById(
   return rows[0] ? normaliseRow(rows[0]) : null;
 }
 
-async function insertMemory(client: MemorySqlClient, input: MemoryWrite): Promise<MemoryRecord> {
+async function insertMemory(
+  client: MemorySqlClient,
+  input: MemoryWrite,
+  supersession?: { supersededById: string; supersededByActor: string },
+): Promise<MemoryRecord> {
   const parsed = memoryWriteSchema.parse(input);
   const id = randomUUID();
   const payloadJson = JSON.stringify(parsed.payload);
@@ -79,7 +83,8 @@ async function insertMemory(client: MemorySqlClient, input: MemoryWrite): Promis
   await client.$executeRaw(Prisma.sql`
     INSERT INTO "memory_entries" (
       "id", "workspaceId", "kind", "subject", "key", "payload", "sourceRef",
-      "confidence", "sensitivity", "createdBy", "expiresAt"
+      "confidence", "sensitivity", "createdBy", "expiresAt", "supersededById",
+      "supersededByActor"
     ) VALUES (
       CAST(${id} AS uuid),
       CAST(${parsed.workspaceId} AS uuid),
@@ -91,13 +96,57 @@ async function insertMemory(client: MemorySqlClient, input: MemoryWrite): Promis
       ${parsed.confidence},
       ${parsed.sensitivity},
       ${parsed.createdBy},
-      ${parsed.expiresAt ?? null}
+      ${parsed.expiresAt ?? null},
+      ${supersession ? Prisma.sql`CAST(${supersession.supersededById} AS uuid)` : Prisma.sql`NULL`},
+      ${supersession?.supersededByActor ?? null}
     )
   `);
 
   const created = await readById(client, parsed.workspaceId, id);
   if (!created) throw new Error('Memory was created but could not be read back');
   return created;
+}
+
+export type MemoryAtomicOrdering = {
+  tieBreak?: {
+    payloadKey: string;
+    rankByValue: Record<string, number>;
+  };
+};
+
+type MemoryComparableRecord = Pick<MemoryRecord, 'payload' | 'createdAt'>;
+
+function memoryDecisionTime(record: MemoryComparableRecord): number {
+  const payload = record.payload;
+  const decidedAt =
+    typeof payload === 'object' && payload !== null && 'decidedAt' in payload
+      ? new Date(String(payload.decidedAt)).getTime()
+      : Number.NaN;
+  return Number.isFinite(decidedAt) ? decidedAt : record.createdAt.getTime();
+}
+
+function memoryTieBreakRank(
+  record: Pick<MemoryRecord, 'payload'>,
+  ordering?: MemoryAtomicOrdering,
+): number {
+  const tieBreak = ordering?.tieBreak;
+  if (!tieBreak) return 0;
+  const payload = record.payload;
+  if (typeof payload !== 'object' || payload === null || !(tieBreak.payloadKey in payload)) {
+    return 0;
+  }
+  const value = String(payload[tieBreak.payloadKey as keyof typeof payload]);
+  return tieBreak.rankByValue[value] ?? 0;
+}
+
+function memoryCompare(
+  replacement: MemoryComparableRecord,
+  current: MemoryComparableRecord,
+  ordering?: MemoryAtomicOrdering,
+): number {
+  const timeDelta = memoryDecisionTime(replacement) - memoryDecisionTime(current);
+  if (timeDelta !== 0) return timeDelta;
+  return memoryTieBreakRank(replacement, ordering) - memoryTieBreakRank(current, ordering);
 }
 
 /**
@@ -110,6 +159,71 @@ export class PrismaMemoryStore implements MemoryStore {
     const parsed = memoryWriteSchema.parse(input);
     assertWorkspaceScope(parsed.workspaceId);
     return insertMemory(prisma, parsed);
+  }
+
+  async putOrSupersedeActiveByKey(
+    input: MemoryWrite,
+    actorId: string,
+    ordering?: MemoryAtomicOrdering,
+  ): Promise<{ active: MemoryRecord; inserted: MemoryRecord; superseded: MemoryRecord[] }> {
+    const parsed = memoryWriteSchema.parse(input);
+    const workspaceId = assertWorkspaceScope(parsed.workspaceId);
+    const actor = actorSchema.parse(actorId);
+    const replacementComparable = {
+      payload: parsed.payload,
+      createdAt: new Date(),
+    };
+    const lockKey = `${workspaceId}:${parsed.kind}:${parsed.subject}:${parsed.key}`;
+
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+      );
+
+      const activeRows = await tx.$queryRaw<RawMemoryRow[]>(Prisma.sql`
+        SELECT
+          "id", "workspaceId", "kind", "subject", "key", "payload", "sourceRef",
+          "confidence", "sensitivity", "createdBy", "createdAt", "updatedAt",
+          "expiresAt", "supersededById", "revokedAt"
+        FROM "memory_entries"
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "kind" = ${parsed.kind}
+          AND "subject" = ${parsed.subject}
+          AND "key" = ${parsed.key}
+          AND "revokedAt" IS NULL
+          AND "supersededById" IS NULL
+          AND ("expiresAt" IS NULL OR "expiresAt" > CURRENT_TIMESTAMP)
+        FOR UPDATE
+      `);
+      const activeRowsByNewestDecision = activeRows
+        .map(normaliseRow)
+        .sort((a, b) => memoryCompare(b, a, ordering));
+      const currentActive = activeRowsByNewestDecision[0];
+
+      if (!currentActive || memoryCompare(replacementComparable, currentActive, ordering) >= 0) {
+        const inserted = await insertMemory(tx, parsed);
+        if (activeRowsByNewestDecision.length) {
+          const activeIds = activeRowsByNewestDecision.map((record) => record.id);
+          await tx.$executeRaw(Prisma.sql`
+            UPDATE "memory_entries"
+            SET "supersededById" = CAST(${inserted.id} AS uuid),
+                "supersededByActor" = ${actor},
+                "updatedAt" = CURRENT_TIMESTAMP
+            WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+              AND "id" IN (${Prisma.join(activeIds.map((id) => Prisma.sql`CAST(${id} AS uuid)`))})
+              AND "revokedAt" IS NULL
+              AND "supersededById" IS NULL
+          `);
+        }
+        return { active: inserted, inserted, superseded: activeRowsByNewestDecision };
+      }
+
+      const inserted = await insertMemory(tx, parsed, {
+        supersededById: currentActive.id,
+        supersededByActor: actor,
+      });
+      return { active: currentActive, inserted, superseded: [inserted] };
+    });
   }
 
   async query(input: MemoryQuery): Promise<MemoryRecord[]> {

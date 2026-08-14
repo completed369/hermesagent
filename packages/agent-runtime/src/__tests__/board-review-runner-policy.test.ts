@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
     ventureProposalFindFirst: vi.fn(),
     evidenceClaimFindMany: vi.fn(),
     runAllMockBoardAgents: vi.fn(),
+    captureBoardReviewMemory: vi.fn(),
   };
 });
 
@@ -27,6 +28,9 @@ vi.mock('@ventureos/database', async (importOriginal) => {
 });
 vi.mock('../mock-provider.js', () => ({ runAllMockBoardAgents: mocks.runAllMockBoardAgents }));
 vi.mock('../decision-synthesiser.js', () => ({ synthesiseDecision: vi.fn() }));
+vi.mock('../memory-capture.js', () => ({
+  captureBoardReviewMemory: mocks.captureBoardReviewMemory,
+}));
 vi.mock('@ventureos/finance-engine', () => ({ recordModelUsage: vi.fn() }));
 
 import { runBoardReview } from '../board-review-runner.js';
@@ -54,6 +58,7 @@ describe('board review capability denial propagation', () => {
     ).rejects.toBe(denial);
 
     expect(mocks.runAllMockBoardAgents).not.toHaveBeenCalled();
+    expect(mocks.captureBoardReviewMemory).not.toHaveBeenCalled();
     expect(mocks.boardReviewUpdate).toHaveBeenCalledWith({
       where: { id: 'board-review' },
       data: {

@@ -43,6 +43,17 @@ The `memory_entries` migration enforces workspace foreign keys, memory-kind/sens
 
 Integration tests exercise real PostgreSQL storage and prove workspace isolation, cross-tenant mutation denial, expiry filtering, transactional supersession, revocation, actor provenance, and deterministic metadata filters.
 
-## Next integration steps
+## Capture integrations
 
-After persistence is merged, selected research, board, approval, finance, and experiment workflows can capture memory at explicit successful boundaries. Any prompt injection must remain source-labelled, size-bounded, sensitivity-authorized, and subordinate to current evidence and deterministic policy checks.
+The first governed capture integrations are intentionally narrow:
+
+- completed board reviews.
+- persisted founder approval decisions.
+
+A completed board review writes one advisory `EPISODE` memory record keyed to the authoritative `BoardReview` and sourced from the persisted `DecisionSummary`. It stores only deterministic identifiers and outcome metadata such as blocked/threshold/recommendation/confidence. This is historical board-review context, not a founder approval.
+
+A founder approval decision writes one `DECISION` memory record keyed by the stable `ApprovalRequest` and sourced from the authoritative `ApprovalDecision`. Later decisions for the same request, including `REVOKE`, supersede the prior active memory entry rather than hard-deleting history.
+
+The `ApprovalRequest` and `ApprovalDecision` tables remain the source of truth. Any protected action must still revalidate the authoritative approval record and the current artifact/package hash through deterministic approval checks. Memory can never resurrect an expired, revoked, stale, or drifted approval, and memory cannot grant or revoke execution authority.
+
+Prompt/retrieval integration is still intentionally deferred. Selected future research, finance, experiment, product, marketplace, and publication capture points may be added later only at explicit successful boundaries. Any prompt injection must remain source-labelled, size-bounded, sensitivity-authorized, and subordinate to current evidence and deterministic policy checks.

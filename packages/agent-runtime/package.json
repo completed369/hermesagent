@@ -20,6 +20,7 @@
     "@ventureos/contracts": "workspace:*",
     "@ventureos/database": "workspace:*",
     "@ventureos/finance-engine": "workspace:*",
+    "@ventureos/observability": "workspace:*",
     "@ventureos/policy-engine": "workspace:*",
     "@ventureos/security": "workspace:*"
   },
