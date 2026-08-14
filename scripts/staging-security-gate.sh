@@ -113,7 +113,7 @@ run_gate() {
   # 20 concurrent workers across health, authenticated reads, Temporal board
   # workflow starts, and research acquisitions. Results are written as JSON
   # for CI evidence and later comparison.
-  node scripts/staging-load-test.mjs
+  node load-tests/staging.mjs
 
   local users_before users_after
   users_before=$(compose exec -T postgres psql -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" -Atc 'select count(*) from users')
