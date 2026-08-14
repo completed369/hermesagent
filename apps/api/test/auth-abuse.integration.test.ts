@@ -82,6 +82,34 @@ describe('durable authentication abuse control (integration)', () => {
     expect(result).toEqual({ reasonCode: 'LOGIN_IP_COOLDOWN', retryAfterSeconds: 60 });
   });
 
+  it('does not lose 20 concurrent source-IP login increments across distinct accounts', async () => {
+    const ip = '198.51.100.120';
+    const contexts = Array.from({ length: 20 }, (_, index) =>
+      createContext(`parallel-ip-${index}@example.test`, ip),
+    );
+    const competingService = new AuthAbuseService(env, clock);
+
+    const results = await Promise.all(
+      contexts.map((context, index) =>
+        (index % 2 === 0 ? service : competingService).recordAttempt('LOGIN', context),
+      ),
+    );
+
+    const ipDigest = contexts[0]!.ipDigest;
+    const ipState = await prisma.authAbuseState.findUniqueOrThrow({
+      where: {
+        channel_scope_keyDigest: {
+          channel: 'LOGIN',
+          scope: 'IP',
+          keyDigest: ipDigest,
+        },
+      },
+    });
+    expect(ipState.attemptCount).toBe(20);
+    expect(ipState.cooldownUntil).not.toBeNull();
+    expect(results.filter((result) => result?.reasonCode === 'LOGIN_IP_COOLDOWN')).toHaveLength(1);
+  });
+
   it('keeps the registration source-IP cooldown enforced across account identifiers', async () => {
     let result = null;
     for (let attempt = 1; attempt < 10; attempt += 1) {

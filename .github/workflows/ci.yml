@@ -172,8 +172,17 @@ jobs:
       - name: Generate disposable synthetic staging environment
         run: node scripts/generate-staging-env.mjs
 
-      - name: Run staging security gate (no deployment)
+      - name: Run staging security and load gate (no deployment)
         run: bash scripts/staging-security-gate.sh all
+
+      - name: Upload staging load evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-load-results-${{ github.run_id }}
+          path: .staging/load-results.json
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload staging failure evidence
         if: failure()
@@ -182,6 +191,7 @@ jobs:
           name: staging-security-gate-failure-${{ github.run_id }}
           path: |
             .staging/topology.log
+            .staging/load-results.json
             apps/web/playwright-report/
             apps/web/test-results/
           if-no-files-found: warn
