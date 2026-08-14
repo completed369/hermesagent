@@ -28,35 +28,48 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           persist-credentials: true
-      - name: Enable Corepack
-        run: corepack enable
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Regenerate lockfile only
-        run: pnpm install --lockfile-only --no-frozen-lockfile
-      - name: Verify Nano ID resolution
+          fetch-depth: 0
+      - name: Restore main lockfile and apply only Nano ID patch
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git show origin/main:pnpm-lock.yaml > pnpm-lock.yaml
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('pnpm-lock.yaml')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              ('nanoid: 3.3.17', 'nanoid: 3.3.18', 2),
+              ('nanoid@3.3.17:', 'nanoid@3.3.18:', 2),
+              (
+                  'sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==',
+                  'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==',
+                  1,
+              ),
+          ]
+          for old, new, expected_count in replacements:
+              actual = text.count(old)
+              if actual != expected_count:
+                  raise SystemExit(f'expected {expected_count} occurrence(s) of {old!r}, found {actual}')
+              text = text.replace(old, new)
+          if '3.3.17' in text:
+              raise SystemExit('stale Nano ID 3.3.17 remains in lockfile')
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Verify surgical dependency diff
         run: |
           set -Eeuo pipefail
           grep -q '^  nanoid: 3.3.18$' pnpm-lock.yaml
           grep -q '^  nanoid@3.3.18:$' pnpm-lock.yaml
-          ! grep -q '^  nanoid@3.3.17:$' pnpm-lock.yaml
-      - name: Commit generated lockfile only
+          grep -q 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==' pnpm-lock.yaml
+          test "$(git diff --numstat origin/main -- pnpm-lock.yaml | awk '{print $1+$2}')" -le 10
+      - name: Commit corrected lockfile only
         run: |
           set -Eeuo pipefail
-          if test -n "$(git diff -- . ':!pnpm-lock.yaml')"; then
-            echo 'Unexpected tracked file changed during lockfile generation' >&2
-            git diff -- . ':!pnpm-lock.yaml'
-            exit 1
-          fi
           git add pnpm-lock.yaml
-          if git diff --cached --quiet; then
-            echo 'Lockfile already current.'
-            exit 0
-          fi
+          git diff --cached --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(security): refresh nanoid 3.3.18 lockfile'
+          git commit -m 'fix(security): use nanoid 3.3.18 lockfile resolution'
           git push origin "HEAD:${PR_HEAD_REF}"
