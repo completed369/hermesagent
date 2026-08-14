@@ -109,6 +109,33 @@ run_gate() {
   CI=true E2E_EXTERNAL_SERVERS=true E2E_BASE_URL=http://localhost:3000 \
     pnpm --filter @ventureos/web run test:e2e
 
+  # Integration suites deliberately exercise terminal opportunity states and
+  # may remove their associated proposal during cleanup. The seed is
+  # idempotent and therefore does not rewrite that workflow state on the
+  # second seed pass. Normalize only the disposable canonical seed when it has
+  # no linked VentureProposal, giving the load test a deterministic fixture
+  # without weakening the production one-way promotion policy.
+  compose exec -T postgres psql -v ON_ERROR_STOP=1 \
+    -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" <<'SQL'
+UPDATE "opportunities" AS o
+SET
+  "status" = 'NEW',
+  "rejectionReason" = NULL,
+  "rejectedAt" = NULL,
+  "archivedAt" = NULL,
+  "promotedAt" = NULL,
+  "updatedAt" = NOW()
+FROM "workspaces" AS w
+WHERE o."workspaceId" = w."id"
+  AND w."slug" = 'ventureos-default'
+  AND o."title" = 'Social Media Content Planning Kit'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM "venture_proposals" AS vp
+    WHERE vp."opportunityId" = o."id"
+  );
+SQL
+
   # Stage 5 performance gate: drive the disposable staging topology with
   # 20 concurrent workers across health, authenticated reads, Temporal board
   # workflow starts, and research acquisitions. Results are written as JSON
