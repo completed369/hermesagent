@@ -1,96 +1,129 @@
 # Deployment
 
-> **Phase 15 update:** the fail-closed local/container staging architecture,
-> production artifacts, environment/secret contracts, startup/cleanup sequence,
-> threat model, and unresolved cloud choices are defined in
-> `STAGING_SECURITY_GATE.md`. It performs no public or production deployment.
+## Current-state note
 
-## Local development (only target verified in this build)
+This document reconciles deployment terminology across repository source,
+validation evidence, staging-gate configuration, private-staging templates, and
+external operational state. It does not claim that any deployment was performed
+during this documentation-only reconciliation.
 
-Docker Compose (`docker-compose.yml` at repo root) runs PostgreSQL,
-Temporal + Temporal UI, and MinIO. `apps/web`, `apps/api`, `apps/worker` run
-as plain Node processes via `pnpm dev` (Turborepo parallel dev mode) —
-not containerized in Phase 1. See `docs/LOCAL_SETUP_WINDOWS.md`.
+## Deployment-state taxonomy
 
-## Future target: affordable European VPS / managed containers (master spec §4)
+Use these terms precisely:
 
-No cloud target is configured or selected. Phase 15 provides production-mode
-application images and a local/container staging topology, but it deliberately
-does not provide public ingress, TLS, cloud networking, managed persistence, or
-deployment automation. Any later VPS or managed-container deployment must remain
-a thin, founder-approved layer over these artifacts or managed equivalents and
-must satisfy the unresolved controls in `STAGING_SECURITY_GATE.md`.
+1. **Repository source/configuration state** — files exist in this repository,
+   such as Compose files, Dockerfiles, scripts, or GitHub workflows.
+2. **Local development validation evidence** — commands were run on a developer
+   machine and recorded elsewhere, usually against local Docker infrastructure.
+3. **GitHub CI evidence** — GitHub Actions workflow runs for a specific ref.
+4. **Local/container staging-gate evidence** — the reproducible local/container
+   production-mode, mock-only proof in `docker-compose.staging.yml` and
+   `scripts/staging-security-gate.sh all`.
+5. **Private-staging deployment capability/templates** — deployment templates,
+   scripts, and protected/manual workflows exist for a founder-authorized private
+   staging deployment path.
+6. **Externally verified staging deployment state** — separately observed
+   operational evidence from an external staging environment, if any.
+7. **Production deployment state** — separately observed production operational
+   evidence and approval.
 
-## Environments
+The repository contains private-staging deployment configuration and workflows.
+Repository evidence alone does not establish the current operational state of any
+externally deployed staging environment. It also does not establish production
+deployment state or production readiness.
 
-`NODE_ENV` and `DEPLOYMENT_ENVIRONMENT` drive validated runtime contracts.
-Phase 15 generates an ignored, disposable synthetic staging environment and
-database for its local proof. Real staging and production environments, secret
-stores, and separate databases have not been provisioned and require explicit
-founder-approved infrastructure decisions.
+## Local development
 
-## What must never happen automatically
+Docker Compose (`docker-compose.yml` at repo root) runs PostgreSQL, Temporal +
+Temporal UI, and MinIO for local development. `apps/web`, `apps/api`, and
+`apps/worker` run as Node processes via `pnpm dev` unless a different local
+command is explicitly used. See `docs/LOCAL_SETUP_WINDOWS.md`.
 
-No paid service activates automatically (`FEATURE_PAID_INTEGRATIONS_ENABLED=false`
-default). No deployment step publishes externally, spends money, or changes
-production configuration without founder approval — this is a process rule
-until Phase 3's approval workflow can enforce it in code for deploy-time
-actions too.
+Local development validation evidence is historical/run-specific. Consult
+`docs/EXECUTION_PLAN.md`, `docs/TECHNICAL_RELEASE_BASELINE.md`, and
+`docs/APPLICATION_SECURITY_BASELINE.md` for recorded command evidence rather
+than assuming the current working copy has been rerun.
 
-## Multi-tenant deployment topology (Phase 8)
+## GitHub CI validation
 
-Phase 8 does not change the deployment shape above — it is still one
-Postgres instance, one Temporal instance, one MinIO instance, and the same
-three app processes (`web`/`api`/`worker`). What changes is that a single
-running instance can now serve **multiple independent workspaces** rather
-than only the one founder workspace the seed script creates:
+`.github/workflows/ci.yml` is validation-only. It runs clean-runner checks and a
+local/container staging security gate, but it does not deploy externally, publish
+marketplace content, activate paid services, contact real providers, or change
+production configuration. See `docs/CI_GOVERNANCE.md`.
 
-- **Tenant boundary**: `Workspace` has always been the isolation boundary
-  (every table hangs off `workspaceId`, per `docs/ARCHITECTURE.md`); Phase 8
-  just adds a real way to create a _second_ workspace — `POST
-/api/auth/register` — instead of only ever having the one seeded founder
-  workspace. No new isolation mechanism was needed because the schema was
-  already built this way from Phase 1 onward.
-- **Plans and subscriptions**: every workspace gets exactly one
-  `Subscription` row (TRIAL by default for a new registration, or whatever
-  plan an operator manually assigns via `changePlan`). Plan limits
-  (`maxVentures`/`maxWorkspaceMembers`/`maxMarketplaceAccounts`) are
-  enforced by `@ventureos/billing`'s guard functions before the relevant
-  create-path runs.
-- **White-label**: `WorkspaceBranding` lets each workspace show its own
-  brand name/logo/accent color in the dashboard shell — this is a per-tenant
-  cosmetic setting, not a separate deployment or subdomain. Multi-domain/
-  custom-domain white-labeling (e.g. `app.customerdomain.com`) is explicitly
-  **not** built — that would require reverse-proxy/TLS/DNS work that is out
-  of scope until there is a real second customer asking for it.
-- **License keys**: `LicenseKey` exists for a genuinely _separate_,
-  self-hosted install (a customer running their own Docker Compose stack
-  entirely, not a workspace on this shared instance) to validate itself
-  against — see "Exportable/self-hosted installs" below. It has no bearing
-  on tenant isolation for workspaces sharing this instance.
+## Local/container staging gate
 
-### Exportable/self-hosted installs
+`docker-compose.staging.yml`, `Dockerfile.staging`,
+`scripts/generate-staging-env.mjs`, and `scripts/staging-security-gate.sh`
+define a reproducible local/container staging proof. It runs application
+containers in production mode with synthetic credentials, mock providers, loopback
+relays, and fail-closed live/paid feature switches. See
+`docs/STAGING_SECURITY_GATE.md`.
 
-A customer who wants to run their _own_ fully separate instance (their own
-Postgres/Temporal/MinIO, their own domain) rather than a workspace on a
-shared instance needs:
+This is local/container evidence only. It is not public ingress, TLS, cloud,
+host-hardening, backup/restore, real-provider, external staging deployment, or
+production evidence.
 
-1. This repository, cloned.
-2. Their own `.env` (from `.env.example`) with a `DEV_FOUNDER_EMAIL`/
-   `DEV_FOUNDER_PASSWORD` for their own first login (or, once registration
-   is enabled in their environment, they simply register the first
-   workspace themselves).
-3. `docker compose up -d`, `pnpm install`, `pnpm db:migrate:deploy`,
-   `pnpm db:seed` (seeds the plan tiers + a founder workspace exactly as
-   this reference install does).
-4. A `LicenseKey` issued from **this** reference instance (Settings →
-   License keys → Issue license key) for tracking which self-hosted
-   installs exist — the exported install does not currently call home to
-   validate the key automatically (that would require a licensing-server
-   endpoint this phase does not build); the key is presently a record-
-   keeping mechanism, not an enforced runtime gate on the exported install
-   itself. Wiring a real "phone home" validation check is future work once
-   there is a real second self-hosted customer to design it against.
+## Private-staging deployment capability/templates
 
-See `docs/CUSTOMER_GETTING_STARTED.md` for the customer-facing version of
-this walkthrough (written for someone who is not a VentureOS developer).
+The repository also contains a private-staging deployment template under
+`deploy/private-staging/` and manually dispatched workflows such as:
+
+- `.github/workflows/publish-images.yml`
+- `.github/workflows/private-staging-connectivity.yml`
+- `.github/workflows/private-staging-deploy.yml`
+
+These files represent configured capability/templates for a founder-authorized
+private-staging deployment path. They include authorization phrases,
+protected-environment assumptions, immutable image/digest expectations, secret
+file boundaries, and a private tunnel topology. Their presence does not prove
+that images have been published, that credentials/settings exist in GitHub, that
+a VPS or tunnel is reachable, or that an external staging environment is
+currently deployed.
+
+Externally verified staging state must come from separate operational evidence,
+not from repository files alone.
+
+## Production deployment state
+
+Production deployment is not established by repository evidence alone. A
+production launch would require founder approval plus evidence for the selected
+provider/region, TLS/ingress, secret manager, database/storage/Temporal
+persistence, backup/restore, monitoring/alerting, rollback, repository
+protections, and legal/commercial readiness.
+
+No deployment step may automatically spend money, publish externally, send
+customer-facing messages, accept agreements, access financial accounts, disable
+security controls, or bypass founder approval.
+
+## Provider and commercial-action gates
+
+Real AI providers, live Etsy publication, payments, advertising, email,
+notifications, customer communication, and other sensitive external actions
+remain mock/disabled/gated unless a future founder-approved scope supplies the
+credentials, deterministic backend controls, provider-specific safeguards, and
+validation evidence.
+
+Repository configuration may contain placeholders or templates for future
+provider wiring. That is not the same as live provider capability or production
+readiness.
+
+## Multi-tenant deployment topology
+
+Phase 8 introduced multi-workspace/SaaS-oriented application capability, but it
+does not require microservices. A shared instance can serve multiple workspaces
+through the `Workspace` tenant boundary, subscription/plan rows, quota guards,
+and per-workspace branding. Custom domains, multi-domain white-labeling, and
+customer-specific external infrastructure require additional ingress/TLS/DNS and
+operational design.
+
+## Exportable/self-hosted installs
+
+A customer or operator running a separate self-hosted instance would need this
+repository, their own environment/secrets, infrastructure, migrations, seed or
+bootstrap process, and operational controls. License keys exist as a
+record-keeping mechanism in the current application; repository evidence does
+not establish an enforced phone-home licensing service.
+
+See `docs/CUSTOMER_GETTING_STARTED.md` for the customer-facing local/self-hosted
+walkthrough.
