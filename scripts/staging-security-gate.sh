@@ -93,7 +93,7 @@ run_gate() {
 
   local migrations
   migrations=$(compose exec -T postgres psql -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" -Atc 'select count(*) from "_prisma_migrations" where finished_at is not null and rolled_back_at is null')
-  [[ "$migrations" == '11' ]] || { echo "Expected 11 applied migrations, found $migrations" >&2; return 1; }
+  [[ "$migrations" == '12' ]] || { echo "Expected 12 applied migrations, found $migrations" >&2; return 1; }
 
   local workflows_before workflows_after
   workflows_before=$(compose exec -T temporal sh -ec 'tctl --address "$(hostname -i):7233" workflow list --namespace ventureos-staging --pagesize 1000 2>/dev/null | wc -l')

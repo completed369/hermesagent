@@ -111,11 +111,11 @@ test('staging image and topology contracts are fail-closed', () => {
   );
 });
 
-test('the immutable migration chain contains exactly eleven migrations', () => {
+test('the immutable migration chain contains exactly twelve migrations', () => {
   const migrations = readdirSync(resolve(root, 'packages/database/prisma/migrations'), {
     withFileTypes: true,
   }).filter((entry) => entry.isDirectory());
-  assert.equal(migrations.length, 11);
+  assert.equal(migrations.length, 12);
 });
 
 test('the API egress probe uses distroless Node and remains fail-closed', () => {

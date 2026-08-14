@@ -6,9 +6,11 @@ export type MemoryKind = z.infer<typeof memoryKindSchema>;
 export const memorySensitivitySchema = z.enum(['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'RESTRICTED']);
 export type MemorySensitivity = z.infer<typeof memorySensitivitySchema>;
 
+export const uuidSchema = z.string().trim().uuid();
+
 export const memoryRecordSchema = z.object({
-  id: z.string().min(1),
-  workspaceId: z.string().min(1),
+  id: uuidSchema,
+  workspaceId: uuidSchema,
   kind: memoryKindSchema,
   subject: z.string().min(1),
   key: z.string().min(1),
@@ -20,7 +22,7 @@ export const memoryRecordSchema = z.object({
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   expiresAt: z.coerce.date().nullable().optional(),
-  supersededById: z.string().min(1).nullable().optional(),
+  supersededById: uuidSchema.nullable().optional(),
   revokedAt: z.coerce.date().nullable().optional(),
 });
 export type MemoryRecord = z.infer<typeof memoryRecordSchema>;
@@ -61,8 +63,8 @@ export interface MemoryStore {
  * always carry an explicit workspace; callers may never infer a global scope.
  */
 export function assertWorkspaceScope(workspaceId: string): string {
-  const parsed = z.string().min(1).safeParse(workspaceId);
-  if (!parsed.success) throw new Error('workspaceId is required for memory access');
+  const parsed = uuidSchema.safeParse(workspaceId);
+  if (!parsed.success) throw new Error('workspaceId must be a valid UUID for memory access');
   return parsed.data;
 }
 
