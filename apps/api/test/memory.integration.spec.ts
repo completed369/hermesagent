@@ -164,6 +164,22 @@ describe('governed agent memory persistence (integration)', () => {
       sensitivity: 'RESTRICTED',
       createdBy: 'agent:operations',
     });
+    const otherWorkspace = await createWorkspace('RestrictedIsolation');
+    await store.put({
+      workspaceId: otherWorkspace.id,
+      kind: 'PROCEDURE',
+      subject: 'venture:filters',
+      key: 'other-workspace-restricted',
+      payload: { value: 'other workspace restricted memory' },
+      sourceRef: 'audit:procedure-2',
+      confidence: 0.75,
+      sensitivity: 'RESTRICTED',
+      createdBy: 'agent:operations',
+    });
+
+    const defaultRecall = await store.query({ workspaceId: workspace.id, limit: 20 });
+    expect(defaultRecall.map(({ sensitivity }) => sensitivity)).not.toContain('RESTRICTED');
+    expect(defaultRecall.map(({ key }) => key)).toEqual(['channel']);
 
     const decisions = await store.query({
       workspaceId: workspace.id,
@@ -181,5 +197,6 @@ describe('governed agent memory persistence (integration)', () => {
     });
     expect(restricted).toHaveLength(1);
     expect(restricted[0]?.key).toBe('launch-checklist');
+    expect(JSON.stringify(restricted)).not.toContain('other workspace restricted memory');
   });
 });

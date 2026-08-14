@@ -7,6 +7,7 @@ import {
   memoryRecordSchema,
   memorySensitivitySchema,
   memoryWriteSchema,
+  uuidSchema,
   type MemoryQuery,
   type MemoryRecord,
   type MemoryStore,
@@ -34,9 +35,9 @@ type RawMemoryRow = {
 };
 
 const actorSchema = z.string().trim().min(1);
-const memoryIdSchema = z.string().uuid();
+const memoryIdSchema = uuidSchema;
 const querySchema = z.object({
-  workspaceId: z.string().trim().min(1),
+  workspaceId: uuidSchema,
   kinds: z.array(memoryKindSchema).max(4).optional(),
   subject: z.string().trim().min(1).optional(),
   keys: z.array(z.string().trim().min(1)).max(100).optional(),
@@ -133,6 +134,8 @@ export class PrismaMemoryStore implements MemoryStore {
     }
     if (parsed.sensitivity?.length) {
       clauses.push(Prisma.sql`"sensitivity" IN (${Prisma.join(parsed.sensitivity)})`);
+    } else {
+      clauses.push(Prisma.sql`"sensitivity" IN ('PUBLIC', 'INTERNAL', 'CONFIDENTIAL')`);
     }
 
     const rows = await prisma.$queryRaw<RawMemoryRow[]>(Prisma.sql`

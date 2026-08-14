@@ -1,39 +1,98 @@
 # Backup & Recovery
 
-**Status: documented procedure, not automated (Phase 1 has no production
-data worth backing up yet — this is prepared ahead of need).**
+## Current-state note
 
-## PostgreSQL
+This document was originally written during Phase 1, before later migrations,
+staging-gate topology, and private-staging templates existed. Historical Phase 1
+claims such as "no production data worth backing up" are no longer useful as
+current-state guidance. Repository evidence still does not establish production
+backup automation or a completed production restore drill.
 
-Local dev: `docker compose exec postgres pg_dump -U ventureos ventureos > backup.sql`
-to snapshot; restore with `docker compose exec -T postgres psql -U ventureos ventureos < backup.sql`.
+## Evidence boundaries
+
+Keep these states separate:
+
+- **Local development**: developer-operated Docker volumes and manual `pg_dump`
+  commands can snapshot local data.
+- **Local/container staging gate**: `docker-compose.staging.yml` uses disposable
+  volumes and intentionally removes them during cleanup. This is not backup
+  evidence.
+- **Private-staging templates**: `deploy/private-staging/` contains deployment
+  and database-role groundwork, including a backup-role concept, but repository
+  configuration alone does not prove that an external staging environment,
+  backup target, schedule, encryption policy, or restore drill exists.
+- **Production**: production backup/restore automation, retention, monitoring,
+  and restore rehearsal are not established by repository evidence alone and
+  require separate founder-approved operational work.
+
+## PostgreSQL local development snapshot
+
+Local dev snapshot:
+
+```powershell
+docker compose exec postgres pg_dump -U ventureos ventureos > backup.sql
+```
+
+Local dev restore into the local database:
+
+```powershell
+cmd /c "docker compose exec -T postgres psql -U ventureos ventureos < backup.sql"
+```
+
 Data also persists in the named Docker volume `postgres-data` across
-`docker compose down` (but not `docker compose down -v`).
+`docker compose down`, but not across `docker compose down -v`. Docker volumes
+are convenience persistence, not a backup strategy.
 
-## MinIO
+## MinIO / object storage local development snapshot
 
-Named volume `minio-data` persists uploaded files across restarts. For a
-point-in-time backup, `mc mirror` (MinIO client) to a second bucket/host —
-not configured yet.
+The local development `minio-data` volume persists uploaded files across local
+container restarts. For a point-in-time backup, use the MinIO client (`mc mirror`)
+or an equivalent object-store backup path to a separate bucket/host. That backup
+automation is not configured by the repository's local development Compose file.
 
-## Before any destructive migration
+## Before destructive or data-transforming migrations
 
-Per master spec rule 22 ("back up before destructive migrations"): always
-`pg_dump` before running a migration that drops or renames a column/table.
-No destructive migrations exist yet (Phase 1 is the very first migration).
+Per master spec rule 22 ("back up before destructive migrations"), any migration
+that drops, renames, rewrites, or materially transforms production data requires,
+before execution:
 
-## Restore procedure (once real data exists)
+1. founder-approved change window and rollback plan;
+2. recent encrypted backup;
+3. restore rehearsal to a fresh target;
+4. migration-status check plan;
+5. explicit decision on rollback migration or forward-fix strategy.
 
-1. Stop the API and worker processes.
-2. Restore the Postgres dump into a fresh database.
-3. Point `DATABASE_URL` at the restored database.
-4. Run `pnpm db:generate` (Prisma client must match schema).
-5. Restart API and worker.
-6. Verify `/api/health/ready` reports `database: ok`.
+Applied Prisma migrations are immutable. Never edit an already-applied migration
+in place. Add a new forward migration for new schema changes.
 
-## Production-grade backup automation
+## Restore procedure outline
 
-Deferred until there is production data (Phase 6+): scheduled `pg_dump` to
-object storage, retention policy, restore-drill runbook, and — per master
-spec — permanent deletion always requires a separate founder approval on
-top of any automated retention/cleanup job.
+For a real restore rehearsal or incident response, adapt this outline to the
+selected environment:
+
+1. Stop API and worker processes so no new writes occur.
+2. Restore the PostgreSQL dump/PITR snapshot into a fresh database target.
+3. Restore or mirror object storage to the matching point in time where needed.
+4. Point `DATABASE_URL` and storage configuration at the restored targets.
+5. Run Prisma generate/status checks; do not run destructive reset commands.
+6. Start one API and one worker instance.
+7. Verify `/api/health/ready`, worker readiness, Temporal visibility where
+   applicable, and representative tenant/application reads.
+8. Record the restore evidence, duration, data timestamp, and any data loss
+   against the approved RPO/RTO.
+
+## Production-grade backup automation still required
+
+Before production or commercial launch, implement and verify:
+
+- encrypted PostgreSQL backups or managed PITR with retention and access audit;
+- off-host/off-account backup copy where feasible;
+- object-storage versioning/replication or an independent mirror;
+- Temporal persistence backup/restore design appropriate to the selected
+  Temporal topology;
+- backup-age and backup-failure alerts;
+- periodic restore drills;
+- founder approval for permanent deletion or destructive production changes.
+
+No paid backup, storage, monitoring, or cloud service should be activated without
+founder approval.

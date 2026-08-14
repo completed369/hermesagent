@@ -41,8 +41,6 @@ collect_logs() {
 }
 
 build_topology() {
-  # Build targets serially so Docker Desktop does not materialize several
-  # identical 1+ GiB pnpm builder layers in parallel on constrained disks.
   compose build migrate
   compose build seed
   compose build api
@@ -108,6 +106,96 @@ run_gate() {
 
   CI=true E2E_EXTERNAL_SERVERS=true E2E_BASE_URL=http://localhost:3000 \
     pnpm --filter @ventureos/web run test:e2e
+
+  # Integration/E2E suites deliberately exercise terminal opportunity and
+  # billing states. The second seed pass restores declarative plan fields such
+  # as limits/features but lifecycle state can remain mutated. Normalize only
+  # the disposable canonical founder fixture before load; this path never runs
+  # against private staging or production and does not weaken application
+  # policy. A surviving VentureProposal is left intact and reused by the load
+  # runner. If it was cleaned up, the canonical opportunity becomes NEW again.
+  compose exec -T postgres psql -v ON_ERROR_STOP=1 \
+    -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" <<'SQL'
+UPDATE "plans"
+SET
+  "isActive" = TRUE,
+  "updatedAt" = NOW()
+WHERE "key" = 'AGENCY';
+
+UPDATE "subscriptions" AS s
+SET
+  "planId" = p."id",
+  "status" = 'ACTIVE',
+  "billingMode" = 'MOCK',
+  "trialEndsAt" = NULL,
+  "canceledAt" = NULL,
+  "updatedAt" = NOW()
+FROM "workspaces" AS w, "plans" AS p
+WHERE s."workspaceId" = w."id"
+  AND w."slug" = 'ventureos-default'
+  AND p."key" = 'AGENCY';
+
+UPDATE "opportunities" AS o
+SET
+  "status" = 'NEW',
+  "rejectionReason" = NULL,
+  "rejectedAt" = NULL,
+  "archivedAt" = NULL,
+  "promotedAt" = NULL,
+  "updatedAt" = NOW()
+FROM "workspaces" AS w
+WHERE o."workspaceId" = w."id"
+  AND w."slug" = 'ventureos-default'
+  AND o."title" = 'Social Media Content Planning Kit'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM "venture_proposals" AS vp
+    WHERE vp."opportunityId" = o."id"
+  );
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "workspaces" AS w
+    JOIN "subscriptions" AS s ON s."workspaceId" = w."id"
+    JOIN "plans" AS p ON p."id" = s."planId"
+    WHERE w."slug" = 'ventureos-default'
+      AND s."status" = 'ACTIVE'
+      AND s."billingMode" = 'MOCK'
+      AND p."key" = 'AGENCY'
+      AND p."isActive" = TRUE
+      AND 'opportunities' = ANY(p."features")
+      AND p."maxVentures" > (
+        SELECT COUNT(*)
+        FROM "venture_proposals" AS vp
+        WHERE vp."workspaceId" = w."id"
+      )
+  ) THEN
+    RAISE EXCEPTION 'Disposable founder fixture is not eligible for VENTURE_CREATE';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "opportunities" AS o
+    JOIN "workspaces" AS w ON w."id" = o."workspaceId"
+    WHERE w."slug" = 'ventureos-default'
+      AND o."title" = 'Social Media Content Planning Kit'
+      AND (
+        o."status" = 'NEW'
+        OR EXISTS (
+          SELECT 1
+          FROM "venture_proposals" AS vp
+          WHERE vp."opportunityId" = o."id"
+        )
+      )
+  ) THEN
+    RAISE EXCEPTION 'Canonical opportunity fixture is neither NEW nor linked to a proposal';
+  END IF;
+END $$;
+SQL
+
+  node load-tests/staging.mjs
 
   local users_before users_after
   users_before=$(compose exec -T postgres psql -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" -Atc 'select count(*) from users')

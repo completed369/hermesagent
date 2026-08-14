@@ -23,13 +23,13 @@ The stable runtime record shape is owned by `@ventureos/agent-runtime` and conta
 - `createdBy` plus created/updated timestamps.
 - optional expiry, revocation, and supersession metadata.
 
-Sensitive memory exposure must pass through the existing application policy/security boundary before content is injected into an agent prompt. The persistence store itself supports exact sensitivity filtering but does not pretend to be the authorization layer.
+`RESTRICTED` memory is excluded from default recall. Callers may request it only by passing an explicit sensitivity filter such as `sensitivity: ['RESTRICTED']`, and that opt-in is only a persistence-layer filter. The caller must already have passed the application policy/security authorization boundary before restricted memory is retrieved or injected into an agent prompt. `MemoryStore` is not itself the authorization layer.
 
 ## Persistence lifecycle
 
 `PrismaMemoryStore.put()` validates the public write contract and inserts an immutable-history memory row.
 
-`PrismaMemoryStore.query()` returns only active records for one workspace. Revoked, superseded, and expired records are excluded. Retrieval is deterministic metadata filtering by kind, subject, key, sensitivity, time, and bounded result count; semantic/vector retrieval is intentionally deferred.
+`PrismaMemoryStore.query()` returns only active records for one workspace. Revoked, superseded, expired, and default-unauthorized `RESTRICTED` records are excluded. Retrieval is deterministic metadata filtering by kind, subject, key, explicit sensitivity, time, and bounded result count; semantic/vector retrieval is intentionally deferred.
 
 `PrismaMemoryStore.supersede()` locks the current record, creates the replacement, and marks the previous record with `supersededById` in the same transaction. The actor responsible for supersession is persisted internally as governance provenance.
 

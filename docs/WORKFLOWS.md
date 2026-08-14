@@ -7,21 +7,21 @@ workflow engine (explicitly forbidden by master spec section 8/33).
 
 ## Phase 1: `helloWorkflow`
 
-`apps/worker/src/workflows/hello-workflow.ts` — proxies a single activity
-(`pingHealthActivity`) with a 30s timeout and 3 retries, returning a
-durable, deterministic result. It remains available for explicit development
+`apps/worker/src/workflows/hello-workflow.ts` proxies a single activity
+(`pingHealthActivity`) with a 30s timeout and 3 retries, returning a durable,
+deterministic result. It remains available for explicit development
 verification of the Phase 1 acceptance criterion "Temporal test workflow
 executes," but health endpoints do not start it. `GET /api/health/temporal`
 uses only the non-mutating gRPC Health `Check`; see `docs/HEALTH_CHECKS.md`.
 
-## Phase 3: `boardApprovalWorkflow` (implemented, live-verified)
+## Phase 3: `boardApprovalWorkflow` (implemented)
 
 `apps/worker/src/workflows/board-approval-workflow.ts` implements the board
 review + founder approval slice of the master spec section 24 workflow:
 
 1. Runs `runBoardReviewActivity` (thin wrapper over
-   `@ventureos/agent-runtime`'s `runBoardReview`) — persists all 8
-   `BoardVote` rows, any `BoardVeto` rows, and the `DecisionSummary`.
+   `@ventureos/agent-runtime`'s `runBoardReview`) and persists the board review
+   output.
 2. Calls `createApprovalRequestActivity`, passing the workflow's own ID
    (`workflowInfo().workflowId`) so the Approval Centre can later signal it
    back.
@@ -29,37 +29,56 @@ review + founder approval slice of the master spec section 24 workflow:
    `founderDecision` signal (`defineSignal<[{ approvalRequestId: string }]>`)
    sent by `ApprovalsService.decide()` once the founder acts in the Approval
    Centre UI.
-4. Returns `{ boardReviewId, approvalRequestId, finalState }` once signalled
-   or after the 7-day timeout.
+4. Returns `{ boardReviewId, approvalRequestId, finalState }` once signalled or
+   after the 7-day timeout.
 
 Started by `BoardService.startReview()` (`apps/api/src/modules/board`) via
-`client.start('boardApprovalWorkflow', { taskQueue, workflowId, args })`,
-with a `BOARD_REVIEW_STARTED` audit event recorded alongside.
+`client.start('boardApprovalWorkflow', { taskQueue, workflowId, args })`, with a
+`BOARD_REVIEW_STARTED` audit event recorded alongside.
 
-**Live-verified end-to-end on 2026-07-13**: triggered a real Board Review
-from the Board Room UI against the seeded Social Media Content Planning Kit
-venture proposal — the worker picked up the workflow task, ran all 8 mock
-board agents, persisted votes/decision summary, created a real Approval
-Request, and the Approval Centre UI correctly displayed it as `PENDING`.
-Deciding `APPROVE` in the UI transitioned the request to `APPROVED`,
-persisted an `ApprovalDecision` row, and recorded a matching
-`APPROVAL_DECIDED` audit event — confirmed via the Audit Centre.
+Historical live-verification notes from 2026-07-13 are preserved in
+`docs/EXECUTION_PLAN.md`. Current release/security evidence is recorded in
+`docs/TECHNICAL_RELEASE_BASELINE.md` and `docs/APPLICATION_SECURITY_BASELINE.md`.
 
-Workflow properties in place: retries/timeouts on activities (via
-`proxyActivities`), duplicate-vote protection (unique constraint on
-`[boardReviewId, agentRole]`), approval expiry (`expiresAt`, default 7 days),
-hash-mismatch rejection (`isApprovalValidForExecution`, re-checked on every
-decision against the proposal's _current_ latest version), and resume-after-
-restart (Temporal's durable execution model). Not yet exercised live: the
-signal-wait timeout path and worker-restart-mid-workflow recovery — both
-follow directly from Temporal's guarantees but haven't been explicitly
-forced in a test.
+## Phase 4: `productListingWorkflow` (implemented, mock product/listing path)
 
-## Phase 4+: Opportunity-to-Product Draft Workflow
+`apps/worker/src/workflows/product-listing-workflow.ts` implements the approved
+proposal -> generated product package -> listing-draft approval path. In
+summary it:
 
-The remaining steps of the full 32-step workflow (master spec section 24) —
-mock product generation, QA/licensing/policy checks, a second approval gate,
-and explicit non-publication — are architected (see
-`packages/workflows/README.md`) but not implemented. They require the
-Product/Listing domain modules that don't exist yet (Phase 4); building that
-workflow shell first would produce dead code.
+1. Generates mock product assets through the product-studio package and storage
+   abstraction.
+2. Runs deterministic QA/licensing checks.
+3. Generates a marketplace-facing listing draft only after QA passes.
+4. Creates a hash-bound `PRODUCT_LISTING` approval request.
+5. Waits for the founder decision signal before completing the workflow state.
+
+The workflow produces product/listing records and approval state; it is not a
+real marketplace publication. Real provider use remains outside the established
+repository evidence and requires separate founder approval and provider-specific
+controls.
+
+## Phase 6: `marketplacePublicationWorkflow` (implemented, mock-only)
+
+`apps/worker/src/workflows/marketplace-publication-workflow.ts` implements the
+prepare -> publication approval -> publish sequence against the mock Etsy-shaped
+adapter:
+
+1. Prepares a draft/listing-publication attempt through the marketplace runner.
+2. Requests a separate hash-bound `PUBLICATION` approval.
+3. Waits for the founder decision signal.
+4. Runs the mock publish boundary only if the approval is valid and approved.
+
+The current workflow is intentionally mock-only. It records provider-shaped
+attempts, idempotency, audit evidence, and blocked/fail-closed states, but it
+does not establish a live Etsy account, live Etsy publication, payment,
+advertising, external communication, or any production provider capability.
+
+## Workflow properties and evidence boundaries
+
+Implemented workflows use Temporal activity timeouts/retries, persisted domain
+state, founder-decision signals, audit events, and server-side approval
+revalidation. Repository source/configuration establishes implemented workflow
+capability; local development validation, GitHub CI, local/container staging
+security-gate evidence, and any separately approved external deployment evidence
+are distinct claims and must not be conflated.

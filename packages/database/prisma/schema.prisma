@@ -112,8 +112,44 @@ model Workspace {
   subscription             Subscription?
   licenseKeys              LicenseKey[]
   branding                 WorkspaceBranding?
+  memoryEntries            MemoryEntry[]
 
   @@map("workspaces")
+}
+
+/// Governed long-term advisory memory for agents. CHECK constraints for kind,
+/// sensitivity, confidence, actor provenance, and non-self-supersession remain
+/// intentionally migration-managed in 20260814090000_agent_memory. The partial
+/// active lookup index memory_entries_workspace_active_lookup_idx is also
+/// intentionally SQL-managed because Prisma cannot faithfully express its
+/// predicate.
+model MemoryEntry {
+  id                String    @id @db.Uuid
+  workspaceId       String    @db.Uuid
+  kind              String
+  subject           String
+  key               String
+  payload           Json
+  sourceRef         String
+  confidence        Float
+  sensitivity       String
+  createdBy         String
+  expiresAt         DateTime?
+  supersededById    String?   @db.Uuid
+  supersededByActor String?
+  revokedAt         DateTime?
+  revokedBy         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @default(now()) @updatedAt
+
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supersededBy      MemoryEntry?  @relation("MemorySupersession", fields: [supersededById], references: [id], onDelete: Restrict)
+  supersededEntries MemoryEntry[] @relation("MemorySupersession")
+
+  @@index([workspaceId, kind, createdAt(sort: Desc)], name: "memory_entries_workspace_kind_created_idx")
+  @@index([workspaceId, sensitivity], name: "memory_entries_workspace_sensitivity_idx")
+  @@index([expiresAt], name: "memory_entries_expiresAt_idx")
+  @@map("memory_entries")
 }
 
 model Role {
