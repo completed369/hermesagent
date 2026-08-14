@@ -9,6 +9,7 @@ Pi is a local coding agent with file and shell tools. Pi's own security document
 The image pins `@earendil-works/pi-coding-agent` to `0.83.0` and installs it with npm lifecycle scripts disabled. The service drops all Linux capabilities, enables `no-new-privileges`, uses a read-only root filesystem, gives Pi only the repository mount plus its own named state volume, and does not mount the Docker socket, SSH directory, host secret files, or production environment files.
 
 Official references:
+
 - https://pi.dev/docs/latest/quickstart
 - https://pi.dev/docs/latest/security
 - https://pi.dev/docs/latest/settings
