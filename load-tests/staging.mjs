@@ -7,6 +7,7 @@ const EMAIL = process.env.STAGING_FOUNDER_EMAIL ?? process.env.DEV_FOUNDER_EMAIL
 const PASSWORD = process.env.STAGING_FOUNDER_PASSWORD ?? process.env.DEV_FOUNDER_PASSWORD;
 const RESULT_FILE = resolve(process.env.STAGING_LOAD_RESULT_FILE ?? '.staging/load-results.json');
 const RATE_LIMIT_SETTLE_MS = Number(process.env.STAGING_LOAD_RATE_LIMIT_SETTLE_MS ?? 65_000);
+const CANONICAL_OPPORTUNITY_TITLE = 'Social Media Content Planning Kit';
 
 if (!EMAIL || !PASSWORD) throw new Error('Synthetic staging founder credentials are required');
 
@@ -68,12 +69,6 @@ async function runConcurrent(name, count, concurrency, operation, validateStatus
   return summary;
 }
 
-// The disposable security gate executes browser/security checks immediately
-// before this workload. With proxy trust deliberately disabled, all synthetic
-// traffic shares one limiter key. Wait one full configured limiter window so
-// Stage 5 measures a clean 20-user wave rather than inheriting unrelated
-// setup/E2E requests. This preserves the real application rate limit instead
-// of weakening or bypassing it for performance testing.
 if (RATE_LIMIT_SETTLE_MS > 0) {
   console.log(`LOAD settling rate-limit window for ${RATE_LIMIT_SETTLE_MS}ms`);
   await sleep(RATE_LIMIT_SETTLE_MS);
@@ -91,9 +86,6 @@ if (!setCookie) throw new Error('Login did not return a session cookie');
 const cookie = setCookie.split(';', 1)[0];
 const authHeaders = { cookie };
 
-// Stage 5 models approximately 20 concurrent users. Keep each scenario to one
-// 20-user wave so the performance test measures application behavior without
-// intentionally exhausting the separate global 120 req/min abuse-control gate.
 const results = [];
 results.push(
   await runConcurrent(
@@ -114,28 +106,28 @@ results.push(
   ),
 );
 
-// Integration tests run before this workload and may already have promoted the
-// seeded opportunity. Promotion is intentionally one-way, so recover the
-// existing workspace-scoped VentureProposal through the public read API first.
-// Only promote if this is a pristine disposable stack with no existing venture.
+// Earlier integration suites are free to create/delete other opportunities.
+// Always target the canonical seeded opportunity instead of relying on list
+// ordering, and reuse its proposal if it survived integration cleanup.
 const ventures = await fetchTimed('/ventures', { headers: authHeaders });
 if (ventures.response.status !== 200 || !Array.isArray(ventures.body)) {
   throw new Error(`Workspace ventures are unavailable: ${ventures.response.status}`);
 }
+const canonicalVenture = ventures.body.find(
+  (venture) => venture?.opportunity?.title === CANONICAL_OPPORTUNITY_TITLE,
+);
+let proposalId = canonicalVenture?.id ?? null;
 
-let proposalId = ventures.body[0]?.id ?? null;
 if (!proposalId) {
   const opportunities = await fetchTimed('/opportunities', { headers: authHeaders });
-  if (
-    opportunities.response.status !== 200 ||
-    !Array.isArray(opportunities.body) ||
-    opportunities.body.length === 0
-  ) {
-    throw new Error('Seeded opportunity is unavailable for board load testing');
+  if (opportunities.response.status !== 200 || !Array.isArray(opportunities.body)) {
+    throw new Error(`Opportunities are unavailable: ${opportunities.response.status}`);
   }
-  const opportunityId = opportunities.body[0]?.id;
-  if (!opportunityId) throw new Error('Seeded opportunity has no id');
-  const promotion = await fetchTimed(`/opportunities/${opportunityId}/promote`, {
+  const opportunity = opportunities.body.find(
+    (item) => item?.title === CANONICAL_OPPORTUNITY_TITLE,
+  );
+  if (!opportunity?.id) throw new Error('Canonical seeded opportunity is unavailable');
+  const promotion = await fetchTimed(`/opportunities/${opportunity.id}/promote`, {
     method: 'POST',
     headers: authHeaders,
   });
@@ -189,12 +181,6 @@ const contracts = await fetchTimed('/research/contracts', { headers: authHeaders
 if (contracts.response.status !== 200 || !Array.isArray(contracts.body) || contracts.body.length === 0) {
   throw new Error('Research contracts are unavailable for load testing');
 }
-
-// The permitted Etsy contract intentionally enforces 5 runs/minute. Its cap is
-// covered by dedicated concurrency/security regressions and must not be
-// weakened for a throughput test. Prefer a dispatchable synthetic contract
-// whose own contract-level rate limits are unbounded, such as the seeded
-// founder-provided notes source.
 const contract =
   contracts.body.find(
     (item) => !item.disabled && item.rateLimitPerMinute == null && item.rateLimitPerDay == null,
