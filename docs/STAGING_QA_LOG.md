@@ -56,15 +56,20 @@ PASS for plan entitlement behavior, license export, white-label branding and ten
 1. Command Centre contained stale copy claiming VentureOS was only a verified local-development build and that deployment remained pending.
 2. Workflow Centre carried the obsolete `Phase 2+` badge.
 
-Both are fixed with regression coverage on `fix/staging-status-copy` / PR #14. They must pass CI, merge, publish and redeploy before Stage 5 closes.
+Both defects were fixed with regression coverage in PR #14 and merged to protected `main`. The corrected immutable release still needs to be published/deployed to private staging and re-verified before Stage 5 is finally closed.
 
 ## Stage 5 performance/concurrency gate
 
-In progress on `feat/stage5-validation`:
+Final evidence set under validation on `feat/stage5-validation`:
 
-- 20-way atomic budget-cap race regression.
-- concurrent research daily-cost-cap reservation regression.
-- disposable staging HTTP/Temporal load run with 20 concurrent workers.
-- machine-readable `.staging/load-results.json` with p50/p95/max latency and HTTP status distributions.
+- 20 simultaneous budget charges contend on one allocation and may not exceed the hard cap.
+- concurrent paid-research reservations contend on the workspace serialization lock and may not exceed the daily cost cap before provider dispatch.
+- 20 simultaneous login-failure admissions from one source IP across distinct accounts preserve all durable increments and activate the shared IP cooldown.
+- `load-tests/staging.mjs` drives one 20-concurrent-user wave each across API liveness, authenticated workspace reads, board-review workflow starts and synthetic research acquisition.
+- board evidence requires 20 **new** completed reviews above the pre-load baseline within 120 seconds.
+- the deliberately capped Etsy research contract remains capped; throughput uses the uncapped synthetic founder-notes contract rather than weakening policy.
+- machine-readable `.staging/load-results.json` records p50/p95/max latency, HTTP status distributions, board completion deltas and the selected research contract.
 
-Stage 5 remains OPEN until those automated tests pass and the corrected UI release is deployed and re-verified.
+Observed successful run IDs and exact latency values will be recorded here after the final CI head passes.
+
+Stage 5 remains OPEN until the final automated evidence is green and the corrected immutable UI release is deployed/re-verified on private staging.
