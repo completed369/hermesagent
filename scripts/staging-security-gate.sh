@@ -41,8 +41,6 @@ collect_logs() {
 }
 
 build_topology() {
-  # Build targets serially so Docker Desktop does not materialize several
-  # identical 1+ GiB pnpm builder layers in parallel on constrained disks.
   compose build migrate
   compose build seed
   compose build api
@@ -109,14 +107,28 @@ run_gate() {
   CI=true E2E_EXTERNAL_SERVERS=true E2E_BASE_URL=http://localhost:3000 \
     pnpm --filter @ventureos/web run test:e2e
 
-  # Integration suites deliberately exercise terminal opportunity states and
-  # may remove their associated proposal during cleanup. The seed is
-  # idempotent and therefore does not rewrite that workflow state on the
-  # second seed pass. Normalize only the disposable canonical seed when it has
-  # no linked VentureProposal, giving the load test a deterministic fixture
-  # without weakening the production one-way promotion policy.
+  # Integration suites deliberately exercise terminal opportunity and billing
+  # states. The seed is idempotent (`update: {}` for these lifecycle rows), so
+  # the second seed pass does not rewrite those test mutations. Restore only
+  # the disposable canonical founder fixture before load; this never runs
+  # against private staging or production and does not weaken application
+  # policy. A surviving VentureProposal is left intact and reused by the load
+  # runner. If it was cleaned up, the canonical opportunity becomes NEW again.
   compose exec -T postgres psql -v ON_ERROR_STOP=1 \
     -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" <<'SQL'
+UPDATE "subscriptions" AS s
+SET
+  "planId" = p."id",
+  "status" = 'ACTIVE',
+  "billingMode" = 'MOCK',
+  "trialEndsAt" = NULL,
+  "canceledAt" = NULL,
+  "updatedAt" = NOW()
+FROM "workspaces" AS w, "plans" AS p
+WHERE s."workspaceId" = w."id"
+  AND w."slug" = 'ventureos-default'
+  AND p."key" = 'AGENCY';
+
 UPDATE "opportunities" AS o
 SET
   "status" = 'NEW',
@@ -136,10 +148,6 @@ WHERE o."workspaceId" = w."id"
   );
 SQL
 
-  # Stage 5 performance gate: drive the disposable staging topology with
-  # 20 concurrent workers across health, authenticated reads, Temporal board
-  # workflow starts, and research acquisitions. Results are written as JSON
-  # for CI evidence and later comparison.
   node load-tests/staging.mjs
 
   local users_before users_after
