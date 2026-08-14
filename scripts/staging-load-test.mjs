@@ -6,6 +6,7 @@ const API_BASE = process.env.STAGING_LOAD_API_BASE_URL ?? 'http://localhost:3001
 const EMAIL = process.env.STAGING_FOUNDER_EMAIL ?? process.env.DEV_FOUNDER_EMAIL;
 const PASSWORD = process.env.STAGING_FOUNDER_PASSWORD ?? process.env.DEV_FOUNDER_PASSWORD;
 const RESULT_FILE = resolve(process.env.STAGING_LOAD_RESULT_FILE ?? '.staging/load-results.json');
+const RATE_LIMIT_SETTLE_MS = Number(process.env.STAGING_LOAD_RATE_LIMIT_SETTLE_MS ?? 65_000);
 
 if (!EMAIL || !PASSWORD) throw new Error('Synthetic staging founder credentials are required');
 
@@ -15,6 +16,8 @@ function percentile(values, p) {
     Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))
   ] ?? 0;
 }
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function fetchTimed(path, options = {}) {
   const started = performance.now();
@@ -65,6 +68,17 @@ async function runConcurrent(name, count, concurrency, operation, validateStatus
   return summary;
 }
 
+// The disposable security gate executes browser/security checks immediately
+// before this workload. With proxy trust deliberately disabled, all synthetic
+// traffic shares one limiter key. Wait one full configured limiter window so
+// Stage 5 measures a clean 20-user wave rather than inheriting unrelated
+// setup/E2E requests. This preserves the real application rate limit instead
+// of weakening or bypassing it for performance testing.
+if (RATE_LIMIT_SETTLE_MS > 0) {
+  console.log(`LOAD settling rate-limit window for ${RATE_LIMIT_SETTLE_MS}ms`);
+  await sleep(RATE_LIMIT_SETTLE_MS);
+}
+
 const login = await fetchTimed('/auth/login', {
   method: 'POST',
   body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
@@ -109,12 +123,6 @@ if (
   throw new Error('Seeded opportunity is unavailable for board load testing');
 }
 
-// The disposable staging gate runs the integration suite before this load
-// test. Those tests are allowed to promote the idempotently-seeded opportunity,
-// and re-seeding deliberately does not rewrite its workflow state. Reuse the
-// existing proposal when present; otherwise promote exactly once here. This
-// makes the load runner independent of prior test ordering without bypassing
-// the application promotion policy.
 const opportunity = opportunities.body.find((item) => item?.proposal?.id) ?? opportunities.body[0];
 let proposalId = opportunity?.proposal?.id ?? null;
 if (!proposalId) {
@@ -154,7 +162,7 @@ while (Date.now() < reviewDeadline) {
     completedReviews = reviews.body.filter((review) => review.status === 'COMPLETED').length;
     if (completedReviews >= 20) break;
   }
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await sleep(1000);
 }
 if (completedReviews < 20) {
   throw new Error(`Only ${completedReviews}/20 board reviews completed within 120s`);
