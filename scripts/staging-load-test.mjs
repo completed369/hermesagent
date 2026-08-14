@@ -77,11 +77,14 @@ if (!setCookie) throw new Error('Login did not return a session cookie');
 const cookie = setCookie.split(';', 1)[0];
 const authHeaders = { cookie };
 
+// Stage 5 models approximately 20 concurrent users. Keep each scenario to one
+// 20-user wave so the performance test measures application behavior without
+// intentionally exhausting the separate global 120 req/min abuse-control gate.
 const results = [];
 results.push(
   await runConcurrent(
     'api-liveness',
-    200,
+    20,
     20,
     () => fetchTimed('/health/live'),
     (status) => status === 200,
@@ -90,7 +93,7 @@ results.push(
 results.push(
   await runConcurrent(
     'authenticated-workspace-read',
-    100,
+    20,
     20,
     () => fetchTimed('/workspaces/current', { headers: authHeaders }),
     (status) => status === 200,
