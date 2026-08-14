@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: tools/pi/Dockerfile
       args:
-        PI_VERSION: 0.83.0
+        PI_VERSION: '0.83.0'
     working_dir: /workspace
     stdin_open: true
     tty: true
@@ -21,7 +21,7 @@ services:
       - .:/workspace:rw
       - ventureos-pi-home:/home/node/.pi/agent:rw
     environment:
-      PI_SKIP_VERSION_CHECK: "1"
+      PI_SKIP_VERSION_CHECK: '1'
 
 volumes:
   ventureos-pi-home:
