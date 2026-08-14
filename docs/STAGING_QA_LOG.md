@@ -56,20 +56,41 @@ PASS for plan entitlement behavior, license export, white-label branding and ten
 1. Command Centre contained stale copy claiming VentureOS was only a verified local-development build and that deployment remained pending.
 2. Workflow Centre carried the obsolete `Phase 2+` badge.
 
-Both defects were fixed with regression coverage in PR #14 and merged to protected `main`. The corrected immutable release still needs to be published/deployed to private staging and re-verified before Stage 5 is finally closed.
+Both defects were fixed with regression coverage in PR #14 and merged to protected `main`. The corrected release line now also includes the completed Stage-5 validation work, governed memory foundation/persistence/capture, and the Nano ID 3.3.18 security remediation. The current immutable staging release candidate is `007e15b4ab93093b7a958150dabf1ba673c007c6`; it still must be published/deployed and re-verified before Stage 5 is finally closed.
 
 ## Stage 5 performance/concurrency gate
 
-Final evidence set under validation on `feat/stage5-validation`:
+PASS for the automated pilot-scale concurrency and disposable staging load gate.
 
+Authoritative merge-head evidence:
+
+- CI workflow run: `31787343847`.
+- Tested head: `d93b844be7b7e03ae84fb86ebdf23d39fae851d4`.
+- Artifact: `staging-load-results-31787343847`.
 - 20 simultaneous budget charges contend on one allocation and may not exceed the hard cap.
 - concurrent paid-research reservations contend on the workspace serialization lock and may not exceed the daily cost cap before provider dispatch.
 - 20 simultaneous login-failure admissions from one source IP across distinct accounts preserve all durable increments and activate the shared IP cooldown.
-- `load-tests/staging.mjs` drives one 20-concurrent-user wave each across API liveness, authenticated workspace reads, board-review workflow starts and synthetic research acquisition.
-- board evidence requires 20 **new** completed reviews above the pre-load baseline within 120 seconds.
-- the deliberately capped Etsy research contract remains capped; throughput uses the uncapped synthetic founder-notes contract rather than weakening policy.
-- machine-readable `.staging/load-results.json` records p50/p95/max latency, HTTP status distributions, board completion deltas and the selected research contract.
+- board evidence required 20 **new** completed reviews above the pre-load baseline; observed result was 20 new completions.
+- the deliberately capped Etsy research contract remained capped; throughput used the uncapped synthetic `Founder-provided market notes` contract rather than weakening policy.
 
-Observed successful run IDs and exact latency values will be recorded here after the final CI head passes.
+Observed 20-concurrent-user results from `.staging/load-results.json`:
 
-Stage 5 remains OPEN until the final automated evidence is green and the corrected immutable UI release is deployed/re-verified on private staging.
+| Workload | Requests | Success | p50 | p95 | Max |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| API liveness | 20 | 20/20 HTTP 200 | 39 ms | 47 ms | 48 ms |
+| Authenticated workspace read | 20 | 20/20 HTTP 200 | 67 ms | 76 ms | 76 ms |
+| Board-review start | 20 | 20/20 HTTP 201 | 202 ms | 262 ms | 271 ms |
+| Research acquisition | 20 | 20/20 HTTP 201 | 245 ms | 270 ms | 274 ms |
+
+The load runner also observed `boardReviewsCompletedBefore=0`, `boardReviewsCompletedAfter=20`, and `boardReviewsNewlyCompleted=20`.
+
+## Stage 5 closeout status
+
+Stage 5 remains **OPEN only for release verification**. Functional Phases 1-8 and the automated load/concurrency gate are green. The remaining closeout sequence is:
+
+1. publish immutable images for source `007e15b4ab93093b7a958150dabf1ba673c007c6` through the founder-authorized publication workflow;
+2. deploy that exact immutable source through the protected private-staging deployment workflow;
+3. re-verify staging health plus the corrected Command Centre `Environment status` copy and Workflow Centre `Planned` badge;
+4. record the successful publication/deployment run IDs here and mark Stage 5 CLOSED.
+
+No real Etsy publication, real AI provider spend, payment processing, advertising spend, or paid integration was enabled during this QA pass.
