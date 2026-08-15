@@ -28,7 +28,9 @@ async function fillAll(page: import('@playwright/test').Page, selector: string, 
 }
 
 test.describe('Stage 6 opportunity intake', () => {
-  test('founder creates a fresh non-seed opportunity from evidence', async ({ page }) => {
+  test('founder creates a fresh opportunity and records a passing Gate 1 assessment', async ({
+    page,
+  }) => {
     await login(page);
     await page.goto('/dashboard/opportunities');
     await page.getByRole('link', { name: 'New opportunity' }).click();
@@ -43,6 +45,7 @@ test.describe('Stage 6 opportunity intake', () => {
     await page
       .getByTestId('opportunity-description')
       .fill('A fresh browser-created opportunity used to prove the supported Stage 6 intake path.');
+    await page.getByLabel('Suggested product type').fill('Digital Template Bundle');
     await page
       .getByTestId('opportunity-persona')
       .fill('Independent founders validating a repeatable operational planning workflow.');
@@ -74,5 +77,24 @@ test.describe('Stage 6 opportunity intake', () => {
     await expect(page.getByText('Founder-Provided Fact')).toBeVisible();
     await expect(page.getByTestId('evidence-quality-score')).toHaveText(/^\d/);
     await expect(page.getByText('opportunity-evidence-quality-v1')).toBeVisible();
+    await expect(page.getByTestId('compliance-current-result')).toContainText('NOT ASSESSED');
+
+    await page.getByTestId('compliance-categories').fill('digital planning templates');
+    const [complianceResponse] = await Promise.all([
+      page.waitForResponse(
+        (candidate) =>
+          candidate.request().method() === 'POST' &&
+          candidate.url().includes('/api/opportunities/') &&
+          candidate.url().endsWith('/compliance-assessment'),
+      ),
+      page.getByTestId('compliance-submit').click(),
+    ]);
+
+    expect(complianceResponse.status()).toBe(201);
+    await expect(page.getByTestId('compliance-current-result')).toContainText('PASS');
+    await expect(page.getByText('opportunity-compliance-v1')).toBeVisible();
+    await expect(page.getByText('Policy pack v1')).toBeVisible();
+    await expect(page.getByTestId('compliance-audit-id')).toContainText(/Audit evidence: [0-9a-f-]+/);
+    await expect(page.getByTestId('compliance-blockers')).toHaveCount(0);
   });
 });
