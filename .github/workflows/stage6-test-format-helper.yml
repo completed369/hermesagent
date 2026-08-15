@@ -1,0 +1,39 @@
+name: Temporary Stage 6 test formatter
+
+'on':
+  push:
+    branches:
+      - feat/stage6-opportunity-evidence-gates
+    paths:
+      - apps/api/test/stage6-opportunity-intake.integration.spec.ts
+      - .github/workflows/stage6-test-format-helper.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/stage6-opportunity-evidence-gates
+          persist-credentials: true
+      - run: corepack enable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --write apps/api/test/stage6-opportunity-intake.integration.spec.ts
+      - run: |
+          set -Eeuo pipefail
+          git diff --check
+          test "$(git diff --name-only)" = "apps/api/test/stage6-opportunity-intake.integration.spec.ts" || test -z "$(git diff --name-only)"
+          git add apps/api/test/stage6-opportunity-intake.integration.spec.ts
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'style(stage6): format board integration test'
+          git push origin HEAD:feat/stage6-opportunity-evidence-gates
