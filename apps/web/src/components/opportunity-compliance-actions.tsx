@@ -63,11 +63,12 @@ export function OpportunityComplianceActions({
     : current.stateCurrent
       ? current.currentResult
       : 'STALE / BLOCKED';
-  const resultClass = current?.stateCurrent && current.currentResult === 'PASS'
-    ? 'vos-badge--ok'
-    : current
-      ? 'vos-badge--danger'
-      : 'vos-badge--mock';
+  const resultClass =
+    current?.stateCurrent && current.currentResult === 'PASS'
+      ? 'vos-badge--ok'
+      : current
+        ? 'vos-badge--danger'
+        : 'vos-badge--mock';
 
   async function submitAssessment(event: React.FormEvent) {
     event.preventDefault();
@@ -120,7 +121,10 @@ export function OpportunityComplianceActions({
       </div>
 
       {current?.auditEventId ? (
-        <p data-testid="compliance-audit-id" style={{ margin: 0, fontSize: 12, color: 'var(--vos-text-muted)' }}>
+        <p
+          data-testid="compliance-audit-id"
+          style={{ margin: 0, fontSize: 12, color: 'var(--vos-text-muted)' }}
+        >
           Audit evidence: {current.auditEventId}
         </p>
       ) : null}
@@ -185,7 +189,11 @@ export function OpportunityComplianceActions({
             disabled={submitting}
             style={{ width: 'fit-content' }}
           >
-            {submitting ? 'Assessing…' : current ? 'Re-run compliance assessment' : 'Run compliance assessment'}
+            {submitting
+              ? 'Assessing…'
+              : current
+                ? 'Re-run compliance assessment'
+                : 'Run compliance assessment'}
           </button>
         </form>
       ) : (

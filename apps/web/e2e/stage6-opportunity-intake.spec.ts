@@ -94,7 +94,9 @@ test.describe('Stage 6 opportunity intake', () => {
     await expect(page.getByTestId('compliance-current-result')).toContainText('PASS');
     await expect(page.getByText('opportunity-compliance-v1')).toBeVisible();
     await expect(page.getByText('Policy pack v1')).toBeVisible();
-    await expect(page.getByTestId('compliance-audit-id')).toContainText(/Audit evidence: [0-9a-f-]+/);
+    await expect(page.getByTestId('compliance-audit-id')).toContainText(
+      /Audit evidence: [0-9a-f-]+/,
+    );
     await expect(page.getByTestId('compliance-blockers')).toHaveCount(0);
   });
 });

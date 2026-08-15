@@ -88,8 +88,7 @@ function isBlockerArray(value: unknown): value is Array<{ code: string; reason: 
   return (
     Array.isArray(value) &&
     value.every(
-      (item) =>
-        isRecord(item) && typeof item.code === 'string' && typeof item.reason === 'string',
+      (item) => isRecord(item) && typeof item.code === 'string' && typeof item.reason === 'string',
     )
   );
 }
