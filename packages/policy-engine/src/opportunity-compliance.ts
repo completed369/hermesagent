@@ -64,7 +64,8 @@ export function normalizeProductType(value: string): string {
 
 function validDate(value: Date | string): Date {
   const date = value instanceof Date ? value : new Date(value);
-  if (!Number.isFinite(date.getTime())) throw new RangeError('policyPack.reviewDueAt must be valid');
+  if (!Number.isFinite(date.getTime()))
+    throw new RangeError('policyPack.reviewDueAt must be valid');
   return date;
 }
 
@@ -147,8 +148,8 @@ export function evaluateOpportunityCompliance(
         .map(normalizeComplianceToken)
         .filter(Boolean);
       const matches = declaredCategories.filter((category) =>
-        restricted.some((blockedCategory) =>
-          category === blockedCategory || category.includes(blockedCategory),
+        restricted.some(
+          (blockedCategory) => category === blockedCategory || category.includes(blockedCategory),
         ),
       );
       if (matches.length > 0) {
@@ -160,10 +161,7 @@ export function evaluateOpportunityCompliance(
     }
 
     const checks = input.policyPack.ipChecks.map(normalizeComplianceToken);
-    if (
-      input.thirdPartyTrademarksPresent &&
-      checks.some((check) => check.includes('trademark'))
-    ) {
+    if (input.thirdPartyTrademarksPresent && checks.some((check) => check.includes('trademark'))) {
       blockers.push({
         code: 'THIRD_PARTY_TRADEMARK',
         reason: 'Third-party trademark use conflicts with the current marketplace IP policy check.',
@@ -172,12 +170,14 @@ export function evaluateOpportunityCompliance(
     if (
       input.copyrightedStockWithoutLicence &&
       checks.some(
-        (check) => check.includes('copyright') || check.includes('stock') || check.includes('licence'),
+        (check) =>
+          check.includes('copyright') || check.includes('stock') || check.includes('licence'),
       )
     ) {
       blockers.push({
         code: 'UNLICENSED_COPYRIGHTED_STOCK',
-        reason: 'Copyrighted stock content without a licence conflicts with the current IP policy check.',
+        reason:
+          'Copyrighted stock content without a licence conflicts with the current IP policy check.',
       });
     }
   }
