@@ -93,6 +93,14 @@ export async function rescoreOpportunityInTransaction(
     opportunityScore.score,
     calculatedAt,
   );
+  const evidenceFactorRecord = JSON.parse(
+    JSON.stringify({
+      weights: OPPORTUNITY_EVIDENCE_QUALITY_WEIGHTS,
+      artifactCount: evidenceQuality.artifactCount,
+      artifactScores: evidenceQuality.artifactScores,
+      dataFreshnessScore: evidenceQuality.dataFreshnessScore,
+    }),
+  ) as Prisma.InputJsonValue;
 
   await tx.opportunityScore.create({
     data: {
@@ -100,12 +108,7 @@ export async function rescoreOpportunityInTransaction(
       scoreType: 'EVIDENCE_QUALITY',
       formulaVersion: evidenceQuality.formulaVersion,
       score: evidenceQuality.score,
-      factors: {
-        weights: OPPORTUNITY_EVIDENCE_QUALITY_WEIGHTS,
-        artifactCount: evidenceQuality.artifactCount,
-        artifactScores: evidenceQuality.artifactScores,
-        dataFreshnessScore: evidenceQuality.dataFreshnessScore,
-      },
+      factors: evidenceFactorRecord,
       calculatedAt,
     },
   });
