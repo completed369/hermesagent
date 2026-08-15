@@ -63,6 +63,18 @@ export const rescoreOpportunitySchema = z
   .strict();
 export type RescoreOpportunityInput = z.infer<typeof rescoreOpportunitySchema>;
 
+export const opportunityComplianceAssessmentSchema = z
+  .object({
+    declaredCategories: z.array(z.string().trim().min(1).max(200)).min(1).max(20),
+    thirdPartyTrademarksPresent: z.boolean(),
+    copyrightedStockWithoutLicence: z.boolean(),
+    evidenceClaimIds: z.array(z.string().uuid()).min(1).max(50),
+  })
+  .strict();
+export type OpportunityComplianceAssessmentInput = z.infer<
+  typeof opportunityComplianceAssessmentSchema
+>;
+
 export const createOpportunitySchema = z
   .object({
     title: z.string().trim().min(3).max(200),
