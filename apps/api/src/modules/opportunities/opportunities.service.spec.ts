@@ -16,6 +16,9 @@ vi.mock('@ventureos/database', () => ({
       findFirst: vi.fn(),
       update: vi.fn(),
     },
+    opportunityScore: {
+      findFirst: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
@@ -40,6 +43,7 @@ describe('OpportunitiesService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.opportunityScore.findFirst).mockResolvedValue(null);
     auditService = { record: vi.fn().mockResolvedValue(undefined) };
     service = new OpportunitiesService(auditService as unknown as AuditService);
   });
