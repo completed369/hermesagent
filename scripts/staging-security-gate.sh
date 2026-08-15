@@ -91,9 +91,17 @@ run_gate() {
     return 1
   fi
 
-  local migrations
+  local expected_migrations migrations
+  expected_migrations=$(find packages/database/prisma/migrations -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d '[:space:]')
+  [[ "$expected_migrations" =~ ^[1-9][0-9]*$ ]] || {
+    echo "Could not derive the reviewed migration-chain length" >&2
+    return 1
+  }
   migrations=$(compose exec -T postgres psql -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" -Atc 'select count(*) from "_prisma_migrations" where finished_at is not null and rolled_back_at is null')
-  [[ "$migrations" == '12' ]] || { echo "Expected 12 applied migrations, found $migrations" >&2; return 1; }
+  [[ "$migrations" == "$expected_migrations" ]] || {
+    echo "Expected $expected_migrations applied migrations, found $migrations" >&2
+    return 1
+  }
 
   local workflows_before workflows_after
   workflows_before=$(compose exec -T temporal sh -ec 'tctl --address "$(hostname -i):7233" workflow list --namespace ventureos-staging --pagesize 1000 2>/dev/null | wc -l')
