@@ -90,11 +90,7 @@ interface Metric {
 
 type EvidenceMode = 'MOCK' | 'REAL';
 type ObservationSourceType =
-  | 'MARKETPLACE_EXPORT'
-  | 'CUSTOMER_SUPPORT'
-  | 'FOUNDER_OBSERVED'
-  | 'MANUAL_IMPORT'
-  | 'SYNTHETIC';
+  'MARKETPLACE_EXPORT' | 'CUSTOMER_SUPPORT' | 'FOUNDER_OBSERVED' | 'MANUAL_IMPORT' | 'SYNTHETIC';
 
 export function ExperimentPanelActions({
   experimentId,
