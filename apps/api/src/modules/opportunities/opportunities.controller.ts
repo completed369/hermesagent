@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { OpportunitiesService } from './opportunities.service';
 import {
   createOpportunitySchema,
+  opportunityComplianceAssessmentSchema,
   rejectOpportunitySchema,
   rescoreOpportunitySchema,
 } from './opportunities.dto';
@@ -41,6 +42,23 @@ export class OpportunitiesController {
   rescore(@Param('id') id: string, @Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
     const input = rescoreOpportunitySchema.parse(body);
     return this.opportunitiesService.rescore(user.workspaceId, id, input, user.userId);
+  }
+
+  @Get(':id/compliance-assessment')
+  @RequirePermission('opportunity:view')
+  getComplianceAssessment(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.opportunitiesService.getComplianceAssessment(user.workspaceId, id);
+  }
+
+  @Post(':id/compliance-assessment')
+  @RequirePermission('opportunity:manage')
+  assessCompliance(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const input = opportunityComplianceAssessmentSchema.parse(body);
+    return this.opportunitiesService.assessCompliance(user.workspaceId, id, input, user.userId);
   }
 
   @Post(':id/reject')
