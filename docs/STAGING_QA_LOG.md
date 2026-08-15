@@ -56,7 +56,7 @@ PASS for plan entitlement behavior, license export, white-label branding and ten
 1. Command Centre contained stale copy claiming VentureOS was only a verified local-development build and that deployment remained pending.
 2. Workflow Centre carried the obsolete `Phase 2+` badge.
 
-Both defects were fixed with regression coverage in PR #14 and merged to protected `main`. The corrected release line now also includes the completed Stage-5 validation work, governed memory foundation/persistence/capture, and the Nano ID 3.3.18 security remediation. The current immutable staging release candidate is `007e15b4ab93093b7a958150dabf1ba673c007c6`; it still must be published/deployed and re-verified before Stage 5 is finally closed.
+Both defects were fixed with regression coverage in PR #14 and merged to protected `main`. The corrected release line now also includes the completed Stage-5 validation work, governed memory foundation/persistence/capture, and the Nano ID 3.3.18 security remediation. Immutable source `007e15b4ab93093b7a958150dabf1ba673c007c6` was successfully published by workflow run `31839508796`; private-staging deployment and re-verification remain before Stage 5 is finally closed.
 
 ## Stage 5 performance/concurrency gate
 
@@ -84,13 +84,23 @@ Observed 20-concurrent-user results from `.staging/load-results.json`:
 
 The load runner also observed `boardReviewsCompletedBefore=0`, `boardReviewsCompletedAfter=20`, and `boardReviewsNewlyCompleted=20`.
 
+## Immutable publication evidence
+
+PASS. Publication workflow run `31839508796` completed successfully for source `007e15b4ab93093b7a958150dabf1ba673c007c6`.
+
+- full validation, source secret/IaC scan and existing staging security gate passed;
+- api, web, worker, tools and ingress images each passed vulnerability/EOL/secret policy gates;
+- all five images were pushed by immutable digest, keyless-signed, provenance-attested and SBOM-attested;
+- artifact `ventureos-images-007e15b4ab93093b7a958150dabf1ba673c007c6` contains the five-image digest manifest;
+- manifest assembly required exactly five unique digest-pinned images and completed successfully.
+
 ## Stage 5 closeout status
 
-Stage 5 remains **OPEN only for release verification**. Functional Phases 1-8 and the automated load/concurrency gate are green. The remaining closeout sequence is:
+Stage 5 remains **OPEN only for private-staging release verification**. Functional Phases 1-8, the automated load/concurrency gate and immutable publication are green. The remaining closeout sequence is:
 
-1. publish immutable images for source `007e15b4ab93093b7a958150dabf1ba673c007c6` through the founder-authorized publication workflow;
+1. PASS — publish immutable images for source `007e15b4ab93093b7a958150dabf1ba673c007c6` (run `31839508796`);
 2. deploy that exact immutable source through the protected private-staging deployment workflow;
 3. re-verify staging health plus the corrected Command Centre `Environment status` copy and Workflow Centre `Planned` badge;
-4. record the successful publication/deployment run IDs here and mark Stage 5 CLOSED.
+4. record the successful deployment run ID here and mark Stage 5 CLOSED.
 
 No real Etsy publication, real AI provider spend, payment processing, advertising spend, or paid integration was enabled during this QA pass.
