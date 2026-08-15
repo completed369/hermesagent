@@ -30,7 +30,19 @@ jobs:
       - name: Frozen install
         run: pnpm install --frozen-lockfile
       - name: Apply guarded source patch
-        run: python3 scripts/stage6-observation-helper.py
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/stage6-observation-helper.py')
+          text = path.read_text()
+          needle = '    "packages/database/prisma/migrations/20260815123000_commercial_observation_provenance/migration.sql",\n'
+          addition = needle + '    "packages/database/prisma/migrations/20260815123000_commercial_observation_provenance/",\n'
+          if text.count(needle) != 1:
+              raise SystemExit('migration guard anchor mismatch')
+          path.write_text(text.replace(needle, addition, 1))
+          PY
+          python3 scripts/stage6-observation-helper.py
       - name: Format and validate patch
         run: |
           set -Eeuo pipefail
