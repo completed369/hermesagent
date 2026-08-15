@@ -113,6 +113,9 @@ Required commercial signals: impressions, conversion, refund rate, margin and su
 ### Evidence mode
 
 - Evidence source: TBD (`REAL` or `MOCK/MECHANICAL`)
+- ExperimentResult IDs: TBD
+- Provenance source references: TBD
+- All counted commercial results have `evidenceMode=REAL`: TBD
 - Marketplace/account: TBD
 - Measurement window: TBD
 

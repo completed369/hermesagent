@@ -6,3 +6,4 @@ export * from './model-usage-recorder.js';
 export * from './assumptions-runner.js';
 export * from './forecast-runner.js';
 export * from './experiment-runner.js';
+export * from './commercial-observation-provenance.js';

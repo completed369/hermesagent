@@ -4,6 +4,13 @@ import { isApprovalValidForExecution } from '@ventureos/contracts';
 import { hashScaleDecisionArtifact } from '@ventureos/security';
 import { ExperimentInvalidStateError, ExperimentNotFoundError } from './errors.js';
 import { enforceFinanceMutation } from './capability-guard.js';
+import {
+  getCommercialObservationProvenanceMap,
+  persistCommercialObservationProvenance,
+  type CommercialObservationEvidenceMode,
+  type CommercialObservationProvenance,
+  type CommercialObservationSourceType,
+} from './commercial-observation-provenance.js';
 
 export interface CreateExperimentParams {
   workspaceId: string;
@@ -100,13 +107,19 @@ export interface RecordExperimentResultParams {
   experimentMetricId: string;
   value: number;
   sampleSize?: number;
+  evidenceMode?: CommercialObservationEvidenceMode;
+  sourceType?: CommercialObservationSourceType;
+  sourceRef?: string;
+  observedAt?: Date;
+  recordedBy?: string;
 }
 
-/** A single real measurement -- multiple calls per variant/metric pair are
- * expected as the experiment runs, never overwritten in place. */
+/** A single measurement with explicit evidence provenance. Multiple calls per
+ * variant/metric pair are expected as the experiment runs, never overwritten
+ * in place. Unspecified/legacy measurements fail safe to MOCK/SYNTHETIC. */
 export async function recordExperimentResult(
   params: RecordExperimentResultParams,
-): Promise<ExperimentResult> {
+): Promise<ExperimentResult & { provenance: CommercialObservationProvenance }> {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw(
       Prisma.sql`SELECT "id" FROM "experiments" WHERE "id" = ${params.experimentId}::uuid AND "workspaceId" = ${params.workspaceId}::uuid FOR UPDATE`,
@@ -136,7 +149,7 @@ export async function recordExperimentResult(
       `finance:experiment-result:${params.experimentId}`,
       tx,
     );
-    return tx.experimentResult.create({
+    const result = await tx.experimentResult.create({
       data: {
         experimentVariantId: params.experimentVariantId,
         experimentMetricId: params.experimentMetricId,
@@ -144,7 +157,33 @@ export async function recordExperimentResult(
         sampleSize: params.sampleSize,
       },
     });
+    const provenance = await persistCommercialObservationProvenance(tx, result.id, {
+      evidenceMode: params.evidenceMode,
+      sourceType: params.sourceType,
+      sourceRef: params.sourceRef,
+      observedAt: params.observedAt,
+      recordedBy: params.recordedBy,
+    });
+    return { ...result, provenance };
   });
+}
+
+async function withCommercialObservationProvenance<
+  T extends { variants: Array<{ results: Array<{ id: string }> }> },
+>(experiment: T) {
+  const provenanceByResultId = await getCommercialObservationProvenanceMap(
+    experiment.variants.flatMap((variant) => variant.results.map((result) => result.id)),
+  );
+  return {
+    ...experiment,
+    variants: experiment.variants.map((variant) => ({
+      ...variant,
+      results: variant.results.map((result) => ({
+        ...result,
+        provenance: provenanceByResultId.get(result.id) ?? null,
+      })),
+    })),
+  };
 }
 
 export interface RequestScaleDecisionApprovalParams {
@@ -175,6 +214,7 @@ export async function requestScaleDecisionApproval(
     include: { variants: { include: { results: true } }, metrics: true },
   });
   if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
+  const experimentForApprovalHash = await withCommercialObservationProvenance(experiment);
   if (experiment.status !== 'RUNNING' && experiment.status !== 'COMPLETED') {
     throw new ExperimentInvalidStateError(
       `Experiment must be RUNNING or COMPLETED to request a scale decision (current: ${experiment.status})`,
@@ -210,7 +250,7 @@ export async function requestScaleDecisionApproval(
   const packageHash = hashScaleDecisionArtifact({
     proposalVersionId: latestVersion.id,
     proposalSnapshot: latestVersion.snapshot,
-    experiment,
+    experiment: experimentForApprovalHash,
   });
 
   const expiresAt = new Date(Date.now() + (params.expiresInHours ?? 168) * 60 * 60 * 1000);
@@ -276,6 +316,7 @@ export async function recordExperimentDecision(
       include: { variants: { include: { results: true } }, metrics: true },
     });
     if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
+    const experimentForApprovalHash = await withCommercialObservationProvenance(experiment);
     if (experiment.status === 'DECIDED') {
       throw new ExperimentInvalidStateError('Experiment has already been decided');
     }
@@ -338,7 +379,7 @@ export async function recordExperimentDecision(
           packageHash: hashScaleDecisionArtifact({
             proposalVersionId: currentVersion.id,
             proposalSnapshot: currentVersion.snapshot,
-            experiment,
+            experiment: experimentForApprovalHash,
           }),
         },
       );

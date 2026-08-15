@@ -97,6 +97,9 @@ export const createExperimentSchema = z.object({
           'CONVERSION_RATE',
           'REFUND_RATE',
           'REVENUE_EUR',
+          'SUPPORT_CONTACTS',
+          'SUPPORT_MINUTES',
+          'QUALITY_INCIDENTS',
           'OTHER',
         ]),
         targetValue: z.number().optional(),
@@ -107,12 +110,50 @@ export const createExperimentSchema = z.object({
 });
 export type CreateExperimentInput = z.infer<typeof createExperimentSchema>;
 
-export const recordExperimentResultSchema = z.object({
-  experimentVariantId: z.string().uuid(),
-  experimentMetricId: z.string().uuid(),
-  value: z.number(),
-  sampleSize: z.number().int().positive().optional(),
-});
+export const commercialObservationEvidenceModeSchema = z.enum(['REAL', 'MOCK']);
+export const commercialObservationSourceTypeSchema = z.enum([
+  'MARKETPLACE_EXPORT',
+  'CUSTOMER_SUPPORT',
+  'FOUNDER_OBSERVED',
+  'MANUAL_IMPORT',
+  'SYNTHETIC',
+]);
+
+export const recordExperimentResultSchema = z
+  .object({
+    experimentVariantId: z.string().uuid(),
+    experimentMetricId: z.string().uuid(),
+    value: z.number(),
+    sampleSize: z.number().int().positive().optional(),
+    evidenceMode: commercialObservationEvidenceModeSchema.default('MOCK'),
+    sourceType: commercialObservationSourceTypeSchema.default('SYNTHETIC'),
+    sourceRef: z.string().trim().min(1).max(1000).optional(),
+    observedAt: z.string().datetime().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.evidenceMode !== 'REAL') return;
+    if (value.sourceType === 'SYNTHETIC') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sourceType'],
+        message: 'REAL commercial evidence cannot use the SYNTHETIC source type',
+      });
+    }
+    if (!value.sourceRef) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sourceRef'],
+        message: 'REAL commercial evidence requires a source reference',
+      });
+    }
+    if (!value.observedAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['observedAt'],
+        message: 'REAL commercial evidence requires an observedAt timestamp',
+      });
+    }
+  });
 export type RecordExperimentResultInput = z.infer<typeof recordExperimentResultSchema>;
 
 export const decideExperimentSchema = z.object({
