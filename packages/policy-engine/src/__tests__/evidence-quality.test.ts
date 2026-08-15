@@ -26,6 +26,64 @@ describe('calculateOpportunityEvidenceQuality', () => {
     expect(result.meetsMinimum).toBe(true);
   });
 
+  it('passes exactly at the master-spec minimum of 70', () => {
+    const result = calculateOpportunityEvidenceQuality(
+      [
+        {
+          id: 'boundary',
+          reliabilityScore: 40,
+          relevanceScore: 100,
+          freshnessScore: 100,
+        },
+      ],
+      now,
+    );
+
+    expect(result.score).toBe(70);
+    expect(result.meetsMinimum).toBe(true);
+  });
+
+  it('fails below 70 when source reliability is too weak', () => {
+    const result = calculateOpportunityEvidenceQuality(
+      [
+        {
+          id: 'low-reliability',
+          reliabilityScore: 39,
+          relevanceScore: 100,
+          freshnessScore: 100,
+        },
+      ],
+      now,
+    );
+
+    expect(result.score).toBe(69.5);
+    expect(result.meetsMinimum).toBe(false);
+  });
+
+  it('averages mixed-quality unique artifacts without hiding the weak source', () => {
+    const result = calculateOpportunityEvidenceQuality(
+      [
+        {
+          id: 'strong',
+          reliabilityScore: 100,
+          relevanceScore: 100,
+          freshnessScore: 100,
+        },
+        {
+          id: 'weak',
+          reliabilityScore: 40,
+          relevanceScore: 40,
+          freshnessScore: 40,
+        },
+      ],
+      now,
+    );
+
+    expect(result.artifactCount).toBe(2);
+    expect(result.score).toBe(70);
+    expect(result.meetsMinimum).toBe(true);
+  });
+
   it('counts one source artifact once even when supplied repeatedly', () => {
     const repeated = {
       id: 'artifact-a',
