@@ -1,0 +1,50 @@
+name: Temporary Stage 6 Gate 1 formatter
+
+'on':
+  push:
+    branches:
+      - feat/stage6-gate1-compliance
+    paths:
+      - apps/api/src/modules/opportunities/opportunity-compliance.ts
+      - apps/web/e2e/stage6-opportunity-intake.spec.ts
+      - apps/web/src/components/opportunity-compliance-actions.tsx
+      - .github/workflows/stage6-gate1-ui-format-helper.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format-gate1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/stage6-gate1-compliance
+          persist-credentials: true
+      - run: corepack enable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --write \
+            apps/api/src/modules/opportunities/opportunity-compliance.ts \
+            apps/web/e2e/stage6-opportunity-intake.spec.ts \
+            apps/web/src/components/opportunity-compliance-actions.tsx
+          git diff --check
+          unexpected="$(git diff --name-only | grep -Ev '^(apps/api/src/modules/opportunities/opportunity-compliance\.ts|apps/web/e2e/stage6-opportunity-intake\.spec\.ts|apps/web/src/components/opportunity-compliance-actions\.tsx)$' || true)"
+          test -z "$unexpected" || { printf 'Unexpected changes:\n%s\n' "$unexpected" >&2; exit 1; }
+      - run: |
+          set -Eeuo pipefail
+          git add \
+            apps/api/src/modules/opportunities/opportunity-compliance.ts \
+            apps/web/e2e/stage6-opportunity-intake.spec.ts \
+            apps/web/src/components/opportunity-compliance-actions.tsx
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'style(stage6): format Gate 1 UI and compliance files'
+          git push origin HEAD:feat/stage6-gate1-compliance
