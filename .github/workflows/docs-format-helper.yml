@@ -1,0 +1,172 @@
+name: Temporary Stage 6 provenance repair helper
+
+'on':
+  push:
+    branches:
+      - feat/stage6-commercial-observation-provenance
+    paths:
+      - .github/workflows/docs-format-helper.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout isolated feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/stage6-commercial-observation-provenance
+          persist-credentials: true
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Apply guarded repair
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          provenance = 'packages/finance-engine/src/commercial-observation-provenance.ts'
+          replace_once(
+              provenance,
+              """export async function getCommercialObservationProvenanceMap(
+  experimentResultIds: string[],
+): Promise<Map<string, CommercialObservationProvenance>> {
+  const uniqueIds = [...new Set(experimentResultIds)];
+  if (uniqueIds.length === 0) return new Map();
+  const idSql = uniqueIds.map((id) => Prisma.sql`${id}::uuid`);
+  const rows = await prisma.$queryRaw<CommercialObservationProvenanceRow[]>(""",
+              """export async function getCommercialObservationProvenanceMap(
+  experimentResultIds: string[],
+  db: Pick<Prisma.TransactionClient, '$queryRaw'> = prisma,
+): Promise<Map<string, CommercialObservationProvenance>> {
+  const uniqueIds = [...new Set(experimentResultIds)];
+  if (uniqueIds.length === 0) return new Map();
+  const idSql = uniqueIds.map((id) => Prisma.sql`${id}::uuid`);
+  const rows = (await db.$queryRaw<CommercialObservationProvenanceRow[]>(""",
+          )
+          replace_once(
+              provenance,
+              """    WHERE \"experimentResultId\" IN (${Prisma.join(idSql)})`,
+  );
+  return new Map(""",
+              """    WHERE \"experimentResultId\" IN (${Prisma.join(idSql)})`,
+  )) ?? [];
+  return new Map(""",
+          )
+
+          runner = 'packages/finance-engine/src/experiment-runner.ts'
+          replace_once(
+              runner,
+              """async function withCommercialObservationProvenance<
+  T extends { variants: Array<{ results: Array<{ id: string }> }> },
+>(experiment: T) {
+  const provenanceByResultId = await getCommercialObservationProvenanceMap(
+    experiment.variants.flatMap((variant) => variant.results.map((result) => result.id)),
+  );""",
+              """async function withCommercialObservationProvenance<
+  T extends { variants: Array<{ results: Array<{ id: string }> }> },
+>(experiment: T, db: Pick<Prisma.TransactionClient, '$queryRaw'> = prisma) {
+  const provenanceByResultId = await getCommercialObservationProvenanceMap(
+    experiment.variants.flatMap((variant) => variant.results.map((result) => result.id)),
+    db,
+  );""",
+          )
+          replace_once(
+              runner,
+              """    if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
+    const experimentForApprovalHash = await withCommercialObservationProvenance(experiment);
+    if (experiment.status === 'DECIDED') {
+      throw new ExperimentInvalidStateError('Experiment has already been decided');
+    }
+
+    if (params.decision === 'SCALE') {""",
+              """    if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
+    if (experiment.status === 'DECIDED') {
+      throw new ExperimentInvalidStateError('Experiment has already been decided');
+    }
+
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:experiment-decision:${params.experimentId}`,
+      tx,
+    );
+
+    if (params.decision === 'SCALE') {""",
+          )
+          replace_once(
+              runner,
+              """      const validity = isApprovalValidForExecution(
+        {""",
+              """      const experimentForApprovalHash = await withCommercialObservationProvenance(
+        experiment,
+        tx,
+      );
+      const validity = isApprovalValidForExecution(
+        {""",
+          )
+          replace_once(
+              runner,
+              """
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:experiment-decision:${params.experimentId}`,
+      tx,
+    );
+    const updated = await tx.experiment.updateMany({""",
+              """
+    const updated = await tx.experiment.updateMany({""",
+          )
+
+          test = 'packages/finance-engine/src/__tests__/capability-policy.test.ts'
+          replace_once(
+              test,
+              """vi.mock('@ventureos/database', () => ({
+  Prisma: { sql: vi.fn((strings: TemplateStringsArray) => strings.join('?')) },""",
+              """vi.mock('@ventureos/database', () => ({
+  Prisma: {
+    sql: vi.fn((strings: TemplateStringsArray) => strings.join('?')),
+    join: vi.fn((parts: unknown[]) => parts.join(',')),
+  },""",
+          )
+          PY
+      - name: Format and focused validation
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --write \
+            packages/finance-engine/src/commercial-observation-provenance.ts \
+            packages/finance-engine/src/experiment-runner.ts \
+            packages/finance-engine/src/__tests__/capability-policy.test.ts
+          git diff --check
+          pnpm db:generate
+          pnpm run typecheck
+          pnpm --filter @ventureos/finance-engine test:unit
+      - name: Commit repair
+        run: |
+          set -Eeuo pipefail
+          git add \
+            packages/finance-engine/src/commercial-observation-provenance.ts \
+            packages/finance-engine/src/experiment-runner.ts \
+            packages/finance-engine/src/__tests__/capability-policy.test.ts
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(stage6): preserve finance capability ordering with provenance'
+          git push origin HEAD:feat/stage6-commercial-observation-provenance
