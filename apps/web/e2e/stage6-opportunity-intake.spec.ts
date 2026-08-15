@@ -1,0 +1,76 @@
+import { test, expect } from '@playwright/test';
+
+const FOUNDER_EMAIL = process.env.DEV_FOUNDER_EMAIL ?? 'founder@ventureos.local';
+const FOUNDER_PASSWORD = process.env.DEV_FOUNDER_PASSWORD ?? 'change-me-dev-only';
+
+async function login(page: import('@playwright/test').Page) {
+  await page.goto('/login');
+  await page.getByTestId('login-email').fill(FOUNDER_EMAIL);
+  await page.getByTestId('login-password').fill(FOUNDER_PASSWORD);
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (candidate) =>
+        candidate.request().method() === 'POST' && candidate.url().endsWith('/api/auth/login'),
+    ),
+    page.getByTestId('login-submit').click(),
+  ]);
+  expect(response.status()).toBe(200);
+  await expect(page).toHaveURL(/\/dashboard/);
+}
+
+async function fillAll(page: import('@playwright/test').Page, selector: string, value: string) {
+  const inputs = page.locator(selector);
+  const count = await inputs.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index += 1) {
+    await inputs.nth(index).fill(value);
+  }
+}
+
+test.describe('Stage 6 opportunity intake', () => {
+  test('founder creates a fresh non-seed opportunity from evidence', async ({ page }) => {
+    await login(page);
+    await page.goto('/dashboard/opportunities');
+    await page.getByRole('link', { name: 'New opportunity' }).click();
+    await expect(page.getByRole('heading', { name: 'New opportunity' })).toBeVisible();
+
+    const unique = Date.now().toString();
+    const title = `Stage 6 browser opportunity ${unique}`;
+    const claim = `Founder evidence claim ${unique}`;
+    const retrievedAt = new Date(Date.now() - 60_000).toISOString().slice(0, 16);
+
+    await page.getByTestId('opportunity-title').fill(title);
+    await page
+      .getByTestId('opportunity-description')
+      .fill('A fresh browser-created opportunity used to prove the supported Stage 6 intake path.');
+    await page
+      .getByTestId('opportunity-persona')
+      .fill('Independent founders validating a repeatable operational planning workflow.');
+    await page.getByTestId('opportunity-pain-points').fill('Manual planning takes too long');
+
+    await page.getByTestId('evidence-source-name').fill('Founder Stage 6 E2E evidence');
+    await page.getByTestId('evidence-source-type').selectOption('FOUNDER_PROVIDED');
+    await page.getByTestId('evidence-retrieved-at').fill(retrievedAt);
+    await page.getByTestId('evidence-freshness-hours').fill('720');
+    await page.getByTestId('evidence-relevance').fill('90');
+    await page.getByTestId('evidence-claim-type').selectOption('FOUNDER_PROVIDED_FACT');
+    await page.getByTestId('evidence-statement').fill(claim);
+
+    await fillAll(page, '[data-testid^="opportunity-factor-"]', '80');
+    await fillAll(page, '[data-testid^="profit-factor-"]', '80');
+
+    const [createResponse] = await Promise.all([
+      page.waitForResponse(
+        (candidate) =>
+          candidate.request().method() === 'POST' && candidate.url().endsWith('/api/opportunities'),
+      ),
+      page.getByTestId('opportunity-create-submit').click(),
+    ]);
+
+    expect(createResponse.status()).toBe(201);
+    await expect(page).toHaveURL(/\/dashboard\/opportunities\/[0-9a-f-]+$/);
+    await expect(page.getByRole('heading', { name: title })).toBeVisible();
+    await expect(page.getByText(claim)).toBeVisible();
+    await expect(page.getByText('Founder-Provided Fact')).toBeVisible();
+  });
+});
