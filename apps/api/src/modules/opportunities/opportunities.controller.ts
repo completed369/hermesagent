@@ -1,7 +1,11 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { OpportunitiesService } from './opportunities.service';
-import { rejectOpportunitySchema } from './opportunities.dto';
+import {
+  createOpportunitySchema,
+  rejectOpportunitySchema,
+  rescoreOpportunitySchema,
+} from './opportunities.dto';
 import { SessionAuthGuard, type AuthenticatedUser } from '../../common/guards/session-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -19,10 +23,28 @@ export class OpportunitiesController {
     return this.opportunitiesService.list(user.workspaceId);
   }
 
+  @Post()
+  @RequirePermission('opportunity:manage')
+  create(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    const input = createOpportunitySchema.parse(body);
+    return this.opportunitiesService.create(user.workspaceId, input, user.userId);
+  }
+
   @Get(':id')
   @RequirePermission('opportunity:view')
   getById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.opportunitiesService.getById(user.workspaceId, id);
+  }
+
+  @Post(':id/rescore')
+  @RequirePermission('opportunity:manage')
+  rescore(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const input = rescoreOpportunitySchema.parse(body);
+    return this.opportunitiesService.rescore(user.workspaceId, id, input, user.userId);
   }
 
   @Post(':id/reject')
