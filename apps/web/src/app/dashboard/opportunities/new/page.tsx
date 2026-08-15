@@ -209,7 +209,9 @@ export default function NewOpportunityPage() {
               onChange={(event) => updateField('description', event.target.value)}
             />
           </label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}
+          >
             <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
               Suggested product type
               <input
@@ -227,7 +229,9 @@ export default function NewOpportunityPage() {
               />
             </label>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}
+          >
             <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
               Estimated cost (EUR)
               <input
@@ -367,7 +371,9 @@ export default function NewOpportunityPage() {
               onChange={(event) => updateField('evidenceSourceIdentifier', event.target.value)}
             />
           </label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}
+          >
             <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
               Retrieved at
               <input
@@ -465,7 +471,9 @@ export default function NewOpportunityPage() {
               calculated by the scoring engine.
             </p>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}
+          >
             {OPPORTUNITY_FACTORS.map(([key, label]) => (
               <label key={key} style={{ display: 'grid', gap: 4, fontSize: 13 }}>
                 {label}
@@ -497,7 +505,9 @@ export default function NewOpportunityPage() {
               from the evidence record above and cannot be overridden here.
             </p>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}
+          >
             {PROFIT_FACTORS.map(([key, label]) => (
               <label key={key} style={{ display: 'grid', gap: 4, fontSize: 13 }}>
                 {label}

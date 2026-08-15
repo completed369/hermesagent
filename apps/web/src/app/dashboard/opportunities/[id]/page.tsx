@@ -86,7 +86,9 @@ export default async function OpportunityDetailPage({
     notFound();
   }
   const opportunity = data;
-  const evidenceQuality = opportunity.scores.find((score) => score.scoreType === 'EVIDENCE_QUALITY');
+  const evidenceQuality = opportunity.scores.find(
+    (score) => score.scoreType === 'EVIDENCE_QUALITY',
+  );
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
@@ -122,7 +124,10 @@ export default async function OpportunityDetailPage({
           <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
             Evidence Quality
           </p>
-          <p data-testid="evidence-quality-score" style={{ fontSize: 28, fontWeight: 700, margin: '6px 0 0' }}>
+          <p
+            data-testid="evidence-quality-score"
+            style={{ fontSize: 28, fontWeight: 700, margin: '6px 0 0' }}
+          >
             {evidenceQuality?.score ?? '—'}
           </p>
           {evidenceQuality ? (
