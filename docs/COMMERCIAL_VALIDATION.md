@@ -20,6 +20,20 @@ Per master spec section 30. The six gate definitions and thresholds below are au
 - Every founder approval must be recorded by its persisted `ApprovalRequest`/decision evidence; no chat statement or agent memory substitutes for an approval record.
 - Memory is advisory context only. It cannot grant, revoke or substitute for approval authority, policy checks, current business state or commercial evidence.
 
+## Stage 6 implementation prerequisite: fresh opportunity intake
+
+Repository audit against release source `007e15b4ab93093b7a958150dabf1ba673c007c6` found that a fresh non-seed pilot opportunity cannot yet be created through the supported product surface:
+
+- `OpportunitiesController` exposes list/get/reject/archive/promote only; there is no create endpoint.
+- `OpportunitiesService` contains mutation handling for reject/archive/promote only.
+- the Opportunity Feed renders existing records and detail links but has no new-opportunity intake control.
+- research acquisition persists `DataSource` and `EvidenceArtifact` records; it does not create an `Opportunity`.
+- the confirmed Opportunity creation path is the idempotent Phase-2 seed fixture in `packages/database/src/seed.ts`.
+
+After Stage 5 is formally closed, Stage 6 should therefore begin by adding a founder-authorized/manual opportunity-intake path that creates a real workspace-scoped Opportunity plus its initial customer/problem/evidence inputs and score records. That implementation must preserve workspace isolation, audit every state-creating action, validate input server-side, calculate scores through the existing scoring engine rather than accepting arbitrary score values, and include integration/E2E coverage proving a fresh non-seed opportunity can reach the existing promotion/board/approval path.
+
+This prerequisite is an implementation gap, not permission to auto-select a commercial opportunity or fabricate evidence. The founder still chooses/approves the real pilot and every existing approval checkpoint remains authoritative.
+
 **Rule enforced from day one**: do not scale paid advertising before low-cost validation — `FEATURE_ADVERTISING_ENABLED=false` by default and requires explicit founder action to change.
 
 Stage-6 evidence belongs in `docs/COMMERCIAL_PILOT_LOG.md`.
