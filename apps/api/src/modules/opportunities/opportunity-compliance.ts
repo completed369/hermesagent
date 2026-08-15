@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { prisma } from '@ventureos/database';
 import {
@@ -79,21 +80,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isBlockerArray(value: unknown): value is Array<{ code: string; reason: string }> {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        isRecord(item) && typeof item.code === 'string' && typeof item.reason === 'string',
+    )
+  );
+}
+
 function parseStoredAssessment(value: unknown): StoredAssessment | null {
   if (!isRecord(value)) return null;
   if (
     typeof value.formulaVersion !== 'string' ||
     (value.result !== 'PASS' && value.result !== 'BLOCKED') ||
     typeof value.hasCriticalBlocker !== 'boolean' ||
+    !isBlockerArray(value.blockers) ||
+    (value.normalizedProductType !== null && typeof value.normalizedProductType !== 'string') ||
+    typeof value.evaluatedAt !== 'string' ||
     typeof value.stateHash !== 'string' ||
     !isRecord(value.declarations) ||
-    !Array.isArray(value.evidenceClaimIds)
+    !isStringArray(value.evidenceClaimIds) ||
+    (value.policyPackId !== null && typeof value.policyPackId !== 'string') ||
+    (value.policyPackVersion !== null && typeof value.policyPackVersion !== 'string')
   ) {
     return null;
   }
   const declarations = value.declarations;
   if (
-    !Array.isArray(declarations.declaredCategories) ||
+    !isStringArray(declarations.declaredCategories) ||
     typeof declarations.thirdPartyTrademarksPresent !== 'boolean' ||
     typeof declarations.copyrightedStockWithoutLicence !== 'boolean'
   ) {
@@ -267,12 +287,14 @@ export async function assessOpportunityCompliance(
     policyPackId: state.policyPack?.id ?? null,
     policyPackVersion: state.policyPackVersion?.version ?? null,
   };
+  const correlationId = randomUUID();
 
   await auditService.record(workspaceId, {
     actorId,
     action: COMPLIANCE_AUDIT_ACTION,
     entityType: 'Opportunity',
     entityId: opportunityId,
+    correlationId,
     after: stored as unknown as Record<string, unknown>,
     policyResult: {
       policyId: COMPLIANCE_POLICY_ID,
@@ -299,12 +321,13 @@ export async function assessOpportunityCompliance(
       entityType: 'Opportunity',
       entityId: opportunityId,
       actorId,
+      correlationId,
     },
-    orderBy: { createdAt: 'desc' },
     select: { id: true, createdAt: true },
   });
+  if (!event) throw new Error('Compliance audit record was not persisted');
 
-  return { auditEventId: event?.id ?? null, createdAt: event?.createdAt ?? null, ...stored };
+  return { auditEventId: event.id, createdAt: event.createdAt, ...stored };
 }
 
 export async function getCurrentOpportunityComplianceAssessment(
