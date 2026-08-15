@@ -1,5 +1,22 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { enforceWorkspaceCapability, prisma, Prisma } from '@ventureos/database';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  enforceWorkspaceCapability,
+  OpportunityEvidenceUnavailableError,
+  OpportunityScoringNotFoundError,
+  prisma,
+  Prisma,
+  rescoreOpportunity,
+  rescoreOpportunityInTransaction,
+} from '@ventureos/database';
+import { computeFreshnessScore, computeReliabilityScore } from '@ventureos/research-connectors';
+import { hashContent } from '@ventureos/security';
+import type { CreateOpportunityInput, RescoreOpportunityInput } from './opportunities.dto';
 import { AuditService } from '../audit/audit.service';
 import {
   enforceCapabilityAdmission,
@@ -15,10 +32,8 @@ const OPPORTUNITY_INCLUDE = {
 };
 
 /**
- * Every mutation here is a founder-authority state change (master spec
- * section 15/25): reject/archive/promote must always go through
- * AuditService.record(), never bypass it, so the workspace's append-only
- * audit trail stays complete.
+ * Every mutation here is a founder-authority state change: create, rescore,
+ * reject, archive and promote all write the append-only AuditEvent trail.
  */
 @Injectable()
 export class OpportunitiesService {
@@ -41,6 +56,181 @@ export class OpportunitiesService {
       throw new NotFoundException('Opportunity not found');
     }
     return opportunity;
+  }
+
+  async create(workspaceId: string, input: CreateOpportunityInput, actorId: string) {
+    const now = new Date();
+    let created: {
+      opportunityId: string;
+      scoring: Awaited<ReturnType<typeof rescoreOpportunityInTransaction>>;
+    };
+
+    try {
+      created = await prisma.$transaction(async (tx) => {
+        const estimatedProfitEur =
+          input.estimatedRevenueEur !== undefined && input.estimatedCostEur !== undefined
+            ? input.estimatedRevenueEur - input.estimatedCostEur
+            : undefined;
+
+        const opportunity = await tx.opportunity.create({
+          data: {
+            workspaceId,
+            title: input.title,
+            description: input.description,
+            suggestedProductType: input.suggestedProductType,
+            suggestedMarketplace: input.suggestedMarketplace,
+            estimatedCostEur: input.estimatedCostEur,
+            estimatedRevenueEur: input.estimatedRevenueEur,
+            estimatedProfitEur,
+            timeToLaunchDays: input.timeToLaunchDays,
+            risks: input.risks,
+            targetCustomers: {
+              create: {
+                persona: input.targetCustomer.persona,
+                painPoints: input.targetCustomer.painPoints,
+                buyingTriggers: input.targetCustomer.buyingTriggers,
+              },
+            },
+            channels: {
+              create: input.channels.map((channel) => ({
+                channel: channel.channel,
+                rationale: channel.rationale,
+                priority: channel.priority,
+              })),
+            },
+          },
+        });
+
+        for (const evidence of input.evidence) {
+          const retrievedAt = new Date(evidence.retrievedAt);
+          const reliabilityScore = computeReliabilityScore({
+            sourceType: evidence.sourceType,
+            promptInjectionFlagged: false,
+            disabled: false,
+          });
+          const freshnessScore = computeFreshnessScore({
+            retrievedAt,
+            freshnessRequirementHours: evidence.freshnessRequirementHours,
+            now,
+          });
+          const contentHash = hashContent(
+            [
+              evidence.sourceName,
+              evidence.sourceIdentifier ?? '',
+              evidence.originalExcerpt ?? evidence.statement,
+            ].join('\n'),
+          );
+
+          const artifact = await tx.evidenceArtifact.create({
+            data: {
+              workspaceId,
+              sourceName: evidence.sourceName,
+              sourceIdentifier: evidence.sourceIdentifier,
+              retrievedAt,
+              region: evidence.region,
+              language: evidence.language,
+              collectionMethod: evidence.collectionMethod,
+              collectionAgent: 'founder-stage6-manual-intake',
+              originalExcerpt: evidence.originalExcerpt,
+              reliabilityScore,
+              freshnessScore,
+              relevanceScore: evidence.relevanceScore,
+              termsOfUseNote: evidence.termsOfUseNote,
+              personalDataClassification: evidence.personalDataClassification,
+              contentHash,
+              expiryDate: evidence.expiryDate ? new Date(evidence.expiryDate) : undefined,
+              processingHistory: [
+                {
+                  step: 'stage6_manual_intake',
+                  at: now.toISOString(),
+                  sourceType: evidence.sourceType,
+                  freshnessRequirementHours: evidence.freshnessRequirementHours,
+                  reliabilityMethod: 'research-connectors-source-type-v1',
+                  freshnessMethod: 'research-connectors-linear-decay-v1',
+                },
+              ],
+            },
+          });
+
+          await tx.evidenceClaim.create({
+            data: {
+              workspaceId,
+              evidenceArtifactId: artifact.id,
+              opportunityId: opportunity.id,
+              claimType: evidence.claimType,
+              statement: evidence.statement,
+              value: evidence.value as never,
+            },
+          });
+        }
+
+        const scoring = await rescoreOpportunityInTransaction(tx, {
+          workspaceId,
+          opportunityId: opportunity.id,
+          opportunityFactors: input.opportunityFactors,
+          profitConfidenceFactors: input.profitConfidenceFactors,
+          now,
+        });
+
+        return { opportunityId: opportunity.id, scoring };
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('An opportunity with this title already exists');
+      }
+      throw error;
+    }
+
+    await this.auditService.record(workspaceId, {
+      actorId,
+      action: 'OPPORTUNITY_CREATED',
+      entityType: 'Opportunity',
+      entityId: created.opportunityId,
+      after: {
+        title: input.title,
+        evidenceQuality: created.scoring.evidenceQuality.score,
+        opportunityScore: created.scoring.opportunityScore.score,
+        profitConfidence: created.scoring.profitConfidence.score,
+      },
+    });
+
+    return this.getById(workspaceId, created.opportunityId);
+  }
+
+  async rescore(workspaceId: string, id: string, input: RescoreOpportunityInput, actorId: string) {
+    const before = await this.loadForMutation(workspaceId, id);
+    if (!['NEW', 'UNDER_REVIEW'].includes(before.status)) {
+      throw new ConflictException('Only unpromoted opportunities can be rescored');
+    }
+
+    try {
+      const scoring = await rescoreOpportunity({
+        workspaceId,
+        opportunityId: id,
+        opportunityFactors: input.opportunityFactors,
+        profitConfidenceFactors: input.profitConfidenceFactors,
+      });
+      await this.auditService.record(workspaceId, {
+        actorId,
+        action: 'OPPORTUNITY_RESCORED',
+        entityType: 'Opportunity',
+        entityId: id,
+        after: {
+          evidenceQuality: scoring.evidenceQuality.score,
+          opportunityScore: scoring.opportunityScore.score,
+          profitConfidence: scoring.profitConfidence.score,
+        },
+      });
+      return this.getById(workspaceId, id);
+    } catch (error) {
+      if (error instanceof OpportunityScoringNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof OpportunityEvidenceUnavailableError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
   }
 
   private async loadForMutation(workspaceId: string, id: string) {

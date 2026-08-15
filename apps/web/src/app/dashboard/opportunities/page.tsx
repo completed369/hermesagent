@@ -25,12 +25,24 @@ export default async function OpportunitiesPage() {
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Opportunity Feed</h1>
-        <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, marginTop: 4 }}>
-          Every candidate venture, with its Opportunity Score, Profit Confidence Score, and evidence
-          trail.
-        </p>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 16,
+        }}
+      >
+        <div>
+          <h1 style={{ margin: 0, fontSize: 24 }}>Opportunity Feed</h1>
+          <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, marginTop: 4 }}>
+            Every candidate venture, with its Opportunity Score, Profit Confidence Score, and
+            evidence trail.
+          </p>
+        </div>
+        <Link className="vos-btn" href="/dashboard/opportunities/new">
+          New opportunity
+        </Link>
       </div>
       <div className="vos-card">
         {!data || data.length === 0 ? (

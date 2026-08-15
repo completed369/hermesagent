@@ -18,6 +18,13 @@ interface EvidenceClaim {
   statement: string;
   evidenceArtifact: EvidenceArtifact;
 }
+interface OpportunityScore {
+  id: string;
+  scoreType: string;
+  formulaVersion: string;
+  score: string;
+  calculatedAt: string;
+}
 interface TargetCustomer {
   id: string;
   persona: string;
@@ -48,6 +55,7 @@ interface OpportunityDetail {
   targetCustomers: TargetCustomer[];
   channels: ChannelRecommendation[];
   evidenceClaims: EvidenceClaim[];
+  scores: OpportunityScore[];
   proposal: { id: string; status: string } | null;
 }
 
@@ -78,6 +86,9 @@ export default async function OpportunityDetailPage({
     notFound();
   }
   const opportunity = data;
+  const evidenceQuality = opportunity.scores.find(
+    (score) => score.scoreType === 'EVIDENCE_QUALITY',
+  );
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
@@ -97,7 +108,7 @@ export default async function OpportunityDetailPage({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: 16,
         }}
       >
@@ -108,6 +119,22 @@ export default async function OpportunityDetailPage({
           <p style={{ fontSize: 28, fontWeight: 700, margin: '6px 0 0' }}>
             {opportunity.latestOpportunityScore ?? '—'}
           </p>
+        </div>
+        <div className="vos-card">
+          <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
+            Evidence Quality
+          </p>
+          <p
+            data-testid="evidence-quality-score"
+            style={{ fontSize: 28, fontWeight: 700, margin: '6px 0 0' }}
+          >
+            {evidenceQuality?.score ?? '—'}
+          </p>
+          {evidenceQuality ? (
+            <p style={{ fontSize: 11, color: 'var(--vos-text-muted)', margin: '4px 0 0' }}>
+              {evidenceQuality.formulaVersion}
+            </p>
+          ) : null}
         </div>
         <div className="vos-card">
           <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
