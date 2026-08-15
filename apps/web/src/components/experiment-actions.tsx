@@ -7,9 +7,8 @@ import { apiFetch, ApiError } from '@/lib/api';
 
 /**
  * Creates a new Experiment with a fixed, sensible default shape (a Control
- * and a Variant B, tracking REVENUE_EUR) -- master spec section 30 Gate 5/6
- * requires variants/metrics defined up front, never invented after the fact
- * to justify a result.
+ * and a Variant B, with the Gate 5/6 commercial and support-load metrics
+ * declared up front -- never invented after the fact to justify a result).
  */
 export function CreateExperimentAction({ ventureProposalId }: { ventureProposalId: string }) {
   const router = useRouter();
@@ -38,6 +37,9 @@ export function CreateExperimentAction({ ventureProposalId }: { ventureProposalI
           metrics: [
             { name: 'REVENUE_EUR', unit: 'EUR' },
             { name: 'CONVERSION_RATE', unit: '%' },
+            { name: 'SUPPORT_CONTACTS', unit: 'count' },
+            { name: 'SUPPORT_MINUTES', unit: 'minutes' },
+            { name: 'QUALITY_INCIDENTS', unit: 'count' },
           ],
         }),
       });
@@ -86,6 +88,14 @@ interface Metric {
   name: string;
 }
 
+type EvidenceMode = 'MOCK' | 'REAL';
+type ObservationSourceType =
+  | 'MARKETPLACE_EXPORT'
+  | 'CUSTOMER_SUPPORT'
+  | 'FOUNDER_OBSERVED'
+  | 'MANUAL_IMPORT'
+  | 'SYNTHETIC';
+
 export function ExperimentPanelActions({
   experimentId,
   status,
@@ -103,6 +113,10 @@ export function ExperimentPanelActions({
   const [variantId, setVariantId] = useState(variants[0]?.id ?? '');
   const [metricId, setMetricId] = useState(metrics[0]?.id ?? '');
   const [value, setValue] = useState('');
+  const [evidenceMode, setEvidenceMode] = useState<EvidenceMode>('MOCK');
+  const [sourceType, setSourceType] = useState<ObservationSourceType>('SYNTHETIC');
+  const [sourceRef, setSourceRef] = useState('');
+  const [observedAt, setObservedAt] = useState('');
   const [decision, setDecision] = useState<'SCALE' | 'KILL' | 'ITERATE' | 'HOLD'>('ITERATE');
   const [rationale, setRationale] = useState('');
   const [approvalRequestId, setApprovalRequestId] = useState('');
@@ -120,6 +134,9 @@ export function ExperimentPanelActions({
       setLoading(false);
     }
   }
+
+  const realEvidenceIncomplete =
+    evidenceMode === 'REAL' && (!sourceRef.trim() || !observedAt || sourceType === 'SYNTHETIC');
 
   return (
     <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
@@ -140,33 +157,99 @@ export function ExperimentPanelActions({
 
       {(status === 'RUNNING' || status === 'COMPLETED') && (
         <>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <select value={variantId} onChange={(e) => setVariantId(e.target.value)}>
-              {variants.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-            <select value={metricId} onChange={(e) => setMetricId(e.target.value)}>
-              {metrics.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              step="0.0001"
-              placeholder="Value"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              style={{ width: 100 }}
-            />
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                data-testid="experiment-result-variant"
+                value={variantId}
+                onChange={(e) => setVariantId(e.target.value)}
+              >
+                {variants.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                data-testid="experiment-result-metric"
+                value={metricId}
+                onChange={(e) => setMetricId(e.target.value)}
+              >
+                {metrics.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                data-testid="experiment-result-value"
+                type="number"
+                step="0.0001"
+                placeholder="Value"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                style={{ width: 100 }}
+              />
+              <select
+                data-testid="experiment-evidence-mode"
+                value={evidenceMode}
+                onChange={(e) => {
+                  const next = e.target.value as EvidenceMode;
+                  setEvidenceMode(next);
+                  if (next === 'MOCK') {
+                    setSourceType('SYNTHETIC');
+                    setSourceRef('');
+                    setObservedAt('');
+                  } else if (sourceType === 'SYNTHETIC') {
+                    setSourceType('FOUNDER_OBSERVED');
+                  }
+                }}
+              >
+                <option value="MOCK">MOCK / mechanical</option>
+                <option value="REAL">REAL commercial evidence</option>
+              </select>
+            </div>
+
+            {evidenceMode === 'REAL' ? (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <select
+                  data-testid="experiment-source-type"
+                  value={sourceType}
+                  onChange={(e) => setSourceType(e.target.value as ObservationSourceType)}
+                >
+                  <option value="MARKETPLACE_EXPORT">Marketplace export</option>
+                  <option value="CUSTOMER_SUPPORT">Customer support</option>
+                  <option value="FOUNDER_OBSERVED">Founder observed</option>
+                  <option value="MANUAL_IMPORT">Manual import</option>
+                </select>
+                <input
+                  data-testid="experiment-source-ref"
+                  type="text"
+                  placeholder="Evidence/source reference"
+                  value={sourceRef}
+                  onChange={(e) => setSourceRef(e.target.value)}
+                  style={{ width: 240 }}
+                />
+                <input
+                  data-testid="experiment-observed-at"
+                  type="datetime-local"
+                  aria-label="Observed at"
+                  value={observedAt}
+                  onChange={(e) => setObservedAt(e.target.value)}
+                />
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--vos-text-muted)' }}>
+                MOCK results prove workflow mechanics only and cannot satisfy genuine Gate 5/6
+                commercial evidence.
+              </p>
+            )}
+
             <button
+              data-testid="experiment-record-result"
               type="button"
               className="vos-btn"
-              disabled={loading || !value}
+              disabled={loading || !value || realEvidenceIncomplete}
               onClick={() =>
                 run(() =>
                   apiFetch(`/finance/experiments/${experimentId}/results`, {
@@ -175,10 +258,22 @@ export function ExperimentPanelActions({
                       experimentVariantId: variantId,
                       experimentMetricId: metricId,
                       value: Number(value),
+                      evidenceMode,
+                      sourceType,
+                      sourceRef: evidenceMode === 'REAL' ? sourceRef.trim() : undefined,
+                      observedAt:
+                        evidenceMode === 'REAL' ? new Date(observedAt).toISOString() : undefined,
                     }),
-                  }).then(() => setValue('')),
+                  }).then(() => {
+                    setValue('');
+                    if (evidenceMode === 'REAL') {
+                      setSourceRef('');
+                      setObservedAt('');
+                    }
+                  }),
                 )
               }
+              style={{ width: 'fit-content' }}
             >
               Record result
             </button>
