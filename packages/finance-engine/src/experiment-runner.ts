@@ -170,9 +170,10 @@ export async function recordExperimentResult(
 
 async function withCommercialObservationProvenance<
   T extends { variants: Array<{ results: Array<{ id: string }> }> },
->(experiment: T) {
+>(experiment: T, db: Pick<Prisma.TransactionClient, '$queryRaw'> = prisma) {
   const provenanceByResultId = await getCommercialObservationProvenanceMap(
     experiment.variants.flatMap((variant) => variant.results.map((result) => result.id)),
+    db,
   );
   return {
     ...experiment,
@@ -316,10 +317,15 @@ export async function recordExperimentDecision(
       include: { variants: { include: { results: true } }, metrics: true },
     });
     if (!experiment) throw new ExperimentNotFoundError('Experiment not found');
-    const experimentForApprovalHash = await withCommercialObservationProvenance(experiment);
     if (experiment.status === 'DECIDED') {
       throw new ExperimentInvalidStateError('Experiment has already been decided');
     }
+
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:experiment-decision:${params.experimentId}`,
+      tx,
+    );
 
     if (params.decision === 'SCALE') {
       if (!params.approvalRequestId) {
@@ -368,6 +374,7 @@ export async function recordExperimentDecision(
       if (!currentVersion) {
         throw new ExperimentInvalidStateError('Scale-decision approval artifact is unavailable');
       }
+      const experimentForApprovalHash = await withCommercialObservationProvenance(experiment, tx);
       const validity = isApprovalValidForExecution(
         {
           approvedArtifactVersionId: decision.approvedArtifactVersionId,
@@ -390,11 +397,6 @@ export async function recordExperimentDecision(
       }
     }
 
-    await enforceFinanceMutation(
-      params.workspaceId,
-      `finance:experiment-decision:${params.experimentId}`,
-      tx,
-    );
     const updated = await tx.experiment.updateMany({
       where: { id: experiment.id, workspaceId: params.workspaceId, status: { not: 'DECIDED' } },
       data: { status: 'DECIDED', endedAt: new Date() },

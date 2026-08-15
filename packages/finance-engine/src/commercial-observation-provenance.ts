@@ -94,12 +94,14 @@ export async function persistCommercialObservationProvenance(
 
 export async function getCommercialObservationProvenanceMap(
   experimentResultIds: string[],
+  db: Pick<Prisma.TransactionClient, '$queryRaw'> = prisma,
 ): Promise<Map<string, CommercialObservationProvenance>> {
   const uniqueIds = [...new Set(experimentResultIds)];
   if (uniqueIds.length === 0) return new Map();
   const idSql = uniqueIds.map((id) => Prisma.sql`${id}::uuid`);
-  const rows = await prisma.$queryRaw<CommercialObservationProvenanceRow[]>(
-    Prisma.sql`SELECT
+  const rows =
+    (await db.$queryRaw<CommercialObservationProvenanceRow[]>(
+      Prisma.sql`SELECT
       "experimentResultId",
       "evidenceMode",
       "sourceType",
@@ -108,7 +110,7 @@ export async function getCommercialObservationProvenanceMap(
       "recordedBy"
     FROM "commercial_observation_provenance"
     WHERE "experimentResultId" IN (${Prisma.join(idSql)})`,
-  );
+    )) ?? [];
   return new Map(
     rows.map((row) => [
       row.experimentResultId,

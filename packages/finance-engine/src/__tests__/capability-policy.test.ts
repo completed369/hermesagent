@@ -42,7 +42,10 @@ vi.mock('../capability-guard.js', () => ({
   enforceFinanceRead: mocks.enforceFinanceRead,
 }));
 vi.mock('@ventureos/database', () => ({
-  Prisma: { sql: vi.fn((strings: TemplateStringsArray) => strings.join('?')) },
+  Prisma: {
+    sql: vi.fn((strings: TemplateStringsArray) => strings.join('?')),
+    join: vi.fn((parts: unknown[]) => parts.join(',')),
+  },
   prisma: { $transaction: mocks.transaction },
 }));
 
