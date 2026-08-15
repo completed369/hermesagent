@@ -199,9 +199,7 @@ describe('Stage 6 fresh opportunity intake (integration)', () => {
     expect(review.status).toBe('COMPLETED');
     expect(review.votingResult).not.toBeNull();
     expect(
-      review.votingResult?.blockingReasons.some((reason) =>
-        reason.startsWith('Evidence quality '),
-      ),
+      review.votingResult?.blockingReasons.some((reason) => reason.startsWith('Evidence quality ')),
     ).toBe(false);
 
     await expect(
