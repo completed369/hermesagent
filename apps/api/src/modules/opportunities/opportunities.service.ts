@@ -198,6 +198,11 @@ export class OpportunitiesService {
   }
 
   async rescore(workspaceId: string, id: string, input: RescoreOpportunityInput, actorId: string) {
+    const before = await this.loadForMutation(workspaceId, id);
+    if (!['NEW', 'UNDER_REVIEW'].includes(before.status)) {
+      throw new ConflictException('Only unpromoted opportunities can be rescored');
+    }
+
     try {
       const scoring = await rescoreOpportunity({
         workspaceId,
