@@ -197,12 +197,7 @@ export class OpportunitiesService {
     return this.getById(workspaceId, created.opportunityId);
   }
 
-  async rescore(
-    workspaceId: string,
-    id: string,
-    input: RescoreOpportunityInput,
-    actorId: string,
-  ) {
+  async rescore(workspaceId: string, id: string, input: RescoreOpportunityInput, actorId: string) {
     try {
       const scoring = await rescoreOpportunity({
         workspaceId,

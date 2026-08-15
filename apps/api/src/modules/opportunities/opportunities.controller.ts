@@ -38,11 +38,7 @@ export class OpportunitiesController {
 
   @Post(':id/rescore')
   @RequirePermission('opportunity:manage')
-  rescore(
-    @Param('id') id: string,
-    @Body() body: unknown,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  rescore(@Param('id') id: string, @Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
     const input = rescoreOpportunitySchema.parse(body);
     return this.opportunitiesService.rescore(user.workspaceId, id, input, user.userId);
   }

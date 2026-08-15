@@ -1,5 +1,4 @@
-export const OPPORTUNITY_EVIDENCE_QUALITY_FORMULA_VERSION =
-  'opportunity-evidence-quality-v1';
+export const OPPORTUNITY_EVIDENCE_QUALITY_FORMULA_VERSION = 'opportunity-evidence-quality-v1';
 export const OPPORTUNITY_EVIDENCE_QUALITY_MINIMUM = 70;
 
 /**
@@ -92,12 +91,9 @@ export function calculateOpportunityEvidenceQuality(
       const qualityScore = expired
         ? 0
         : round2(
-            (artifact.reliabilityScore * OPPORTUNITY_EVIDENCE_QUALITY_WEIGHTS.reliability) /
-              100 +
-              (artifact.relevanceScore * OPPORTUNITY_EVIDENCE_QUALITY_WEIGHTS.relevance) /
-                100 +
-              (artifact.freshnessScore * OPPORTUNITY_EVIDENCE_QUALITY_WEIGHTS.freshness) /
-                100,
+            (artifact.reliabilityScore * OPPORTUNITY_EVIDENCE_QUALITY_WEIGHTS.reliability) / 100 +
+              (artifact.relevanceScore * OPPORTUNITY_EVIDENCE_QUALITY_WEIGHTS.relevance) / 100 +
+              (artifact.freshnessScore * OPPORTUNITY_EVIDENCE_QUALITY_WEIGHTS.freshness) / 100,
           );
       return {
         id: artifact.id,

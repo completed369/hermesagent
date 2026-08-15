@@ -163,9 +163,13 @@ describe('Stage 6 fresh opportunity intake (integration)', () => {
     );
 
     expect(rescored.latestOpportunityScore?.toString()).toBe('70');
-    expect(rescored.scores.filter((score) => score.scoreType === 'EVIDENCE_QUALITY')).toHaveLength(2);
+    expect(rescored.scores.filter((score) => score.scoreType === 'EVIDENCE_QUALITY')).toHaveLength(
+      2,
+    );
     expect(rescored.scores.filter((score) => score.scoreType === 'OPPORTUNITY')).toHaveLength(2);
-    expect(rescored.scores.filter((score) => score.scoreType === 'PROFIT_CONFIDENCE')).toHaveLength(2);
+    expect(rescored.scores.filter((score) => score.scoreType === 'PROFIT_CONFIDENCE')).toHaveLength(
+      2,
+    );
 
     const latestProfit = rescored.scores.find((score) => score.scoreType === 'PROFIT_CONFIDENCE');
     const factors = latestProfit?.factors as Record<string, number> | undefined;
@@ -173,7 +177,11 @@ describe('Stage 6 fresh opportunity intake (integration)', () => {
     expect(factors?.dataFreshness).toBe(100);
 
     const rescoreAudit = await prisma.auditEvent.findFirst({
-      where: { workspaceId: workspaceA.id, entityId: opportunityId, action: 'OPPORTUNITY_RESCORED' },
+      where: {
+        workspaceId: workspaceA.id,
+        entityId: opportunityId,
+        action: 'OPPORTUNITY_RESCORED',
+      },
     });
     expect(rescoreAudit?.integrityHash).toBeTruthy();
   });
