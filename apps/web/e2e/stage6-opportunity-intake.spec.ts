@@ -72,5 +72,7 @@ test.describe('Stage 6 opportunity intake', () => {
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
     await expect(page.getByText(claim)).toBeVisible();
     await expect(page.getByText('Founder-Provided Fact')).toBeVisible();
+    await expect(page.getByTestId('evidence-quality-score')).toHaveText(/^\d/);
+    await expect(page.getByText('opportunity-evidence-quality-v1')).toBeVisible();
   });
 });
