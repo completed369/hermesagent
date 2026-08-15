@@ -55,6 +55,14 @@ const intakeEvidenceSchema = z.object({
   value: z.unknown().optional(),
 });
 
+export const rescoreOpportunitySchema = z
+  .object({
+    opportunityFactors: opportunityFactorsSchema,
+    profitConfidenceFactors: profitConfidenceProvidedFactorsSchema,
+  })
+  .strict();
+export type RescoreOpportunityInput = z.infer<typeof rescoreOpportunitySchema>;
+
 export const createOpportunitySchema = z
   .object({
     title: z.string().trim().min(3).max(200),
