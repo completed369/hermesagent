@@ -1,0 +1,70 @@
+name: Temporary Stage 6 commercial observation helper
+
+'on':
+  push:
+    branches:
+      - feat/stage6-commercial-observation-provenance
+    paths:
+      - .github/workflows/docs-format-helper.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout isolated feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/stage6-commercial-observation-provenance
+          persist-credentials: true
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Apply guarded source patch
+        run: python3 scripts/stage6-observation-helper.py
+      - name: Format and validate patch
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --write \
+            apps/api/src/modules/finance/finance.dto.ts \
+            apps/api/src/modules/finance/finance.dto.spec.ts \
+            apps/api/src/modules/finance/finance.service.ts \
+            apps/api/test/stage6-commercial-observation.integration.spec.ts \
+            packages/finance-engine/src/commercial-observation-provenance.ts \
+            packages/finance-engine/src/experiment-runner.ts \
+            packages/finance-engine/src/index.ts \
+            docs/COMMERCIAL_VALIDATION.md \
+            docs/COMMERCIAL_PILOT_LOG.md
+          git diff --check
+          pnpm --filter @ventureos/database exec prisma validate --schema prisma/schema.prisma
+          pnpm --filter @ventureos/finance-engine typecheck
+          pnpm --filter @ventureos/api typecheck
+          pnpm --filter @ventureos/api exec vitest run src/modules/finance/finance.dto.spec.ts
+      - name: Commit patch
+        run: |
+          set -Eeuo pipefail
+          git add \
+            apps/api/src/modules/finance/finance.dto.ts \
+            apps/api/src/modules/finance/finance.dto.spec.ts \
+            apps/api/src/modules/finance/finance.service.ts \
+            apps/api/test/stage6-commercial-observation.integration.spec.ts \
+            packages/finance-engine/src/commercial-observation-provenance.ts \
+            packages/finance-engine/src/experiment-runner.ts \
+            packages/finance-engine/src/index.ts \
+            packages/database/prisma/migrations/20260815123000_commercial_observation_provenance/migration.sql \
+            docs/COMMERCIAL_VALIDATION.md \
+            docs/COMMERCIAL_PILOT_LOG.md
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(stage6): govern commercial observation provenance'
+          git push origin HEAD:feat/stage6-commercial-observation-provenance
