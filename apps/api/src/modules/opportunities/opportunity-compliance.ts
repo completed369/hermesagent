@@ -11,7 +11,51 @@ import type { OpportunityComplianceAssessmentInput } from './opportunities.dto';
 const COMPLIANCE_AUDIT_ACTION = 'OPPORTUNITY_COMPLIANCE_ASSESSED';
 const COMPLIANCE_POLICY_ID = 'GATE1-OPPORTUNITY-COMPLIANCE';
 
-type ComplianceState = Awaited<ReturnType<typeof loadComplianceState>>;
+interface ComplianceOpportunityState {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  suggestedMarketplace: string | null;
+  suggestedProductType: string | null;
+  risks: string[];
+}
+
+interface ComplianceEvidenceClaimState {
+  id: string;
+  claimType: string;
+  statement: string;
+  evidenceArtifact: {
+    id: string;
+    contentHash: string;
+  };
+}
+
+interface CompliancePolicyPackState {
+  id: string;
+  marketplace: string;
+}
+
+interface CompliancePolicyPackVersionState {
+  id: string;
+  version: string;
+  isActive: boolean;
+  reviewDueAt: Date;
+  supportedProductTypes: string[];
+  restrictedCategories: string[];
+  ipChecks: string[];
+}
+
+interface ComplianceStateWithoutHash {
+  opportunity: ComplianceOpportunityState;
+  evidenceClaims: ComplianceEvidenceClaimState[];
+  policyPack: CompliancePolicyPackState | null;
+  policyPackVersion: CompliancePolicyPackVersionState | null;
+}
+
+interface ComplianceState extends ComplianceStateWithoutHash {
+  stateHash: string;
+}
 
 interface StoredAssessment {
   formulaVersion: string;
@@ -71,7 +115,7 @@ function packForPolicy(state: ComplianceState): OpportunityCompliancePolicyPack 
   };
 }
 
-function buildStateHash(state: Omit<ComplianceState, 'stateHash'>): string {
+function buildStateHash(state: ComplianceStateWithoutHash): string {
   const canonical = {
     opportunity: {
       id: state.opportunity.id,
@@ -111,7 +155,10 @@ function buildStateHash(state: Omit<ComplianceState, 'stateHash'>): string {
   return hashContent(JSON.stringify(canonical));
 }
 
-async function loadComplianceState(workspaceId: string, opportunityId: string) {
+async function loadComplianceState(
+  workspaceId: string,
+  opportunityId: string,
+): Promise<ComplianceState> {
   const opportunity = await prisma.opportunity.findFirst({
     where: { id: opportunityId, workspaceId },
     select: {
@@ -138,7 +185,7 @@ async function loadComplianceState(workspaceId: string, opportunityId: string) {
   });
 
   const marketplace = opportunity.suggestedMarketplace?.trim().toLowerCase() ?? null;
-  const policyPack = marketplace
+  const policyPackRecord = marketplace
     ? await prisma.marketplacePolicyPack.findUnique({
         where: { marketplace },
         select: {
@@ -160,8 +207,17 @@ async function loadComplianceState(workspaceId: string, opportunityId: string) {
         },
       })
     : null;
-  const policyPackVersion = policyPack?.versions[0] ?? null;
-  const stateWithoutHash = { opportunity, evidenceClaims, policyPack, policyPackVersion };
+  const policyPack: CompliancePolicyPackState | null = policyPackRecord
+    ? { id: policyPackRecord.id, marketplace: policyPackRecord.marketplace }
+    : null;
+  const policyPackVersion: CompliancePolicyPackVersionState | null =
+    policyPackRecord?.versions[0] ?? null;
+  const stateWithoutHash: ComplianceStateWithoutHash = {
+    opportunity,
+    evidenceClaims,
+    policyPack,
+    policyPackVersion,
+  };
   return { ...stateWithoutHash, stateHash: buildStateHash(stateWithoutHash) };
 }
 
