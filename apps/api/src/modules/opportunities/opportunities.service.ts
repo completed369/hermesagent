@@ -16,8 +16,17 @@ import {
 } from '@ventureos/database';
 import { computeFreshnessScore, computeReliabilityScore } from '@ventureos/research-connectors';
 import { hashContent } from '@ventureos/security';
-import type { CreateOpportunityInput, RescoreOpportunityInput } from './opportunities.dto';
+import type {
+  CreateOpportunityInput,
+  OpportunityComplianceAssessmentInput,
+  RescoreOpportunityInput,
+} from './opportunities.dto';
 import { AuditService } from '../audit/audit.service';
+import {
+  assertCurrentOpportunityComplianceForPromotion,
+  assessOpportunityCompliance,
+  getCurrentOpportunityComplianceAssessment,
+} from './opportunity-compliance';
 import {
   enforceCapabilityAdmission,
   rethrowCapabilityPolicyDenial,
@@ -33,7 +42,7 @@ const OPPORTUNITY_INCLUDE = {
 
 /**
  * Every mutation here is a founder-authority state change: create, rescore,
- * reject, archive and promote all write the append-only AuditEvent trail.
+ * compliance assessment, reject, archive and promote all write the append-only AuditEvent trail.
  */
 @Injectable()
 export class OpportunitiesService {
@@ -233,6 +242,19 @@ export class OpportunitiesService {
     }
   }
 
+  assessCompliance(
+    workspaceId: string,
+    id: string,
+    input: OpportunityComplianceAssessmentInput,
+    actorId: string,
+  ) {
+    return assessOpportunityCompliance(workspaceId, id, input, actorId, this.auditService);
+  }
+
+  getComplianceAssessment(workspaceId: string, id: string) {
+    return getCurrentOpportunityComplianceAssessment(workspaceId, id);
+  }
+
   private async loadForMutation(workspaceId: string, id: string) {
     const opportunity = await prisma.opportunity.findFirst({ where: { id, workspaceId } });
     if (!opportunity) {
@@ -281,6 +303,8 @@ export class OpportunitiesService {
     if (before.status === 'PROMOTED') {
       throw new ForbiddenException('Opportunity is already promoted');
     }
+
+    await assertCurrentOpportunityComplianceForPromotion(workspaceId, id);
 
     const { after, proposal } = await prisma.$transaction(async (tx) => {
       // Serialize quota checks for a workspace on the subscription row so two
