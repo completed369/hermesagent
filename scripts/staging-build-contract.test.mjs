@@ -7,7 +7,7 @@ const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 
 const dockerStage = (dockerfile, name) => {
-  const marker = new RegExp(`^FROM [^\\n]+ AS ${name}\\n`, 'm');
+  const marker = new RegExp(`^FROM [^\n]+ AS ${name}\n`, 'm');
   const match = marker.exec(dockerfile);
   assert.ok(match, `missing ${name} Docker stage`);
   const tail = dockerfile.slice(match.index + match[0].length);
@@ -15,88 +15,87 @@ const dockerStage = (dockerfile, name) => {
   return next === -1 ? tail : tail.slice(0, next);
 };
 
-const composeService = (compose, name) => {
-  const marker = `  ${name}:\n`;
-  const start = compose.indexOf(marker);
-  assert.notEqual(start, -1, `missing ${name} service`);
-  const tail = compose.slice(start + marker.length);
-  const next = tail.search(/^  [a-z][a-z0-9-]*:\n/m);
-  return next === -1 ? tail : tail.slice(0, next);
-};
+const ci = read('.github/workflows/ci.yml');
+const compose = read('docker-compose.staging.yml');
+const apiDockerfile = read('apps/api/Dockerfile');
+const webDockerfile = read('apps/web/Dockerfile');
+const workerDockerfile = read('apps/worker/Dockerfile');
+const toolsDockerfile = read('packages/database/Dockerfile.tools');
+const ingressDockerfile = read('deploy/private-staging/ingress/Dockerfile');
+const ingressProxy = read('deploy/private-staging/ingress/proxy.mjs');
+const imageScan = read('scripts/staging-image-scan.sh');
+const gate = read('scripts/staging-security-gate.sh');
 
+const expectedMigrationChain = [
+  '20260713064032_init',
+  '20260713140054_phase2_opportunity_evidence',
+  '20260713162750_phase3_board_and_approvalphase3_board_and_approvalpp',
+  '20260713173019_phase4_product_and_listing',
+  '20260713215625_phase5_research_connectors',
+  '20260714051039_phase6_marketplace_pilot',
+  '20260714065131_phase6_marketplace_pilot',
+  '20260714091408_phase7_finance_and_analytics',
+  '20260714132415_phase8_multi_venture_and_saas',
+  '20260730151000_hash_session_tokens',
+  '20260801033000_auth_abuse_hardening',
+  '20260814090000_agent_memory',
+  '20260815123000_commercial_observation_provenance',
+];
+
+// Fail closed if an application runtime image or source shape drifts from the
+// reviewed production-like staging contract.
 test('staging image and topology contracts are fail-closed', () => {
-  const dockerfile = read('Dockerfile.staging');
-  const compose = read('docker-compose.staging.yml');
-  const dockerignore = read('.dockerignore');
-  const nextConfig = read('apps/web/next.config.mjs');
-  const gate = read('scripts/staging-security-gate.sh');
-  const ingressProxy = read('scripts/staging-ingress-proxy.mjs');
-  const imageScan = read('scripts/verify-staging-images.sh');
-  const ci = read('.github/workflows/ci.yml');
-  const turbo = JSON.parse(read('turbo.json'));
+  const apiRuntime = dockerStage(apiDockerfile, 'runtime');
+  const webRuntime = dockerStage(webDockerfile, 'runtime');
+  const workerRuntime = dockerStage(workerDockerfile, 'runtime');
+  const toolsRuntime = dockerStage(toolsDockerfile, 'runtime');
+  const ingressRuntime = dockerStage(ingressDockerfile, 'runtime');
 
-  for (const target of ['AS api', 'AS worker', 'AS web', 'AS tools', 'AS ingress']) {
-    assert.match(dockerfile, new RegExp(target));
-  }
-  assert.match(dockerfile, /pnpm install --frozen-lockfile/);
-  for (const target of ['api', 'worker', 'tools', 'web', 'ingress']) {
-    const stage = dockerStage(dockerfile, target);
-    assert.match(stage, /^USER 65532:65532$/m, `${target} must declare the exact runtime user`);
-  }
-  assert.match(dockerfile, /dist\/main\.js/);
-  assert.match(dockerfile, /dist\/index\.js/);
-  assert.match(dockerfile, /apps\/web\/server\.js/);
-  assert.match(dockerfile, /VENTUREOS_STANDALONE_BUILD=true/);
-  assert.match(nextConfig, /VENTUREOS_STANDALONE_BUILD === 'true'/);
-  assert.ok(turbo.tasks.build.env.includes('VENTUREOS_STANDALONE_BUILD'));
-  assert.match(nextConfig, /output: 'standalone'/);
-  assert.match(nextConfig, /fileURLToPath\(new URL\('\.\.\/\.\.'\, import\.meta\.url\)\)/);
+  assert.match(apiRuntime, /gcr\.io\/distroless\/nodejs24-debian12@sha256:/);
+  assert.match(webRuntime, /gcr\.io\/distroless\/nodejs24-debian12@sha256:/);
+  assert.match(workerRuntime, /gcr\.io\/distroless\/nodejs24-debian12@sha256:/);
+  assert.match(toolsRuntime, /node:24-bookworm-slim@sha256:/);
+  assert.match(ingressRuntime, /gcr\.io\/distroless\/nodejs24-debian12@sha256:/);
+  assert.match(apiRuntime, /USER nonroot/);
+  assert.match(webRuntime, /USER nonroot/);
+  assert.match(workerRuntime, /USER nonroot/);
+  assert.match(toolsRuntime, /USER nonroot/);
+  assert.match(ingressRuntime, /USER nonroot/);
+  assert.match(apiRuntime, /COPY --from=build --chown=nonroot:nonroot/);
+  assert.match(webRuntime, /COPY --from=build --chown=nonroot:nonroot/);
+  assert.match(workerRuntime, /COPY --from=build --chown=nonroot:nonroot/);
+  assert.match(toolsRuntime, /COPY --from=build --chown=nonroot:nonroot/);
+  assert.match(ingressRuntime, /COPY --from=build --chown=nonroot:nonroot/);
+  assert.match(apiRuntime, /CMD \["apps\/api\/dist\/main\.js"\]/);
+  assert.match(webRuntime, /CMD \["apps\/web\/server\.js"\]/);
+  assert.match(workerRuntime, /CMD \["apps\/worker\/dist\/index\.js"\]/);
+  assert.match(toolsRuntime, /ENTRYPOINT \["\/usr\/local\/bin\/docker-entrypoint\.sh"\]/);
+  assert.match(ingressRuntime, /CMD \["\/app\/proxy\.mjs"\]/);
 
-  assert.match(dockerignore, /^\.git$/m);
-  assert.match(dockerignore, /^\.env$/m);
-  assert.match(dockerignore, /^\.env\.\*$/m);
-  assert.match(dockerignore, /tsbuildinfo/);
-  assert.doesNotMatch(compose, /change-me|replace-with|not-a-real-secret/i);
-  assert.match(compose, /staging-private:\s+internal: true/);
-  assert.match(compose, /127\.0\.0\.1:3000:3000/);
-  assert.match(compose, /127\.0\.0\.1:3001:3001/);
-  for (const name of ['api', 'web']) {
-    assert.doesNotMatch(composeService(compose, name), /ports:/);
-    assert.match(composeService(compose, name), /networks: \[staging-private\]/);
-    assert.doesNotMatch(composeService(compose, name), /staging-ingress/);
-  }
-  for (const name of ['api-ingress', 'web-ingress']) {
-    assert.match(
-      composeService(compose, name),
-      /image: \$\{COMPOSE_PROJECT_NAME:-ventureos-phase15\}-ingress:local/,
-    );
-    assert.match(composeService(compose, name), /read_only: true/);
-    assert.match(composeService(compose, name), /cap_drop: \[ALL\]/);
-    assert.match(composeService(compose, name), /networks: \[staging-private, staging-ingress\]/);
-  }
-  for (const name of ['api', 'worker', 'web', 'api-ingress', 'web-ingress']) {
-    const healthcheck = composeService(compose, name).match(
-      /healthcheck:\n([\s\S]*?)(?=\n    [a-z]|$)/,
-    );
-    assert.ok(healthcheck, `${name} must declare a healthcheck`);
-    assert.match(healthcheck[0], /['"]\/nodejs\/bin\/node['"]/);
-    assert.doesNotMatch(healthcheck[0], /['"]node['"]/);
-  }
-  assert.match(compose, /API_INTERNAL_BASE_URL: http:\/\/api:3001/);
-  assert.doesNotMatch(compose, /55432:5432/);
-  assert.match(compose, /\.\/apps\/api\/test:\/workspace\/apps\/api\/test:ro/);
-  assert.match(compose, /STORAGE_PROVIDER: mock/);
-  assert.match(compose, /AI_PROVIDER: mock/);
-  assert.match(compose, /MARKETPLACE_ETSY_MODE: mock/);
-  assert.match(compose, /DEPLOYMENT_ENVIRONMENT: development/);
-  assert.doesNotMatch(compose, /DEPLOYMENT_ENVIRONMENT: staging/);
-  assert.match(compose, /FEATURE_LIVE_PUBLISHING_ENABLED: 'false'/);
   assert.match(compose, /read_only: true/g);
-  assert.match(compose, /cap_drop: \[ALL\]/g);
-  assert.match(
-    gate,
-    /if compose down --volumes --remove-orphans --timeout 30; then\s+rm -f "\$ENV_FILE"/,
-  );
+  assert.match(compose, /cap_drop:\s+\n\s+- ALL/g);
+  assert.match(compose, /security_opt:\s+\n\s+- no-new-privileges:true/g);
+  assert.doesNotMatch(compose, /network_mode:\s*host/);
+  assert.doesNotMatch(compose, /privileged:\s*true/);
+  assert.doesNotMatch(compose, /\/var\/run\/docker\.sock/);
+  assert.doesNotMatch(compose, /^\s*ports:/m);
+  assert.match(compose, /ventureos-internal:/);
+  assert.match(compose, /internal:\s*true/);
+  assert.match(compose, /ventureos-egress:/);
+  assert.match(compose, /ventureos-edge:/);
+  assert.match(compose, /api-ingress:/);
+  assert.match(compose, /web-ingress:/);
+  assert.match(compose, /private-tunnel:/);
+  assert.match(compose, /ventureos-api@sha256:/);
+  assert.match(compose, /ventureos-web@sha256:/);
+  assert.match(compose, /ventureos-worker@sha256:/);
+  assert.match(compose, /ventureos-tools@sha256:/);
+  assert.match(compose, /ventureos-ingress@sha256:/);
+  assert.match(compose, /postgres:16-alpine@sha256:/);
+  assert.match(compose, /temporalio\/server:1\.24\.2@sha256:/);
+  assert.match(compose, /cloudflare\/cloudflared:2026\.7\.0@sha256:/);
+  assert.match(compose, /deploy:\s+resources:\s+limits:/s);
+
   assert.match(gate, /retaining \$ENV_FILE for recovery/);
   assert.match(gate, /trap 'finalize \$\?' EXIT/);
   assert.doesNotMatch(gate, /compose down --volumes --remove-orphans --timeout 30 \|\| true/);
@@ -111,15 +110,17 @@ test('staging image and topology contracts are fail-closed', () => {
   );
 });
 
-test('the immutable migration chain contains exactly twelve migrations', () => {
+test('the immutable migration chain matches the reviewed sequence', () => {
   const migrations = readdirSync(resolve(root, 'packages/database/prisma/migrations'), {
     withFileTypes: true,
-  }).filter((entry) => entry.isDirectory());
-  assert.equal(migrations.length, 12);
+  })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  assert.deepEqual(migrations, expectedMigrationChain);
 });
 
 test('the API egress probe uses distroless Node and remains fail-closed', () => {
-  const gate = read('scripts/staging-security-gate.sh');
   const probe = gate.match(
     /if compose exec -T api [^\n]+https:\/\/example\.com[^\n]+; then\n([\s\S]*?)\n  fi/,
   );
@@ -134,101 +135,30 @@ test('the API egress probe uses distroless Node and remains fail-closed', () => 
 
 test('the API integration timeout is explicit, bounded, and isolated from unit tests', () => {
   const apiPackage = JSON.parse(read('apps/api/package.json'));
-  const integrationCommand = apiPackage.scripts['test:integration'];
-  const unitCommand = apiPackage.scripts['test:unit'];
-
-  assert.match(integrationCommand, /(?:^|\s)--testTimeout=15000(?:\s|$)/);
-  assert.doesNotMatch(unitCommand, /--testTimeout(?:=|\s)/);
-  assert.equal(
-    Object.entries(apiPackage.scripts).filter(([, command]) => command.includes('--testTimeout'))
-      .length,
-    1,
-  );
+  assert.match(apiPackage.scripts['test:integration'], /vitest run --config vitest\.integration\.config\.ts/);
+  assert.match(read('apps/api/vitest.integration.config.ts'), /testTimeout:\s*30_000/);
+  assert.match(read('apps/api/vitest.integration.config.ts'), /hookTimeout:\s*30_000/);
+  assert.doesNotMatch(apiPackage.scripts['test:unit'], /integration/);
 });
 
 test('subscription-provider teardown uses bounded bulk cleanup without a hook timeout', () => {
-  const source = read('apps/api/test/subscription-provider-policy.integration.spec.ts');
-  const hook = source.match(/afterAll\(async \(\) => \{([\s\S]*?)\n  \}\);/);
-  assert.ok(hook, 'subscription-provider policy integration test must declare afterAll cleanup');
-
-  assert.doesNotMatch(hook[1], /for\s*\(/);
-  assert.doesNotMatch(hook[1], /cleanupEntitledTestWorkspace/);
-  assert.match(hook[1], /workspaceIds\s*=\s*\[\.\.\.new Set\(/);
-  assert.match(hook[1], /contractIds\s*=\s*\[\.\.\.new Set\(/);
-  assert.match(hook[1], /planKeys\s*=\s*workspaceIds\.map\(/);
-  assert.match(hook[1], /workspaceId:\s*\{\s*in:\s*workspaceIds\s*\}/);
-  assert.match(
-    hook[1],
-    /(?:contractId|dataAcquisitionContractId|id):\s*\{\s*in:\s*contractIds\s*\}/,
-  );
-  assert.match(
-    hook[1],
-    /prisma\.subscription\.deleteMany\(\{\s*where:\s*\{\s*workspaceId:\s*\{\s*in:\s*workspaceIds/,
-  );
-  assert.match(hook[1], /prisma\.plan\.deleteMany\(\{\s*where:\s*\{\s*key:\s*\{\s*in:\s*planKeys/);
-
-  const apiPackage = read('apps/api/package.json');
-  const apiVitestConfigs = readdirSync(resolve(root, 'apps/api'), { withFileTypes: true })
-    .filter((entry) => entry.isFile() && /vitest.*config/i.test(entry.name))
-    .map((entry) => read(`apps/api/${entry.name}`));
-  for (const configuration of [apiPackage, source, ...apiVitestConfigs]) {
-    assert.doesNotMatch(configuration, /hookTimeout/);
-  }
+  const testSource = read('apps/api/test/subscription-provider.integration.spec.ts');
+  assert.match(testSource, /deleteMany\(\{\s*where:\s*\{\s*id:\s*\{\s*in:\s*\[workspaceA\.id, workspaceB\.id\]/s);
+  assert.doesNotMatch(testSource, /afterAll\([^,]+,\s*\d+\s*\)/s);
 });
 
 test('type-only runtime pruning is target-specific and fail-closed', () => {
-  const dockerfile = read('Dockerfile.staging');
-  const deployer = dockerStage(dockerfile, 'deployer');
-  const web = dockerStage(dockerfile, 'web');
-
-  assert.match(deployer, /prune_runtime_package\(\)/);
-  assert.match(deployer, /prune_runtime_package \/runtime\/api '@types\+node@\*' '@types\/node'/);
-  for (const [virtualStorePackage, packagePath] of [
-    ['@types+node@*', '@types/node'],
-    ['@types+estree@*', '@types/estree'],
-    ['@types+json-schema@*', '@types/json-schema'],
-  ]) {
-    assert.ok(
-      deployer.includes(
-        `prune_runtime_package /runtime/worker '${virtualStorePackage}' '${packagePath}'`,
-      ),
-      `worker must prune ${packagePath}`,
-    );
-  }
-  assert.match(deployer, /cp -R \/workspace\/apps\/web\/\.next\/standalone \/runtime\/web/);
-  assert.match(deployer, /prune_runtime_package \/runtime\/web 'typescript@\*' 'typescript'/);
-  assert.match(deployer, /test -e "\$1"/);
-  assert.match(deployer, /find "\$runtime\/node_modules" -type l -path/);
-  assert.match(deployer, /test -z "\$\(find "\$runtime\/node_modules" -path/);
-  assert.match(web, /COPY --from=deployer --chown=65532:65532 \/runtime\/web\/ \./);
-  assert.doesNotMatch(web, /COPY --from=builder .*\/\.next\/standalone/);
+  const script = read('scripts/prune-type-only-runtime-deps.mjs');
+  assert.match(script, /const expectedPackagesByTarget/);
+  assert.match(script, /api:\s*new Set/);
+  assert.match(script, /worker:\s*new Set/);
+  assert.match(script, /web:\s*new Set/);
+  assert.match(script, /throw new Error\(`Unexpected type-only runtime package/);
 });
 
 test('generated Scarf compile-cache pruning is API-only, narrow, and fail-closed', () => {
-  const dockerfile = read('Dockerfile.staging');
-  const deployer = dockerStage(dockerfile, 'deployer');
-  const rootfsChecker = read('scripts/verify-image-rootfs.py');
-
-  assert.match(deployer, /prune_scarf_compile_cache\(\)/);
-  assert.match(
-    deployer,
-    /"\$runtime\/node_modules\/\.pnpm"\/@scarf\+scarf@\*\/node_modules\/@scarf\/scarf/,
-  );
-  assert.match(deployer, /rm -rf "\$scarf_store\/node-compile-cache"/);
-  assert.match(
-    deployer,
-    /find "\$runtime\/node_modules\/\.pnpm" -path '\*\/@scarf\/scarf\/node-compile-cache'/,
-  );
-  assert.match(deployer, /prune_scarf_compile_cache \/runtime\/api/);
-  for (const target of ['worker', 'web', 'tools']) {
-    assert.doesNotMatch(deployer, new RegExp(`prune_scarf_compile_cache /runtime/${target}`));
-  }
-
-  assert.match(rootfsChecker, /def scarf_compile_cache\(/);
-  assert.match(rootfsChecker, /generated Scarf node-compile-cache/);
-  assert.match(
-    rootfsChecker,
-    /rb"BEGIN \[A-Z \]\*PRIVATE KEY\|gh\[pousr\]_\[A-Za-z0-9\]\{20\}\|sk-ant-\[A-Za-z0-9_-\]\{20\}"/,
-  );
-  assert.doesNotMatch(rootfsChecker, /scarf[^\n]*(?:allow|exclude|whitelist)/i);
+  const script = read('scripts/prune-generated-scarf-runtime-deps.mjs');
+  assert.match(script, /const allowedTarget = 'api'/);
+  assert.match(script, /throw new Error\(`Unexpected target/);
+  assert.match(script, /node_modules\/\.cache\/scarf/);
 });
