@@ -74,12 +74,18 @@ export async function runBoardReview(params: RunBoardReviewParams): Promise<RunB
 
   try {
     const opportunity = proposal.opportunity;
-    const evidenceClaimIds = (
-      await prisma.evidenceClaim.findMany({
+    const [evidenceClaims, latestEvidenceQuality] = await Promise.all([
+      prisma.evidenceClaim.findMany({
         where: { opportunityId: opportunity.id },
         select: { id: true },
-      })
-    ).map((c) => c.id);
+      }),
+      prisma.opportunityScore.findFirst({
+        where: { opportunityId: opportunity.id, scoreType: 'EVIDENCE_QUALITY' },
+        orderBy: { calculatedAt: 'desc' },
+        select: { score: true, formulaVersion: true },
+      }),
+    ]);
+    const evidenceClaimIds = evidenceClaims.map((claim) => claim.id);
 
     const agentInput: BoardAgentInput = {
       proposalVersionId: latestVersion.id,
@@ -144,8 +150,15 @@ export async function runBoardReview(params: RunBoardReviewParams): Promise<RunB
       });
     }
 
+    // Stage-6-created opportunities always persist an EVIDENCE_QUALITY score
+    // before promotion. Legacy seed/demo opportunities predate that history;
+    // keeping the option absent for those rows preserves their mechanical
+    // regression purpose without treating them as commercially validated.
     const votingResult = calculateBoardVotingResult(outputs, {
       weights: DEFAULT_AGENT_WEIGHTS,
+      ...(latestEvidenceQuality
+        ? { evidenceQualityScore: Number(latestEvidenceQuality.score) }
+        : {}),
     });
 
     for (const veto of votingResult.activeCriticalVetoes) {
