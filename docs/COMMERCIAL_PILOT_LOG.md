@@ -38,8 +38,11 @@ Required by `docs/COMMERCIAL_VALIDATION.md`: defined customer + problem, evidenc
 - Defined problem: TBD
 - Evidence record IDs/classes: TBD
 - Evidence quality summary: TBD
-- Compliance/policy review: TBD
-- Active critical blocker: TBD
+- Compliance assessment ID: TBD
+- Compliance assessment version/policy-pack version: TBD
+- Compliance evidence/policy sources: TBD
+- Active critical compliance blocker: TBD
+- Compliance blocker reason (if any): TBD
 - Result: **NOT RUN**
 - Notes: TBD
 
@@ -57,9 +60,15 @@ Required thresholds:
 Observed pilot evidence:
 
 - Opportunity score: TBD
+- Opportunity score formula version/calculated at: TBD
 - Profit Confidence: TBD
-- Evidence quality: TBD
+- Profit Confidence formula version/calculated at: TBD
+- Evidence quality score: TBD
+- Evidence quality formula version/calculated at: TBD
+- Evidence artifact IDs included in rollup: TBD
+- Evidence-quality provenance/summary: TBD
 - Board Review ID: TBD
+- Board evidence-quality input recorded: TBD
 - Board weighted approval: TBD
 - Agent vote summary: TBD
 - Active critical veto: TBD
