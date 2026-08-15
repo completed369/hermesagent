@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { runBoardReview } from '@ventureos/agent-runtime';
 import { prisma } from '@ventureos/database';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { OpportunitiesService } from '../src/modules/opportunities/opportunities.service';
@@ -184,5 +185,56 @@ describe('Stage 6 fresh opportunity intake (integration)', () => {
       },
     });
     expect(rescoreAudit?.integrityHash).toBeTruthy();
+  });
+
+  it('feeds persisted evidence quality into board voting and freezes scores after promotion', async () => {
+    if (!opportunityId) throw new Error('Fresh opportunity was not created');
+
+    const promoted = await service.promote(workspaceA.id, opportunityId, actor.id);
+    const review = await runBoardReview({
+      workspaceId: workspaceA.id,
+      ventureProposalId: promoted.proposal.id,
+    });
+
+    expect(review.status).toBe('COMPLETED');
+    expect(review.votingResult).not.toBeNull();
+    expect(
+      review.votingResult?.blockingReasons.some((reason) =>
+        reason.startsWith('Evidence quality '),
+      ),
+    ).toBe(false);
+
+    await expect(
+      service.rescore(
+        workspaceA.id,
+        opportunityId,
+        {
+          opportunityFactors: {
+            demand: 90,
+            trendStrength: 90,
+            competitionAttractiveness: 90,
+            expectedMargin: 90,
+            productDifferentiation: 90,
+            productionFeasibility: 90,
+            organicMarketingPotential: 90,
+            marketplacePolicyRisk: 90,
+            intellectualPropertyRisk: 90,
+            evidenceConfidence: 90,
+            timeToLaunch: 90,
+          },
+          profitConfidenceFactors: {
+            sampleSize: 90,
+            costCertainty: 90,
+            marketplaceFeeCertainty: 90,
+            comparableProductQuality: 90,
+            forecastRangeWidth: 90,
+            historicalModelAccuracy: 90,
+            channelMaturity: 90,
+            assumptionSensitivity: 90,
+          },
+        },
+        actor.id,
+      ),
+    ).rejects.toThrow(ConflictException);
   });
 });
