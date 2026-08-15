@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@ventureos/database';
+import { decideApprovalRequest } from '@ventureos/agent-runtime';
 import {
   CommercialObservationProvenanceError,
+  ExperimentInvalidStateError,
   ExperimentNotFoundError,
   createExperiment,
   getCommercialObservationProvenanceMap,
+  recordExperimentDecision,
   recordExperimentResult,
+  requestScaleDecisionApproval,
   startExperiment,
 } from '@ventureos/finance-engine';
 import { cleanupEntitledTestWorkspace, entitleTestWorkspace } from './helpers/entitled-workspace';
@@ -168,5 +172,60 @@ describe('Stage 6 commercial observation provenance (integration)', () => {
         value: 1,
       }),
     ).rejects.toThrow(ExperimentNotFoundError);
+  });
+
+  it('binds scale approvals to commercial observation provenance changes', async () => {
+    const proposalId = await createProposal(workspace.id);
+    const provenanceBoundExperiment = await createExperiment({
+      workspaceId: workspace.id,
+      ventureProposalId: proposalId,
+      name: 'Provenance-bound scale evidence',
+      hypothesis: 'Scale evidence must bind source provenance.',
+      variants: [{ name: 'Pilot', isControl: true }],
+      metrics: [{ name: 'QUALITY_INCIDENTS', unit: 'count' }],
+    });
+    await startExperiment(workspace.id, provenanceBoundExperiment.id);
+
+    const result = await recordExperimentResult({
+      workspaceId: workspace.id,
+      experimentId: provenanceBoundExperiment.id,
+      experimentVariantId: provenanceBoundExperiment.variants[0].id,
+      experimentMetricId: provenanceBoundExperiment.metrics[0].id,
+      value: 0,
+      evidenceMode: 'REAL',
+      sourceType: 'CUSTOMER_SUPPORT',
+      sourceRef: 'support-export:initial',
+      observedAt: new Date('2026-08-15T11:00:00.000Z'),
+      recordedBy: actor.id,
+    });
+
+    const { approvalRequestId } = await requestScaleDecisionApproval({
+      workspaceId: workspace.id,
+      experimentId: provenanceBoundExperiment.id,
+      requestedBy: actor.id,
+    });
+    await decideApprovalRequest({
+      workspaceId: workspace.id,
+      approvalRequestId,
+      founderIdentity: actor.id,
+      decision: 'APPROVE',
+    });
+
+    await prisma.$executeRaw`
+      UPDATE "commercial_observation_provenance"
+      SET "sourceRef" = 'support-export:corrected'
+      WHERE "experimentResultId" = ${result.id}::uuid
+    `;
+
+    await expect(
+      recordExperimentDecision({
+        workspaceId: workspace.id,
+        experimentId: provenanceBoundExperiment.id,
+        decision: 'SCALE',
+        rationale: 'Attempt to reuse approval after provenance changed',
+        decidedBy: actor.id,
+        approvalRequestId,
+      }),
+    ).rejects.toThrow(ExperimentInvalidStateError);
   });
 });
