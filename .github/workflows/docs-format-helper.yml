@@ -14,6 +14,8 @@ jobs:
   apply-patch:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://ventureos:ci-only-password@localhost:5432/ventureos?schema=public
     steps:
       - name: Checkout isolated feature branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -57,6 +59,7 @@ jobs:
             docs/COMMERCIAL_VALIDATION.md \
             docs/COMMERCIAL_PILOT_LOG.md
           git diff --check
+          pnpm db:generate
           pnpm --filter @ventureos/database exec prisma validate --schema prisma/schema.prisma
           pnpm --filter @ventureos/finance-engine typecheck
           pnpm --filter @ventureos/api typecheck
