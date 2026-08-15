@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
     boardReviewUpdate: vi.fn(),
     ventureProposalFindFirst: vi.fn(),
     evidenceClaimFindMany: vi.fn(),
+    opportunityScoreFindFirst: vi.fn(),
     runAllMockBoardAgents: vi.fn(),
     captureBoardReviewMemory: vi.fn(),
   };
@@ -23,6 +24,7 @@ vi.mock('@ventureos/database', async (importOriginal) => {
       ventureProposal: { findFirst: mocks.ventureProposalFindFirst },
       boardReview: { create: mocks.boardReviewCreate, update: mocks.boardReviewUpdate },
       evidenceClaim: { findMany: mocks.evidenceClaimFindMany },
+      opportunityScore: { findFirst: mocks.opportunityScoreFindFirst },
     },
   };
 });
@@ -47,6 +49,7 @@ describe('board review capability denial propagation', () => {
     });
     mocks.boardReviewCreate.mockResolvedValue({ id: 'board-review' });
     mocks.evidenceClaimFindMany.mockResolvedValue([]);
+    mocks.opportunityScoreFindFirst.mockResolvedValue(null);
   });
 
   it('rethrows a final provider-boundary policy denial after terminating the running review', async () => {
