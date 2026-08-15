@@ -78,6 +78,12 @@ interface ExperimentResultRow {
   experimentMetricId: string;
   value: string;
   measuredAt: string;
+  provenance: {
+    evidenceMode: 'REAL' | 'MOCK';
+    sourceType: string;
+    sourceRef: string | null;
+    observedAt: string;
+  } | null;
 }
 interface ExperimentDecisionRow {
   id: string;
@@ -323,6 +329,8 @@ export default async function FinanceVenturePage({
                       <th style={{ padding: '4px 0' }}>Variant</th>
                       <th>Metric</th>
                       <th>Value</th>
+                      <th>Evidence</th>
+                      <th>Source</th>
                       <th>Measured</th>
                     </tr>
                   </thead>
@@ -335,6 +343,25 @@ export default async function FinanceVenturePage({
                           <td style={{ padding: '4px 0' }}>{variant?.name ?? '—'}</td>
                           <td>{metric?.name ?? '—'}</td>
                           <td>{r.value}</td>
+                          <td>
+                            <span
+                              data-testid={`experiment-result-evidence-${r.id}`}
+                              className={`vos-badge ${
+                                r.provenance?.evidenceMode === 'REAL'
+                                  ? 'vos-badge--ok'
+                                  : 'vos-badge--mock'
+                              }`}
+                            >
+                              {r.provenance?.evidenceMode ?? 'MOCK'}
+                            </span>
+                          </td>
+                          <td data-testid={`experiment-result-source-${r.id}`}>
+                            {r.provenance
+                              ? `${r.provenance.sourceType}${
+                                  r.provenance.sourceRef ? ` · ${r.provenance.sourceRef}` : ''
+                                }`
+                              : 'Legacy / unprovenanced'}
+                          </td>
                           <td>{new Date(r.measuredAt).toLocaleString()}</td>
                         </tr>
                       );

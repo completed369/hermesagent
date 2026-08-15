@@ -13,6 +13,7 @@ import {
   createExperiment,
   startExperiment,
   recordExperimentResult,
+  getCommercialObservationProvenanceMap,
   requestScaleDecisionApproval,
   recordExperimentDecision,
   BudgetLimitExceededError,
@@ -391,7 +392,16 @@ export class FinanceService {
       where: { variant: { experimentId } },
       orderBy: { measuredAt: 'desc' as const },
     });
-    return { ...experiment, results };
+    const provenanceByResultId = await getCommercialObservationProvenanceMap(
+      results.map((result) => result.id),
+    );
+    return {
+      ...experiment,
+      results: results.map((result) => ({
+        ...result,
+        provenance: provenanceByResultId.get(result.id) ?? null,
+      })),
+    };
   }
 
   async startExperimentRun(workspaceId: string, experimentId: string, actorId: string) {
@@ -425,6 +435,11 @@ export class FinanceService {
         experimentMetricId: input.experimentMetricId,
         value: input.value,
         sampleSize: input.sampleSize,
+        evidenceMode: input.evidenceMode,
+        sourceType: input.sourceType,
+        sourceRef: input.sourceRef,
+        observedAt: input.observedAt ? new Date(input.observedAt) : undefined,
+        recordedBy: actorId,
       });
       await this.auditService.record(workspaceId, {
         actorId,

@@ -20,6 +20,10 @@ Per master spec section 30. The six gate definitions and thresholds below are au
 - Every founder approval must be recorded by its persisted `ApprovalRequest`/decision evidence; no chat statement or agent memory substitutes for an approval record.
 - Memory is advisory context only. It cannot grant, revoke or substitute for approval authority, policy checks, current business state or commercial evidence.
 
+### Commercial observation provenance
+
+Experiment results used for genuine Gate 5/6 evidence must be explicitly recorded as `REAL` with a non-synthetic source type, source reference and observation timestamp. Unspecified and historical experiment results default to `MOCK`/`SYNTHETIC`; they may prove workflow mechanics but cannot satisfy genuine commercial-validation or scale-evidence claims. Provenance is persisted separately from the numeric result and is included in the scale-approval artifact hash, so changing the evidence set invalidates an older scale authorization. Gate 5 support load has explicit `SUPPORT_CONTACTS`, `SUPPORT_MINUTES` and `QUALITY_INCIDENTS` metric names rather than being hidden under `OTHER`.
+
 ## Implemented Stage 6 prerequisite: fresh opportunity intake
 
 The release before Stage 6 had no supported product/API path for creating a fresh non-seed opportunity. Stage 6 now adds one:

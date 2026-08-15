@@ -6,6 +6,7 @@ import {
   hashScaleDecisionArtifact,
 } from '@ventureos/security';
 import { isApprovalValidForExecution } from '@ventureos/contracts';
+import { getCommercialObservationProvenanceMap } from '@ventureos/finance-engine';
 import { captureApprovalDecisionMemory } from './memory-capture.js';
 import type { MemoryStore } from './memory.js';
 
@@ -248,6 +249,19 @@ export async function decideApprovalRequest(
       include: { variants: { include: { results: true } }, metrics: true },
     });
     if (!experiment) throw new ApprovalNotFoundError('Experiment not found');
+    const provenanceByResultId = await getCommercialObservationProvenanceMap(
+      experiment.variants.flatMap((variant) => variant.results.map((result) => result.id)),
+    );
+    const experimentForApprovalHash = {
+      ...experiment,
+      variants: experiment.variants.map((variant) => ({
+        ...variant,
+        results: variant.results.map((result) => ({
+          ...result,
+          provenance: provenanceByResultId.get(result.id) ?? null,
+        })),
+      })),
+    };
     const proposal = await prisma.ventureProposal.findUnique({
       where: { id: request.ventureProposalId },
       include: { versions: { orderBy: { versionNumber: 'desc' as const }, take: 1 } },
@@ -259,7 +273,7 @@ export async function decideApprovalRequest(
     currentHash = hashScaleDecisionArtifact({
       proposalVersionId: latestVersion.id,
       proposalSnapshot: latestVersion.snapshot,
-      experiment,
+      experiment: experimentForApprovalHash,
     });
   } else {
     const proposal = await prisma.ventureProposal.findUnique({

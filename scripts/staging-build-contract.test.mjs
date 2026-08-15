@@ -7,7 +7,7 @@ const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 
 const dockerStage = (dockerfile, name) => {
-  const marker = new RegExp(`^FROM [^\\n]+ AS ${name}\\n`, 'm');
+  const marker = new RegExp(`^FROM [^\n]+ AS ${name}\n`, 'm');
   const match = marker.exec(dockerfile);
   assert.ok(match, `missing ${name} Docker stage`);
   const tail = dockerfile.slice(match.index + match[0].length);
@@ -111,11 +111,28 @@ test('staging image and topology contracts are fail-closed', () => {
   );
 });
 
-test('the immutable migration chain contains exactly twelve migrations', () => {
+test('the immutable migration chain matches the reviewed sequence', () => {
   const migrations = readdirSync(resolve(root, 'packages/database/prisma/migrations'), {
     withFileTypes: true,
-  }).filter((entry) => entry.isDirectory());
-  assert.equal(migrations.length, 12);
+  })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  assert.deepEqual(migrations, [
+    '20260713064032_init',
+    '20260713140054_phase2_opportunity_evidence',
+    '20260713162750_phase3_board_and_approvalphase3_board_and_approvalpp',
+    '20260713173019_phase4_product_and_listing',
+    '20260713215625_phase5_research_connectors',
+    '20260714051039_phase6_marketplace_pilot',
+    '20260714065131_phase6_marketplace_pilot',
+    '20260714091408_phase7_finance_and_analytics',
+    '20260714132415_phase8_multi_venture_and_saas',
+    '20260730151000_hash_session_tokens',
+    '20260801033000_auth_abuse_hardening',
+    '20260814090000_agent_memory',
+    '20260815123000_commercial_observation_provenance',
+  ]);
 });
 
 test('the API egress probe uses distroless Node and remains fail-closed', () => {

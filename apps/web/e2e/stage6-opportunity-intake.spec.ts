@@ -28,7 +28,7 @@ async function fillAll(page: import('@playwright/test').Page, selector: string, 
 }
 
 test.describe('Stage 6 opportunity intake', () => {
-  test('founder creates a fresh opportunity and records a passing Gate 1 assessment', async ({
+  test('founder creates a fresh opportunity and records provenanced commercial evidence', async ({
     page,
   }) => {
     await login(page);
@@ -98,5 +98,70 @@ test.describe('Stage 6 opportunity intake', () => {
       /Audit evidence: [0-9a-f-]+/,
     );
     await expect(page.getByTestId('compliance-blockers')).toHaveCount(0);
+
+    const [promoteResponse] = await Promise.all([
+      page.waitForResponse(
+        (candidate) =>
+          candidate.request().method() === 'POST' &&
+          candidate.url().includes('/api/opportunities/') &&
+          candidate.url().endsWith('/promote'),
+      ),
+      page.getByRole('button', { name: 'Promote to Venture Proposal' }).click(),
+    ]);
+    expect(promoteResponse.status()).toBe(201);
+    const promoted = (await promoteResponse.json()) as { proposal: { id: string } };
+
+    await page.goto(`/dashboard/finance/${promoted.proposal.id}`);
+    await expect(page.getByRole('heading', { name: 'Finance' })).toBeVisible();
+    await page.getByPlaceholder('Experiment name').fill(`Stage 6 commercial evidence ${unique}`);
+    await page
+      .getByPlaceholder('Hypothesis')
+      .fill('Observed support load remains manageable during the pilot.');
+
+    const [experimentResponse] = await Promise.all([
+      page.waitForResponse(
+        (candidate) =>
+          candidate.request().method() === 'POST' &&
+          candidate.url().endsWith(`/api/finance/ventures/${promoted.proposal.id}/experiments`),
+      ),
+      page.getByRole('button', { name: 'Create experiment (Control vs. Variant B)' }).click(),
+    ]);
+    expect(experimentResponse.status()).toBe(201);
+    const experiment = (await experimentResponse.json()) as {
+      metrics: Array<{ name: string }>;
+    };
+    expect(experiment.metrics.map((metric) => metric.name)).toContain('SUPPORT_MINUTES');
+
+    const [startResponse] = await Promise.all([
+      page.waitForResponse(
+        (candidate) =>
+          candidate.request().method() === 'POST' &&
+          candidate.url().includes('/api/finance/experiments/') &&
+          candidate.url().endsWith('/start'),
+      ),
+      page.getByRole('button', { name: 'Start experiment' }).click(),
+    ]);
+    expect(startResponse.status()).toBe(201);
+
+    await expect(page.getByTestId('experiment-result-metric')).toBeVisible();
+    await page.getByTestId('experiment-result-metric').selectOption({ label: 'SUPPORT_MINUTES' });
+    await page.getByTestId('experiment-result-value').fill('12');
+    await page.getByTestId('experiment-evidence-mode').selectOption('REAL');
+    await page.getByTestId('experiment-source-type').selectOption('CUSTOMER_SUPPORT');
+    await page.getByTestId('experiment-source-ref').fill(`support-log:e2e-${unique}`);
+    await page.getByTestId('experiment-observed-at').fill(retrievedAt);
+
+    const [resultResponse] = await Promise.all([
+      page.waitForResponse(
+        (candidate) =>
+          candidate.request().method() === 'POST' &&
+          candidate.url().includes('/api/finance/experiments/') &&
+          candidate.url().endsWith('/results'),
+      ),
+      page.getByTestId('experiment-record-result').click(),
+    ]);
+    expect(resultResponse.status()).toBe(201);
+    await expect(page.getByText('REAL', { exact: true })).toBeVisible();
+    await expect(page.getByText(`CUSTOMER_SUPPORT · support-log:e2e-${unique}`)).toBeVisible();
   });
 });

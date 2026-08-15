@@ -105,6 +105,13 @@ export interface ScaleDecisionExperimentArtifact {
       value: Stringable;
       sampleSize: number | null;
       measuredAt: Date;
+      provenance?: {
+        evidenceMode: string;
+        sourceType: string;
+        sourceRef: string | null;
+        observedAt: Date | null;
+        recordedBy: string | null;
+      } | null;
     }>;
   }>;
   metrics: Array<{
@@ -143,6 +150,21 @@ export function hashScaleDecisionArtifact(params: {
           value: result.value.toString(),
           sampleSize: result.sampleSize,
           measuredAt: result.measuredAt.toISOString(),
+          provenance: result.provenance
+            ? {
+                evidenceMode: result.provenance.evidenceMode,
+                sourceType: result.provenance.sourceType,
+                sourceRef: result.provenance.sourceRef,
+                observedAt: result.provenance.observedAt?.toISOString() ?? null,
+                recordedBy: result.provenance.recordedBy,
+              }
+            : {
+                evidenceMode: 'MOCK',
+                sourceType: 'SYNTHETIC',
+                sourceRef: null,
+                observedAt: null,
+                recordedBy: null,
+              },
         })),
       })),
       metrics: [...params.experiment.metrics].sort(byId).map((metric) => ({
