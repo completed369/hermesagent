@@ -2,6 +2,10 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import { OpportunityActions } from '@/components/opportunity-actions';
+import {
+  OpportunityComplianceActions,
+  type OpportunityComplianceStatus,
+} from '@/components/opportunity-compliance-actions';
 
 interface EvidenceArtifact {
   sourceName: string;
@@ -86,6 +90,9 @@ export default async function OpportunityDetailPage({
     notFound();
   }
   const opportunity = data;
+  const { data: compliance } = await serverApiFetch<OpportunityComplianceStatus | null>(
+    `/opportunities/${id}/compliance-assessment`,
+  );
   const evidenceQuality = opportunity.scores.find(
     (score) => score.scoreType === 'EVIDENCE_QUALITY',
   );
@@ -270,6 +277,16 @@ export default async function OpportunityDetailPage({
               .join(' | ')}
           </p>
         )}
+      </div>
+
+      <div className="vos-card">
+        <h2 style={{ fontSize: 16, marginTop: 0 }}>Gate 1 — Compliance assessment</h2>
+        <OpportunityComplianceActions
+          id={opportunity.id}
+          status={opportunity.status}
+          evidenceClaimIds={opportunity.evidenceClaims.map((claim) => claim.id)}
+          current={compliance ?? null}
+        />
       </div>
 
       <div className="vos-card">

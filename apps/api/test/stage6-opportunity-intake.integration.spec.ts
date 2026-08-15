@@ -13,6 +13,7 @@ describe('Stage 6 fresh opportunity intake (integration)', () => {
   let workspaceB: { id: string };
   let actor: { id: string };
   let opportunityId: string | null = null;
+  let evidenceClaimId: string | null = null;
 
   beforeAll(async () => {
     workspaceA = await prisma.workspace.create({
@@ -47,7 +48,7 @@ describe('Stage 6 fresh opportunity intake (integration)', () => {
         title: `Fresh Stage 6 Opportunity ${randomUUID()}`,
         description:
           'A fresh non-seed opportunity created through the supported Stage 6 founder intake path.',
-        suggestedProductType: 'Digital Guide',
+        suggestedProductType: 'Digital Template Bundle',
         suggestedMarketplace: 'etsy',
         estimatedCostEur: 40,
         estimatedRevenueEur: 200,
@@ -107,6 +108,7 @@ describe('Stage 6 fresh opportunity intake (integration)', () => {
       actor.id,
     );
     opportunityId = created.id;
+    evidenceClaimId = created.evidenceClaims[0]?.id ?? null;
 
     expect(created.estimatedProfitEur?.toString()).toBe('160');
     expect(created.latestOpportunityScore?.toString()).toBe('80');
@@ -119,6 +121,7 @@ describe('Stage 6 fresh opportunity intake (integration)', () => {
     const artifact = created.evidenceClaims[0]?.evidenceArtifact;
     expect(artifact?.reliabilityScore).toBe(90);
     expect(artifact?.freshnessScore).toBe(100);
+    expect(evidenceClaimId).toBeTruthy();
 
     await expect(service.getById(workspaceB.id, created.id)).rejects.toThrow(NotFoundException);
 
@@ -187,7 +190,51 @@ describe('Stage 6 fresh opportunity intake (integration)', () => {
     expect(rescoreAudit?.integrityHash).toBeTruthy();
   });
 
-  it('feeds persisted evidence quality into board voting and freezes scores after promotion', async () => {
+  it('requires a current passing Gate 1 compliance assessment before promotion', async () => {
+    if (!opportunityId || !evidenceClaimId) throw new Error('Fresh opportunity evidence missing');
+
+    await expect(service.promote(workspaceA.id, opportunityId, actor.id)).rejects.toThrow(
+      ConflictException,
+    );
+
+    const blocked = await service.assessCompliance(
+      workspaceA.id,
+      opportunityId,
+      {
+        declaredCategories: ['weapons'],
+        thirdPartyTrademarksPresent: false,
+        copyrightedStockWithoutLicence: false,
+        evidenceClaimIds: [evidenceClaimId],
+      },
+      actor.id,
+    );
+    expect(blocked.result).toBe('BLOCKED');
+    expect(blocked.blockers.map((blocker) => blocker.code)).toContain('RESTRICTED_CATEGORY');
+    await expect(service.promote(workspaceA.id, opportunityId, actor.id)).rejects.toThrow(
+      ConflictException,
+    );
+
+    const passed = await service.assessCompliance(
+      workspaceA.id,
+      opportunityId,
+      {
+        declaredCategories: ['digital planning templates'],
+        thirdPartyTrademarksPresent: false,
+        copyrightedStockWithoutLicence: false,
+        evidenceClaimIds: [evidenceClaimId],
+      },
+      actor.id,
+    );
+    expect(passed.result).toBe('PASS');
+    expect(passed.auditEventId).toBeTruthy();
+    expect(passed.policyPackVersion).toBe('v1');
+
+    const current = await service.getComplianceAssessment(workspaceA.id, opportunityId);
+    expect(current?.stateCurrent).toBe(true);
+    expect(current?.currentResult).toBe('PASS');
+  });
+
+  it('feeds evidence quality into board voting and freezes scores after compliant promotion', async () => {
     if (!opportunityId) throw new Error('Fresh opportunity was not created');
 
     const promoted = await service.promote(workspaceA.id, opportunityId, actor.id);
