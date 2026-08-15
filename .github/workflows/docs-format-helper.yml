@@ -13,7 +13,7 @@ permissions:
 jobs:
   apply-patch:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       DATABASE_URL: postgresql://ventureos:ci-only-password@localhost:5432/ventureos?schema=public
     steps:
@@ -61,8 +61,7 @@ jobs:
           git diff --check
           pnpm db:generate
           pnpm --filter @ventureos/database exec prisma validate --schema prisma/schema.prisma
-          pnpm --filter @ventureos/finance-engine typecheck
-          pnpm --filter @ventureos/api typecheck
+          pnpm run typecheck
           pnpm --filter @ventureos/api exec vitest run src/modules/finance/finance.dto.spec.ts
       - name: Commit patch
         run: |
