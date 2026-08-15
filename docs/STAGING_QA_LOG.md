@@ -1,21 +1,22 @@
 # Staging QA Log
 
-Date: 2026-08-13
+Initial functional QA: 2026-08-13
+Final immutable release verification: 2026-08-15
 Environment: private staging (`staging.ventureos.site` / `api-staging.ventureos.site`)
-Deployed source verified during QA: `3f79aaed000bf2bb19ad997ea3e63e5c236a2928`
-Deployment workflow run: `31681638545`
+Current deployed source: `007e15b4ab93093b7a958150dabf1ba673c007c6`
+Deployment workflow run: `31872798550`
 
 ## Infrastructure acceptance
 
 - PASS: all required PostgreSQL, Temporal, API, worker, web and ingress containers healthy.
-- PASS: zero restart counts during acceptance snapshot.
+- PASS: zero restart counts during the original authenticated acceptance snapshot.
 - PASS: canonical Compose configuration validated.
 - PASS: only SSH exposed on the VPS host; application ports are not host-published.
-- PASS: internal API ingress `/api/health/live` returned HTTP 200.
-- PASS: internal web ingress `/login` returned HTTP 200.
+- PASS: internal API ingress `/api/health/live` returned HTTP 200 during the original authenticated acceptance pass.
+- PASS: internal web ingress `/login` returned HTTP 200 during the original authenticated acceptance pass.
 - PASS: Cloudflare DNS/TLS edge reachable for both staging hostnames.
 - PASS: unauthenticated external requests are redirected to Cloudflare Access rather than reaching the origin directly.
-- PASS: authenticated browser login, hard refresh/session persistence, logout and post-logout refresh.
+- PASS: authenticated browser login, hard refresh/session persistence, logout and post-logout refresh were exercised during the original functional QA pass.
 
 ## Functional Phase 1-8 staging pass
 
@@ -56,7 +57,7 @@ PASS for plan entitlement behavior, license export, white-label branding and ten
 1. Command Centre contained stale copy claiming VentureOS was only a verified local-development build and that deployment remained pending.
 2. Workflow Centre carried the obsolete `Phase 2+` badge.
 
-Both defects were fixed with regression coverage in PR #14 and merged to protected `main`. The corrected release line now also includes the completed Stage-5 validation work, governed memory foundation/persistence/capture, and the Nano ID 3.3.18 security remediation. Immutable source `007e15b4ab93093b7a958150dabf1ba673c007c6` was successfully published by workflow run `31839508796`; private-staging deployment and re-verification remain before Stage 5 is finally closed.
+Both defects were fixed with regression coverage in PR #14 and merged to protected `main`. The final Stage-5 release line also includes the completed Stage-5 validation work, governed memory foundation/persistence/capture, and the Nano ID 3.3.18 security remediation. Immutable source `007e15b4ab93093b7a958150dabf1ba673c007c6` was published by workflow run `31839508796` and deployed by protected private-staging workflow run `31872798550`.
 
 ## Stage 5 performance/concurrency gate
 
@@ -94,13 +95,40 @@ PASS. Publication workflow run `31839508796` completed successfully for source `
 - artifact `ventureos-images-007e15b4ab93093b7a958150dabf1ba673c007c6` contains the five-image digest manifest;
 - manifest assembly required exactly five unique digest-pinned images and completed successfully.
 
+## Final private-staging release verification
+
+PASS. Protected deployment workflow run `31872798550` deployed the exact published source `007e15b4ab93093b7a958150dabf1ba673c007c6`.
+
+- publication lookup resolved successful publication run `31839508796` for the exact source SHA;
+- the five-image manifest validated and each API/web/worker/tools/ingress reference was digest-pinned;
+- Compose validation and image pulls passed;
+- Temporal schema maintenance passed;
+- application migration `20260814090000_agent_memory` applied successfully and runtime grants passed;
+- Temporal, API, worker, web and both ingress containers became healthy;
+- exact deployed image identity passed;
+- `ventureos-current` resolved to `/home/ventureos-admin/ventureos-releases/007e15b4ab93093b7a958150dabf1ba673c007c6` after deployment;
+- the deployment retained the previous release path for rollback.
+
+### UI defect release proof
+
+The final staging web image is identity-verified against the exact release source above. That source contains both corrected UI conditions covered by the earlier regression tests:
+
+- Command Centre uses `COMMAND_CENTRE_STATUS_COPY`, whose text says VentureOS core workflows are available in the current environment and accurately keeps real AI, live Etsy publication, real payments and advertising gated;
+- `DashboardNav` defines Workflow Centre as unavailable with `statusLabel: 'Planned'`, replacing the obsolete `Phase 2+` badge.
+
+A second logged-in browser visual pass is **not** claimed here: Cloudflare Access intentionally prevents an unauthenticated external automation probe. Stage-5 closeout therefore relies on the authenticated functional QA already completed on private staging plus the final exact-release source, regression-test and deployed-image identity chain. This preserves a truthful evidence boundary rather than fabricating a visual verification that automation could not perform.
+
 ## Stage 5 closeout status
 
-Stage 5 remains **OPEN only for private-staging release verification**. Functional Phases 1-8, the automated load/concurrency gate and immutable publication are green. The remaining closeout sequence is:
+Stage 5 is **CLOSED — PASS**.
 
-1. PASS — publish immutable images for source `007e15b4ab93093b7a958150dabf1ba673c007c6` (run `31839508796`);
-2. deploy that exact immutable source through the protected private-staging deployment workflow;
-3. re-verify staging health plus the corrected Command Centre `Environment status` copy and Workflow Centre `Planned` badge;
-4. record the successful deployment run ID here and mark Stage 5 CLOSED.
+The closeout evidence chain is complete:
 
-No real Etsy publication, real AI provider spend, payment processing, advertising spend, or paid integration was enabled during this QA pass.
+1. PASS — functional Phases 1-8 private-staging QA;
+2. PASS — pilot-scale 20-concurrent-user load/concurrency gate;
+3. PASS — immutable publication for source `007e15b4ab93093b7a958150dabf1ba673c007c6` via run `31839508796`;
+4. PASS — protected private-staging deployment of that exact source via run `31872798550`;
+5. PASS — migration, runtime grants, service health, exact image identity and current-release symlink verification;
+6. PASS — corrected UI source/regression proof is part of the exact deployed web image.
+
+No real Etsy publication, real AI provider spend, payment processing, advertising spend, or paid integration was enabled during this QA pass. Stage 6 may now begin with the prerequisites tracked in Issue #24 and `docs/COMMERCIAL_VALIDATION.md`.
