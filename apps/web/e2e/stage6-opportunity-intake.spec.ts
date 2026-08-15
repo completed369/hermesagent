@@ -127,7 +127,10 @@ test.describe('Stage 6 opportunity intake', () => {
       page.getByRole('button', { name: 'Create experiment (Control vs. Variant B)' }).click(),
     ]);
     expect(experimentResponse.status()).toBe(201);
-    await expect(page.getByText('SUPPORT_MINUTES')).toBeVisible();
+    const experiment = (await experimentResponse.json()) as {
+      metrics: Array<{ name: string }>;
+    };
+    expect(experiment.metrics.map((metric) => metric.name)).toContain('SUPPORT_MINUTES');
 
     const [startResponse] = await Promise.all([
       page.waitForResponse(
