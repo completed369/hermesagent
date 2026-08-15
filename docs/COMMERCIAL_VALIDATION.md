@@ -4,7 +4,7 @@ Per master spec section 30. The six gate definitions and thresholds below are au
 
 | Gate                      | Key thresholds                                                                                                                              | Current readiness                                                                                                                                                                               |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Problem Validation     | Defined customer + problem, evidence records, no critical compliance blocker                                                                | Partially reachable. Fresh opportunity/customer/evidence intake now exists, but a genuine pilot still needs the authoritative compliance-blocker assessment described below.                    |
+| 1. Problem Validation     | Defined customer + problem, evidence records, no critical compliance blocker                                                                | Mechanically ready for a fresh Stage-6 pilot: founder intake, evidence records and the deterministic `opportunity-compliance-v1` assessment are implemented and auditable.                      |
 | 2. Opportunity Validation | Opportunity score ≥70, Profit Confidence ≥70, evidence quality ≥70, board weighted approval ≥75%, no active critical veto, founder approval | Mechanically ready for fresh Stage-6 opportunities: all three scores are versioned/persisted, evidence quality is wired into board voting, and founder approval remains independently required. |
 | 3. Product Validation     | Complete package, QA passed, licences complete, hashes recorded, founder approval                                                           | Mechanically reachable through Product Studio/QA and Founder Approval; must be exercised on the chosen pilot product.                                                                           |
 | 4. Listing Validation     | Marketplace policy checks passed, pricing validated, preview complete, founder approval                                                     | Mechanically reachable through Listing Studio/SEO/policy checks and Founder Approval; must be exercised on the chosen pilot listing.                                                            |
@@ -49,13 +49,23 @@ The opportunity result is the mean of unique linked artifact scores. Claim count
 
 `runBoardReview` now loads the latest persisted `EVIDENCE_QUALITY` result for Stage-6-created opportunities and supplies it to the existing `calculateBoardVotingResult` rule. A score below 70 therefore blocks the board independently of weighted approval. Legacy seed/demo opportunities that predate this history retain their old mechanical regression behavior and do not count as Stage-6 commercial proof.
 
-## Remaining Stage 6 prerequisite: Gate-1 compliance blocker
+## Implemented Stage 6 prerequisite: Gate-1 compliance blocker
 
-The structured veto system is real: Finance, Compliance, Quality and Security roles can raise critical vetoes, and active critical vetoes block the board regardless of weighted score. However, the current mock `COMPLIANCE_AND_MARKETPLACE_POLICY_OFFICER` never raises a veto; when an opportunity risk string mentions marketplace policy, it still returns `APPROVE` with a monitoring note.
+Gate 1 now has authoritative evidence independent of the mock Compliance agent. Formula `opportunity-compliance-v1` is implemented in `packages/policy-engine/src/opportunity-compliance.ts` and evaluates explicit founder declarations against the current marketplace policy pack plus linked opportunity evidence.
 
-For a genuine Stage-6 pilot, Gate 1's `no critical compliance blocker` requirement must therefore have authoritative evidence independent of a mock provider's always-non-veto behavior. Before Gate 1 is marked PASS, add or designate a deterministic compliance/policy assessment that records whether a critical blocker exists, its reason/source and the policy-pack/version or evidence used. If the later board review raises a real Compliance veto, that remains an independent Gate-2 blocker as designed.
+The assessment fails closed when required context is absent or invalid. It blocks missing/mismatched/inactive/expired policy packs, missing or unsupported product types, missing or restricted category declarations, declared third-party trademarks that conflict with the current IP check, declared unlicensed copyrighted stock content, and missing evidence.
 
-This does not require enabling a paid AI provider: the compliance-blocker assessment may be deterministic and policy-pack/evidence driven, as long as it is workspace-scoped, auditable, versioned and fail-closed when required evidence/policy context is missing.
+`GET /api/opportunities/:id/compliance-assessment` returns the current assessment state. `POST /api/opportunities/:id/compliance-assessment` requires `opportunity:manage`, validates the declarations server-side and appends an `OPPORTUNITY_COMPLIANCE_ASSESSED` AuditEvent containing the formula version, blocker result, selected evidence IDs, policy-pack version and a hash of the opportunity/evidence/policy state used for the decision.
+
+For fresh Stage-6 opportunities, promotion now requires a current passing Gate-1 assessment. Any later change to the opportunity, linked evidence or marketplace policy state makes the stored assessment stale and blocks promotion until reassessed. The founder-facing opportunity detail UI exposes the assessment, blockers, formula/policy-pack version and audit evidence. Integration and Chromium E2E coverage prove missing -> blocked -> passing assessment behavior and compliant promotion.
+
+The structured board-veto system remains independent: a later active Compliance BoardVeto still blocks Gate 2 regardless of the earlier Gate-1 result.
+
+## Stage 6 readiness boundary
+
+The implementation prerequisites tracked in Issue #24 are complete. VentureOS is now mechanically ready to begin a genuine Stage-6 pilot through Gates 1-4 without using seeded/demo data as proof.
+
+The next boundary is commercial, not technical: the founder must choose the actual pilot opportunity and provide or authorize the real evidence/market signal used to validate it. VentureOS must not auto-select a commercial venture, fabricate evidence, enable real marketplace writes, incur paid provider spend or enable advertising merely because the software path is ready.
 
 **Rule enforced from day one**: do not scale paid advertising before low-cost validation — `FEATURE_ADVERTISING_ENABLED=false` by default and requires explicit founder action to change.
 
