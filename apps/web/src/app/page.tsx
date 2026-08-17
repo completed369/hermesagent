@@ -130,7 +130,9 @@ export default function RootPage() {
                 </div>
                 <div className={styles.signalCard}>
                   <span className={styles.signalValue}>100%</span>
-                  <span className={styles.signalLabel}>founder authority retained at gated decisions</span>
+                  <span className={styles.signalLabel}>
+                    founder authority retained at gated decisions
+                  </span>
                 </div>
                 <div className={styles.signalCard}>
                   <span className={styles.signalValue}>0</span>
