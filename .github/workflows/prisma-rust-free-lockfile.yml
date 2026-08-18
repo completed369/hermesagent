@@ -51,7 +51,7 @@ jobs:
               schema.write_text(text)
           PY
 
-      - name: Regenerate lockfile and validate generation
+      - name: Regenerate and validate Prisma inputs
         shell: bash
         env:
           DATABASE_URL: postgresql://ventureos:ci-only-password@127.0.0.1:5432/ventureos?schema=public
@@ -60,7 +60,8 @@ jobs:
           pnpm install --lockfile-only
           pnpm install --frozen-lockfile
           pnpm db:generate
-          pnpm --filter @ventureos/database typecheck
+          pnpm --filter @ventureos/database exec prisma format --check --schema prisma/schema.prisma
+          pnpm --filter @ventureos/database exec prisma validate --schema prisma/schema.prisma
           git diff --check -- packages/database/prisma/schema.prisma pnpm-lock.yaml
 
       - name: Commit generated remediation inputs
