@@ -159,10 +159,7 @@
     }
   },
   "compliance": {
-    "declaredCategories": [
-      "pet sitting business operations",
-      "digital spreadsheet template"
-    ],
+    "declaredCategories": ["pet sitting business operations", "digital spreadsheet template"],
     "thirdPartyTrademarksPresent": false,
     "copyrightedStockWithoutLicence": false
   }
