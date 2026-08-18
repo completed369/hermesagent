@@ -139,7 +139,7 @@ jobs:
           image="local/ventureos-node-runtime:${GITHUB_SHA}"
           test "$(docker run --rm "$image" --version)" = 'v22.23.2'
           test "$(docker run --rm "$image" -p 'process.versions.openssl')" = '3.5.7'
-          test "$(docker run --rm "$image" -e \"process.stdout.write(require('crypto').createHash('sha256').update('ventureos').digest('hex'))\")" = 'b1eb3f846d94d0552ae2237675108993144782216f72d8c88d09a1dbdd398e91'
+          test "$(docker run --rm "$image" -e "process.stdout.write(require('crypto').createHash('sha256').update('ventureos').digest('hex'))")" = '0d5373daa1fcbf607472fb04bd6d3b5f3a62565a3944a09ebce10bb17534d495'
 
           cid="$(docker create "$image")"
           trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
