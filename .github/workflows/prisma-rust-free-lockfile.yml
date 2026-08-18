@@ -5,22 +5,25 @@ name: Prisma Rust-free lockfile evidence
     branches: [main]
     paths:
       - 'packages/database/package.json'
+      - 'packages/database/prisma/schema.prisma'
       - 'pnpm-lock.yaml'
       - '.github/workflows/prisma-rust-free-lockfile.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate-lockfile:
-    name: Generate remediation lockfile artifact
+    name: Materialize remediation inputs
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Checkout remediation PR
+      - name: Checkout remediation branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          persist-credentials: false
+          ref: fix/prisma-rust-free-runtime
+          fetch-depth: 0
 
       - name: Enable Corepack
         run: corepack enable
@@ -31,18 +34,45 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Regenerate lockfile only
+      - name: Enable Rust-free Prisma client generator
         shell: bash
         run: |
           set -Eeuo pipefail
-          pnpm install --lockfile-only
-          git diff --check -- pnpm-lock.yaml
-          test -s pnpm-lock.yaml
+          python3 - <<'PY'
+          from pathlib import Path
+          schema = Path('packages/database/prisma/schema.prisma')
+          text = schema.read_text()
+          old = 'generator client {\n  provider = "prisma-client-js"\n}'
+          new = 'generator client {\n  provider   = "prisma-client-js"\n  engineType = "client"\n}'
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('unexpected Prisma generator block')
+              text = text.replace(old, new, 1)
+              schema.write_text(text)
+          PY
 
-      - name: Preserve generated lockfile
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: prisma-rust-free-lockfile-${{ github.event.pull_request.head.sha }}
-          path: pnpm-lock.yaml
-          if-no-files-found: error
-          retention-days: 7
+      - name: Regenerate lockfile and validate generation
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://ventureos:ci-only-password@127.0.0.1:5432/ventureos?schema=public
+        run: |
+          set -Eeuo pipefail
+          pnpm install --lockfile-only
+          pnpm install --frozen-lockfile
+          pnpm db:generate
+          pnpm --filter @ventureos/database typecheck
+          git diff --check -- packages/database/prisma/schema.prisma pnpm-lock.yaml
+
+      - name: Commit generated remediation inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/database/prisma/schema.prisma pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo 'Generated remediation inputs already current.'
+            exit 0
+          fi
+          git commit -m 'fix(database): enable Rust-free Prisma runtime inputs'
+          git push origin HEAD:fix/prisma-rust-free-runtime
