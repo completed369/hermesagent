@@ -12,6 +12,67 @@ permissions:
   contents: read
 
 jobs:
+  distroless-debian12:
+    name: Scan Distroless Node 22 Debian 12 candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve current linux/amd64 candidate to immutable digest
+        id: candidate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tag='gcr.io/distroless/nodejs22-debian12:latest-amd64'
+          docker pull --platform linux/amd64 "$tag"
+          candidate="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
+          [[ "$candidate" =~ ^gcr\.io/distroless/nodejs22-debian12@sha256:[0-9a-f]{64}$ ]]
+          printf '%s\n' "$candidate" | tee /tmp/node22-debian12.candidate.txt
+          echo "ref=$candidate" >> "$GITHUB_OUTPUT"
+          printf 'CANDIDATE_REF=%s\n' "$candidate"
+
+      - name: Generate complete vulnerability evidence
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.candidate.outputs.ref }}
+          scanners: vuln
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          format: json
+          output: /tmp/node22-debian12.trivy.json
+          exit-code: '0'
+
+      - name: Apply unchanged release-equivalent security gate
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ steps.candidate.outputs.ref }}
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+        run: |
+          set -Eeuo pipefail
+          trivy image \
+            "$CANDIDATE_REF" \
+            --scanners vuln,secret \
+            --image-config-scanners secret \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed=false \
+            --exit-on-eol 1 \
+            --exit-code 1
+
+      - name: Preserve Debian 12 candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: runtime-node22-debian12-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/node22-debian12.candidate.txt
+            /tmp/node22-debian12.trivy.json
+          if-no-files-found: error
+          retention-days: 30
+
   substrate-scan:
     name: Scan Distroless base-nossl Debian 13 substrate
     runs-on: ubuntu-24.04
