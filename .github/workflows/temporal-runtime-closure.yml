@@ -1,0 +1,76 @@
+name: Temporal runtime closure
+
+'on':
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/workflows/**'
+      - 'apps/worker/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/temporal-runtime-closure.yml'
+      - '.github/candidates/**'
+      - '.github/workflows/runtime-base-candidate-scan.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  temporal-closure:
+    name: Inspect Temporal core bridge dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Record Temporal native bridge ELF closure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t bridges < <(find node_modules -type f \( -name '*.node' -o -name 'core-bridge' \) -path '*temporal*' -print 2>/dev/null | sort -u)
+          test "${#bridges[@]}" -gt 0
+          : > /tmp/temporal-native-closure.txt
+          found=0
+          for bridge in "${bridges[@]}"; do
+            if file "$bridge" | grep -q 'ELF'; then
+              found=1
+              printf '\n===== %s =====\n' "$bridge" | tee -a /tmp/temporal-native-closure.txt
+              file "$bridge" | tee -a /tmp/temporal-native-closure.txt
+              readelf -d "$bridge" | grep -E 'NEEDED|RUNPATH|RPATH' | tee -a /tmp/temporal-native-closure.txt || true
+              ldd "$bridge" | tee -a /tmp/temporal-native-closure.txt || true
+            fi
+          done
+          test "$found" -eq 1
+
+      - name: Summarize native system requirements
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -Eo 'lib(ssl|crypto|z|gcc_s|stdc\+\+|c|m|pthread|dl)[^ ]*\.so[^ ]*' \
+            /tmp/temporal-native-closure.txt | sort -u | tee /tmp/temporal-system-libs.txt || true
+          printf 'TEMPORAL_REQUIRES_SYSTEM_OPENSSL='
+          if grep -Eq 'libssl|libcrypto' /tmp/temporal-native-closure.txt; then echo true; else echo false; fi
+
+      - name: Preserve closure evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: temporal-runtime-closure-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/temporal-native-closure.txt
+            /tmp/temporal-system-libs.txt
+          if-no-files-found: error
+          retention-days: 30
