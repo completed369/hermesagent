@@ -11,53 +11,44 @@ permissions:
   contents: read
 
 jobs:
-  candidate-scan:
-    name: Scan ${{ matrix.label }} runtime candidate
+  substrate-scan:
+    name: Scan Distroless base-nossl Debian 13 substrate
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: node22-bookworm-slim
-            tag: node:22-bookworm-slim
-          - label: node22-trixie-slim
-            tag: node:22-trixie-slim
     steps:
       - name: Checkout candidate branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - name: Resolve current linux/amd64 candidate to immutable digest
-        id: candidate
+      - name: Resolve current linux/amd64 substrate to immutable digest
+        id: substrate
         shell: bash
-        env:
-          CANDIDATE_TAG: ${{ matrix.tag }}
         run: |
           set -Eeuo pipefail
-          docker pull --platform linux/amd64 "$CANDIDATE_TAG"
-          candidate="$(docker image inspect --format '{{index .RepoDigests 0}}' "$CANDIDATE_TAG")"
-          [[ "$candidate" =~ ^(node|docker\.io/library/node)@sha256:[0-9a-f]{64}$ ]]
-          printf '%s\n' "$candidate" | tee "/tmp/${{ matrix.label }}.candidate.txt"
+          tag='gcr.io/distroless/base-nossl-debian13:latest-amd64'
+          docker pull --platform linux/amd64 "$tag"
+          candidate="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
+          [[ "$candidate" =~ ^gcr\.io/distroless/base-nossl-debian13@sha256:[0-9a-f]{64}$ ]]
+          printf '%s\n' "$candidate" | tee /tmp/base-nossl.candidate.txt
           echo "ref=$candidate" >> "$GITHUB_OUTPUT"
           printf 'CANDIDATE_REF=%s\n' "$candidate"
 
       - name: Generate complete vulnerability evidence
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ steps.candidate.outputs.ref }}
+          image-ref: ${{ steps.substrate.outputs.ref }}
           scanners: vuln
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
           format: json
-          output: /tmp/${{ matrix.label }}.trivy.json
+          output: /tmp/base-nossl.trivy.json
           exit-code: '0'
 
       - name: Apply release-equivalent vulnerability, secret, and EOL gate
         shell: bash
         env:
-          CANDIDATE_REF: ${{ steps.candidate.outputs.ref }}
+          CANDIDATE_REF: ${{ steps.substrate.outputs.ref }}
           TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
         run: |
           set -Eeuo pipefail
@@ -70,13 +61,51 @@ jobs:
             --exit-on-eol 1 \
             --exit-code 1
 
-      - name: Preserve candidate digest and scan evidence
+      - name: Preserve substrate digest and scan evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: runtime-base-${{ matrix.label }}-${{ github.event.pull_request.head.sha }}
+          name: runtime-base-nossl-${{ github.event.pull_request.head.sha }}
           path: |
-            /tmp/${{ matrix.label }}.candidate.txt
-            /tmp/${{ matrix.label }}.trivy.json
+            /tmp/base-nossl.candidate.txt
+            /tmp/base-nossl.trivy.json
+          if-no-files-found: error
+          retention-days: 30
+
+  node-closure:
+    name: Inspect official Node 22 dynamic runtime closure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Resolve official Node 22 trixie source image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tag='node:22-trixie-slim'
+          docker pull --platform linux/amd64 "$tag"
+          digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
+          [[ "$digest" =~ ^(node|docker\.io/library/node)@sha256:[0-9a-f]{64}$ ]]
+          printf '%s\n' "$digest" | tee /tmp/node-source.candidate.txt
+
+      - name: Record Node/OpenSSL versions and dynamic dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker run --rm --platform linux/amd64 --entrypoint sh node:22-trixie-slim -c '
+            set -eu
+            node --version
+            node -p "process.versions.openssl"
+            ldd /usr/local/bin/node
+          ' | tee /tmp/node-runtime-closure.txt
+          ! grep -Eq 'libssl\.so|libcrypto\.so' /tmp/node-runtime-closure.txt
+
+      - name: Preserve Node closure evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: node-runtime-closure-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/node-source.candidate.txt
+            /tmp/node-runtime-closure.txt
           if-no-files-found: error
           retention-days: 30
