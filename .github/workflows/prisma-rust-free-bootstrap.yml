@@ -6,6 +6,8 @@ name: Prisma Rust-free branch bootstrap
       - fix/prisma-rust-free-runtime
     paths:
       - 'packages/database/package.json'
+      - 'packages/database/prisma.config.ts'
+      - 'packages/database/src/client.ts'
       - '.github/workflows/prisma-rust-free-bootstrap.yml'
 
 permissions:
@@ -47,60 +49,6 @@ jobs:
               raise SystemExit('unexpected Prisma generator block')
           text = text.replace(old, new, 1)
           schema.write_text(text)
-
-          client = Path('packages/database/src/client.ts')
-          client.write_text("""import { PrismaPg } from '@prisma/adapter-pg';
-          import { PrismaClient } from '@prisma/client';
-
-          declare global {
-            // eslint-disable-next-line no-var
-            var __ventureosPrisma: PrismaClient | undefined;
-          }
-
-          const connectionString = process.env.DATABASE_URL;
-          if (!connectionString) {
-            throw new Error('DATABASE_URL is required to initialize Prisma');
-          }
-
-          const createPrismaClient = (): PrismaClient =>
-            new PrismaClient({
-              adapter: new PrismaPg({ connectionString }),
-              log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-            });
-
-          /**
-           * Singleton Prisma client. Reused across hot reloads in dev to avoid
-           * exhausting Postgres connections.
-           */
-          export const prisma: PrismaClient = globalThis.__ventureosPrisma ?? createPrismaClient();
-
-          if (process.env.NODE_ENV !== 'production') {
-            globalThis.__ventureosPrisma = prisma;
-          }
-          """)
-
-          config = Path('packages/database/prisma.config.ts')
-          config.write_text("""import type { PrismaConfig } from 'prisma';
-          import { PrismaPg } from '@prisma/adapter-pg';
-          import { env } from 'prisma/config';
-
-          export default {
-            experimental: {
-              adapter: true,
-            },
-            engine: 'js',
-            schema: 'prisma/schema.prisma',
-            migrations: {
-              path: 'prisma/migrations',
-            },
-            datasource: {
-              url: env('DATABASE_URL'),
-            },
-            async adapter() {
-              return new PrismaPg({ connectionString: env('DATABASE_URL') });
-            },
-          } satisfies PrismaConfig;
-          """)
           PY
 
       - name: Regenerate lockfile and validate Prisma generation
