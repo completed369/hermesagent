@@ -31,7 +31,7 @@ function Test-GhRepoExists {
   return $LASTEXITCODE -eq 0
 }
 
-function Set-GhEnvironmentSecretFromString {
+function Set-GhEnvironmentSecretExact {
   param(
     [Parameter(Mandatory = $true)]
     [string]$Name,
@@ -39,9 +39,41 @@ function Set-GhEnvironmentSecretFromString {
     [string]$Value
   )
 
-  $Value | & gh secret set $Name --repo $ProductRepo --env $EnvironmentName
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed to set environment secret $Name"
+  $ghCommand = Get-Command gh -ErrorAction Stop
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = $ghCommand.Source
+  $startInfo.Arguments = "secret set $Name --repo $ProductRepo --env $EnvironmentName"
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardInput = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.CreateNoWindow = $true
+
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $startInfo
+
+  try {
+    if (-not $process.Start()) {
+      throw "Failed to start gh while setting environment secret $Name."
+    }
+
+    # Write, rather than WriteLine, so the secret is stored byte-for-byte without a trailing newline.
+    $process.StandardInput.Write($Value)
+    $process.StandardInput.Close()
+    $process.WaitForExit()
+
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+
+    if ($process.ExitCode -ne 0) {
+      throw "Failed to set environment secret $Name. gh stderr: $stderr"
+    }
+
+    # gh normally emits no secret value. Suppress stdout defensively rather than relaying it.
+    $null = $stdout
+  }
+  finally {
+    $process.Dispose()
   }
 }
 
@@ -56,10 +88,7 @@ function Set-GhEnvironmentSecretFromSecureString {
   $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Value)
   try {
     $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-    $plain | & gh secret set $Name --repo $ProductRepo --env $EnvironmentName
-    if ($LASTEXITCODE -ne 0) {
-      throw "Failed to set environment secret $Name"
-    }
+    Set-GhEnvironmentSecretExact -Name $Name -Value $plain
   }
   finally {
     if ($null -ne $bstr -and $bstr -ne [IntPtr]::Zero) {
@@ -155,7 +184,7 @@ if ($ConfigureCloudflareSecrets) {
 
   $token = Read-Host 'Cloudflare API token (input hidden)' -AsSecureString
 
-  Set-GhEnvironmentSecretFromString -Name 'CLOUDFLARE_ACCOUNT_ID' -Value $accountId.Trim()
+  Set-GhEnvironmentSecretExact -Name 'CLOUDFLARE_ACCOUNT_ID' -Value $accountId.Trim()
   Set-GhEnvironmentSecretFromSecureString -Name 'CLOUDFLARE_API_TOKEN' -Value $token
 
   Remove-Variable token -ErrorAction SilentlyContinue
