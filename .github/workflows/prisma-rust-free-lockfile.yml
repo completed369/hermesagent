@@ -59,9 +59,11 @@ jobs:
           set -Eeuo pipefail
           pnpm install --lockfile-only
           pnpm install --frozen-lockfile
+          pnpm exec prettier --write pnpm-lock.yaml
           pnpm db:generate
           pnpm --filter @ventureos/database exec prisma format --check --schema prisma/schema.prisma
           pnpm --filter @ventureos/database exec prisma validate --schema prisma/schema.prisma
+          pnpm exec prettier --check pnpm-lock.yaml
           git diff --check -- packages/database/prisma/schema.prisma pnpm-lock.yaml
 
       - name: Commit generated remediation inputs
