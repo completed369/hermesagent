@@ -251,11 +251,7 @@ export async function runStage6PreapprovalOperator(input: OperatorInput) {
   const opportunitiesService = new OpportunitiesService(auditService);
   const boardService = new BoardService(auditService);
 
-  const opportunity = await opportunitiesService.create(
-    workspaceId,
-    input.pilot,
-    founderUserId,
-  );
+  const opportunity = await opportunitiesService.create(workspaceId, input.pilot, founderUserId);
   const evidenceClaimIds = opportunity.evidenceClaims.map((claim) => claim.id);
   if (evidenceClaimIds.length < 1) {
     throw new Stage6OperatorGateError(
