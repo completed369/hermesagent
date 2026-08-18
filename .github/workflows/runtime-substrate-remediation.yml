@@ -38,7 +38,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           image="local/ventureos-nossl-libgcc:${GITHUB_SHA}"
-          cid="$(docker create "$image")"
+          cid="$(docker create "$image" /nonexistent-inspection-command)"
           trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
           docker cp "$cid:/usr/lib/x86_64-linux-gnu/libgcc_s.so.1" /tmp/libgcc_s.so.1
           docker cp "$cid:/var/lib/dpkg/status.d/libgcc-s1" /tmp/libgcc-s1.status
