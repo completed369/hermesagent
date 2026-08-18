@@ -63,7 +63,7 @@ jobs:
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
       - name: Checkout exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ steps.source.outputs.source_sha }}
           fetch-depth: 1
@@ -131,7 +131,7 @@ jobs:
       url: https://progress.ventureos.site
     steps:
       - name: Checkout validated source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.validate.outputs.source_sha }}
           fetch-depth: 1
@@ -169,7 +169,7 @@ jobs:
           } > progress-worker-deployment.txt
 
       - name: Upload deployment evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: progress-worker-deployment-${{ needs.validate.outputs.source_sha }}
           path: progress-worker-deployment.txt
