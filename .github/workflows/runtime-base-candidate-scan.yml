@@ -12,25 +12,34 @@ permissions:
 
 jobs:
   candidate-scan:
-    name: Scan current Debian 13 Node 22 runtime candidate
+    name: Scan ${{ matrix.label }} runtime candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: node22-bookworm-slim
+            tag: node:22-bookworm-slim
+          - label: node22-trixie-slim
+            tag: node:22-trixie-slim
     steps:
       - name: Checkout candidate branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - name: Resolve current linux/amd64 Distroless candidate to immutable digest
+      - name: Resolve current linux/amd64 candidate to immutable digest
         id: candidate
         shell: bash
+        env:
+          CANDIDATE_TAG: ${{ matrix.tag }}
         run: |
           set -Eeuo pipefail
-          tag='gcr.io/distroless/nodejs22-debian13:latest-amd64'
-          docker pull --platform linux/amd64 "$tag"
-          candidate="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
-          [[ "$candidate" =~ ^gcr\.io/distroless/nodejs22-debian13@sha256:[0-9a-f]{64}$ ]]
-          printf '%s\n' "$candidate" | tee /tmp/runtime-base-candidate.txt
+          docker pull --platform linux/amd64 "$CANDIDATE_TAG"
+          candidate="$(docker image inspect --format '{{index .RepoDigests 0}}' "$CANDIDATE_TAG")"
+          [[ "$candidate" =~ ^(node|docker\.io/library/node)@sha256:[0-9a-f]{64}$ ]]
+          printf '%s\n' "$candidate" | tee "/tmp/${{ matrix.label }}.candidate.txt"
           echo "ref=$candidate" >> "$GITHUB_OUTPUT"
           printf 'CANDIDATE_REF=%s\n' "$candidate"
 
@@ -42,7 +51,7 @@ jobs:
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
           format: json
-          output: /tmp/runtime-base-candidate.trivy.json
+          output: /tmp/${{ matrix.label }}.trivy.json
           exit-code: '0'
 
       - name: Apply release-equivalent vulnerability, secret, and EOL gate
@@ -65,9 +74,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: runtime-base-candidate-${{ github.event.pull_request.head.sha }}
+          name: runtime-base-${{ matrix.label }}-${{ github.event.pull_request.head.sha }}
           path: |
-            /tmp/runtime-base-candidate.txt
-            /tmp/runtime-base-candidate.trivy.json
+            /tmp/${{ matrix.label }}.candidate.txt
+            /tmp/${{ matrix.label }}.trivy.json
           if-no-files-found: error
           retention-days: 30
