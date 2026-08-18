@@ -2,7 +2,7 @@
 param(
   [string]$ProductRepo = 'completed369/hermesagent',
   [string]$OpsRepo = 'completed369/ventureos-ops',
-  [string]$EnvironmentName = 'public-command-center',
+  [string]$ProductEnvironmentName = 'public-command-center',
   [switch]$ConfigureCloudflareSecrets
 )
 
@@ -31,8 +31,10 @@ function Test-GhRepoExists {
   return $LASTEXITCODE -eq 0
 }
 
-function Set-GhEnvironmentSecretExact {
+function Set-GhRepositorySecretExact {
   param(
+    [Parameter(Mandatory = $true)]
+    [string]$Repository,
     [Parameter(Mandatory = $true)]
     [string]$Name,
     [Parameter(Mandatory = $true)]
@@ -42,7 +44,7 @@ function Set-GhEnvironmentSecretExact {
   $ghCommand = Get-Command gh -ErrorAction Stop
   $startInfo = New-Object System.Diagnostics.ProcessStartInfo
   $startInfo.FileName = $ghCommand.Source
-  $startInfo.Arguments = "secret set $Name --repo $ProductRepo --env $EnvironmentName"
+  $startInfo.Arguments = "secret set $Name --repo $Repository"
   $startInfo.UseShellExecute = $false
   $startInfo.RedirectStandardInput = $true
   $startInfo.RedirectStandardOutput = $true
@@ -54,7 +56,7 @@ function Set-GhEnvironmentSecretExact {
 
   try {
     if (-not $process.Start()) {
-      throw "Failed to start gh while setting environment secret $Name."
+      throw "Failed to start gh while setting repository secret $Name."
     }
 
     # Write, rather than WriteLine, so the secret is stored byte-for-byte without a trailing newline.
@@ -66,7 +68,7 @@ function Set-GhEnvironmentSecretExact {
     $stderr = $process.StandardError.ReadToEnd()
 
     if ($process.ExitCode -ne 0) {
-      throw "Failed to set environment secret $Name. gh stderr: $stderr"
+      throw "Failed to set repository secret $Name. gh stderr: $stderr"
     }
 
     # gh normally emits no secret value. Suppress stdout defensively rather than relaying it.
@@ -77,8 +79,10 @@ function Set-GhEnvironmentSecretExact {
   }
 }
 
-function Set-GhEnvironmentSecretFromSecureString {
+function Set-GhRepositorySecretFromSecureString {
   param(
+    [Parameter(Mandatory = $true)]
+    [string]$Repository,
     [Parameter(Mandatory = $true)]
     [string]$Name,
     [Parameter(Mandatory = $true)]
@@ -88,7 +92,7 @@ function Set-GhEnvironmentSecretFromSecureString {
   $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Value)
   try {
     $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-    Set-GhEnvironmentSecretExact -Name $Name -Value $plain
+    Set-GhRepositorySecretExact -Repository $Repository -Name $Name -Value $plain
   }
   finally {
     if ($null -ne $bstr -and $bstr -ne [IntPtr]::Zero) {
@@ -101,7 +105,7 @@ function Set-GhEnvironmentSecretFromSecureString {
 Write-Host '=== VentureOS Agent Operator Bootstrap ==='
 Write-Host "Product repository: $ProductRepo"
 Write-Host "Private operations repository: $OpsRepo"
-Write-Host "Deployment environment: $EnvironmentName"
+Write-Host "Public fallback environment: $ProductEnvironmentName"
 Write-Host ''
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -124,7 +128,7 @@ if ($currentLogin -ne $expectedOwner) {
 Write-Host ''
 Write-Host 'Creating private operations repository if needed...'
 if (Test-GhRepoExists -Repository $OpsRepo) {
-  $repoJson = & gh repo view $OpsRepo --json nameWithOwner,isPrivate | ConvertFrom-Json
+  $repoJson = & gh repo view $OpsRepo --json nameWithOwner,isPrivate,defaultBranchRef | ConvertFrom-Json
   if (-not $repoJson.isPrivate) {
     throw "$OpsRepo already exists but is not private. Stop before storing confidential material."
   }
@@ -143,24 +147,46 @@ else {
   Write-Host "Created private repository $OpsRepo."
 }
 
+$opsRepoJson = & gh repo view $OpsRepo --json nameWithOwner,isPrivate,defaultBranchRef,url | ConvertFrom-Json
+if (-not $opsRepoJson.isPrivate) {
+  throw "$OpsRepo is not private. Stop before storing confidential material."
+}
+
+if ($null -eq $opsRepoJson.defaultBranchRef -or $opsRepoJson.defaultBranchRef.name -ne 'main') {
+  $currentDefaultBranch = $opsRepoJson.defaultBranchRef.name
+  if ([string]::IsNullOrWhiteSpace($currentDefaultBranch)) {
+    throw "$OpsRepo does not have an initialized default branch."
+  }
+
+  Write-Host "Renaming private operations default branch '$currentDefaultBranch' to 'main'..."
+  Invoke-GhChecked -Arguments @(
+    'api',
+    '--method',
+    'POST',
+    "repos/$OpsRepo/branches/$currentDefaultBranch/rename",
+    '-f',
+    'new_name=main'
+  )
+}
+
 Write-Host ''
-Write-Host "Creating/updating GitHub environment '$EnvironmentName'..."
-$environmentPayload = @{
+Write-Host "Creating/updating secretless public fallback environment '$ProductEnvironmentName'..."
+$productEnvironmentPayload = @{
   deployment_branch_policy = @{
     protected_branches = $true
     custom_branch_policies = $false
   }
 } | ConvertTo-Json -Depth 4 -Compress
 
-$environmentPayload | & gh api `
+$productEnvironmentPayload | & gh api `
   --method PUT `
-  "repos/$ProductRepo/environments/$EnvironmentName" `
+  "repos/$ProductRepo/environments/$ProductEnvironmentName" `
   --input - | Out-Null
 if ($LASTEXITCODE -ne 0) {
-  throw "Failed to create/update GitHub environment $EnvironmentName."
+  throw "Failed to create/update GitHub environment $ProductEnvironmentName."
 }
 
-Write-Host 'Restricting automatic progress deployment until bootstrap verification is complete...'
+Write-Host 'Keeping the public-repository progress deployment disabled...'
 Invoke-GhChecked -Arguments @(
   'variable',
   'set',
@@ -173,7 +199,7 @@ Invoke-GhChecked -Arguments @(
 
 if ($ConfigureCloudflareSecrets) {
   Write-Host ''
-  Write-Host 'Cloudflare credential setup'
+  Write-Host 'Cloudflare credential setup for the PRIVATE operations repository'
   Write-Host 'Use a token scoped only to Account -> Workers Scripts Write for this first phase.'
   Write-Host 'Do not paste the token into chat, GitHub issues, documentation, or command history.'
 
@@ -184,12 +210,18 @@ if ($ConfigureCloudflareSecrets) {
 
   $token = Read-Host 'Cloudflare API token (input hidden)' -AsSecureString
 
-  Set-GhEnvironmentSecretExact -Name 'CLOUDFLARE_ACCOUNT_ID' -Value $accountId.Trim()
-  Set-GhEnvironmentSecretFromSecureString -Name 'CLOUDFLARE_API_TOKEN' -Value $token
+  Set-GhRepositorySecretExact `
+    -Repository $OpsRepo `
+    -Name 'CLOUDFLARE_ACCOUNT_ID' `
+    -Value $accountId.Trim()
+  Set-GhRepositorySecretFromSecureString `
+    -Repository $OpsRepo `
+    -Name 'CLOUDFLARE_API_TOKEN' `
+    -Value $token
 
   Remove-Variable token -ErrorAction SilentlyContinue
   Remove-Variable accountId -ErrorAction SilentlyContinue
-  Write-Host 'Cloudflare environment secret names were configured.'
+  Write-Host 'Cloudflare Actions secret names were configured in the private operations repository.'
 }
 else {
   Write-Host ''
@@ -199,7 +231,7 @@ else {
 
 Write-Host ''
 Write-Host 'Verifying non-secret bootstrap state...'
-Invoke-GhChecked -Arguments @('repo', 'view', $OpsRepo, '--json', 'nameWithOwner,isPrivate,url')
+Invoke-GhChecked -Arguments @('repo', 'view', $OpsRepo, '--json', 'nameWithOwner,isPrivate,defaultBranchRef,url')
 Invoke-GhChecked -Arguments @(
   'variable',
   'get',
@@ -209,13 +241,21 @@ Invoke-GhChecked -Arguments @(
 )
 
 Write-Host ''
-Write-Host "Environment secret names currently configured for '$EnvironmentName':"
-& gh secret list --repo $ProductRepo --env $EnvironmentName
+Write-Host "Actions secret names currently configured in PRIVATE repo '$OpsRepo':"
+& gh secret list --repo $OpsRepo
 if ($LASTEXITCODE -ne 0) {
-  throw "Failed to list environment secret names for $EnvironmentName."
+  throw "Failed to list Actions secret names for $OpsRepo."
+}
+
+Write-Host ''
+Write-Host "Public fallback environment secret names in '$ProductRepo' (should remain empty):"
+& gh secret list --repo $ProductRepo --env $ProductEnvironmentName
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to list environment secret names for $ProductEnvironmentName."
 }
 
 Write-Host ''
 Write-Host 'BOOTSTRAP_RESULT=PASS'
-Write-Host 'Automatic progress deployment remains disabled.'
+Write-Host 'Public-repository automatic progress deployment remains disabled.'
+Write-Host 'Cloudflare deployment credentials, when configured, exist only in the private operations repository.'
 Write-Host 'No DNS, Cloudflare Access, VPS, private-staging, production, provider, or spending change was performed.'

@@ -8,14 +8,14 @@ This control plane removes routine founder relay work without giving any agent b
 administrator access.
 
 GitHub remains the product/release source of truth. Routine engineering, CI observation,
-reviewed merges, bounded progress-site deployment, and evidence capture should flow through
-GitHub and protected workflows. Sensitive actions stay behind explicit founder gates.
+reviewed merges, bounded deployment, and evidence capture should flow through GitHub and
+protected workflows. Sensitive actions stay behind explicit founder gates.
 
 This document contains no secret values.
 
 ## Trust zones
 
-### Product repository — public
+### Product repository — public and secretless
 
 `completed369/hermesagent`
 
@@ -32,20 +32,33 @@ Forbidden content:
 - investor/board confidential reports;
 - private Founder Command Center state;
 - customer/private venture data;
+- Cloudflare deployment credentials;
 - API tokens, SSH private keys, passwords, or raw secret material.
 
-### Private operations repository — required
+The public repository contains a reviewed `progress-worker-deploy` workflow as a fallback and
+reference implementation, but `VENTUREOS_PROGRESS_DEPLOY_ENABLED` remains `false` and the
+`public-command-center` environment remains secretless once the private operations repository
+becomes deployment owner.
 
-A separate private repository, recommended as `completed369/ventureos-ops`, will hold:
+### Private operations repository — confidential command-center owner
+
+`completed369/ventureos-ops`
+
+This private repository will hold:
 
 - Founder Command Center source;
 - daily agent/project state;
 - confidential roadmap and board/investor material;
-- private deployment evidence that should not be public;
-- generated private command-center artifact.
+- private deployment evidence;
+- generated private command-center artifact;
+- the reviewed command-center deployment workflow;
+- the scoped Cloudflare Worker deployment secrets required by that private workflow.
 
-The private repository is a bootstrap dependency for the confidential command-center phase. It
-must not weaken the product repository's existing branch and release governance.
+Private repository status does not permit committing raw secrets. Cloudflare credentials stay in
+GitHub Actions Secrets and are never stored in Git files.
+
+The private repository is the real owner of confidential command-center deployment. The public
+product repository remains the authoritative product/release source.
 
 ## Operator identities and permissions
 
@@ -55,11 +68,12 @@ Routine authority:
 
 - GitHub issues, branches, files, PR review/merge where tools permit;
 - roadmap and execution decisions;
-- CI diagnosis.
+- CI diagnosis;
+- command-center state/design management once the private repo is connected.
 
 Excluded:
 
-- secret values;
+- raw secret values;
 - Cloudflare dashboard login;
 - direct VPS shell;
 - production, spend, or legal commitments.
@@ -75,6 +89,7 @@ Routine authority:
 Excluded:
 
 - personal founder credentials;
+- raw Cloudflare deployment credentials;
 - unrestricted cloud/root access;
 - self-approved production or paid actions.
 
@@ -93,23 +108,36 @@ Excluded:
 
 Routine authority:
 
-- exact reviewed workflow actions using environment-scoped credentials.
+- exact reviewed workflow actions using scoped repository/environment credentials.
 
 Excluded:
 
-- credentials outside the referenced environment;
+- credentials outside the referenced trust zone;
 - actions not encoded by the reviewed workflow.
 
-### Cloudflare deploy token
+### Cloudflare Worker deploy token
+
+Storage:
+
+- private `completed369/ventureos-ops` Actions Secrets only.
 
 Routine authority:
 
-- deploy/update the approved progress Worker through the reviewed workflow.
+- deploy/update the approved `ventureos-public` Worker through the reviewed private command-center
+  workflow.
+
+Initial permission:
+
+- Account → Workers Scripts Write only.
 
 Excluded:
 
-- DNS, Access policy, account administration, or unrelated provider changes unless a future
-  reviewed workflow explicitly adds them.
+- DNS;
+- Workers Routes;
+- Zero Trust/Access;
+- account administration;
+- billing;
+- unrelated Cloudflare products or resources.
 
 ### VPS deploy principal
 
@@ -143,32 +171,44 @@ The control plane does not authorize agents to independently perform:
 
 ## Routine actions that should not require founder relay
 
-Once the required operator credentials/environments are bootstrapped, agents should drive:
+Once the required operator credentials and private repository are bootstrapped, agents should
+drive:
 
 - branch creation and implementation;
 - formatting, lint, typecheck, tests, and builds;
 - PR creation, review, and merge when policy permits;
 - CI observation and bounded repair;
-- static progress-site deployment after reviewed changes reach protected `main`;
+- Founder Command Center source/state updates in the private ops repository;
+- static command-center deployment after reviewed changes reach the private repo's protected main;
 - generation of deployment evidence/manifests;
-- status/roadmap updates in the private command-center repository;
 - read-only staging and provider health checks that do not bypass authentication.
 
-## Progress Worker deployment boundary
+## Command-center deployment boundary
 
-The initial automated external mutation is intentionally narrow:
+The active confidential deployment path belongs in `completed369/ventureos-ops` and must:
 
-- Worker name is fixed to `ventureos-public`.
-- Assets come only from `deploy/public-landing/`.
-- `scripts/validate-public-landing.mjs` must pass before deployment.
-- Source must equal current protected `main`.
-- The workflow does not configure DNS, Custom Domains, or Cloudflare Access.
-- The workflow does not touch the VPS, private staging, APIs, databases, or application backend.
-- Automatic deployment remains disabled until `VENTUREOS_PROGRESS_DEPLOY_ENABLED` is set to
-  `true` after credential bootstrap.
+- target only the existing `ventureos-public` Worker;
+- validate the generated static artifact before mutation;
+- use only the private repo's Cloudflare Actions Secrets;
+- leave DNS, Custom Domains, and Cloudflare Access unchanged;
+- leave the VPS, private staging, APIs, databases, and application backend unchanged;
+- preserve an evidence record and rollback path.
 
-The Cloudflare API token should receive only the minimum account permission required to deploy
-Workers. Do not grant DNS or Access permissions to this token in the first control-plane phase.
+The public product repo's existing progress deployment workflow remains disabled and secretless as
+a reviewed fallback/reference path.
+
+## Cloudflare Access boundary
+
+Cloudflare Access is deliberately separate from Worker deployment credentials.
+
+Before confidential command-center material is published:
+
+- `progress.ventureos.site` must be Access-protected;
+- only authorized identities may pass the policy;
+- public `workers.dev` and preview bypasses must be disabled or equivalently protected.
+
+Any future Access automation must use a separate narrowly scoped credential and separate reviewed
+workflow. Worker deployment credentials must not be widened merely for convenience.
 
 ## Credential handling
 
@@ -184,28 +224,24 @@ Never place them in:
 - screenshots;
 - deployment artifacts/logs.
 
-Environment-scoped GitHub secrets are preferred because GitHub exposes them only to jobs that
-reference the environment. If a protected environment requires review, the job cannot access its
-environment secrets until the protection rules pass.
-
 ## One-time bootstrap
 
 See `docs/AGENT_OPERATOR_BOOTSTRAP.md`.
 
-After bootstrap, normal progress-site updates should follow:
+After bootstrap, the operating loop should become:
 
-1. An agent changes reviewed source on a branch.
-2. PR CI passes.
-3. The PR merges to protected `main`.
-4. The bounded progress deployment workflow validates exact main source.
-5. When deployment is enabled, GitHub Actions updates only the approved Worker.
-6. Deployment evidence is retained in GitHub Actions.
-7. The Founder Command Center is updated from the private operations source.
+1. ChatGPT identifies and records the next task.
+2. Pi or ChatGPT implements through a branch/PR as appropriate.
+3. Required CI passes.
+4. ChatGPT reviews/merges when policy permits.
+5. Private ops state is updated.
+6. A reviewed private ops workflow deploys the command center using its scoped Worker credential.
+7. The founder is contacted only for a genuine founder gate.
 
 ## Private staging and production
 
 Existing `image-publication` and `private-staging` workflows remain authoritative. This
-control-plane phase must not bypass or weaken them.
+control-plane work must not bypass or weaken them.
 
 A future VPS operator identity should be separate from the founder administration identity and
 constrained to a root-owned reviewed deployment entry point rather than a general-purpose
