@@ -27,8 +27,49 @@ function Test-GhRepoExists {
     [string]$Repository
   )
 
-  & gh repo view $Repository --json nameWithOwner,isPrivate 2>$null | Out-Null
-  return $LASTEXITCODE -eq 0
+  # Use ProcessStartInfo rather than PowerShell's native-command stderr stream.
+  # Windows PowerShell can promote expected `gh repo view` stderr for a missing
+  # repository into a terminating NativeCommandError when ErrorActionPreference
+  # is Stop. A missing repo is a normal bootstrap condition, not a failure.
+  $ghCommand = Get-Command gh -ErrorAction Stop
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = $ghCommand.Source
+  $startInfo.Arguments = "repo view $Repository --json nameWithOwner,isPrivate"
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.CreateNoWindow = $true
+
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $startInfo
+
+  try {
+    if (-not $process.Start()) {
+      throw "Failed to start gh while checking repository $Repository."
+    }
+
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+
+    if ($process.ExitCode -eq 0) {
+      $null = $stdout
+      return $true
+    }
+
+    if (
+      $stderr -match 'Could not resolve to a Repository' -or
+      $stderr -match 'HTTP 404' -or
+      $stderr -match 'Not Found'
+    ) {
+      return $false
+    }
+
+    throw "Failed to check repository $Repository. gh stderr: $stderr"
+  }
+  finally {
+    $process.Dispose()
+  }
 }
 
 function Set-GhRepositorySecretExact {
