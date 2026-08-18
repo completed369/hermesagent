@@ -1,8 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import type { PrismaConfig } from 'prisma';
-import { env } from 'prisma/config';
+import { defineConfig, env } from 'prisma/config';
 
-export default {
+export default defineConfig({
   experimental: {
     adapter: true,
   },
@@ -17,4 +16,4 @@ export default {
   async adapter() {
     return new PrismaPg({ connectionString: env('DATABASE_URL') });
   },
-} satisfies PrismaConfig;
+});
