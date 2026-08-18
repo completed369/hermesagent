@@ -1,0 +1,73 @@
+name: Runtime base candidate scan
+
+'on':
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile.staging'
+      - '.github/workflows/runtime-base-candidate-scan.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-scan:
+    name: Scan current Debian 13 Node 22 runtime candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve current linux/amd64 Distroless candidate to immutable digest
+        id: candidate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tag='gcr.io/distroless/nodejs22-debian13:latest-amd64'
+          docker pull --platform linux/amd64 "$tag"
+          candidate="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
+          [[ "$candidate" =~ ^gcr\.io/distroless/nodejs22-debian13@sha256:[0-9a-f]{64}$ ]]
+          printf '%s\n' "$candidate" | tee /tmp/runtime-base-candidate.txt
+          echo "ref=$candidate" >> "$GITHUB_OUTPUT"
+          printf 'CANDIDATE_REF=%s\n' "$candidate"
+
+      - name: Generate complete vulnerability evidence
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.candidate.outputs.ref }}
+          scanners: vuln
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          format: json
+          output: /tmp/runtime-base-candidate.trivy.json
+          exit-code: '0'
+
+      - name: Apply release-equivalent vulnerability, secret, and EOL gate
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ steps.candidate.outputs.ref }}
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+        run: |
+          set -Eeuo pipefail
+          trivy image \
+            "$CANDIDATE_REF" \
+            --scanners vuln,secret \
+            --image-config-scanners secret \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed=false \
+            --exit-on-eol 1 \
+            --exit-code 1
+
+      - name: Preserve candidate digest and scan evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: runtime-base-candidate-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/runtime-base-candidate.txt
+            /tmp/runtime-base-candidate.trivy.json
+          if-no-files-found: error
+          retention-days: 30
