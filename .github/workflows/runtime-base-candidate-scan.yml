@@ -5,6 +5,7 @@ name: Runtime base candidate scan
     branches: [main]
     paths:
       - 'Dockerfile.staging'
+      - '.github/candidates/**'
       - '.github/workflows/runtime-base-candidate-scan.yml'
 
 permissions:
@@ -107,5 +108,79 @@ jobs:
           path: |
             /tmp/node-source.candidate.txt
             /tmp/node-runtime-closure.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  composed-runtime:
+    name: Build and gate partly-static Node on base-nossl
+    needs: [substrate-scan, node-closure]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout candidate branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build evidence-only runtime candidate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file .github/candidates/Dockerfile.node22-partly-static \
+            --tag "local/ventureos-node-runtime:${GITHUB_SHA}" \
+            --progress plain \
+            .
+
+      - name: Verify runtime, embedded OpenSSL, crypto, and ELF closure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          image="local/ventureos-node-runtime:${GITHUB_SHA}"
+          test "$(docker run --rm "$image" --version)" = 'v22.23.2'
+          test "$(docker run --rm "$image" -p 'process.versions.openssl')" = '3.5.7'
+          test "$(docker run --rm "$image" -e \"process.stdout.write(require('crypto').createHash('sha256').update('ventureos').digest('hex'))\")" = 'b1eb3f846d94d0552ae2237675108993144782216f72d8c88d09a1dbdd398e91'
+
+          cid="$(docker create "$image")"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          docker cp "$cid:/nodejs/bin/node" /tmp/node-partly-static
+          readelf -d /tmp/node-partly-static | tee /tmp/node-partly-static.readelf.txt
+          ! grep -Eq 'libssl\.so|libcrypto\.so|libstdc\+\+\.so|libgcc_s\.so' /tmp/node-partly-static.readelf.txt
+          grep -q 'libc\.so\.6' /tmp/node-partly-static.readelf.txt
+
+      - name: Generate complete candidate vulnerability evidence
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: local/ventureos-node-runtime:${{ github.sha }}
+          scanners: vuln
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          format: json
+          output: /tmp/node-partly-static.trivy.json
+          exit-code: '0'
+
+      - name: Apply unchanged release-equivalent security gate
+        shell: bash
+        env:
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+        run: |
+          set -Eeuo pipefail
+          trivy image \
+            "local/ventureos-node-runtime:${GITHUB_SHA}" \
+            --scanners vuln,secret \
+            --image-config-scanners secret \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed=false \
+            --exit-on-eol 1 \
+            --exit-code 1
+
+      - name: Preserve composed runtime evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: node-partly-static-runtime-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/node-partly-static.readelf.txt
+            /tmp/node-partly-static.trivy.json
           if-no-files-found: error
           retention-days: 30
