@@ -1,5 +1,7 @@
 # VentureOS Agent Operator Control Plane
 
+<!-- prettier-ignore-start -->
+
 ## Purpose
 
 This control plane removes routine founder relay work without giving any agent blanket
@@ -221,3 +223,5 @@ Every external mutation must be attributable to:
 - rollback/recovery path.
 
 If any of those cannot be established, the automation should stop rather than improvise.
+
+<!-- prettier-ignore-end -->
