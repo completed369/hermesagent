@@ -1,9 +1,8 @@
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = join(process.cwd(), 'deploy', 'public-landing');
-const requiredFiles = ['index.html', 'styles.css', '404.html', '_headers', 'README.md'];
-const publicFiles = ['index.html', 'styles.css', '404.html', '_headers'];
+const publicFiles = ['404.html', '_headers', 'index.html', 'styles.css'];
 
 const prohibited = [
   /api-staging\.ventureos\.site/i,
@@ -43,7 +42,20 @@ function readRequired(file) {
   }
 }
 
-const contents = new Map(requiredFiles.map((file) => [file, readRequired(file)]));
+let actualFiles = [];
+try {
+  actualFiles = readdirSync(root).sort();
+} catch (error) {
+  fail(`cannot read public landing directory: ${error.message}`);
+}
+
+if (JSON.stringify(actualFiles) !== JSON.stringify(publicFiles)) {
+  fail(
+    `public landing directory must contain exactly ${publicFiles.join(', ')}; found ${actualFiles.join(', ')}`,
+  );
+}
+
+const contents = new Map(publicFiles.map((file) => [file, readRequired(file)]));
 
 const index = contents.get('index.html') ?? '';
 for (const requiredText of ['VentureOS', 'Development in progress']) {
