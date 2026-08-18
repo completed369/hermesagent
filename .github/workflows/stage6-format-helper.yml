@@ -1,0 +1,37 @@
+name: Stage6 format helper
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/cli/stage6-preapproval-operator.ts'
+      - 'docs/stage6/pet-sitting-pilot-input.json'
+      - '.github/workflows/stage6-format-helper.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  format-preview:
+    if: github.event.pull_request.head.ref == 'feat/stage6-preapproval-operator'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: corepack enable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Print exact formatted files
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --write apps/api/src/cli/stage6-preapproval-operator.ts docs/stage6/pet-sitting-pilot-input.json >/dev/null
+          echo '===BEGIN_STAGE6_OPERATOR_TS==='
+          cat apps/api/src/cli/stage6-preapproval-operator.ts
+          echo '===END_STAGE6_OPERATOR_TS==='
+          echo '===BEGIN_STAGE6_PILOT_JSON==='
+          cat docs/stage6/pet-sitting-pilot-input.json
+          echo '===END_STAGE6_PILOT_JSON==='
