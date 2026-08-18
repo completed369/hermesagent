@@ -1,0 +1,60 @@
+name: Operator bootstrap check
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/bootstrap-agent-operator.ps1'
+      - '.github/workflows/operator-bootstrap-check.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/bootstrap-agent-operator.ps1'
+      - '.github/workflows/operator-bootstrap-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-parse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Parse bootstrap script and reject embedded credentials
+        shell: pwsh
+        run: |
+          $scriptPath = (Resolve-Path 'scripts/bootstrap-agent-operator.ps1').Path
+          $tokens = $null
+          $parseErrors = $null
+
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object {
+              Write-Error ("PowerShell parse error at {0}:{1}: {2}" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message)
+            }
+            throw 'bootstrap-agent-operator.ps1 contains PowerShell syntax errors.'
+          }
+
+          $content = Get-Content -Raw -LiteralPath $scriptPath
+          $prohibited = @(
+            'ghp_[A-Za-z0-9_]{20,}',
+            'github_pat_[A-Za-z0-9_]{20,}',
+            'sk_(live|test)_[A-Za-z0-9]{20,}',
+            'CLOUDFLARE_API_TOKEN\s*=\s*["''][^$]'
+          )
+
+          foreach ($pattern in $prohibited) {
+            if ($content -match $pattern) {
+              throw "Bootstrap script contains a prohibited credential-like pattern: $pattern"
+            }
+          }
+
+          Write-Host 'OPERATOR_BOOTSTRAP_PARSE=PASS'
