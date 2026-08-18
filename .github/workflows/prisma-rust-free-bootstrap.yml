@@ -1,0 +1,128 @@
+name: Prisma Rust-free branch bootstrap
+
+'on':
+  push:
+    branches:
+      - fix/prisma-rust-free-runtime
+    paths:
+      - 'packages/database/package.json'
+      - '.github/workflows/prisma-rust-free-bootstrap.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout remediation branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: fix/prisma-rust-free-runtime
+          fetch-depth: 0
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Apply contained Prisma 6.18 JS-engine migration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          schema = Path('packages/database/prisma/schema.prisma')
+          text = schema.read_text()
+          old = 'generator client {\n  provider = "prisma-client-js"\n}'
+          new = 'generator client {\n  provider   = "prisma-client-js"\n  engineType = "client"\n}'
+          if old not in text and new not in text:
+              raise SystemExit('unexpected Prisma generator block')
+          text = text.replace(old, new, 1)
+          schema.write_text(text)
+
+          client = Path('packages/database/src/client.ts')
+          client.write_text("""import { PrismaPg } from '@prisma/adapter-pg';
+          import { PrismaClient } from '@prisma/client';
+
+          declare global {
+            // eslint-disable-next-line no-var
+            var __ventureosPrisma: PrismaClient | undefined;
+          }
+
+          const connectionString = process.env.DATABASE_URL;
+          if (!connectionString) {
+            throw new Error('DATABASE_URL is required to initialize Prisma');
+          }
+
+          const createPrismaClient = (): PrismaClient =>
+            new PrismaClient({
+              adapter: new PrismaPg({ connectionString }),
+              log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+            });
+
+          /**
+           * Singleton Prisma client. Reused across hot reloads in dev to avoid
+           * exhausting Postgres connections.
+           */
+          export const prisma: PrismaClient = globalThis.__ventureosPrisma ?? createPrismaClient();
+
+          if (process.env.NODE_ENV !== 'production') {
+            globalThis.__ventureosPrisma = prisma;
+          }
+          """)
+
+          config = Path('packages/database/prisma.config.ts')
+          config.write_text("""import type { PrismaConfig } from 'prisma';
+          import { PrismaPg } from '@prisma/adapter-pg';
+          import { env } from 'prisma/config';
+
+          export default {
+            experimental: {
+              adapter: true,
+            },
+            engine: 'js',
+            schema: 'prisma/schema.prisma',
+            migrations: {
+              path: 'prisma/migrations',
+            },
+            datasource: {
+              url: env('DATABASE_URL'),
+            },
+            async adapter() {
+              return new PrismaPg({ connectionString: env('DATABASE_URL') });
+            },
+          } satisfies PrismaConfig;
+          """)
+          PY
+
+      - name: Regenerate lockfile and validate Prisma generation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm install --lockfile-only
+          pnpm install --frozen-lockfile
+          pnpm db:generate
+          pnpm --filter @ventureos/database typecheck
+
+      - name: Commit generated remediation inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/database/package.json packages/database/prisma/schema.prisma packages/database/prisma.config.ts packages/database/src/client.ts pnpm-lock.yaml
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No generated changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix(database): enable Rust-free Prisma runtime'
+          git push origin HEAD:fix/prisma-rust-free-runtime
