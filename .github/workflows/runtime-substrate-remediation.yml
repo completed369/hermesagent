@@ -4,15 +4,15 @@ name: Runtime substrate remediation evidence
   pull_request:
     branches: [main]
     paths:
-      - '.github/candidates/Dockerfile.node22-cc'
+      - '.github/candidates/Dockerfile.nossl-libgcc'
       - '.github/workflows/runtime-substrate-remediation.yml'
 
 permissions:
   contents: read
 
 jobs:
-  node-on-cc:
-    name: Gate Node 22 on Distroless cc Debian 13
+  nossl-libgcc:
+    name: Gate base-nossl plus provenanced libgcc
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -21,77 +21,50 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install pinned Trivy
+      - name: Install pinned Trivy action implementation
         uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
 
-      - name: Resolve cc substrate to immutable linux/amd64 digest
-        id: substrate
+      - name: Build no-ssl libgcc candidate
         shell: bash
         run: |
           set -Eeuo pipefail
-          tag='gcr.io/distroless/cc-debian13:latest-amd64'
-          docker pull --platform linux/amd64 "$tag"
-          ref="$(docker image inspect --format '{{index .RepoDigests 0}}' "$tag")"
-          [[ "$ref" =~ ^gcr\.io/distroless/cc-debian13@sha256:[0-9a-f]{64}$ ]]
-          printf '%s\n' "$ref" | tee /tmp/cc-base.ref
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          docker build \
+            --file .github/candidates/Dockerfile.nossl-libgcc \
+            --tag "local/ventureos-nossl-libgcc:${GITHUB_SHA}" \
+            .
 
-      - name: Gate cc substrate unchanged
+      - name: Verify library and Debian package provenance are present
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          image="local/ventureos-nossl-libgcc:${GITHUB_SHA}"
+          cid="$(docker create "$image")"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          docker cp "$cid:/usr/lib/x86_64-linux-gnu/libgcc_s.so.1" /tmp/libgcc_s.so.1
+          docker cp "$cid:/var/lib/dpkg/status.d/libgcc-s1" /tmp/libgcc-s1.status
+          test -s /tmp/libgcc_s.so.1
+          test -s /tmp/libgcc-s1.status
+          grep -q '^Package: libgcc-s1$' /tmp/libgcc-s1.status
+
+      - name: Generate complete vulnerability evidence
         shell: bash
         env:
-          CC_BASE: ${{ steps.substrate.outputs.ref }}
           TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
         run: |
           set -Eeuo pipefail
           trivy image \
-            "$CC_BASE" \
-            --scanners vuln,secret \
-            --image-config-scanners secret \
-            --severity HIGH,CRITICAL \
+            "local/ventureos-nossl-libgcc:${GITHUB_SHA}" \
+            --scanners vuln \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
             --ignore-unfixed=false \
-            --exit-on-eol 1 \
-            --exit-code 1
-
-      - name: Build immutable composed runtime candidate
-        shell: bash
-        env:
-          CC_BASE: ${{ steps.substrate.outputs.ref }}
-        run: |
-          set -Eeuo pipefail
-          docker build \
-            --file .github/candidates/Dockerfile.node22-cc \
-            --build-arg "CC_BASE=$CC_BASE" \
-            --tag "local/ventureos-node-cc:${GITHUB_SHA}" \
-            .
-
-      - name: Verify Node crypto and runtime closure
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          image="local/ventureos-node-cc:${GITHUB_SHA}"
-          test "$(docker run --rm "$image" --version)" = 'v22.23.2'
-          test "$(docker run --rm "$image" -p 'process.versions.openssl')" = '3.5.7'
-          test "$(docker run --rm "$image" -e "process.stdout.write(require('crypto').createHash('sha256').update('ventureos').digest('hex'))")" = '0d5373daa1fcbf607472fb04bd6d3b5f3a62565a3944a09ebce10bb17534d495'
-
-          cid="$(docker create "$image")"
-          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
-          docker cp "$cid:/nodejs/bin/node" /tmp/node
-          readelf -d /tmp/node | tee /tmp/node.readelf.txt
-          ! grep -Eq 'libssl\.so|libcrypto\.so' /tmp/node.readelf.txt
-          grep -q 'libstdc++\.so' /tmp/node.readelf.txt
-          grep -q 'libgcc_s\.so' /tmp/node.readelf.txt
-          grep -q 'libc\.so' /tmp/node.readelf.txt
-
-      - name: Generate complete vulnerability evidence
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: local/ventureos-node-cc:${{ github.sha }}
-          scanners: vuln
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          ignore-unfixed: false
-          format: json
-          output: /tmp/node-cc.trivy.json
-          exit-code: '0'
+            --format json \
+            --output /tmp/nossl-libgcc.trivy.json \
+            --exit-code 0
+          jq -e '[.Results[]?.Packages[]? | select(.Name == "libgcc-s1")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null
+          if jq -e '[.Results[]?.Packages[]? | select(.Name == "libssl3t64")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null; then
+            echo 'Unexpected libssl3t64 package in no-ssl candidate.' >&2
+            exit 1
+          fi
 
       - name: Apply unchanged release-equivalent security gate
         shell: bash
@@ -100,7 +73,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           trivy image \
-            "local/ventureos-node-cc:${GITHUB_SHA}" \
+            "local/ventureos-nossl-libgcc:${GITHUB_SHA}" \
             --scanners vuln,secret \
             --image-config-scanners secret \
             --severity HIGH,CRITICAL \
@@ -112,10 +85,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: node-cc-runtime-${{ github.event.pull_request.head.sha }}
+          name: nossl-libgcc-runtime-${{ github.event.pull_request.head.sha }}
           path: |
-            /tmp/cc-base.ref
-            /tmp/node.readelf.txt
-            /tmp/node-cc.trivy.json
-          if-no-files-found: error
+            /tmp/libgcc-s1.status
+            /tmp/nossl-libgcc.trivy.json
+          if-no-files-found: warn
           retention-days: 30
