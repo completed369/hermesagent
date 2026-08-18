@@ -19,8 +19,10 @@ Add environment secrets:
 - `CLOUDFLARE_ACCOUNT_ID`
 
 The Cloudflare token for this phase should be scoped to the account that owns
-`ventureos-public`. Grant only the permission required to edit/deploy Workers. Do not grant DNS,
-Access, billing, account-administration, or unrelated zone permissions to this token.
+`ventureos-public`. Grant **Account → Workers Scripts Write** only for this first deployment
+boundary. Do not grant DNS, Workers Routes, Zero Trust/Access, billing, account-administration,
+KV, R2, AI, or unrelated zone/account permissions unless a future reviewed workflow proves they
+are required.
 
 The reviewed workflow hardcodes the target Worker name and does not mutate Custom Domains or
 Access configuration.
