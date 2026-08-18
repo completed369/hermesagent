@@ -1,0 +1,169 @@
+{
+  "pilot": {
+    "title": "Pet Sitting Business Operations Tracker for Solo Operators — Stage 6 Pilot",
+    "description": "A digital spreadsheet/template bundle for solo and very small pet-sitting or dog-walking businesses that need one structured place to manage client and pet records, service rates, bookings and visits, payments and unpaid balances, expenses and mileage, follow-up tasks, and a compact operating dashboard. The pilot deliberately excludes legal contracts, tax or legal advice, veterinary or medical decision support, and any compliance guarantee.",
+    "suggestedProductType": "DIGITAL_TEMPLATE_BUNDLE",
+    "suggestedMarketplace": "etsy",
+    "estimatedCostEur": 60,
+    "estimatedRevenueEur": 240,
+    "timeToLaunchDays": 7,
+    "risks": [
+      "Current evidence establishes a real pet-care operator market and current competing spreadsheet offers, but does not prove demand for this exact product before a genuine sales test.",
+      "The Etsy niche has multiple current competing business trackers, so differentiation and listing execution matter.",
+      "Revenue and cost figures are planning assumptions, not observed commercial outcomes.",
+      "The product must stay within organization/business tracking and must not drift into legal, tax, veterinary, medical, or compliance advice."
+    ],
+    "targetCustomer": {
+      "persona": "A solo pet sitter, dog walker, or very small independent pet-care operator who personally manages recurring client and pet information, bookings/visits, rates, payments, expenses, mileage, and follow-up work.",
+      "painPoints": [
+        "Operational information is easily split across messages, notes, calendars, payment records, and ad-hoc spreadsheets.",
+        "The operator needs a simple way to see upcoming work, completed visits, paid/unpaid balances, expenses, mileage, and basic profit in one workflow.",
+        "A solo operator may prefer a one-time spreadsheet/toolkit over another recurring software subscription."
+      ],
+      "buyingTriggers": [
+        "Growing number of recurring clients or visits",
+        "Difficulty tracking unpaid jobs or business expenses",
+        "Need to consolidate client, pet, booking, and financial records",
+        "Preference for an offline or low-overhead business administration tool"
+      ]
+    },
+    "channels": [
+      {
+        "channel": "Etsy organic search",
+        "rationale": "Current Etsy listings demonstrate an active category of pet-sitting and dog-walking business spreadsheets and toolkits. The pilot can be validated without paid advertising first.",
+        "priority": 100
+      },
+      {
+        "channel": "Founder-led manual outreach / operator interviews",
+        "rationale": "Direct qualitative feedback can validate workflow pain points and product usefulness before any paid acquisition is authorized.",
+        "priority": 80
+      }
+    ],
+    "evidence": [
+      {
+        "sourceName": "Pet Sitters International — 2026 State of the Industry statistics",
+        "sourceType": "PERMITTED_BROWSER_RESEARCH",
+        "sourceIdentifier": "https://www.petsit.com/industry-stats-and-facts",
+        "retrievedAt": "2026-08-18T17:29:00.000Z",
+        "freshnessRequirementHours": 2160,
+        "region": "United States",
+        "language": "en",
+        "collectionMethod": "MANUAL_IMPORT",
+        "originalExcerpt": "PSI's 2026 survey reports 2025 average U.S. member-business gross revenue of $112,423, up from $100,537 in 2023.",
+        "relevanceScore": 96,
+        "termsOfUseNote": "Public industry-statistics webpage manually reviewed for factual research; no personal data collected.",
+        "personalDataClassification": "NONE",
+        "claimType": "VERIFIED_FACT",
+        "statement": "PSI's 2026 industry survey reports meaningful operating scale and revenue in professional pet-sitting businesses, supporting the existence of a real target-customer market."
+      },
+      {
+        "sourceName": "American Pet Products Association — 2026 State of the Industry",
+        "sourceType": "PERMITTED_BROWSER_RESEARCH",
+        "sourceIdentifier": "https://americanpetproducts.org/2026-state-of-the-industry",
+        "retrievedAt": "2026-08-18T17:29:00.000Z",
+        "freshnessRequirementHours": 2160,
+        "region": "United States",
+        "language": "en",
+        "collectionMethod": "MANUAL_IMPORT",
+        "originalExcerpt": "APPA reports U.S. pet-industry expenditures of $158 billion in 2025, projected at $165 billion in 2026, with 95 million pet-owning households in 2025.",
+        "relevanceScore": 75,
+        "termsOfUseNote": "Public industry report page manually reviewed for high-level market context; no personal data collected.",
+        "personalDataClassification": "NONE",
+        "claimType": "VERIFIED_FACT",
+        "statement": "The broader U.S. pet economy remains large and growing, providing market context for businesses serving pet owners."
+      },
+      {
+        "sourceName": "Etsy listing — Pet Sitting Client Tracker Spreadsheet",
+        "sourceType": "PERMITTED_BROWSER_RESEARCH",
+        "sourceIdentifier": "https://www.etsy.com/listing/4544896007/pet-sitting-client-tracker-spreadsheet",
+        "retrievedAt": "2026-08-18T17:29:00.000Z",
+        "freshnessRequirementHours": 720,
+        "language": "en",
+        "collectionMethod": "MANUAL_IMPORT",
+        "originalExcerpt": "A current $11.99 digital workbook listing covers clients and pets, bookings, paid/unpaid status, expenses, mileage, and a business dashboard.",
+        "relevanceScore": 95,
+        "termsOfUseNote": "Public marketplace listing manually reviewed as competitive/category evidence; no buyer or seller personal data retained.",
+        "personalDataClassification": "NONE",
+        "claimType": "VERIFIED_FACT",
+        "statement": "A current Etsy competitor offers a pet-sitting business spreadsheet with the same core operational categories, demonstrating direct category competition and comparable feature expectations."
+      },
+      {
+        "sourceName": "Etsy listing — Pet Sitting Business Spreadsheet / Dog Walking Booking Tracker",
+        "sourceType": "PERMITTED_BROWSER_RESEARCH",
+        "sourceIdentifier": "https://www.etsy.com/listing/4529359949/pet-sitting-business-spreadsheet-dog",
+        "retrievedAt": "2026-08-18T17:29:00.000Z",
+        "freshnessRequirementHours": 720,
+        "language": "en",
+        "collectionMethod": "MANUAL_IMPORT",
+        "originalExcerpt": "A current $19.99 workbook listing includes client/pet records, services, bookings, visits, invoices/payments, expenses, mileage, and a weekly dashboard for solo operators and small teams.",
+        "relevanceScore": 95,
+        "termsOfUseNote": "Public marketplace listing manually reviewed as competitive/category evidence; no buyer or seller personal data retained.",
+        "personalDataClassification": "NONE",
+        "claimType": "VERIFIED_FACT",
+        "statement": "A second current Etsy competitor confirms that integrated booking, visit, payment, expense, mileage, and dashboard workflows are established features in this digital-product niche."
+      },
+      {
+        "sourceName": "Etsy Help — Fees and Taxes for Selling on Etsy",
+        "sourceType": "PERMITTED_BROWSER_RESEARCH",
+        "sourceIdentifier": "https://help.etsy.com/hc/en-us/articles/115014483627-What-are-the-Fees-and-Taxes-for-Selling-on-Etsy",
+        "retrievedAt": "2026-08-18T17:29:00.000Z",
+        "freshnessRequirementHours": 2160,
+        "language": "en",
+        "collectionMethod": "MANUAL_IMPORT",
+        "originalExcerpt": "Etsy currently states a $0.20 USD listing fee and a 6.5% transaction fee on the total order amount, with payment processing charged separately.",
+        "relevanceScore": 90,
+        "termsOfUseNote": "Official Etsy Help page manually reviewed for current marketplace-fee assumptions; no personal data collected.",
+        "personalDataClassification": "NONE",
+        "claimType": "VERIFIED_FACT",
+        "statement": "Etsy's current published listing and transaction fees provide authoritative marketplace-cost inputs for pilot planning."
+      },
+      {
+        "sourceName": "Etsy Help — Payment Processing Fees",
+        "sourceType": "PERMITTED_BROWSER_RESEARCH",
+        "sourceIdentifier": "https://help.etsy.com/hc/en-gb/articles/115015628847-What-are-Payment-Processing-Fees-for-Selling-on-Etsy",
+        "retrievedAt": "2026-08-18T17:29:00.000Z",
+        "freshnessRequirementHours": 2160,
+        "region": "Cyprus",
+        "language": "en",
+        "collectionMethod": "MANUAL_IMPORT",
+        "originalExcerpt": "Etsy's current country table lists Cyprus Etsy Payments processing at 4% of the sale price plus €0.30 per order.",
+        "relevanceScore": 90,
+        "termsOfUseNote": "Official Etsy Help page manually reviewed for Cyprus payment-processing assumptions; no personal data collected.",
+        "personalDataClassification": "NONE",
+        "claimType": "VERIFIED_FACT",
+        "statement": "The current Cyprus Etsy Payments processing rate is published by Etsy and can be used as a high-confidence fee assumption for the pilot."
+      }
+    ],
+    "opportunityFactors": {
+      "demand": 72,
+      "trendStrength": 78,
+      "competitionAttractiveness": 58,
+      "expectedMargin": 82,
+      "productDifferentiation": 65,
+      "productionFeasibility": 90,
+      "organicMarketingPotential": 70,
+      "marketplacePolicyRisk": 90,
+      "intellectualPropertyRisk": 95,
+      "evidenceConfidence": 80,
+      "timeToLaunch": 90
+    },
+    "profitConfidenceFactors": {
+      "sampleSize": 65,
+      "costCertainty": 75,
+      "marketplaceFeeCertainty": 95,
+      "comparableProductQuality": 75,
+      "forecastRangeWidth": 60,
+      "historicalModelAccuracy": 40,
+      "channelMaturity": 85,
+      "assumptionSensitivity": 60
+    }
+  },
+  "compliance": {
+    "declaredCategories": [
+      "pet sitting business operations",
+      "digital spreadsheet template"
+    ],
+    "thirdPartyTrademarksPresent": false,
+    "copyrightedStockWithoutLicence": false
+  }
+}
