@@ -1,5 +1,7 @@
 # Agent Operator Bootstrap
 
+<!-- prettier-ignore-start -->
+
 This is the one-time setup required before agents can stop relying on the founder as a command
 relay.
 
@@ -137,3 +139,5 @@ Before setting `VENTUREOS_PROGRESS_DEPLOY_ENABLED=true`:
 
 After these checks, routine progress-site deployment can become agent-driven rather than
 founder-relayed.
+
+<!-- prettier-ignore-end -->
