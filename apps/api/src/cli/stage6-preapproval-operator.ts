@@ -52,8 +52,8 @@ export function assertStage6ScoreThresholds(scores: Record<ScoreType, number>): 
 
 export function assertStage6BoardOutcome(review: {
   status: string;
-  meetsThreshold: boolean;
-  blocked: boolean;
+  meetsThreshold: boolean | null;
+  blocked: boolean | null;
 }): void {
   if (review.status !== 'COMPLETED') {
     throw new Stage6OperatorGateError(
@@ -62,7 +62,7 @@ export function assertStage6BoardOutcome(review: {
       `Board review status is ${review.status}`,
     );
   }
-  if (!review.meetsThreshold || review.blocked) {
+  if (review.meetsThreshold !== true || review.blocked !== false) {
     throw new Stage6OperatorGateError(
       'GATE_2_BOARD',
       'BOARD_GATE_NOT_MET',
@@ -215,8 +215,8 @@ async function waitForBoardAndApproval(params: {
         approvalRequestId: approval.id,
         approvalState: approval.state,
         boardStatus: board.status,
-        meetsThreshold: board.meetsThreshold,
-        blocked: board.blocked,
+        meetsThreshold: board.meetsThreshold === true,
+        blocked: board.blocked === true,
       };
     }
 
