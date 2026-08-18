@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1.7
+
+# Evidence-only candidate. This file is not used by production/staging builds.
+FROM node:22-trixie-slim@sha256:db8a96a63e5264607ada2d206758876ebbed6a12be2ada7517793cbfb0c2a29c AS node-build
+USER root
+RUN apt-get update \
+ && apt-get install --yes --no-install-recommends python3 make g++ xz-utils \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /usr/src/node
+ADD --checksum=sha256:bbe768df8d5815d7fa76124052985332452e0a4742d39f32027550d1aab8f6fb \
+  https://nodejs.org/dist/v22.23.2/node-v22.23.2.tar.xz /tmp/node.tar.xz
+RUN tar --extract --xz --file=/tmp/node.tar.xz --strip-components=1 --directory=/usr/src/node \
+ && ./configure --partly-static \
+ && make -j2
+
+FROM gcr.io/distroless/base-nossl-debian13@sha256:caa5ae9098199275fb38b6bd62aa1c3ec240119907df634a55cc6f1d52668dab
+COPY --from=node-build /usr/src/node/out/Release/node /nodejs/bin/node
+USER 65532:65532
+ENTRYPOINT ["/nodejs/bin/node"]
+CMD ["--version"]
