@@ -1,0 +1,84 @@
+name: Prisma runtime closure
+
+'on':
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/database/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/prisma-runtime-closure.yml'
+      - '.github/candidates/**'
+      - '.github/workflows/runtime-base-candidate-scan.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prisma-closure:
+    name: Inspect pinned Prisma native engine dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frozen workspace and generate Prisma client
+        run: |
+          set -Eeuo pipefail
+          pnpm install --frozen-lockfile
+          pnpm db:generate
+
+      - name: Record native Prisma engine ELF closure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t engines < <(find node_modules packages -type f \( \
+            -name 'libquery_engine*.so.node' -o \
+            -name 'schema-engine*' -o \
+            -name 'query-engine*' \
+          \) -print 2>/dev/null | sort -u)
+          test "${#engines[@]}" -gt 0
+          : > /tmp/prisma-native-engine-closure.txt
+          for engine in "${engines[@]}"; do
+            if file "$engine" | grep -q 'ELF'; then
+              printf '\n===== %s =====\n' "$engine" | tee -a /tmp/prisma-native-engine-closure.txt
+              file "$engine" | tee -a /tmp/prisma-native-engine-closure.txt
+              readelf -d "$engine" | grep -E 'NEEDED|RUNPATH|RPATH' | tee -a /tmp/prisma-native-engine-closure.txt || true
+              ldd "$engine" | tee -a /tmp/prisma-native-engine-closure.txt || true
+            fi
+          done
+          grep -q 'libc\.so' /tmp/prisma-native-engine-closure.txt
+
+      - name: Summarize system runtime dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -Eo 'lib(ssl|crypto|z|gcc_s|stdc\+\+|c|m|pthread|dl)[^ ]*\.so[^ ]*' \
+            /tmp/prisma-native-engine-closure.txt | sort -u | tee /tmp/prisma-system-libs.txt || true
+          printf 'PRISMA_REQUIRES_SYSTEM_OPENSSL='
+          if grep -Eq 'libssl|libcrypto' /tmp/prisma-native-engine-closure.txt; then
+            echo true
+          else
+            echo false
+          fi
+
+      - name: Preserve closure evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: prisma-runtime-closure-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/prisma-native-engine-closure.txt
+            /tmp/prisma-system-libs.txt
+          if-no-files-found: error
+          retention-days: 30
