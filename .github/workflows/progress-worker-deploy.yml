@@ -26,7 +26,6 @@ on:
 
 permissions:
   contents: read
-  deployments: write
 
 concurrency:
   group: ventureos-progress-worker-deploy
@@ -124,6 +123,9 @@ jobs:
       (vars.VENTUREOS_PROGRESS_DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      deployments: write
     environment:
       name: public-command-center
       url: https://progress.ventureos.site
@@ -138,7 +140,7 @@ jobs:
         run: node scripts/validate-public-landing.mjs
 
       - name: Deploy static assets to approved Worker
-        uses: cloudflare/wrangler-action@v4.0.0
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
