@@ -1,0 +1,192 @@
+name: Deploy VentureOS progress Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'deploy/public-landing/**'
+      - 'scripts/validate-public-landing.mjs'
+      - '.github/workflows/progress-worker-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact protected-main SHA to deploy
+        required: true
+        type: string
+      deploy_authorized:
+        description: Explicitly authorize this bounded progress Worker deployment
+        required: true
+        default: false
+        type: boolean
+      authorization_phrase:
+        description: Type DEPLOY-PROGRESS-WORKER
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ventureos-progress-worker-deploy
+  cancel-in-progress: false
+
+env:
+  TARGET_WORKER: ventureos-public
+  WRANGLER_VERSION: '4.115.0'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+    steps:
+      - name: Resolve requested source
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SHA: ${{ inputs.source_sha }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            source_sha="$DISPATCH_SHA"
+          else
+            source_sha="$PUSH_SHA"
+          fi
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid source SHA"
+            exit 1
+          fi
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.source.outputs.source_sha }}
+          fetch-depth: 1
+
+      - name: Verify protected-main source and authorization boundary
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          DEPLOY_AUTHORIZED: ${{ inputs.deploy_authorized }}
+          AUTHORIZATION_PHRASE: ${{ inputs.authorization_phrase }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          remote_main="$(git rev-parse origin/main)"
+          local_head="$(git rev-parse HEAD)"
+
+          test "$SOURCE_SHA" = "$local_head"
+          test "$SOURCE_SHA" = "$remote_main"
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            test "$GITHUB_REF" = "refs/heads/main"
+            test "$DEPLOY_AUTHORIZED" = "true"
+            test "$AUTHORIZATION_PHRASE" = "DEPLOY-PROGRESS-WORKER"
+          fi
+
+      - name: Validate public static artifact
+        run: node scripts/validate-public-landing.mjs
+
+      - name: Verify exact public artifact allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(printf '%s\n' 404.html _headers index.html styles.css | sort)"
+          actual="$(find deploy/public-landing -maxdepth 1 -type f -printf '%f\n' | sort)"
+          test "$actual" = "$expected"
+
+      - name: Record validation summary
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+        run: |
+          {
+            echo '### Progress Worker deployment preflight'
+            echo
+            echo "- Source: \`$SOURCE_SHA\`"
+            echo "- Worker: \`$TARGET_WORKER\`"
+            echo '- Static artifact validation: PASS'
+            echo '- DNS / Custom Domain / Access mutation: NOT IN SCOPE'
+            echo '- VPS / private staging / production mutation: NOT IN SCOPE'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: validate
+    if: >-
+      needs.validate.result == 'success' &&
+      (vars.VENTUREOS_PROGRESS_DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      deployments: write
+    environment:
+      name: public-command-center
+      url: https://progress.ventureos.site
+    steps:
+      - name: Checkout validated source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.source_sha }}
+          fetch-depth: 1
+
+      - name: Revalidate artifact immediately before external mutation
+        run: node scripts/validate-public-landing.mjs
+
+      - name: Deploy static assets to approved Worker
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
+          command: >-
+            deploy
+            --name ${{ env.TARGET_WORKER }}
+            --assets deploy/public-landing
+            --compatibility-date 2026-08-18
+
+      - name: Create deployment evidence manifest
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          {
+            echo "source_sha=$SOURCE_SHA"
+            echo "worker=$TARGET_WORKER"
+            echo "deployed_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sha256sum \
+              deploy/public-landing/404.html \
+              deploy/public-landing/_headers \
+              deploy/public-landing/index.html \
+              deploy/public-landing/styles.css
+          } > progress-worker-deployment.txt
+
+      - name: Upload deployment evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: progress-worker-deployment-${{ needs.validate.outputs.source_sha }}
+          path: progress-worker-deployment.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record deployment boundary
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+        run: |
+          {
+            echo '### Progress Worker deployment'
+            echo
+            echo "- Source: \`$SOURCE_SHA\`"
+            echo "- Worker: \`$TARGET_WORKER\`"
+            echo '- External mutation: static Worker assets only'
+            echo '- DNS / Custom Domain / Access configuration: unchanged by this workflow'
+            echo '- VPS / private staging / production: unchanged by this workflow'
+          } >> "$GITHUB_STEP_SUMMARY"
