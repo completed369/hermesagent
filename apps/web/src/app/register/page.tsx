@@ -38,24 +38,31 @@ export default function RegisterPage() {
   }
 
   return (
-    <main
-      style={{
-        display: 'flex',
-        minHeight: '100vh',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <form
-        onSubmit={handleSubmit}
-        className="vos-card"
-        style={{ width: 380, display: 'grid', gap: 14 }}
-        data-testid="register-form"
-      >
+    <main className="vos-auth-shell">
+      <section className="vos-auth-story">
+        <Link href="/" className="vos-auth-brand">
+          <span>V</span> VentureOS
+        </Link>
+        <p className="vos-auth-kicker">Start with a clear signal</p>
+        <h1>
+          Turn an idea into
+          <br />
+          an operating venture.
+        </h1>
+        <p>
+          Create a secure workspace for your team, evidence, decisions and execution. Human approval
+          stays built in.
+        </p>
+        <a href="https://progress.ventures.site" className="vos-auth-progress">
+          See what is shipping <span>↗</span>
+        </a>
+      </section>
+      <form onSubmit={handleSubmit} className="vos-card vos-auth-card" data-testid="register-form">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Create your VentureOS workspace</h1>
-          <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, margin: '4px 0 0' }}>
-            14-day free trial -- full feature access, one venture. Upgrade any time in Settings.
+          <p className="vos-auth-kicker">Open access</p>
+          <h2>Create your workspace</h2>
+          <p className="vos-auth-copy">
+            For founders, builders, operators and venture teams. No founder-only account required.
           </p>
         </div>
 
@@ -118,7 +125,7 @@ export default function RegisterPage() {
           {loading ? 'Creating workspace...' : 'Start free trial'}
         </button>
 
-        <p style={{ fontSize: 12, color: 'var(--vos-text-muted)' }}>
+        <p className="vos-auth-switch">
           Already have a workspace? <Link href="/login">Sign in</Link>
         </p>
       </form>

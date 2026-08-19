@@ -77,7 +77,7 @@ export default function RootPage() {
             <a href="#platform">Platform</a>
             <a href="#progress">Progress</a>
             <Link href="/login" className={styles.loginLink}>
-              Founder access
+              Sign in
             </Link>
           </nav>
         </header>
@@ -89,7 +89,7 @@ export default function RootPage() {
                 <span className={styles.pulse} aria-hidden="true" />
                 Development in progress
               </span>
-              <span className={styles.betaBadge}>Private beta</span>
+              <span className={styles.betaBadge}>Open workspace access</span>
             </div>
             <p className={styles.eyebrow}>Human-controlled AI venture operations</p>
             <h1 className={styles.title}>
@@ -97,17 +97,17 @@ export default function RootPage() {
               <span className={styles.titleAccent}>Keep the authority.</span>
             </h1>
             <p className={styles.lede}>
-              VentureOS is a governed operating system for researching, validating, building and
-              operating digital ventures with an AI team — while the founder retains final control
-              over approvals, risk and spend.
+              VentureOS is a governed operating system where founders, operators, partners and teams
+              can research, validate, build and operate digital ventures with AI — with accountable
+              human control over approvals, risk and spend.
             </p>
             <div className={styles.actions}>
-              <a href="#progress" className={styles.primaryAction}>
-                View live progress
-              </a>
-              <Link href="/login" className={styles.secondaryAction}>
-                Private founder access
+              <Link href="/register" className={styles.primaryAction}>
+                Create your workspace
               </Link>
+              <a href="https://progress.ventures.site" className={styles.secondaryAction}>
+                Explore live progress ↗
+              </a>
             </div>
           </div>
 
@@ -131,7 +131,7 @@ export default function RootPage() {
                 <div className={styles.signalCard}>
                   <span className={styles.signalValue}>100%</span>
                   <span className={styles.signalLabel}>
-                    founder authority retained at gated decisions
+                    human authority retained at gated decisions
                   </span>
                 </div>
                 <div className={styles.signalCard}>
@@ -244,7 +244,10 @@ export default function RootPage() {
       <div className={styles.shell}>
         <footer className={styles.footer}>
           <span>VentureOS · Development in progress</span>
-          <Link href="/login">Founder access →</Link>
+          <span className={styles.footerLinks}>
+            <a href="https://progress.ventures.site">Progress</a>
+            <Link href="/register">Join VentureOS →</Link>
+          </span>
         </footer>
       </div>
     </main>

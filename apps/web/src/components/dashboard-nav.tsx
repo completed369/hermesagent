@@ -18,27 +18,16 @@ export const NAV_ITEMS = [
 
 export function DashboardNav() {
   return (
-    <nav style={{ display: 'grid', gap: 4, width: 220 }}>
+    <nav className="vos-dashboard-nav">
       {NAV_ITEMS.map((item) =>
         item.available ? (
-          <Link
-            key={item.label}
-            href={item.href}
-            style={{ padding: '8px 12px', borderRadius: 8, fontSize: 14, textDecoration: 'none' }}
-          >
+          <Link key={item.label} href={item.href} className="vos-dashboard-navlink">
             {item.label}
           </Link>
         ) : (
           <div
             key={item.label}
-            style={{
-              padding: '8px 12px',
-              borderRadius: 8,
-              fontSize: 14,
-              color: 'var(--vos-text-muted)',
-              display: 'flex',
-              justifyContent: 'space-between',
-            }}
+            className="vos-dashboard-navlink vos-dashboard-navlink--planned"
             title="Planned capability - not available yet"
           >
             <span>{item.label}</span>
