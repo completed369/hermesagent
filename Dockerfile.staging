@@ -69,6 +69,16 @@ RUN set -eu; \
       done; \
       test -z "$(find "$runtime/node_modules/.pnpm" -path '*/@scarf/scarf/node-compile-cache' -print -quit)"; \
     }; \
+    prune_dotenv_docs() { \
+      runtime=$1; \
+      set -- "$runtime/node_modules/.pnpm"/dotenv@*/node_modules/dotenv; \
+      test -d "$1"; \
+      for dotenv_store in "$@"; do \
+        test -d "$dotenv_store"; \
+        find "$dotenv_store" -maxdepth 1 -type f -iname 'README*' -delete; \
+      done; \
+      test -z "$(find "$runtime/node_modules/.pnpm" -path '*/node_modules/dotenv/README*' -print -quit)"; \
+    }; \
     prune_runtime_package /runtime/api '@types+node@*' '@types/node'; \
     prune_optional_runtime_package /runtime/api 'typescript@*' 'typescript'; \
     prune_runtime_package /runtime/worker '@types+node@*' '@types/node'; \
@@ -78,6 +88,7 @@ RUN set -eu; \
     prune_optional_runtime_package /runtime/tools 'typescript@*' 'typescript'; \
     prune_optional_runtime_package /runtime/web 'typescript@*' 'typescript'; \
     prune_scarf_compile_cache /runtime/api; \
+    prune_dotenv_docs /runtime/api; \
     core_bridge="$(echo /runtime/worker/node_modules/.pnpm/@temporalio+core-bridge@*/node_modules/@temporalio/core-bridge)"; \
     test -f "$core_bridge/Cargo.lock"; \
     rm -rf "$core_bridge/sdk-core" "$core_bridge/bridge-macros" \
