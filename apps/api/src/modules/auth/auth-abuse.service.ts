@@ -210,7 +210,7 @@ export class AuthAbuseService {
               ELSE "auth_abuse_states"."attemptCount" + 1
             END
           ) >= ${policy.threshold}
-            THEN ${now} + CASE LEAST("auth_abuse_states"."cooldownLevel" + 1, 3)
+            THEN CAST(${now} AS TIMESTAMP) + CASE LEAST("auth_abuse_states"."cooldownLevel" + 1, 3)
               WHEN 1 THEN INTERVAL '1 minute'
               WHEN 2 THEN INTERVAL '5 minutes'
               ELSE INTERVAL '15 minutes'
