@@ -67,11 +67,15 @@ test('all staging Docker targets use immutable bases and the minimized tools run
   const dockerfile = read('Dockerfile.staging');
   const fromLines = dockerfile.split('\n').filter((line) => line.startsWith('FROM '));
   assert.ok(fromLines.length >= 6);
+  const definedStages = new Set();
   for (const line of fromLines) {
-    const source = line.split(/\s+/)[1];
-    if (!['builder', 'deployer', 'runtime'].includes(source)) {
-      assert.match(line, /@sha256:[0-9a-f]{64}/);
+    const match = line.match(/^FROM\s+(\S+)(?:\s+AS\s+(\S+))?$/);
+    assert.ok(match, `invalid FROM instruction: ${line}`);
+    const [, source, alias] = match;
+    if (!definedStages.has(source)) {
+      assert.match(source, /@sha256:[0-9a-f]{64}$/, `external base must be pinned: ${line}`);
     }
+    if (alias) definedStages.add(alias);
   }
   assert.doesNotMatch(dockerfile, /FROM builder AS tools/);
   assert.match(dockerfile, /deploy --prod \/runtime\/tools/);
@@ -90,9 +94,19 @@ test('all staging Docker targets use immutable bases and the minimized tools run
 test('publication runtimes exclude the vulnerable build toolchain and scan-only Temporal sources', () => {
   const dockerfile = read('Dockerfile.staging');
 
-  for (const target of ['tools', 'api', 'worker', 'web', 'ingress']) {
+  for (const target of ['api', 'worker', 'web', 'ingress']) {
     assert.match(dockerfile, new RegExp(`FROM runtime AS ${target}\\b`));
   }
+  assert.match(dockerfile, /FROM tools-runtime AS tools\b/);
+  assert.match(
+    dockerfile,
+    /FROM gcr\.io\/distroless\/cc-debian12@sha256:[0-9a-f]{64} AS tools-runtime/,
+  );
+  assert.match(dockerfile, /FROM node:22-bookworm-slim@sha256:[0-9a-f]{64} AS runtime-tools-node/);
+  assert.match(
+    dockerfile,
+    /COPY --from=runtime-tools-node \/usr\/local\/bin\/node \/nodejs\/bin\/node/,
+  );
   assert.match(dockerfile, /FROM node:22-trixie-slim@sha256:[0-9a-f]{64} AS runtime-node/);
   assert.match(
     dockerfile,
