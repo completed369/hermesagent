@@ -46,7 +46,9 @@ test.describe('Workspace shell UX', () => {
     await login(page);
 
     const menu = page.getByRole('button', { name: 'Menu', exact: true });
-    const workspaceResponse = await page.request.get('/api/workspaces/current');
+    const workspaceResponse = await page.request.get(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'}/api/workspaces/current`,
+    );
     expect(workspaceResponse.ok()).toBe(true);
     const workspaceSummary = (await workspaceResponse.json()) as { workspace: { name: string } };
     await expect(page.getByTestId('mobile-workspace-name')).toHaveText(
