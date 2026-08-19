@@ -71,7 +71,8 @@ test.describe('Stage 6 opportunity intake', () => {
     ]);
 
     expect(createResponse.status()).toBe(201);
-    await expect(page).toHaveURL(/\/dashboard\/opportunities\/[0-9a-f-]+$/);
+    const created = (await createResponse.json()) as { id: string };
+    await expect(page).toHaveURL(`/dashboard/opportunities/${created.id}`);
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
     await expect(page.getByText(claim)).toBeVisible();
     await expect(page.getByText('Founder-Provided Fact')).toBeVisible();
@@ -91,11 +92,24 @@ test.describe('Stage 6 opportunity intake', () => {
     ]);
 
     expect(complianceResponse.status()).toBe(201);
-    await expect(page.getByTestId('compliance-current-result')).toContainText('PASS');
-    await expect(page.getByText('opportunity-compliance-v1')).toBeVisible();
-    await expect(page.getByText('Policy pack v1')).toBeVisible();
-    await expect(page.getByTestId('compliance-audit-id')).toContainText(
-      /Audit evidence: [0-9a-f-]+/,
+    const compliance = (await complianceResponse.json()) as {
+      auditEventId: string;
+      formulaVersion: string;
+      policyPackVersion: string;
+      result: string;
+    };
+    expect(compliance).toMatchObject({
+      formulaVersion: 'opportunity-compliance-v1',
+      policyPackVersion: 'v1',
+      result: 'PASS',
+    });
+    await expect(page.getByTestId('compliance-current-result')).toHaveText(
+      `Gate 1: ${compliance.result}`,
+    );
+    await expect(page.getByText(compliance.formulaVersion, { exact: true })).toBeVisible();
+    await expect(page.getByText(`Policy pack ${compliance.policyPackVersion}`)).toBeVisible();
+    await expect(page.getByTestId('compliance-audit-id')).toHaveText(
+      `Audit evidence: ${compliance.auditEventId}`,
     );
     await expect(page.getByTestId('compliance-blockers')).toHaveCount(0);
 

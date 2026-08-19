@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 
@@ -51,7 +50,6 @@ function scorePayload(entries: readonly (readonly [string, string])[], values: S
 }
 
 export default function NewOpportunityPage() {
-  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [opportunityFactors, setOpportunityFactors] = useState<ScoreMap>({});
@@ -155,8 +153,11 @@ export default function NewOpportunityPage() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      router.push(`/dashboard/opportunities/${created.id}`);
-      router.refresh();
+      // This mutation creates the target route's complete server-rendered data.
+      // Commit one full navigation instead of racing router.push() against a
+      // refresh of the form route, which could leave a successfully created
+      // opportunity stranded behind the still-visible form.
+      window.location.assign(`/dashboard/opportunities/${created.id}`);
     } catch (err) {
       setError(
         err instanceof ApiError
