@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   nossl-libgcc:
-    name: Gate base-nossl plus provenanced libgcc
+    name: Gate base-nossl plus provenanced C/C++ runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -46,10 +46,15 @@ jobs:
           cid="$(docker create "$image" /nonexistent-inspection-command)"
           trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
           docker cp "$cid:/usr/lib/x86_64-linux-gnu/libgcc_s.so.1" /tmp/libgcc_s.so.1
+          docker cp "$cid:/usr/lib/x86_64-linux-gnu/libstdc++.so.6" /tmp/libstdc++.so.6
           docker cp "$cid:/var/lib/dpkg/status.d/libgcc-s1" /tmp/libgcc-s1.status
+          docker cp "$cid:/var/lib/dpkg/status.d/libstdc++6" /tmp/libstdc++6.status
           test -s /tmp/libgcc_s.so.1
+          test -s /tmp/libstdc++.so.6
           test -s /tmp/libgcc-s1.status
+          test -s /tmp/libstdc++6.status
           grep -q '^Package: libgcc-s1$' /tmp/libgcc-s1.status
+          grep -q '^Package: libstdc++6$' /tmp/libstdc++6.status
 
       - name: Generate complete vulnerability evidence
         shell: bash
@@ -66,6 +71,7 @@ jobs:
             --output /tmp/nossl-libgcc.trivy.json \
             --exit-code 0
           jq -e '[.Results[]?.Packages[]? | select(.Name == "libgcc-s1")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null
+          jq -e '[.Results[]?.Packages[]? | select(.Name == "libstdc++6")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null
           if jq -e '[.Results[]?.Packages[]? | select(.Name == "libssl3t64")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null; then
             echo 'Unexpected libssl3t64 package in no-ssl candidate.' >&2
             exit 1
@@ -93,6 +99,7 @@ jobs:
           name: nossl-libgcc-runtime-${{ github.event.pull_request.head.sha }}
           path: |
             /tmp/libgcc-s1.status
+            /tmp/libstdc++6.status
             /tmp/nossl-libgcc.trivy.json
           if-no-files-found: warn
           retention-days: 30
@@ -146,6 +153,7 @@ jobs:
           set -Eeuo pipefail
           report="/tmp/ventureos-${IMAGE_NAME}.trivy.json"
           test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libgcc-s1")] | length' "$report")" -gt 0
+          test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libstdc++6")] | length' "$report")" -gt 0
           test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libssl3t64")] | length' "$report")" -eq 0
           test "$(jq '[.Results[]?.Packages[]? | select(.Name == "deepmerge-ts" and .Version == "7.1.5")] | length' "$report")" -eq 0
           test "$(jq '[.Results[]?.Packages[]? | select(.Name == "effect" and .Version == "3.18.4")] | length' "$report")" -eq 0

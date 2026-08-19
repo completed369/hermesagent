@@ -1,11 +1,13 @@
 # syntax=docker/dockerfile:1.7
 
-# Evidence-only candidate. Copies only Debian's libgcc runtime and its package
+# Evidence-only candidate. Copies the Debian C/C++ runtime and its package
 # metadata from an immutable Distroless cc source onto the scanner-clean
 # base-nossl substrate. Product images do not use this file.
 FROM gcr.io/distroless/cc-debian13@sha256:053b9adbc028d9c3ad170973748a22bb23863c828d21029369c8ff641a5c5f42 AS libgcc-source
 
 FROM gcr.io/distroless/base-nossl-debian13@sha256:caa5ae9098199275fb38b6bd62aa1c3ec240119907df634a55cc6f1d52668dab
 COPY --from=libgcc-source /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+COPY --from=libgcc-source /usr/lib/x86_64-linux-gnu/libstdc++.so.6* /usr/lib/x86_64-linux-gnu/
 COPY --from=libgcc-source /var/lib/dpkg/status.d/libgcc-s1 /var/lib/dpkg/status.d/libgcc-s1
+COPY --from=libgcc-source /var/lib/dpkg/status.d/libstdc++6 /var/lib/dpkg/status.d/libstdc++6
 USER 65532:65532

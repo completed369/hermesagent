@@ -543,8 +543,9 @@ JavaScript engine and driver adapter. The prior
 
 **Decision:** Build a shared runtime from three immutable sources: the Node 22
 executable from pinned `node:22-trixie-slim`, the scanner-clean pinned
-`distroless/base-nossl-debian13` root filesystem, and only `libgcc_s.so.1` plus
-its Debian package metadata from pinned `distroless/cc-debian13`. All five
+`distroless/base-nossl-debian13` root filesystem, and only the required
+`libgcc_s.so.1` and `libstdc++.so.6` runtime libraries plus
+their Debian package metadata from pinned `distroless/cc-debian13`. All five
 final targets inherit this runtime, its `/nodejs/bin/node` entrypoint, and keep
 their exact non-root user, commands, health checks, and application payloads.
 

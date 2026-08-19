@@ -44,6 +44,8 @@ test('staging image and topology contracts are fail-closed', () => {
   );
   assert.match(dockerfile, /COPY --from=runtime-node \/usr\/local\/bin\/node \/nodejs\/bin\/node/);
   assert.match(dockerfile, /COPY --from=runtime-libgcc .*libgcc_s\.so\.1/);
+  assert.match(dockerfile, /COPY --from=runtime-libgcc .*libstdc\+\+\.so\.6\*/);
+  assert.match(dockerfile, /COPY --from=runtime-libgcc .*status\.d\/libstdc\+\+6/);
   assert.doesNotMatch(dockerfile, /distroless\/nodejs22-debian13/);
   assert.match(dockerStage(dockerfile, 'runtime'), /ENTRYPOINT \["\/nodejs\/bin\/node"\]/);
   assert.match(dockerfile, /pnpm install --frozen-lockfile/);

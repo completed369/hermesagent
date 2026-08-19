@@ -109,7 +109,9 @@ FROM gcr.io/distroless/cc-debian13@sha256:053b9adbc028d9c3ad170973748a22bb23863c
 FROM gcr.io/distroless/base-nossl-debian13@sha256:caa5ae9098199275fb38b6bd62aa1c3ec240119907df634a55cc6f1d52668dab AS runtime
 COPY --from=runtime-node /usr/local/bin/node /nodejs/bin/node
 COPY --from=runtime-libgcc /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+COPY --from=runtime-libgcc /usr/lib/x86_64-linux-gnu/libstdc++.so.6* /usr/lib/x86_64-linux-gnu/
 COPY --from=runtime-libgcc /var/lib/dpkg/status.d/libgcc-s1 /var/lib/dpkg/status.d/libgcc-s1
+COPY --from=runtime-libgcc /var/lib/dpkg/status.d/libstdc++6 /var/lib/dpkg/status.d/libstdc++6
 ENTRYPOINT ["/nodejs/bin/node"]
 
 FROM runtime AS tools
