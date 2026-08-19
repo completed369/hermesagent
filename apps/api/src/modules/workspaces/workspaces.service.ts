@@ -271,7 +271,12 @@ function assertInvitationActive<
 }
 
 async function lockWorkspace(tx: Prisma.TransactionClient, workspaceId: string): Promise<void> {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${workspaceId}))`;
+  // The pg adapter cannot deserialize PostgreSQL's native `void` result, so
+  // project the lock call to a supported boolean while retaining its blocking
+  // transaction-scoped semantics.
+  await tx.$queryRaw<Array<{ locked: boolean }>>`
+    SELECT pg_advisory_xact_lock(hashtext(${workspaceId})) IS NULL AS "locked"
+  `;
 }
 
 async function assertFounderMembership(
