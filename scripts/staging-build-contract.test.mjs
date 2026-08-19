@@ -38,6 +38,14 @@ test('staging image and topology contracts are fail-closed', () => {
   for (const target of ['AS api', 'AS worker', 'AS web', 'AS tools', 'AS ingress']) {
     assert.match(dockerfile, new RegExp(target));
   }
+  assert.match(
+    dockerfile,
+    /FROM gcr\.io\/distroless\/base-nossl-debian13@sha256:[a-f0-9]{64} AS runtime/,
+  );
+  assert.match(dockerfile, /COPY --from=runtime-node \/usr\/local\/bin\/node \/nodejs\/bin\/node/);
+  assert.match(dockerfile, /COPY --from=runtime-libgcc .*libgcc_s\.so\.1/);
+  assert.doesNotMatch(dockerfile, /distroless\/nodejs22-debian13/);
+  assert.match(dockerStage(dockerfile, 'runtime'), /ENTRYPOINT \["\/nodejs\/bin\/node"\]/);
   assert.match(dockerfile, /pnpm install --frozen-lockfile/);
   for (const target of ['api', 'worker', 'tools', 'web', 'ingress']) {
     const stage = dockerStage(dockerfile, target);

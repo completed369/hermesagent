@@ -484,4 +484,14 @@ phase deliverables. Current status:
 1. Phases 1 through 8 are all genuinely ✅ DONE — every acceptance criterion verified with real command output or live browser confirmation (see each phase's section above). Phase 6 is mock-only per the founder's explicit 2026-07-14 decision (no real Etsy account connected); Phase 8's billing is mock-only per ADR-010 (no real payment processor connected).
 2. Master spec section 34's numbered phases 0–8 are now all complete. Do not begin any further build work without explicit founder instruction on what comes next (e.g., connecting a real Etsy account, a real payment processor, or a genuinely new phase of scope).
 
+### Approved release-security repair — 2026-08-19
+
+The founder approved a focused repair for the failed immutable-image
+vulnerability gate: replace the five final runtime bases with the pinned
+no-OpenSSL composition recorded in ADR-012, upgrade the Prisma dependency set,
+apply the targeted `deepmerge-ts` override, and run the complete application
+and final-image verification matrix. This authorization covers a repair branch
+and draft pull request only. Merge, image publication, and deployment of the
+resulting exact SHA require separate explicit approval.
+
 This file will be updated after every phase-affecting change. `docs/ROADMAP.md` and `TODO.md` both now point here as the canonical status source.
