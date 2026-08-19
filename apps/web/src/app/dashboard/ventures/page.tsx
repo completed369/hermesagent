@@ -50,6 +50,9 @@ export default async function VenturesPage() {
                 {billing.usage.ventures.used} / {billing.usage.ventures.limit}
               </strong>
               <small>ventures used</small>
+              <Link href="/dashboard/settings" className="vos-usage-link">
+                Manage plan
+              </Link>
             </div>
           ) : undefined
         }

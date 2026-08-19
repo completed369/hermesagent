@@ -64,7 +64,7 @@ export default async function CommandCentrePage() {
         title="Command Centre"
         description={
           summary
-            ? `${summary.workspace.name} · ${summary.workspace.baseCurrency} workspace · ${summary.memberCount} member${summary.memberCount === 1 ? '' : 's'}`
+            ? `${summary.workspace.baseCurrency} workspace · ${summary.memberCount} member${summary.memberCount === 1 ? '' : 's'} · governed operations active`
             : 'Workspace status is temporarily unavailable.'
         }
       />

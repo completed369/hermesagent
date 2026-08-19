@@ -45,19 +45,27 @@ test.describe('Workspace shell UX', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page);
 
-    const menu = page.getByRole('button', { name: 'Menu' });
+    const menu = page.getByRole('button', { name: 'Menu', exact: true });
     await expect(menu).toBeVisible();
+    await expect(page.getByLabel('Workspace sidebar')).toHaveAttribute('aria-hidden', 'true');
     await menu.click();
-    await expect(page.getByRole('button', { name: 'Close' })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'Close', exact: true })).toHaveAttribute(
       'aria-expanded',
       'true',
     );
+    await expect(page.getByLabel('Workspace sidebar')).not.toHaveAttribute('aria-hidden', 'true');
     await expect(page.getByLabel('Workspace sidebar')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('button', { name: 'Menu' })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'Menu', exact: true })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
+    await expect(page.getByRole('button', { name: 'Menu', exact: true })).toBeFocused();
+    await expect(page.getByLabel('Workspace sidebar')).toHaveAttribute('aria-hidden', 'true');
+    await page.keyboard.press('Tab');
+    expect(
+      await page.evaluate(() => document.activeElement?.closest('#workspace-navigation') === null),
+    ).toBe(true);
 
     const hasHorizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
