@@ -1,4 +1,6 @@
 import { serverApiFetch } from '@/lib/server-api';
+import Link from 'next/link';
+import { DataSurface, EmptyState, PageHeader } from '@/components/workspace-ui';
 
 interface ApprovalRequestListItem {
   id: string;
@@ -24,23 +26,29 @@ export default async function ApprovalsPage() {
   const { data } = await serverApiFetch<ApprovalRequestListItem[]>('/approval-requests');
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Approval Centre</h1>
-        <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, marginTop: 4 }}>
-          Every approval request created by a board review. The founder is the only authority that
-          can approve, reject, request revision, or revoke -- decisions are always server-enforced
-          and hash-bound to the exact venture proposal version reviewed.
+    <div className="vos-page-stack">
+      <PageHeader
+        eyebrow="Human authority"
+        title="Approvals"
+        description="Review consequential actions before execution. Decisions remain server-enforced and bound to the exact version reviewed."
+      />
+      <div className="vos-governance-banner">
+        <span aria-hidden="true">◆</span>
+        <p>
+          <strong>Founder-controlled gate</strong> Nothing listed here executes simply because it
+          was proposed.
         </p>
       </div>
-      <div className="vos-card">
+      <DataSurface title="Decision queue" description={`${data?.length ?? 0} requests recorded`}>
         {!data || data.length === 0 ? (
-          <p style={{ color: 'var(--vos-text-muted)', fontSize: 14 }}>No approval requests yet.</p>
+          <EmptyState title="Decision queue clear">
+            No approval requests are waiting in this workspace.
+          </EmptyState>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table className="vos-data-table">
             <thead>
-              <tr style={{ textAlign: 'left', color: 'var(--vos-text-muted)' }}>
-                <th style={{ padding: '8px 0' }}>Requested action</th>
+              <tr>
+                <th>Requested action</th>
                 <th>State</th>
                 <th>Est. cost</th>
                 <th>Expires</th>
@@ -49,27 +57,26 @@ export default async function ApprovalsPage() {
             </thead>
             <tbody>
               {data.map((req) => (
-                <tr key={req.id} style={{ borderTop: '1px solid var(--vos-border)' }}>
-                  <td style={{ padding: '10px 0' }}>{req.requestedAction}</td>
-                  <td>
+                <tr key={req.id}>
+                  <td data-label="Requested action">
+                    <strong>{req.requestedAction}</strong>
+                  </td>
+                  <td data-label="State">
                     <span className={`vos-badge ${stateBadgeClass(req.state)}`}>{req.state}</span>
                   </td>
-                  <td>€{req.estimatedCostEur}</td>
-                  <td>{new Date(req.expiresAt).toLocaleDateString()}</td>
-                  <td>
-                    <a
-                      href={`/dashboard/approvals/${req.id}`}
-                      style={{ color: 'var(--vos-accent)' }}
-                    >
-                      Open
-                    </a>
+                  <td data-label="Estimated cost">€{req.estimatedCostEur}</td>
+                  <td data-label="Expires">{new Date(req.expiresAt).toLocaleDateString()}</td>
+                  <td data-label="Action">
+                    <Link href={`/dashboard/approvals/${req.id}`} className="vos-row-link">
+                      Review <span aria-hidden="true">↗</span>
+                    </Link>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </div>
+      </DataSurface>
     </div>
   );
 }

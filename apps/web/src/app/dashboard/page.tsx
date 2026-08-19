@@ -6,6 +6,7 @@ import {
   currentBudgetUtilisation,
   connectedIntegrationCount,
 } from '@/lib/dashboard';
+import { DataSurface, PageHeader, StatCard } from '@/components/workspace-ui';
 
 interface WorkspaceSummary {
   workspace: { name: string; slug: string; baseCurrency: string };
@@ -57,62 +58,54 @@ export default async function CommandCentrePage() {
   const totalIntegrations = summary?.integrations.length ?? null;
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Command Centre</h1>
-        <p style={{ color: 'var(--vos-text-muted)', margin: '4px 0 0' }}>
-          {summary
-            ? `${summary.workspace.name} · ${summary.workspace.baseCurrency} · ${summary.memberCount} member(s)`
-            : 'Loading workspace...'}
-        </p>
-      </div>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 16,
-        }}
+    <div className="vos-page-stack">
+      <PageHeader
+        eyebrow="Workspace overview"
+        title="Command Centre"
+        description={
+          summary
+            ? `${summary.workspace.name} · ${summary.workspace.baseCurrency} workspace · ${summary.memberCount} member${summary.memberCount === 1 ? '' : 's'}`
+            : 'Workspace status is temporarily unavailable.'
+        }
+      />
+      <section className="vos-stat-grid" aria-label="Workspace status">
+        <StatCard
+          label="Venture proposals"
+          value={ventureValue ?? '—'}
+          detail="Across this workspace"
+        />
+        <StatCard
+          label="Pending approvals"
+          value={pendingValue ?? '—'}
+          detail="Waiting for authority"
+          tone="accent"
+        />
+        <StatCard
+          label="Budget utilisation"
+          value={
+            budget ? `${formatEur(budget.totalSpentEur)} / ${formatEur(budget.totalLimitEur)}` : '—'
+          }
+          detail="Current active period"
+        />
+        <StatCard
+          label="Connected integrations"
+          value={
+            <>
+              {connectedCount ?? '—'}
+              {totalIntegrations !== null ? <small> / {totalIntegrations}</small> : null}
+            </>
+          }
+          detail="Provider health"
+        />
+      </section>
+      <DataSurface
+        title="Integration status"
+        description="Provider mode, write authority, and current connection state."
       >
-        <div className="vos-card">
-          <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
-            Venture proposals
-          </p>
-          <p style={{ fontSize: 28, fontWeight: 700, margin: '6px 0 0' }}>{ventureValue ?? '—'}</p>
-        </div>
-        <div className="vos-card">
-          <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
-            Pending approvals
-          </p>
-          <p style={{ fontSize: 28, fontWeight: 700, margin: '6px 0 0' }}>{pendingValue ?? '—'}</p>
-        </div>
-        <div className="vos-card">
-          <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
-            Current budget utilisation
-          </p>
-          <p style={{ fontSize: 28, fontWeight: 700, margin: '6px 0 0' }}>
-            {budget
-              ? `${formatEur(budget.totalSpentEur)} / ${formatEur(budget.totalLimitEur)}`
-              : '—'}
-          </p>
-        </div>
-        <div className="vos-card">
-          <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
-            Integrations connected
-          </p>
-          <p style={{ fontSize: 28, fontWeight: 700, margin: '6px 0 0' }}>
-            {connectedCount ?? '-'}
-            {totalIntegrations !== null ? ` / ${totalIntegrations}` : ''}
-          </p>
-        </div>
-      </div>
-
-      <div className="vos-card">
-        <h2 style={{ fontSize: 16, margin: '0 0 12px' }}>Integration status</h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <table className="vos-data-table">
           <thead>
-            <tr style={{ textAlign: 'left', color: 'var(--vos-text-muted)' }}>
-              <th style={{ padding: '6px 0' }}>Provider</th>
+            <tr>
+              <th>Provider</th>
               <th>Mode</th>
               <th>Write enabled</th>
               <th>Status</th>
@@ -120,11 +113,13 @@ export default async function CommandCentrePage() {
           </thead>
           <tbody>
             {(summary?.integrations ?? []).map((i) => (
-              <tr key={i.provider} style={{ borderTop: '1px solid var(--vos-border)' }}>
-                <td style={{ padding: '8px 0' }}>{i.provider}</td>
-                <td>{i.mode}</td>
-                <td>{i.writeEnabled ? 'Yes' : 'No'}</td>
-                <td>
+              <tr key={i.provider}>
+                <td data-label="Provider">
+                  <strong>{i.provider}</strong>
+                </td>
+                <td data-label="Mode">{i.mode}</td>
+                <td data-label="Write enabled">{i.writeEnabled ? 'Yes' : 'No'}</td>
+                <td data-label="Status">
                   <span
                     className={`vos-badge ${i.status === 'CONNECTED' ? 'vos-badge--ok' : 'vos-badge--mock'}`}
                   >
@@ -135,14 +130,14 @@ export default async function CommandCentrePage() {
             ))}
           </tbody>
         </table>
-      </div>
-
-      <div className="vos-card">
-        <h2 style={{ fontSize: 16, margin: '0 0 8px' }}>What&apos;s available vs. gated</h2>
-        <p style={{ fontSize: 13, color: 'var(--vos-text-muted)', margin: 0 }}>
-          {COMMAND_CENTRE_STATUS_COPY}
-        </p>
-      </div>
+      </DataSurface>
+      <aside className="vos-governance-note">
+        <span aria-hidden="true">i</span>
+        <div>
+          <h2>Available versus gated</h2>
+          <p>{COMMAND_CENTRE_STATUS_COPY}</p>
+        </div>
+      </aside>
     </div>
   );
 }
