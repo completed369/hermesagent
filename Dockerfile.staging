@@ -49,6 +49,16 @@ RUN set -eu; \
       done; \
       test -z "$(find "$runtime/node_modules" -path "*/node_modules/$package_path" -print -quit)"; \
     }; \
+    prune_optional_runtime_package() { \
+      runtime=$1; \
+      virtual_store_pattern=$2; \
+      package_path=$3; \
+      find "$runtime/node_modules" -type l -path "*/node_modules/$package_path" -delete; \
+      for package_store in "$runtime/node_modules/.pnpm"/$virtual_store_pattern; do \
+        test ! -e "$package_store" || rm -rf "$package_store"; \
+      done; \
+      test -z "$(find "$runtime/node_modules" -path "*/node_modules/$package_path" -print -quit)"; \
+    }; \
     prune_scarf_compile_cache() { \
       runtime=$1; \
       set -- "$runtime/node_modules/.pnpm"/@scarf+scarf@*/node_modules/@scarf/scarf; \
@@ -60,13 +70,13 @@ RUN set -eu; \
       test -z "$(find "$runtime/node_modules/.pnpm" -path '*/@scarf/scarf/node-compile-cache' -print -quit)"; \
     }; \
     prune_runtime_package /runtime/api '@types+node@*' '@types/node'; \
-    prune_runtime_package /runtime/api 'typescript@*' 'typescript'; \
+    prune_optional_runtime_package /runtime/api 'typescript@*' 'typescript'; \
     prune_runtime_package /runtime/worker '@types+node@*' '@types/node'; \
     prune_runtime_package /runtime/worker '@types+estree@*' '@types/estree'; \
     prune_runtime_package /runtime/worker '@types+json-schema@*' '@types/json-schema'; \
-    prune_runtime_package /runtime/worker 'typescript@*' 'typescript'; \
-    prune_runtime_package /runtime/tools 'typescript@*' 'typescript'; \
-    prune_runtime_package /runtime/web 'typescript@*' 'typescript'; \
+    prune_optional_runtime_package /runtime/worker 'typescript@*' 'typescript'; \
+    prune_optional_runtime_package /runtime/tools 'typescript@*' 'typescript'; \
+    prune_optional_runtime_package /runtime/web 'typescript@*' 'typescript'; \
     prune_scarf_compile_cache /runtime/api; \
     core_bridge="$(echo /runtime/worker/node_modules/.pnpm/@temporalio+core-bridge@*/node_modules/@temporalio/core-bridge)"; \
     test -f "$core_bridge/Cargo.lock"; \

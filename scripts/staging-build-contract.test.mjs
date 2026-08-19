@@ -202,7 +202,9 @@ test('type-only runtime pruning is target-specific and fail-closed', () => {
   assert.match(deployer, /prune_runtime_package \/runtime\/api '@types\+node@\*' '@types\/node'/);
   for (const runtime of ['api', 'worker', 'tools', 'web']) {
     assert.ok(
-      deployer.includes(`prune_runtime_package /runtime/${runtime} 'typescript@*' 'typescript'`),
+      deployer.includes(
+        `prune_optional_runtime_package /runtime/${runtime} 'typescript@*' 'typescript'`,
+      ),
       `${runtime} must prune TypeScript`,
     );
   }
@@ -220,6 +222,8 @@ test('type-only runtime pruning is target-specific and fail-closed', () => {
   }
   assert.match(deployer, /cp -R \/workspace\/apps\/web\/\.next\/standalone \/runtime\/web/);
   assert.match(deployer, /test -e "\$1"/);
+  assert.match(deployer, /prune_optional_runtime_package\(\)/);
+  assert.match(deployer, /test ! -e "\$package_store" \|\| rm -rf "\$package_store"/);
   assert.match(deployer, /find "\$runtime\/node_modules" -type l -path/);
   assert.match(deployer, /test -z "\$\(find "\$runtime\/node_modules" -path/);
   assert.match(web, /COPY --from=deployer --chown=65532:65532 \/runtime\/web\/ \./);
