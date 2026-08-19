@@ -32,13 +32,13 @@ model User {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  sessions        Session[]
-  accounts        Account[]
-  memberships     WorkspaceMember[]
-  founderProfile  FounderProfile?
-  securityEvents  SecurityEvent[]
-  auditEventsMade AuditEvent[]      @relation("AuditActor")
-  invitationsCreated WorkspaceInvitation[] @relation("InvitationCreator")
+  sessions            Session[]
+  accounts            Account[]
+  memberships         WorkspaceMember[]
+  founderProfile      FounderProfile?
+  securityEvents      SecurityEvent[]
+  auditEventsMade     AuditEvent[]          @relation("AuditActor")
+  invitationsCreated  WorkspaceInvitation[] @relation("InvitationCreator")
   invitationsAccepted WorkspaceInvitation[] @relation("InvitationAcceptor")
 
   @@index([email])
