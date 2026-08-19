@@ -127,33 +127,41 @@ export function OpportunityComplianceActions({
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span className={`vos-badge ${resultClass}`} data-testid="compliance-current-result">
-          Gate 1: {displayResult}
-        </span>
-        {displayedCurrent?.assessment?.formulaVersion ? (
-          <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
-            {displayedCurrent.assessment.formulaVersion}
+      <div
+        data-testid="compliance-status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ display: 'grid', gap: 8 }}
+      >
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className={`vos-badge ${resultClass}`} data-testid="compliance-current-result">
+            Gate 1: {displayResult}
           </span>
-        ) : null}
-        {displayedCurrent?.assessment?.policyPackVersion ? (
-          <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
-            Policy pack {displayedCurrent.assessment.policyPackVersion}
-          </span>
+          {displayedCurrent?.assessment?.formulaVersion ? (
+            <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
+              {displayedCurrent.assessment.formulaVersion}
+            </span>
+          ) : null}
+          {displayedCurrent?.assessment?.policyPackVersion ? (
+            <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
+              Policy pack {displayedCurrent.assessment.policyPackVersion}
+            </span>
+          ) : null}
+        </div>
+
+        {displayedCurrent?.auditEventId ? (
+          <p
+            data-testid="compliance-audit-id"
+            style={{ margin: 0, fontSize: 12, color: 'var(--vos-text-muted)' }}
+          >
+            Audit evidence: {displayedCurrent.auditEventId}
+          </p>
         ) : null}
       </div>
 
-      {displayedCurrent?.auditEventId ? (
-        <p
-          data-testid="compliance-audit-id"
-          style={{ margin: 0, fontSize: 12, color: 'var(--vos-text-muted)' }}
-        >
-          Audit evidence: {displayedCurrent.auditEventId}
-        </p>
-      ) : null}
-
       {displayedCurrent?.currentBlockers.length ? (
-        <div className="vos-error" data-testid="compliance-blockers">
+        <div className="vos-error" data-testid="compliance-blockers" role="alert">
           <strong>Current blocker(s)</strong>
           <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
             {displayedCurrent.currentBlockers.map((blocker) => (
@@ -164,7 +172,12 @@ export function OpportunityComplianceActions({
       ) : null}
 
       {canAssess ? (
-        <form onSubmit={submitAssessment} style={{ display: 'grid', gap: 10, maxWidth: 720 }}>
+        <form
+          data-testid="compliance-form"
+          aria-busy={submitting}
+          onSubmit={submitAssessment}
+          style={{ display: 'grid', gap: 10, maxWidth: 720 }}
+        >
           <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
             Product/category declarations (one per line)
             <textarea
@@ -201,7 +214,12 @@ export function OpportunityComplianceActions({
             cannot authorize Stage-6 promotion.
           </p>
           {error ? (
-            <p data-testid="compliance-error" className="vos-error" style={{ margin: 0 }}>
+            <p
+              data-testid="compliance-error"
+              className="vos-error"
+              role="alert"
+              style={{ margin: 0 }}
+            >
               {error}
             </p>
           ) : null}
