@@ -155,6 +155,11 @@ jobs:
           test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libgcc-s1")] | length' "$report")" -gt 0
           test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libstdc++6")] | length' "$report")" -gt 0
           test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libssl3t64")] | length' "$report")" -eq 0
+          if [[ "$IMAGE_NAME" == 'tools' ]]; then
+            test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libssl3")] | length' "$report")" -gt 0
+          else
+            test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libssl3")] | length' "$report")" -eq 0
+          fi
           test "$(jq '[.Results[]?.Packages[]? | select(.Name == "deepmerge-ts" and .Version == "7.1.5")] | length' "$report")" -eq 0
           test "$(jq '[.Results[]?.Packages[]? | select(.Name == "effect" and .Version == "3.18.4")] | length' "$report")" -eq 0
       - name: Enforce fresh scanner database and CISA KEV policy
