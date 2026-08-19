@@ -20,29 +20,55 @@ export default function JoinWorkspacePage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [previewState, setPreviewState] = useState<'checking' | 'ready' | 'unavailable'>(
+    'checking',
+  );
+  const [accepting, setAccepting] = useState(false);
+  const [status, setStatus] = useState('Checking this invitation.');
 
   useEffect(() => {
+    let active = true;
+    setInvitation(null);
+    setError(null);
+    setPreviewState('checking');
+    setStatus('Checking this invitation.');
     apiFetch<InvitationPreview>(`/workspace-invitations/${encodeURIComponent(token)}`)
-      .then(setInvitation)
-      .catch((err) => setError(err instanceof ApiError ? err.message : 'Invite unavailable'));
+      .then((preview) => {
+        if (!active) return;
+        setInvitation(preview);
+        setPreviewState('ready');
+        setStatus(`Invitation verified for ${preview.workspaceName}.`);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(err instanceof ApiError ? err.message : 'Invite unavailable');
+        setPreviewState('unavailable');
+        setStatus('');
+      });
+    return () => {
+      active = false;
+    };
   }, [token]);
 
   async function accept(event: React.FormEvent) {
     event.preventDefault();
-    setLoading(true);
+    if (!invitation || accepting) return;
+    setAccepting(true);
     setError(null);
+    setStatus(`Joining ${invitation.workspaceName}.`);
     try {
       await apiFetch(`/workspace-invitations/${encodeURIComponent(token)}/accept`, {
         method: 'POST',
         body: JSON.stringify({ displayName, email, password }),
       });
+      setStatus('Workspace joined. Redirecting to sign in.');
       router.push('/login?joined=1');
       router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not join this workspace.');
+      setStatus('');
     } finally {
-      setLoading(false);
+      setAccepting(false);
     }
   }
 
@@ -58,60 +84,83 @@ export default function JoinWorkspacePage() {
           Work from the same evidence, decisions and audit trail—with access limited to your role.
         </p>
       </section>
-      <form className="vos-card vos-auth-card" onSubmit={accept}>
+      <form
+        className="vos-card vos-auth-card vos-join-card"
+        onSubmit={accept}
+        aria-busy={previewState === 'checking' || accepting}
+      >
+        <p className="vos-sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {status}
+        </p>
         <div>
           <p className="vos-auth-kicker">Secure invitation</p>
-          <h2>{invitation ? `Join ${invitation.workspaceName}` : 'Checking invitation…'}</h2>
+          <h2>
+            {invitation
+              ? `Join ${invitation.workspaceName}`
+              : previewState === 'checking'
+                ? 'Checking invitation…'
+                : 'Invitation unavailable'}
+          </h2>
           {invitation ? (
             <p className="vos-auth-copy">
               You’ll join as {invitation.roleKey.toLowerCase()}. This link is single-use.
             </p>
           ) : null}
         </div>
-        <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-          Your name
-          <input
-            className="vos-input"
-            required
-            autoComplete="name"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-        </label>
-        <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-          Email
-          <input
-            className="vos-input"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-          Create password
-          <input
-            className="vos-input"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
+        {previewState === 'checking' ? (
+          <p className="vos-auth-copy">Verifying that this single-use link is still active…</p>
+        ) : null}
         {error ? (
           <p className="vos-error" role="alert">
             {error}
           </p>
         ) : null}
-        <button className="vos-btn" type="submit" disabled={!invitation || loading}>
-          {loading ? 'Joining…' : 'Join workspace'}
-        </button>
-        <p className="vos-auth-switch">
-          Already registered? <Link href="/login">Sign in</Link>
-        </p>
+        {invitation ? (
+          <>
+            <fieldset className="vos-join-fields" disabled={accepting}>
+              <label>
+                Your name
+                <input
+                  className="vos-input"
+                  required
+                  autoComplete="name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  className="vos-input"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </label>
+              <label>
+                Create password
+                <input
+                  className="vos-input"
+                  type="password"
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </label>
+              <button className="vos-btn" type="submit">
+                {accepting ? 'Joining…' : 'Join workspace'}
+              </button>
+            </fieldset>
+            <p className="vos-auth-switch vos-join-account-note">
+              This invitation creates a new workspace account. If this email is already registered,
+              ask the founder to invite a different address.
+            </p>
+          </>
+        ) : null}
       </form>
     </main>
   );

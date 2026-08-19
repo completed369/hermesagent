@@ -114,8 +114,16 @@ export class WorkspacesService {
     input: { email: string; password: string; displayName: string },
   ) {
     const normalizedEmail = normalizeAccountIdentifier(input.email);
-    const passwordHash = await hashPasswordAsync(input.password);
     const tokenDigest = digestInvitationToken(token);
+    const preflight = await prisma.workspaceInvitation.findUnique({
+      where: { tokenDigest },
+      select: { acceptedAt: true, revokedAt: true, expiresAt: true },
+    });
+    // Reject invalid, expired, or consumed bearer credentials before invoking
+    // the deliberately expensive password KDF. The invitation is reloaded
+    // and rechecked under the workspace lock below before any mutation.
+    assertInvitationActive(preflight);
+    const passwordHash = await hashPasswordAsync(input.password);
 
     return prisma.$transaction(async (tx) => {
       const invitationRef = await tx.workspaceInvitation.findUnique({

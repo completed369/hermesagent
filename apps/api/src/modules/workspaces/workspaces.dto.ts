@@ -11,6 +11,11 @@ export const updateBrandingSchema = z.object({
 export type UpdateBrandingInput = z.infer<typeof updateBrandingSchema>;
 
 export const collaborationRoleSchema = z.enum(['OPERATOR', 'VIEWER']);
+export const workspaceMemberIdSchema = z.string().uuid('Member ID must be a UUID');
+export const invitationTokenSchema = z
+  .string()
+  .length(43, 'Invitation token has an invalid length')
+  .regex(/^[A-Za-z0-9_-]+$/, 'Invitation token has an invalid format');
 
 export const createInvitationSchema = z.object({
   roleKey: collaborationRoleSchema,

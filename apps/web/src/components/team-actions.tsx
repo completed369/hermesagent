@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
 
@@ -11,6 +11,18 @@ export interface WorkspaceMemberView {
   role: { key: string; name: string };
 }
 
+interface ClipboardWriter {
+  writeText(value: string): Promise<void>;
+}
+
+export async function writeInvitationToClipboard(
+  inviteLink: string,
+  clipboard: ClipboardWriter | undefined,
+): Promise<void> {
+  if (!clipboard?.writeText) throw new Error('Clipboard access is unavailable');
+  await clipboard.writeText(inviteLink);
+}
+
 export function TeamActions({ members }: { members: WorkspaceMemberView[] }) {
   const router = useRouter();
   const [roleKey, setRoleKey] = useState<'OPERATOR' | 'VIEWER'>('OPERATOR');
@@ -18,20 +30,25 @@ export function TeamActions({ members }: { members: WorkspaceMemberView[] }) {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState('');
+  const inviteInput = useRef<HTMLInputElement>(null);
 
   async function createInvite() {
     setBusy('invite');
     setError(null);
     setInviteLink(null);
+    setCopied(false);
+    setStatus('Creating a secure invitation.');
     try {
       const invitation = await apiFetch<{ token: string }>('/workspaces/invitations', {
         method: 'POST',
         body: JSON.stringify({ roleKey, expiresInHours: 72 }),
       });
       setInviteLink(`${window.location.origin}/join/${invitation.token}`);
-      setCopied(false);
+      setStatus('Secure invitation created. Copy the link now.');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the invite.');
+      setStatus('');
     } finally {
       setBusy(null);
     }
@@ -39,21 +56,38 @@ export function TeamActions({ members }: { members: WorkspaceMemberView[] }) {
 
   async function copyInvite() {
     if (!inviteLink) return;
-    await navigator.clipboard.writeText(inviteLink);
-    setCopied(true);
+    setBusy('copy');
+    setError(null);
+    setCopied(false);
+    setStatus('Copying the invitation link.');
+    try {
+      await writeInvitationToClipboard(inviteLink, navigator.clipboard);
+      setCopied(true);
+      setStatus('Invitation link copied to the clipboard.');
+    } catch {
+      setError('Could not copy the invitation link. Select and copy it manually.');
+      setStatus('');
+      inviteInput.current?.focus();
+      inviteInput.current?.select();
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function changeRole(memberId: string, nextRole: 'OPERATOR' | 'VIEWER') {
     setBusy(memberId);
     setError(null);
+    setStatus('Updating the member role.');
     try {
       await apiFetch(`/workspaces/members/${memberId}/role`, {
         method: 'PATCH',
         body: JSON.stringify({ roleKey: nextRole }),
       });
+      setStatus('Member role updated.');
       router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update this member.');
+      setStatus('');
     } finally {
       setBusy(null);
     }
@@ -63,31 +97,26 @@ export function TeamActions({ members }: { members: WorkspaceMemberView[] }) {
     if (!window.confirm(`Remove ${member.user.displayName} from this workspace?`)) return;
     setBusy(member.id);
     setError(null);
+    setStatus(`Removing ${member.user.displayName} from the workspace.`);
     try {
       await apiFetch(`/workspaces/members/${member.id}`, { method: 'DELETE' });
+      setStatus(`${member.user.displayName} was removed from the workspace.`);
       router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not remove this member.');
+      setStatus('');
     } finally {
       setBusy(null);
     }
   }
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'end',
-          gap: 10,
-          padding: 16,
-          border: '1px solid var(--vos-border)',
-          borderRadius: 12,
-          background: 'linear-gradient(135deg, rgba(79,70,229,.09), rgba(6,182,212,.05))',
-        }}
-      >
-        <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+    <div className="vos-team-actions">
+      <p className="vos-sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {status}
+      </p>
+      <div className="vos-team-invite" aria-busy={busy === 'invite'}>
+        <label className="vos-team-field">
           Access level
           <select
             className="vos-input"
@@ -101,21 +130,28 @@ export function TeamActions({ members }: { members: WorkspaceMemberView[] }) {
         <button className="vos-btn" type="button" onClick={createInvite} disabled={busy !== null}>
           {busy === 'invite' ? 'Creating…' : 'Create secure invite'}
         </button>
-        <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
+        <span className="vos-team-invite-note" id="invite-policy-note">
           Single use · expires in 72 hours · no email provider
         </span>
       </div>
 
       {inviteLink ? (
-        <div role="status" style={{ display: 'grid', gap: 8 }}>
-          <strong style={{ fontSize: 13 }}>Copy this link now — it will not be shown again.</strong>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input className="vos-input" readOnly value={inviteLink} aria-label="Invitation link" />
-            <button type="button" onClick={copyInvite}>
-              {copied ? 'Copied' : 'Copy'}
+        <section className="vos-team-invite-result" aria-labelledby="invite-result-title">
+          <strong id="invite-result-title">Copy this link now — it will not be shown again.</strong>
+          <div className="vos-team-copy-row">
+            <input
+              ref={inviteInput}
+              className="vos-input"
+              readOnly
+              value={inviteLink}
+              aria-label="Invitation link"
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <button className="vos-btn" type="button" onClick={copyInvite} disabled={busy !== null}>
+              {busy === 'copy' ? 'Copying…' : copied ? 'Copied' : 'Copy link'}
             </button>
           </div>
-        </div>
+        </section>
       ) : null}
 
       {error ? (
@@ -124,20 +160,10 @@ export function TeamActions({ members }: { members: WorkspaceMemberView[] }) {
         </p>
       ) : null}
 
-      <div style={{ display: 'grid', gap: 8 }}>
+      <div className="vos-team-members" aria-label="Workspace members">
         {members.map((member) => (
-          <div
-            key={member.id}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(180px, 1fr) auto auto',
-              gap: 12,
-              alignItems: 'center',
-              padding: '12px 0',
-              borderTop: '1px solid var(--vos-border)',
-            }}
-          >
-            <div>
+          <div key={member.id} className="vos-team-member" aria-busy={busy === member.id}>
+            <div className="vos-team-member-identity">
               <strong style={{ display: 'block', fontSize: 14 }}>{member.user.displayName}</strong>
               <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
                 {member.user.email}
@@ -163,11 +189,12 @@ export function TeamActions({ members }: { members: WorkspaceMemberView[] }) {
               <span />
             ) : (
               <button
+                className="vos-team-remove"
                 type="button"
                 disabled={busy === member.id}
                 onClick={() => removeMember(member)}
               >
-                Remove
+                {busy === member.id ? 'Working…' : 'Remove'}
               </button>
             )}
           </div>
