@@ -4,6 +4,7 @@ FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 ENV COREPACK_HOME=/corepack
+ENV PRISMA_CLI_BINARY_TARGETS=linux-static-x64
 WORKDIR /workspace
 
 RUN apt-get update \
@@ -100,17 +101,14 @@ RUN set -eu; \
       client_parent="$(echo "$runtime"/node_modules/.pnpm/@prisma+client@*/node_modules)"; \
       mkdir -p "$client_parent/.prisma"; \
       cp -R "$generated_client/." "$client_parent/.prisma/"; \
-    done
+    done; \
+    static_schema_engine="$(echo /workspace/node_modules/.pnpm/@prisma+engines@*/node_modules/@prisma/engines/schema-engine-linux-static-x64)"; \
+    test -x "$static_schema_engine"; \
+    cp "$static_schema_engine" /runtime/tools/prisma-schema-engine
 
 FROM node:22-trixie-slim@sha256:db8a96a63e5264607ada2d206758876ebbed6a12be2ada7517793cbfb0c2a29c AS runtime-node
 
 FROM gcr.io/distroless/cc-debian13@sha256:053b9adbc028d9c3ad170973748a22bb23863c828d21029369c8ff641a5c5f42 AS runtime-libgcc
-
-FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS runtime-tools-node
-
-FROM gcr.io/distroless/cc-debian12@sha256:adcd20c7b4c988b73cbfbddb26d2eee574571e6d7c9ffea29b3821e0690efb77 AS tools-runtime
-COPY --from=runtime-tools-node /usr/local/bin/node /nodejs/bin/node
-ENTRYPOINT ["/nodejs/bin/node"]
 
 FROM gcr.io/distroless/base-nossl-debian13@sha256:caa5ae9098199275fb38b6bd62aa1c3ec240119907df634a55cc6f1d52668dab AS runtime
 COPY --from=runtime-node /usr/local/bin/node /nodejs/bin/node
@@ -120,8 +118,9 @@ COPY --from=runtime-libgcc /var/lib/dpkg/status.d/libgcc-s1 /var/lib/dpkg/status
 COPY --from=runtime-libgcc /var/lib/dpkg/status.d/libstdc++6 /var/lib/dpkg/status.d/libstdc++6
 ENTRYPOINT ["/nodejs/bin/node"]
 
-FROM tools-runtime AS tools
+FROM runtime AS tools
 ENV NODE_ENV=production
+ENV PRISMA_SCHEMA_ENGINE_BINARY=/app/prisma-schema-engine
 WORKDIR /app
 COPY --from=deployer --chown=65532:65532 /runtime/tools/ ./
 COPY --chown=65532:65532 scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs

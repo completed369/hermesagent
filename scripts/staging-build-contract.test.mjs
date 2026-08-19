@@ -46,14 +46,14 @@ test('staging image and topology contracts are fail-closed', () => {
   assert.match(dockerfile, /COPY --from=runtime-libgcc .*libgcc_s\.so\.1/);
   assert.match(dockerfile, /COPY --from=runtime-libgcc .*libstdc\+\+\.so\.6\*/);
   assert.match(dockerfile, /COPY --from=runtime-libgcc .*status\.d\/libstdc\+\+6/);
-  assert.match(dockerfile, /FROM node:22-bookworm-slim@sha256:[a-f0-9]{64} AS runtime-tools-node/);
+  assert.match(dockerfile, /ENV PRISMA_CLI_BINARY_TARGETS=linux-static-x64/);
+  assert.match(dockerStage(dockerfile, 'deployer'), /schema-engine-linux-static-x64/);
+  assert.match(dockerStage(dockerfile, 'deployer'), /test -x "\$static_schema_engine"/);
   assert.match(
-    dockerfile,
-    /FROM gcr\.io\/distroless\/cc-debian12@sha256:[a-f0-9]{64} AS tools-runtime/,
+    dockerStage(dockerfile, 'tools'),
+    /PRISMA_SCHEMA_ENGINE_BINARY=\/app\/prisma-schema-engine/,
   );
-  assert.match(dockerStage(dockerfile, 'tools-runtime'), /COPY --from=runtime-tools-node .*\/node/);
-  assert.match(dockerStage(dockerfile, 'tools-runtime'), /ENTRYPOINT \["\/nodejs\/bin\/node"\]/);
-  assert.match(dockerfile, /FROM tools-runtime AS tools/);
+  assert.match(dockerfile, /FROM runtime AS tools/);
   assert.doesNotMatch(dockerfile, /distroless\/nodejs22-debian13/);
   assert.match(dockerStage(dockerfile, 'runtime'), /ENTRYPOINT \["\/nodejs\/bin\/node"\]/);
   assert.match(dockerfile, /pnpm install --frozen-lockfile/);

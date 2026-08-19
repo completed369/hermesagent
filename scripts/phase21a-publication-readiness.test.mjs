@@ -97,16 +97,10 @@ test('publication runtimes exclude the vulnerable build toolchain and scan-only 
   for (const target of ['api', 'worker', 'web', 'ingress']) {
     assert.match(dockerfile, new RegExp(`FROM runtime AS ${target}\\b`));
   }
-  assert.match(dockerfile, /FROM tools-runtime AS tools\b/);
-  assert.match(
-    dockerfile,
-    /FROM gcr\.io\/distroless\/cc-debian12@sha256:[0-9a-f]{64} AS tools-runtime/,
-  );
-  assert.match(dockerfile, /FROM node:22-bookworm-slim@sha256:[0-9a-f]{64} AS runtime-tools-node/);
-  assert.match(
-    dockerfile,
-    /COPY --from=runtime-tools-node \/usr\/local\/bin\/node \/nodejs\/bin\/node/,
-  );
+  assert.match(dockerfile, /FROM runtime AS tools\b/);
+  assert.match(dockerfile, /ENV PRISMA_CLI_BINARY_TARGETS=linux-static-x64/);
+  assert.match(dockerfile, /PRISMA_SCHEMA_ENGINE_BINARY=\/app\/prisma-schema-engine/);
+  assert.match(dockerfile, /schema-engine-linux-static-x64/);
   assert.match(dockerfile, /FROM node:22-trixie-slim@sha256:[0-9a-f]{64} AS runtime-node/);
   assert.match(
     dockerfile,

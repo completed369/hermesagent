@@ -548,10 +548,10 @@ executable from pinned `node:22-trixie-slim`, the scanner-clean pinned
 their Debian package metadata from pinned `distroless/cc-debian13`. All five
 final targets inherit this runtime, its `/nodejs/bin/node` entrypoint, and keep
 their exact non-root user, commands, health checks, and application payloads.
-The short-lived migration-tools target additionally receives only the pinned
-Debian 12 `libssl3` shared libraries and package metadata required by Prisma's
-schema engine. The API, worker, web, and ingress targets remain SSL-free, and
-all targets forbid the vulnerable Debian 13 `libssl3t64` package.
+The migration-tools target uses Prisma's supported `linux-static-x64` schema
+engine through an explicit `PRISMA_SCHEMA_ENGINE_BINARY` path. This keeps all
+five final targets SSL-free and forbids both `libssl3` and the vulnerable
+Debian 13 `libssl3t64` package at runtime.
 
 The same repair upgrades the Prisma CLI, client, and PostgreSQL adapter in
 lockstep to `6.19.3`, which resolves fixed `effect 3.21.0`, and applies a
