@@ -19,7 +19,7 @@ COPY apps ./apps
 COPY packages ./packages
 COPY scripts/assert-api-entrypoint.mjs scripts/assert-worker-entrypoint.mjs ./scripts/
 RUN pnpm install --frozen-lockfile
-RUN pnpm db:generate
+RUN DATABASE_URL='postgresql://ventureos:build-only-password@localhost:5432/ventureos?schema=public' pnpm db:generate
 
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
