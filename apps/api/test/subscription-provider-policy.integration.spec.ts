@@ -290,18 +290,19 @@ describe('subscription and provider policy enforcement (integration)', () => {
   it('fails closed and never dispatches when authoritative policy lookup errors', async () => {
     const scenario = await createScenario();
     await entitleTestWorkspace(scenario.workspaceId);
-    let failNextSubscriptionLookup = true;
-    prisma.$use(async (params, next) => {
-      if (
-        failNextSubscriptionLookup &&
-        params.model === 'Subscription' &&
-        params.action === 'findUnique'
-      ) {
-        failNextSubscriptionLookup = false;
-        throw new Error('synthetic lookup failure');
-      }
-      return next(params);
-    });
+    const failingPolicyClient = {
+      subscription: new Proxy(prisma.subscription, {
+        get(target, property, receiver) {
+          if (property === 'findUnique') {
+            return () => Promise.reject(new Error('synthetic lookup failure'));
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+      marketplaceAccount: prisma.marketplaceAccount,
+      ventureProposal: prisma.ventureProposal,
+      securityEvent: prisma.securityEvent,
+    };
     let dispatchCalls = 0;
     await expect(
       dispatchWithWorkspaceCapability(
@@ -315,6 +316,8 @@ describe('subscription and provider policy enforcement (integration)', () => {
           dispatchCalls += 1;
           return Promise.resolve('dispatched');
         },
+        failingPolicyClient,
+        prisma,
       ),
     ).rejects.toThrow('Operation is not available');
     expect(dispatchCalls).toBe(0);

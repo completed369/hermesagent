@@ -1,0 +1,93 @@
+name: Runtime substrate remediation evidence
+
+'on':
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/candidates/Dockerfile.nossl-libgcc'
+      - '.github/workflows/runtime-substrate-remediation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  nossl-libgcc:
+    name: Gate base-nossl plus provenanced libgcc
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout remediation PR
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Trivy action implementation
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
+
+      - name: Build no-ssl libgcc candidate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file .github/candidates/Dockerfile.nossl-libgcc \
+            --tag "local/ventureos-nossl-libgcc:${GITHUB_SHA}" \
+            .
+
+      - name: Verify library and Debian package provenance are present
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          image="local/ventureos-nossl-libgcc:${GITHUB_SHA}"
+          cid="$(docker create "$image" /nonexistent-inspection-command)"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          docker cp "$cid:/usr/lib/x86_64-linux-gnu/libgcc_s.so.1" /tmp/libgcc_s.so.1
+          docker cp "$cid:/var/lib/dpkg/status.d/libgcc-s1" /tmp/libgcc-s1.status
+          test -s /tmp/libgcc_s.so.1
+          test -s /tmp/libgcc-s1.status
+          grep -q '^Package: libgcc-s1$' /tmp/libgcc-s1.status
+
+      - name: Generate complete vulnerability evidence
+        shell: bash
+        env:
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+        run: |
+          set -Eeuo pipefail
+          trivy image \
+            "local/ventureos-nossl-libgcc:${GITHUB_SHA}" \
+            --scanners vuln \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --ignore-unfixed=false \
+            --format json \
+            --output /tmp/nossl-libgcc.trivy.json \
+            --exit-code 0
+          jq -e '[.Results[]?.Packages[]? | select(.Name == "libgcc-s1")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null
+          if jq -e '[.Results[]?.Packages[]? | select(.Name == "libssl3t64")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null; then
+            echo 'Unexpected libssl3t64 package in no-ssl candidate.' >&2
+            exit 1
+          fi
+
+      - name: Apply unchanged release-equivalent security gate
+        shell: bash
+        env:
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+        run: |
+          set -Eeuo pipefail
+          trivy image \
+            "local/ventureos-nossl-libgcc:${GITHUB_SHA}" \
+            --scanners vuln,secret \
+            --image-config-scanners secret \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed=false \
+            --exit-on-eol 1 \
+            --exit-code 1
+
+      - name: Preserve substrate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nossl-libgcc-runtime-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/libgcc-s1.status
+            /tmp/nossl-libgcc.trivy.json
+          if-no-files-found: warn
+          retention-days: 30
