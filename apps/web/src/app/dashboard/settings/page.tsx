@@ -6,6 +6,7 @@ import {
   RevokeLicenseKeyAction,
 } from '@/components/billing-actions';
 import { UpdateBrandingAction } from '@/components/branding-actions';
+import { TeamActions, type WorkspaceMemberView } from '@/components/team-actions';
 
 interface BillingSummary {
   subscription: {
@@ -35,11 +36,13 @@ interface WorkspaceSummary {
 }
 
 export default async function SettingsPage() {
-  const [{ data: billing }, { data: licenseKeys }, { data: workspaceSummary }] = await Promise.all([
-    serverApiFetch<BillingSummary>('/billing'),
-    serverApiFetch<LicenseKey[]>('/billing/license-keys'),
-    serverApiFetch<WorkspaceSummary>('/workspaces/current'),
-  ]);
+  const [{ data: billing }, { data: licenseKeys }, { data: workspaceSummary }, { data: members }] =
+    await Promise.all([
+      serverApiFetch<BillingSummary>('/billing'),
+      serverApiFetch<LicenseKey[]>('/billing/license-keys'),
+      serverApiFetch<WorkspaceSummary>('/workspaces/current'),
+      serverApiFetch<WorkspaceMemberView[]>('/workspaces/members'),
+    ]);
 
   return (
     <div style={{ display: 'grid', gap: 24 }}>
@@ -85,6 +88,22 @@ export default async function SettingsPage() {
           <p style={{ color: 'var(--vos-text-muted)', fontSize: 14 }}>No subscription found.</p>
         )}
       </section>
+
+      {members ? (
+        <section className="vos-card" style={{ display: 'grid', gap: 12 }}>
+          <div>
+            <p className="vos-auth-kicker" style={{ margin: 0 }}>
+              Collaborative access
+            </p>
+            <h2 style={{ fontSize: 16, margin: '4px 0' }}>Team</h2>
+            <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: 0 }}>
+              Invite operators or read-only viewers with an expiring, one-time link. Only founders
+              can manage membership.
+            </p>
+          </div>
+          <TeamActions members={members} />
+        </section>
+      ) : null}
 
       <section className="vos-card" style={{ display: 'grid', gap: 12 }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>License keys</h2>

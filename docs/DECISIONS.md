@@ -529,3 +529,25 @@ it silently skipped — worth periodically confirming that every workspace
 package's tasks are genuinely running (e.g. checking turbo's task count
 against the expected package count), not just that the tasks that did run
 passed.
+
+## ADR-012: Collaborative access uses provider-free, single-use bearer invitations
+
+**Decision (2026-08-19):** Founders can create copyable workspace invitation
+links for an `OPERATOR` or `VIEWER`. VentureOS stores only a domain-separated
+SHA-256 digest of the random 256-bit token. Tokens expire, are consumed once,
+and are checked inside a workspace-serialized transaction before creating the
+member. The same transaction enforces the plan's `maxWorkspaceMembers` limit,
+updates the workspace to collaborative mode, and writes the acceptance audit
+event. Invitation creation, member listing, role changes, and removal remain
+founder-only and every lookup is scoped to the authenticated workspace.
+
+**Why:** This enables staged collaboration without adding an email service,
+paid provider, customer-data integration, or production dependency. The raw
+link is returned only in the creation response and must be copied then; it is
+never recoverable from storage or audit logs.
+
+**Role map:** `FOUNDER` retains all authority, `OPERATOR` receives normal
+workflow read/write capabilities but no billing, approval-decision, branding,
+or membership-management authority, and `VIEWER` receives only the explicit
+collaboration-safe view permissions (not billing, audit, security, branding,
+or member data). Founder memberships cannot be demoted or removed.

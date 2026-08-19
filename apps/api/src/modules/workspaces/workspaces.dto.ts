@@ -9,3 +9,20 @@ export const updateBrandingSchema = z.object({
     .optional(),
 });
 export type UpdateBrandingInput = z.infer<typeof updateBrandingSchema>;
+
+export const collaborationRoleSchema = z.enum(['OPERATOR', 'VIEWER']);
+
+export const createInvitationSchema = z.object({
+  roleKey: collaborationRoleSchema,
+  expiresInHours: z.number().int().min(1).max(168).default(72),
+});
+
+export const changeMemberRoleSchema = z.object({ roleKey: collaborationRoleSchema });
+
+export const acceptInvitationSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  displayName: z.string().trim().min(1).max(100),
+});
+
+export type CollaborationRole = z.infer<typeof collaborationRoleSchema>;
