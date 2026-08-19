@@ -126,83 +126,96 @@ export class WorkspacesService {
     assertInvitationActive(preflight);
     const passwordHash = await hashPasswordAsync(input.password);
 
-    return prisma.$transaction(async (tx) => {
-      const invitationRef = await tx.workspaceInvitation.findUnique({
-        where: { tokenDigest },
-        select: { workspaceId: true },
-      });
-      if (!invitationRef) throw new NotFoundException('Invitation is invalid or unavailable');
-      // Every acceptance takes locks in account -> workspace order. The
-      // account lock closes the cross-workspace race where two invitations
-      // could otherwise both observe a new email before the unique user
-      // constraint is committed.
-      await lockTransactionKey(tx, `workspace-invite-account:${normalizedEmail}`);
-      await lockWorkspace(tx, invitationRef.workspaceId);
+    const runAcceptanceTransaction = () =>
+      prisma.$transaction(async (tx) => {
+        const invitationRef = await tx.workspaceInvitation.findUnique({
+          where: { tokenDigest },
+          select: { workspaceId: true },
+        });
+        if (!invitationRef) throw new NotFoundException('Invitation is invalid or unavailable');
+        // Every acceptance takes locks in account -> workspace order. The
+        // account lock closes the cross-workspace race where two invitations
+        // could otherwise both observe a new email before the unique user
+        // constraint is committed.
+        await lockTransactionKey(tx, `workspace-invite-account:${normalizedEmail}`);
+        await lockWorkspace(tx, invitationRef.workspaceId);
 
-      const invitation = await tx.workspaceInvitation.findUnique({
-        where: { tokenDigest },
-        include: { role: true, workspace: true },
-      });
-      assertInvitationActive(invitation);
-      await assertMemberCapacity(tx, invitation.workspaceId);
+        const invitation = await tx.workspaceInvitation.findUnique({
+          where: { tokenDigest },
+          include: { role: true, workspace: true },
+        });
+        assertInvitationActive(invitation);
+        await assertMemberCapacity(tx, invitation.workspaceId);
 
-      const existingUser = await tx.user.findUnique({ where: { email: normalizedEmail } });
-      if (existingUser) {
+        const existingUser = await tx.user.findUnique({ where: { email: normalizedEmail } });
+        if (existingUser) {
+          const consumed = await tx.workspaceInvitation.updateMany({
+            where: { id: invitation.id, acceptedAt: null, revokedAt: null },
+            data: { acceptedAt: new Date() },
+          });
+          if (consumed.count !== 1) throw new ConflictException('Invitation has already been used');
+          await this.auditService.record(
+            invitation.workspaceId,
+            {
+              action: 'WORKSPACE_INVITATION_ACCEPTANCE_DEFERRED',
+              entityType: 'WorkspaceInvitation',
+              entityId: invitation.id,
+              after: { reason: 'WORKSPACE_SCOPED_SESSION_REQUIRED' },
+            },
+            tx,
+          );
+          return { received: true as const, workspaceName: invitation.workspace.name };
+        }
+
+        const user = await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            passwordHash,
+            displayName: input.displayName,
+            isFounder: false,
+          },
+        });
+        const membership = await tx.workspaceMember.create({
+          data: {
+            workspaceId: invitation.workspaceId,
+            userId: user.id,
+            roleId: invitation.roleId,
+          },
+        });
         const consumed = await tx.workspaceInvitation.updateMany({
           where: { id: invitation.id, acceptedAt: null, revokedAt: null },
-          data: { acceptedAt: new Date() },
+          data: { acceptedAt: new Date(), acceptedById: user.id },
         });
         if (consumed.count !== 1) throw new ConflictException('Invitation has already been used');
+        await tx.workspace.update({
+          where: { id: invitation.workspaceId },
+          data: { mode: 'COLLABORATIVE' },
+        });
         await this.auditService.record(
           invitation.workspaceId,
           {
-            action: 'WORKSPACE_INVITATION_ACCEPTANCE_DEFERRED',
-            entityType: 'WorkspaceInvitation',
-            entityId: invitation.id,
-            after: { reason: 'WORKSPACE_SCOPED_SESSION_REQUIRED' },
+            actorId: user.id,
+            action: 'WORKSPACE_INVITATION_ACCEPTED',
+            entityType: 'WorkspaceMember',
+            entityId: membership.id,
+            after: { roleKey: invitation.role.key },
           },
           tx,
         );
         return { received: true as const, workspaceName: invitation.workspace.name };
-      }
+      });
 
-      const user = await tx.user.create({
-        data: {
-          email: normalizedEmail,
-          passwordHash,
-          displayName: input.displayName,
-          isFounder: false,
-        },
-      });
-      const membership = await tx.workspaceMember.create({
-        data: {
-          workspaceId: invitation.workspaceId,
-          userId: user.id,
-          roleId: invitation.roleId,
-        },
-      });
-      const consumed = await tx.workspaceInvitation.updateMany({
-        where: { id: invitation.id, acceptedAt: null, revokedAt: null },
-        data: { acceptedAt: new Date(), acceptedById: user.id },
-      });
-      if (consumed.count !== 1) throw new ConflictException('Invitation has already been used');
-      await tx.workspace.update({
-        where: { id: invitation.workspaceId },
-        data: { mode: 'COLLABORATIVE' },
-      });
-      await this.auditService.record(
-        invitation.workspaceId,
-        {
-          actorId: user.id,
-          action: 'WORKSPACE_INVITATION_ACCEPTED',
-          entityType: 'WorkspaceMember',
-          entityId: membership.id,
-          after: { roleKey: invitation.role.key },
-        },
-        tx,
-      );
-      return { received: true as const, workspaceName: invitation.workspace.name };
-    });
+    try {
+      return await runAcceptanceTransaction();
+    } catch (error) {
+      // Registration uses its own transaction and can win the same-email
+      // insert race after our first read. Retry exactly once only when Prisma
+      // confirms the users.email unique constraint; the retry then observes
+      // the account and follows the neutral deferred path. Never normalize an
+      // unrelated uniqueness or database failure.
+      if (!identifiesUserEmailConstraint(error)) throw error;
+      return runAcceptanceTransaction();
+    }
   }
 
   async changeMemberRole(
@@ -302,6 +315,21 @@ async function lockTransactionKey(tx: Prisma.TransactionClient, key: string): Pr
   await tx.$queryRaw<Array<{ locked: boolean }>>`
     SELECT pg_advisory_xact_lock(hashtext(${key})) IS NULL AS "locked"
   `;
+}
+
+function identifiesUserEmailConstraint(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 'P2002') {
+    return false;
+  }
+  if (!('meta' in error) || typeof error.meta !== 'object' || error.meta === null) return false;
+  if (!('target' in error.meta)) return false;
+  const target = error.meta.target;
+  const targets = Array.isArray(target) ? target : [target];
+  return targets.some(
+    (value) =>
+      typeof value === 'string' &&
+      (value === 'email' || value.includes('users_email') || value.includes('User_email')),
+  );
 }
 
 async function assertFounderMembership(
