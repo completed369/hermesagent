@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -10,6 +10,7 @@ import { loadEnv } from '@ventureos/config';
 import { AppModule } from '../src/app.module';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { WorkspacesService } from '../src/modules/workspaces/workspaces.service';
+import { SafeExceptionFilter } from '../src/common/filters/safe-exception.filter';
 import { entitleTestWorkspace } from './helpers/entitled-workspace';
 
 describe('collaborative workspace invitations (integration)', () => {
@@ -20,8 +21,18 @@ describe('collaborative workspace invitations (integration)', () => {
   let workspaceId: string;
   let founderId: string;
   let app: INestApplication;
+  const capturedExceptions: unknown[] = [];
 
   beforeAll(async () => {
+    const originalCatch = SafeExceptionFilter.prototype.catch;
+    vi.spyOn(SafeExceptionFilter.prototype, 'catch').mockImplementation(function (
+      this: SafeExceptionFilter,
+      exception,
+      host,
+    ) {
+      capturedExceptions.push(exception);
+      originalCatch.call(this, exception, host);
+    });
     app = await NestFactory.create(AppModule);
     app.use(cookieParser());
     app.setGlobalPrefix('api');
@@ -34,6 +45,7 @@ describe('collaborative workspace invitations (integration)', () => {
   });
 
   beforeEach(async () => {
+    capturedExceptions.length = 0;
     const founderRole = await prisma.role.upsert({
       where: { key: 'FOUNDER' },
       update: {},
@@ -254,7 +266,7 @@ describe('collaborative workspace invitations (integration)', () => {
     const founderList = await request(app.getHttpServer())
       .get('/api/workspaces/members')
       .set('Cookie', founderCookie);
-    expect(founderList.status).toBe(200);
+    expect(founderList.status, exceptionDiagnostic(capturedExceptions.at(-1))).toBe(200);
     expect(founderList.body).toHaveLength(3);
 
     for (const cookie of [operator.cookie, viewer.cookie]) {
@@ -320,7 +332,7 @@ describe('collaborative workspace invitations (integration)', () => {
       .delete('/api/workspaces/members/not-a-uuid')
       .set('Cookie', founderCookie)
       .set('Origin', env.API_CORS_ORIGIN);
-    expect(malformedMember.status).toBe(400);
+    expect(malformedMember.status, exceptionDiagnostic(capturedExceptions.at(-1))).toBe(400);
 
     const malformedPreview = await request(app.getHttpServer()).get(
       '/api/workspace-invitations/not-a-token',
@@ -349,3 +361,9 @@ describe('collaborative workspace invitations (integration)', () => {
     expect(statuses.at(-1)).toBe(429);
   });
 });
+
+function exceptionDiagnostic(exception: unknown): string {
+  if (!(exception instanceof Error)) return `Unexpected exception type: ${typeof exception}`;
+  const firstLine = exception.message.split(/\r?\n/, 1)[0]?.slice(0, 240) ?? 'No message';
+  return `${exception.name}: ${firstLine}`;
+}
