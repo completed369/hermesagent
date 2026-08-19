@@ -8,6 +8,7 @@ import { SignOutButton } from '@/components/sign-out-button';
 
 interface DashboardShellProps {
   brandName: string;
+  workspaceName: string;
   logoUrl: string | null;
   email: string;
   accentColor: string;
@@ -16,6 +17,7 @@ interface DashboardShellProps {
 
 export function DashboardShell({
   brandName,
+  workspaceName,
   logoUrl,
   email,
   accentColor,
@@ -25,6 +27,7 @@ export function DashboardShell({
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const sidebarClosed = isMobile && !open;
 
   useEffect(() => setOpen(false), [pathname]);
@@ -36,13 +39,46 @@ export function DashboardShell({
     return () => media.removeEventListener('change', update);
   }, []);
   useEffect(() => {
-    if (!open) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDrawer(true);
+    if (!open || !isMobile) return;
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return;
+    const focusableSelector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusableElements = () =>
+      Array.from(sidebar.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+        (element) => element.getClientRects().length > 0,
+      );
+    const focusFrame = requestAnimationFrame(() => focusableElements()[0]?.focus());
+    const containFocus = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeDrawer(true);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const elements = focusableElements();
+      if (elements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = elements[0]!;
+      const last = elements[elements.length - 1]!;
+      if (!sidebar.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
-  }, [open]);
+    window.addEventListener('keydown', containFocus);
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      window.removeEventListener('keydown', containFocus);
+    };
+  }, [isMobile, open]);
 
   function closeDrawer(restoreFocus = false) {
     setOpen(false);
@@ -57,7 +93,7 @@ export function DashboardShell({
       <header className="vos-mobile-header">
         <Link href="/dashboard" className="vos-mobile-brand">
           <span className="vos-dashboard-brandmark">V</span>
-          <strong>Workspace</strong>
+          <strong data-testid="mobile-workspace-name">{workspaceName}</strong>
         </Link>
         <button
           ref={menuButtonRef}
@@ -79,10 +115,11 @@ export function DashboardShell({
         className={`vos-sidebar-scrim${open ? ' is-open' : ''}`}
         type="button"
         aria-label="Close navigation"
-        tabIndex={open ? 0 : -1}
+        tabIndex={-1}
         onClick={() => closeDrawer(true)}
       />
       <aside
+        ref={sidebarRef}
         id="workspace-navigation"
         className={`vos-dashboard-sidebar${open ? ' is-open' : ''}`}
         aria-label="Workspace sidebar"

@@ -46,6 +46,13 @@ test.describe('Workspace shell UX', () => {
     await login(page);
 
     const menu = page.getByRole('button', { name: 'Menu', exact: true });
+    const workspaceResponse = await page.request.get('/api/workspaces/current');
+    expect(workspaceResponse.ok()).toBe(true);
+    const workspaceSummary = (await workspaceResponse.json()) as { workspace: { name: string } };
+    await expect(page.getByTestId('mobile-workspace-name')).toHaveText(
+      workspaceSummary.workspace.name,
+    );
+    await expect(page.getByTestId('mobile-workspace-name')).toBeVisible();
     await expect(menu).toBeVisible();
     await expect(page.getByLabel('Workspace sidebar')).toHaveAttribute('aria-hidden', 'true');
     await menu.click();
@@ -54,7 +61,24 @@ test.describe('Workspace shell UX', () => {
       'true',
     );
     await expect(page.getByLabel('Workspace sidebar')).not.toHaveAttribute('aria-hidden', 'true');
-    await expect(page.getByLabel('Workspace sidebar')).toBeVisible();
+    const sidebar = page.getByLabel('Workspace sidebar');
+    await expect(sidebar).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.activeElement?.closest('#workspace-navigation') !== null),
+      )
+      .toBe(true);
+
+    const focusableSelector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusableCount = await sidebar.locator(focusableSelector).count();
+    expect(focusableCount).toBeGreaterThan(1);
+    await sidebar.locator(focusableSelector).last().focus();
+    await page.keyboard.press('Tab');
+    await expect(sidebar.locator(focusableSelector).first()).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(sidebar.locator(focusableSelector).last()).toBeFocused();
+
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Menu', exact: true })).toHaveAttribute(
       'aria-expanded',

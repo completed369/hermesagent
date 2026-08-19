@@ -4,6 +4,7 @@ import { DashboardShell } from '@/components/dashboard-shell';
 import type { AuthenticatedUser } from '@/lib/types';
 
 interface WorkspaceSummary {
+  workspace: { name: string };
   branding: { brandName: string | null; logoUrl: string | null; primaryColorHex: string } | null;
 }
 
@@ -27,6 +28,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <DashboardShell
       brandName={brandName}
+      workspaceName={workspaceSummary?.workspace.name || brandName}
       logoUrl={logoUrl}
       email={data.user.email}
       accentColor={accentColor}

@@ -796,6 +796,8 @@ a {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    max-width: calc(100% - 96px);
     text-decoration: none;
   }
   .vos-mobile-brand .vos-dashboard-brandmark {
@@ -803,7 +805,10 @@ a {
     height: 30px;
   }
   .vos-mobile-brand strong {
+    overflow: hidden;
     font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .vos-menu-button {
     display: flex;
