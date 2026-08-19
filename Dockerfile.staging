@@ -60,9 +60,12 @@ RUN set -eu; \
       test -z "$(find "$runtime/node_modules/.pnpm" -path '*/@scarf/scarf/node-compile-cache' -print -quit)"; \
     }; \
     prune_runtime_package /runtime/api '@types+node@*' '@types/node'; \
+    prune_runtime_package /runtime/api 'typescript@*' 'typescript'; \
     prune_runtime_package /runtime/worker '@types+node@*' '@types/node'; \
     prune_runtime_package /runtime/worker '@types+estree@*' '@types/estree'; \
     prune_runtime_package /runtime/worker '@types+json-schema@*' '@types/json-schema'; \
+    prune_runtime_package /runtime/worker 'typescript@*' 'typescript'; \
+    prune_runtime_package /runtime/tools 'typescript@*' 'typescript'; \
     prune_runtime_package /runtime/web 'typescript@*' 'typescript'; \
     prune_scarf_compile_cache /runtime/api; \
     core_bridge="$(echo /runtime/worker/node_modules/.pnpm/@temporalio+core-bridge@*/node_modules/@temporalio/core-bridge)"; \
