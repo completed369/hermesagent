@@ -259,7 +259,7 @@ test('generated Scarf compile-cache pruning is API-only, narrow, and fail-closed
   assert.doesNotMatch(rootfsChecker, /scarf[^\n]*(?:allow|exclude|whitelist)/i);
 });
 
-test('dotenv documentation pruning is API-only, narrow, and fail-closed', () => {
+test('dotenv documentation pruning is service-runtime-only, narrow, and fail-closed', () => {
   const dockerfile = read('Dockerfile.staging');
   const deployer = dockerStage(dockerfile, 'deployer');
   const rootfsChecker = read('scripts/verify-image-rootfs.py');
@@ -271,8 +271,10 @@ test('dotenv documentation pruning is API-only, narrow, and fail-closed', () => 
     deployer,
     /find "\$runtime\/node_modules\/\.pnpm" -path '\*\/node_modules\/dotenv\/README\*'/,
   );
-  assert.match(deployer, /prune_dotenv_docs \/runtime\/api/);
-  for (const target of ['worker', 'web', 'tools']) {
+  for (const target of ['api', 'worker']) {
+    assert.match(deployer, new RegExp(`prune_dotenv_docs /runtime/${target}`));
+  }
+  for (const target of ['web', 'tools']) {
     assert.doesNotMatch(deployer, new RegExp(`prune_dotenv_docs /runtime/${target}`));
   }
 
