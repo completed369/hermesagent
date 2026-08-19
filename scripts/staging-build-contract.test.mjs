@@ -46,8 +46,10 @@ test('staging image and topology contracts are fail-closed', () => {
   assert.match(dockerfile, /COPY --from=runtime-libgcc .*libgcc_s\.so\.1/);
   assert.match(dockerfile, /COPY --from=runtime-libgcc .*libstdc\+\+\.so\.6\*/);
   assert.match(dockerfile, /COPY --from=runtime-libgcc .*status\.d\/libstdc\+\+6/);
-  assert.match(dockerfile, /FROM node:22-bookworm-slim@sha256:[a-f0-9]{64} AS runtime-openssl/);
-  assert.match(dockerStage(dockerfile, 'runtime-openssl'), /dpkg-query --status libssl3/);
+  assert.match(
+    dockerfile,
+    /FROM gcr\.io\/distroless\/base-debian12@sha256:[a-f0-9]{64} AS runtime-openssl/,
+  );
   assert.match(
     dockerStage(dockerfile, 'tools-runtime'),
     /COPY --from=runtime-openssl .*libssl\.so\.3/,

@@ -106,8 +106,7 @@ FROM node:22-trixie-slim@sha256:db8a96a63e5264607ada2d206758876ebbed6a12be2ada75
 
 FROM gcr.io/distroless/cc-debian13@sha256:053b9adbc028d9c3ad170973748a22bb23863c828d21029369c8ff641a5c5f42 AS runtime-libgcc
 
-FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS runtime-openssl
-RUN dpkg-query --status libssl3 > /tmp/libssl3.status
+FROM gcr.io/distroless/base-debian12@sha256:b12529fbbd0bb15eea8905f69d83148679e0b4d7d434c8808100792029b1caae AS runtime-openssl
 
 FROM gcr.io/distroless/base-nossl-debian13@sha256:caa5ae9098199275fb38b6bd62aa1c3ec240119907df634a55cc6f1d52668dab AS runtime
 COPY --from=runtime-node /usr/local/bin/node /nodejs/bin/node
@@ -120,7 +119,7 @@ ENTRYPOINT ["/nodejs/bin/node"]
 FROM runtime AS tools-runtime
 COPY --from=runtime-openssl /usr/lib/x86_64-linux-gnu/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.3
 COPY --from=runtime-openssl /usr/lib/x86_64-linux-gnu/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.3
-COPY --from=runtime-openssl /tmp/libssl3.status /var/lib/dpkg/status.d/libssl3
+COPY --from=runtime-openssl /var/lib/dpkg/status.d/libssl3 /var/lib/dpkg/status.d/libssl3
 
 FROM tools-runtime AS tools
 ENV NODE_ENV=production
