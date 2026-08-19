@@ -271,10 +271,10 @@ test('dotenv documentation pruning is service-runtime-only, narrow, and fail-clo
     deployer,
     /find "\$runtime\/node_modules\/\.pnpm" -path '\*\/node_modules\/dotenv\/README\*'/,
   );
-  for (const target of ['api', 'worker']) {
+  for (const target of ['api', 'worker', 'tools']) {
     assert.match(deployer, new RegExp(`prune_dotenv_docs /runtime/${target}`));
   }
-  for (const target of ['web', 'tools']) {
+  for (const target of ['web']) {
     assert.doesNotMatch(deployer, new RegExp(`prune_dotenv_docs /runtime/${target}`));
   }
 

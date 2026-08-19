@@ -90,6 +90,7 @@ RUN set -eu; \
     prune_scarf_compile_cache /runtime/api; \
     prune_dotenv_docs /runtime/api; \
     prune_dotenv_docs /runtime/worker; \
+    prune_dotenv_docs /runtime/tools; \
     core_bridge="$(echo /runtime/worker/node_modules/.pnpm/@temporalio+core-bridge@*/node_modules/@temporalio/core-bridge)"; \
     test -f "$core_bridge/Cargo.lock"; \
     rm -rf "$core_bridge/sdk-core" "$core_bridge/bridge-macros" \
