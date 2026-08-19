@@ -53,9 +53,9 @@ export default function RegisterPage() {
           Create a secure workspace for your team, evidence, decisions and execution. Human approval
           stays built in.
         </p>
-        <a href="https://progress.ventures.site" className="vos-auth-progress">
+        <Link href="/progress" className="vos-auth-progress">
           See what is shipping <span>↗</span>
-        </a>
+        </Link>
       </section>
       <form onSubmit={handleSubmit} className="vos-card vos-auth-card" data-testid="register-form">
         <div>

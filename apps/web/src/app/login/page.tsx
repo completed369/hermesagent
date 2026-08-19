@@ -43,9 +43,9 @@ export default function LoginPage() {
           Return to your workspace to coordinate research, approvals, products and growth with your
           team.
         </p>
-        <a href="https://progress.ventures.site" className="vos-auth-progress">
+        <Link href="/progress" className="vos-auth-progress">
           View platform progress <span>↗</span>
-        </a>
+        </Link>
       </section>
       <form onSubmit={handleSubmit} className="vos-card vos-auth-card" data-testid="login-form">
         <div>

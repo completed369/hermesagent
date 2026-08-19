@@ -105,9 +105,9 @@ export default function RootPage() {
               <Link href="/register" className={styles.primaryAction}>
                 Create your workspace
               </Link>
-              <a href="https://progress.ventures.site" className={styles.secondaryAction}>
+              <Link href="/progress" className={styles.secondaryAction}>
                 Explore live progress ↗
-              </a>
+              </Link>
             </div>
           </div>
 
@@ -245,7 +245,7 @@ export default function RootPage() {
         <footer className={styles.footer}>
           <span>VentureOS · Development in progress</span>
           <span className={styles.footerLinks}>
-            <a href="https://progress.ventures.site">Progress</a>
+            <Link href="/progress">Progress</Link>
             <Link href="/register">Join VentureOS →</Link>
           </span>
         </footer>
