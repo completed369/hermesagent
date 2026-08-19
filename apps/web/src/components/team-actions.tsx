@@ -44,7 +44,7 @@ export function TeamActions({ members }: { members: WorkspaceMemberView[] }) {
         method: 'POST',
         body: JSON.stringify({ roleKey, expiresInHours: 72 }),
       });
-      setInviteLink(`${window.location.origin}/join/${invitation.token}`);
+      setInviteLink(`${window.location.origin}/join#token=${encodeURIComponent(invitation.token)}`);
       setStatus('Secure invitation created. Copy the link now.');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the invite.');

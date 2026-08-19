@@ -475,8 +475,13 @@ without deployment or live providers.
   tenant-scoped lookups and mutation audit events.
 - ✅ Plan member quota enforced in a workspace-serialized acceptance
   transaction, including concurrent acceptance protection.
-- ✅ Public `/join/[token]` account-creation flow and Settings → Team UI with
+- ✅ Public `/join#token=…` fragment-to-body account-creation flow and Settings → Team UI with
   a one-time copy action; no email or other external provider.
+- 🟡 Existing-account claims return a neutral, audited response without
+  attaching a second tenant. Completing that path requires workspace-scoped
+  sessions (an active workspace on each session), a workspace selector, and
+  workspace-scoped revocation; the current guard's unscoped `memberships[0]`
+  selection cannot safely support multi-workspace accounts.
 - ✅ Production build, typecheck, lint, formatting, and immutable migration
   contract pass locally.
 - 🟡 Database integration suite added for digest-only storage, expiry, replay,

@@ -1,6 +1,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -20,7 +21,7 @@ export interface UpdateBrandingInput {
 
 @Injectable()
 export class WorkspacesService {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(@Inject(AuditService) private readonly auditService: AuditService) {}
 
   async getWorkspaceSummary(workspaceId: string) {
     const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
@@ -142,7 +143,22 @@ export class WorkspacesService {
 
       const existingUser = await tx.user.findUnique({ where: { email: normalizedEmail } });
       if (existingUser) {
-        throw new ConflictException('This account already exists. Use a new account to join.');
+        const consumed = await tx.workspaceInvitation.updateMany({
+          where: { id: invitation.id, acceptedAt: null, revokedAt: null },
+          data: { acceptedAt: new Date() },
+        });
+        if (consumed.count !== 1) throw new ConflictException('Invitation has already been used');
+        await this.auditService.record(
+          invitation.workspaceId,
+          {
+            action: 'WORKSPACE_INVITATION_ACCEPTANCE_DEFERRED',
+            entityType: 'WorkspaceInvitation',
+            entityId: invitation.id,
+            after: { reason: 'WORKSPACE_SCOPED_SESSION_REQUIRED' },
+          },
+          tx,
+        );
+        return { received: true as const, workspaceName: invitation.workspace.name };
       }
 
       const user = await tx.user.create({
@@ -180,7 +196,7 @@ export class WorkspacesService {
         },
         tx,
       );
-      return { accepted: true as const, workspaceName: invitation.workspace.name };
+      return { received: true as const, workspaceName: invitation.workspace.name };
     });
   }
 

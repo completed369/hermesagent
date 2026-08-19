@@ -29,10 +29,27 @@ describe('workspace route parameter validation', () => {
       const service = { getInvitation: vi.fn() } as unknown as WorkspacesService;
       const controller = new WorkspaceInvitationsController(service);
 
-      expect(statusOf(() => controller.get(token))).toBe(400);
+      expect(statusOf(() => controller.get({ token }))).toBe(400);
       expect(service.getInvitation).not.toHaveBeenCalled();
     },
   );
+
+  it('returns 400 for malformed invitation acceptance bodies', () => {
+    const service = { acceptInvitation: vi.fn() } as unknown as WorkspacesService;
+    const controller = new WorkspaceInvitationsController(service);
+
+    expect(
+      statusOf(() =>
+        controller.accept({
+          token: 'short',
+          email: 'invitee@example.test',
+          password: 'password123',
+          displayName: 'Invitee',
+        }),
+      ),
+    ).toBe(400);
+    expect(service.acceptInvitation).not.toHaveBeenCalled();
+  });
 
   it.each(['not-a-uuid', '00000000-0000-0000-0000-00000000000z'])(
     'returns 400 for malformed member ID %s',

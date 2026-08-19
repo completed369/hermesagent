@@ -4,6 +4,9 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
+  HttpCode,
+  Inject,
   Param,
   Patch,
   Post,
@@ -17,7 +20,7 @@ import {
   acceptInvitationSchema,
   changeMemberRoleSchema,
   createInvitationSchema,
-  invitationTokenSchema,
+  previewInvitationSchema,
   updateBrandingSchema,
   workspaceMemberIdSchema,
 } from './workspaces.dto';
@@ -30,7 +33,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @Controller('workspaces')
 @UseGuards(SessionAuthGuard)
 export class WorkspacesController {
-  constructor(private readonly workspacesService: WorkspacesService) {}
+  constructor(@Inject(WorkspacesService) private readonly workspacesService: WorkspacesService) {}
 
   @Get('current')
   async current(@CurrentUser() user: AuthenticatedUser) {
@@ -41,7 +44,7 @@ export class WorkspacesController {
   @UseGuards(PermissionGuard)
   @RequirePermission('workspace:branding:manage')
   async updateBranding(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
-    const input = updateBrandingSchema.parse(body);
+    const input = parseRequestBody(updateBrandingSchema, body);
     return this.workspacesService.updateBranding(user.workspaceId, input);
   }
 
@@ -53,10 +56,11 @@ export class WorkspacesController {
   }
 
   @Post('invitations')
+  @Header('Cache-Control', 'no-store')
   @UseGuards(PermissionGuard)
   @RequirePermission('workspace:members:manage')
   createInvitation(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
-    const input = createInvitationSchema.parse(body);
+    const input = parseRequestBody(createInvitationSchema, body);
     return this.workspacesService.createInvitation(
       user.workspaceId,
       user.userId,
@@ -74,7 +78,7 @@ export class WorkspacesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     const parsedMemberId = parseRouteParam(workspaceMemberIdSchema, memberId);
-    const input = changeMemberRoleSchema.parse(body);
+    const input = parseRequestBody(changeMemberRoleSchema, body);
     return this.workspacesService.changeMemberRole(
       user.workspaceId,
       user.userId,
@@ -98,23 +102,36 @@ export class WorkspacesController {
 @ApiTags('workspace-invitations')
 @Controller('workspace-invitations')
 export class WorkspaceInvitationsController {
-  constructor(private readonly workspacesService: WorkspacesService) {}
+  constructor(@Inject(WorkspacesService) private readonly workspacesService: WorkspacesService) {}
 
-  @Get(':token')
+  @Post('preview')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  get(@Param('token') token: string) {
-    return this.workspacesService.getInvitation(parseRouteParam(invitationTokenSchema, token));
+  get(@Body() body: unknown) {
+    const input = parseRequestBody(previewInvitationSchema, body);
+    return this.workspacesService.getInvitation(input.token);
   }
 
-  @Post(':token/accept')
+  @Post('accept')
+  @HttpCode(202)
+  @Header('Cache-Control', 'no-store')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  accept(@Param('token') token: string, @Body() body: unknown) {
-    const input = acceptInvitationSchema.parse(body);
-    return this.workspacesService.acceptInvitation(
-      parseRouteParam(invitationTokenSchema, token),
-      input,
-    );
+  accept(@Body() body: unknown) {
+    const input = parseRequestBody(acceptInvitationSchema, body);
+    return this.workspacesService.acceptInvitation(input.token, input);
   }
+}
+
+function parseRequestBody<TSchema extends z.ZodTypeAny>(
+  schema: TSchema,
+  body: unknown,
+): z.output<TSchema> {
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    throw new BadRequestException(parsed.error.issues[0]?.message ?? 'Invalid request body');
+  }
+  return parsed.data;
 }
 
 function parseRouteParam<T>(schema: z.ZodType<T>, value: string): T {

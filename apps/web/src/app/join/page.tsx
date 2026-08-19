@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 
 interface InvitationPreview {
@@ -12,9 +12,9 @@ interface InvitationPreview {
 }
 
 export default function JoinWorkspacePage() {
-  const params = useParams<{ token: string }>();
   const router = useRouter();
-  const token = params.token;
+  const consumedFragmentToken = useRef<string | null | undefined>(undefined);
+  const [token, setToken] = useState<string | null>(null);
   const [invitation, setInvitation] = useState<InvitationPreview | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -28,11 +28,34 @@ export default function JoinWorkspacePage() {
 
   useEffect(() => {
     let active = true;
+    if (consumedFragmentToken.current === undefined) {
+      const hashParameters = new URLSearchParams(window.location.hash.slice(1));
+      consumedFragmentToken.current = hashParameters.get('token');
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${window.location.pathname}${window.location.search}`,
+      );
+    }
+    const invitationToken = consumedFragmentToken.current;
     setInvitation(null);
     setError(null);
     setPreviewState('checking');
     setStatus('Checking this invitation.');
-    apiFetch<InvitationPreview>(`/workspace-invitations/${encodeURIComponent(token)}`)
+    if (!invitationToken) {
+      setError('Invitation token is missing. Ask the founder for a new link.');
+      setPreviewState('unavailable');
+      setStatus('');
+      return () => {
+        active = false;
+      };
+    }
+    setToken(invitationToken);
+    apiFetch<InvitationPreview>('/workspace-invitations/preview', {
+      method: 'POST',
+      cache: 'no-store',
+      body: JSON.stringify({ token: invitationToken }),
+    })
       .then((preview) => {
         if (!active) return;
         setInvitation(preview);
@@ -48,21 +71,22 @@ export default function JoinWorkspacePage() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, []);
 
   async function accept(event: React.FormEvent) {
     event.preventDefault();
-    if (!invitation || accepting) return;
+    if (!invitation || !token || accepting) return;
     setAccepting(true);
     setError(null);
     setStatus(`Joining ${invitation.workspaceName}.`);
     try {
-      await apiFetch(`/workspace-invitations/${encodeURIComponent(token)}/accept`, {
+      await apiFetch('/workspace-invitations/accept', {
         method: 'POST',
-        body: JSON.stringify({ displayName, email, password }),
+        cache: 'no-store',
+        body: JSON.stringify({ token, displayName, email, password }),
       });
-      setStatus('Workspace joined. Redirecting to sign in.');
-      router.push('/login?joined=1');
+      setStatus('Access request received. Redirecting to sign in.');
+      router.push('/login');
       router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not join this workspace.');
@@ -152,12 +176,12 @@ export default function JoinWorkspacePage() {
                 />
               </label>
               <button className="vos-btn" type="submit">
-                {accepting ? 'Joining…' : 'Join workspace'}
+                {accepting ? 'Sending…' : 'Request workspace access'}
               </button>
             </fieldset>
             <p className="vos-auth-switch vos-join-account-note">
-              This invitation creates a new workspace account. If this email is already registered,
-              ask the founder to invite a different address.
+              For privacy, VentureOS gives the same result whether an account already exists. Use an
+              email you control and contact the founder if access does not appear.
             </p>
           </>
         ) : null}

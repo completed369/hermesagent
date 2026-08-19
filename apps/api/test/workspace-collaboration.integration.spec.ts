@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -10,7 +10,6 @@ import { loadEnv } from '@ventureos/config';
 import { AppModule } from '../src/app.module';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { WorkspacesService } from '../src/modules/workspaces/workspaces.service';
-import { SafeExceptionFilter } from '../src/common/filters/safe-exception.filter';
 import { entitleTestWorkspace } from './helpers/entitled-workspace';
 
 describe('collaborative workspace invitations (integration)', () => {
@@ -21,18 +20,8 @@ describe('collaborative workspace invitations (integration)', () => {
   let workspaceId: string;
   let founderId: string;
   let app: INestApplication;
-  const capturedExceptions: unknown[] = [];
 
   beforeAll(async () => {
-    const originalCatch = SafeExceptionFilter.prototype.catch;
-    vi.spyOn(SafeExceptionFilter.prototype, 'catch').mockImplementation(function (
-      this: SafeExceptionFilter,
-      exception,
-      host,
-    ) {
-      capturedExceptions.push(exception);
-      originalCatch.call(this, exception, host);
-    });
     app = await NestFactory.create(AppModule);
     app.use(cookieParser());
     app.setGlobalPrefix('api');
@@ -45,7 +34,6 @@ describe('collaborative workspace invitations (integration)', () => {
   });
 
   beforeEach(async () => {
-    capturedExceptions.length = 0;
     const founderRole = await prisma.role.upsert({
       where: { key: 'FOUNDER' },
       update: {},
@@ -197,6 +185,55 @@ describe('collaborative workspace invitations (integration)', () => {
         displayName: 'Replay',
       }),
     ).rejects.toThrow('already been used');
+
+    const existingUser = await prisma.user.create({
+      data: {
+        email: `existing-${randomUUID()}@example.test`,
+        displayName: 'Existing account',
+      },
+    });
+    userIds.push(existingUser.id);
+    const existingAccountInvite = await service.createInvitation(
+      workspaceId,
+      founderId,
+      'VIEWER',
+      24,
+    );
+    const genericResult = await request(app.getHttpServer())
+      .post('/api/workspace-invitations/accept')
+      .send({
+        token: existingAccountInvite.token,
+        email: existingUser.email,
+        password: 'existing-account-password',
+        displayName: 'Existing account',
+      });
+    expect(genericResult.status).toBe(202);
+    expect(genericResult.headers['cache-control']).toBe('no-store');
+    expect(genericResult.body).toEqual({ received: true, workspaceName: 'Collaboration test' });
+    expect(
+      await prisma.workspaceInvitation.findUniqueOrThrow({
+        where: { id: existingAccountInvite.id },
+        select: { acceptedAt: true, acceptedById: true },
+      }),
+    ).toMatchObject({ acceptedAt: expect.any(Date), acceptedById: null });
+    expect(
+      await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId: existingUser.id } },
+      }),
+    ).toBeNull();
+    expect(
+      await prisma.auditEvent.findFirst({
+        where: {
+          workspaceId,
+          action: 'WORKSPACE_INVITATION_ACCEPTANCE_DEFERRED',
+          entityId: existingAccountInvite.id,
+          actorId: null,
+        },
+      }),
+    ).not.toBeNull();
+    await expect(service.getInvitation(existingAccountInvite.token)).rejects.toThrow(
+      'already been used',
+    );
   });
 
   it('enforces tenant isolation for founder member mutations', async () => {
@@ -266,8 +303,17 @@ describe('collaborative workspace invitations (integration)', () => {
     const founderList = await request(app.getHttpServer())
       .get('/api/workspaces/members')
       .set('Cookie', founderCookie);
-    expect(founderList.status, exceptionDiagnostic(capturedExceptions.at(-1))).toBe(200);
+    expect(founderList.status).toBe(200);
     expect(founderList.body).toHaveLength(3);
+
+    const invitation = await request(app.getHttpServer())
+      .post('/api/workspaces/invitations')
+      .set('Cookie', founderCookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ roleKey: 'VIEWER', expiresInHours: 24 });
+    expect(invitation.status).toBe(201);
+    expect(invitation.headers['cache-control']).toBe('no-store');
+    expect(invitation.body.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
     for (const cookie of [operator.cookie, viewer.cookie]) {
       const forbidden = await request(app.getHttpServer())
@@ -332,17 +378,38 @@ describe('collaborative workspace invitations (integration)', () => {
       .delete('/api/workspaces/members/not-a-uuid')
       .set('Cookie', founderCookie)
       .set('Origin', env.API_CORS_ORIGIN);
-    expect(malformedMember.status, exceptionDiagnostic(capturedExceptions.at(-1))).toBe(400);
+    expect(malformedMember.status).toBe(400);
 
-    const malformedPreview = await request(app.getHttpServer()).get(
-      '/api/workspace-invitations/not-a-token',
-    );
+    const malformedInviteBody = await request(app.getHttpServer())
+      .post('/api/workspaces/invitations')
+      .set('Cookie', founderCookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ roleKey: 'ADMIN', expiresInHours: 24 });
+    expect(malformedInviteBody.status).toBe(400);
+
+    const malformedRoleBody = await request(app.getHttpServer())
+      .patch(`/api/workspaces/members/${randomUUID()}/role`)
+      .set('Cookie', founderCookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ roleKey: 'ADMIN' });
+    expect(malformedRoleBody.status).toBe(400);
+
+    const malformedPreview = await request(app.getHttpServer())
+      .post('/api/workspace-invitations/preview')
+      .send({ token: 'not-a-token' });
     expect(malformedPreview.status).toBe(400);
+    expect(malformedPreview.headers['cache-control']).toBe('no-store');
 
     const malformedAccept = await request(app.getHttpServer())
-      .post(`/api/workspace-invitations/${'a'.repeat(44)}/accept`)
-      .send({ email: 'bad@example.test', password: 'password123', displayName: 'Bad' });
+      .post('/api/workspace-invitations/accept')
+      .send({
+        token: 'a'.repeat(44),
+        email: 'bad@example.test',
+        password: 'password123',
+        displayName: 'Bad',
+      });
     expect(malformedAccept.status).toBe(400);
+    expect(malformedAccept.headers['cache-control']).toBe('no-store');
   });
 
   it('rate-limits repeated unauthenticated invite acceptance attempts', async () => {
@@ -350,8 +417,9 @@ describe('collaborative workspace invitations (integration)', () => {
     const statuses: number[] = [];
     for (let attempt = 0; attempt < 6; attempt += 1) {
       const response = await request(app.getHttpServer())
-        .post(`/api/workspace-invitations/${validUnknownToken}/accept`)
+        .post('/api/workspace-invitations/accept')
         .send({
+          token: validUnknownToken,
           email: `abuse-${attempt}@example.test`,
           password: 'password123',
           displayName: 'Abuse',
@@ -361,9 +429,3 @@ describe('collaborative workspace invitations (integration)', () => {
     expect(statuses.at(-1)).toBe(429);
   });
 });
-
-function exceptionDiagnostic(exception: unknown): string {
-  if (!(exception instanceof Error)) return `Unexpected exception type: ${typeof exception}`;
-  const firstLine = exception.message.split(/\r?\n/, 1)[0]?.slice(0, 240) ?? 'No message';
-  return `${exception.name}: ${firstLine}`;
-}

@@ -16,6 +16,7 @@ export const invitationTokenSchema = z
   .string()
   .length(43, 'Invitation token has an invalid length')
   .regex(/^[A-Za-z0-9_-]+$/, 'Invitation token has an invalid format');
+export const previewInvitationSchema = z.object({ token: invitationTokenSchema });
 
 export const createInvitationSchema = z.object({
   roleKey: collaborationRoleSchema,
@@ -25,6 +26,7 @@ export const createInvitationSchema = z.object({
 export const changeMemberRoleSchema = z.object({ roleKey: collaborationRoleSchema });
 
 export const acceptInvitationSchema = z.object({
+  token: invitationTokenSchema,
   email: z.string().email(),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   displayName: z.string().trim().min(1).max(100),
