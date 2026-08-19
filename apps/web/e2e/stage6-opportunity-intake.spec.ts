@@ -102,7 +102,9 @@ test.describe('Stage 6 opportunity intake', () => {
     const complianceSubmit = page.getByTestId('compliance-submit');
     await complianceCategories.fill('   ');
     await complianceSubmit.click();
-    await expect(page.getByRole('alert')).toHaveText(
+    const complianceError = page.getByTestId('compliance-error');
+    await expect(complianceError).toHaveAttribute('role', 'alert');
+    await expect(complianceError).toHaveText(
       'Enter at least one truthful product/category declaration.',
     );
 
