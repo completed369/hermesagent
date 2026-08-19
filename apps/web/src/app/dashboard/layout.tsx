@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { SignOutButton } from '@/components/sign-out-button';
@@ -26,33 +27,26 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const accentColor = workspaceSummary?.branding?.primaryColorHex || '#5b8def';
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', ['--vos-accent' as string]: accentColor }}>
-      <aside
-        style={{
-          width: 240,
-          borderRight: '1px solid var(--vos-border)',
-          padding: '20px 12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 24,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="vos-dashboard-shell" style={{ ['--vos-accent' as string]: accentColor }}>
+      <aside className="vos-dashboard-sidebar">
+        <Link href="/dashboard" className="vos-dashboard-brand">
           {logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt={brandName} style={{ width: 24, height: 24, borderRadius: 4 }} />
+            <img src={logoUrl} alt={brandName} />
           )}
+          {!logoUrl ? <span className="vos-dashboard-brandmark">V</span> : null}
           <div>
-            <strong style={{ fontSize: 16 }}>{brandName}</strong>
-            <p style={{ fontSize: 12, color: 'var(--vos-text-muted)', margin: '2px 0 0' }}>
-              {data.user.email}
-            </p>
+            <strong>{brandName}</strong>
+            <p>{data.user.email}</p>
           </div>
-        </div>
+        </Link>
+        <p className="vos-dashboard-section-label">Workspace</p>
         <DashboardNav />
-        <SignOutButton />
+        <div className="vos-dashboard-signout">
+          <SignOutButton />
+        </div>
       </aside>
-      <main style={{ flex: 1, padding: 28 }}>{children}</main>
+      <main className="vos-dashboard-main">{children}</main>
     </div>
   );
 }

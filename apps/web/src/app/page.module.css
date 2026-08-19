@@ -125,9 +125,15 @@
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(52, 195, 143, 0.48); }
-  70% { box-shadow: 0 0 0 9px rgba(52, 195, 143, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(52, 195, 143, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 195, 143, 0.48);
+  }
+  70% {
+    box-shadow: 0 0 0 9px rgba(52, 195, 143, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 195, 143, 0);
+  }
 }
 
 .eyebrow {
@@ -210,7 +216,12 @@
   position: relative;
   padding: 1px;
   border-radius: 24px;
-  background: linear-gradient(145deg, rgba(126, 167, 251, 0.4), rgba(52, 195, 143, 0.16), rgba(255, 255, 255, 0.04));
+  background: linear-gradient(
+    145deg,
+    rgba(126, 167, 251, 0.4),
+    rgba(52, 195, 143, 0.16),
+    rgba(255, 255, 255, 0.04)
+  );
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
 }
 
@@ -277,7 +288,7 @@
   padding: 16px;
   border: 1px solid rgba(91, 141, 239, 0.22);
   border-radius: 16px;
-  background: linear-gradient(135deg, rgba(91, 141, 239, 0.10), rgba(52, 195, 143, 0.06));
+  background: linear-gradient(135deg, rgba(91, 141, 239, 0.1), rgba(52, 195, 143, 0.06));
 }
 
 .focusCard strong {
@@ -300,7 +311,7 @@
 
 .sectionHeader {
   display: flex;
-  align-items: end;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 30px;
   margin-bottom: 34px;
@@ -407,7 +418,7 @@
 
 .timelineDotProgress {
   background: #5b8def;
-  box-shadow: 0 0 0 5px rgba(91, 141, 239, 0.10);
+  box-shadow: 0 0 0 5px rgba(91, 141, 239, 0.1);
 }
 
 .timelineTitle {
@@ -502,6 +513,12 @@
 .footer a {
   color: #cbd2de;
   text-decoration: none;
+}
+
+.footerLinks {
+  display: flex;
+  align-items: center;
+  gap: 22px;
 }
 
 @media (max-width: 900px) {

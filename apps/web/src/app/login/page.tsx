@@ -7,7 +7,7 @@ import { apiFetch, ApiError } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('founder@ventureos.local');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -28,24 +28,31 @@ export default function LoginPage() {
   }
 
   return (
-    <main
-      style={{
-        display: 'flex',
-        minHeight: '100vh',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <form
-        onSubmit={handleSubmit}
-        className="vos-card"
-        style={{ width: 360, display: 'grid', gap: 14 }}
-        data-testid="login-form"
-      >
+    <main className="vos-auth-shell">
+      <section className="vos-auth-story">
+        <Link href="/" className="vos-auth-brand">
+          <span>V</span> VentureOS
+        </Link>
+        <p className="vos-auth-kicker">Human-directed venture intelligence</p>
+        <h1>
+          One operating system.
+          <br />
+          Every venture signal.
+        </h1>
+        <p>
+          Return to your workspace to coordinate research, approvals, products and growth with your
+          team.
+        </p>
+        <Link href="/progress" className="vos-auth-progress">
+          View platform progress <span>↗</span>
+        </Link>
+      </section>
+      <form onSubmit={handleSubmit} className="vos-card vos-auth-card" data-testid="login-form">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>VentureOS</h1>
-          <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, margin: '4px 0 0' }}>
-            Founder sign-in - human control, always.
+          <p className="vos-auth-kicker">Welcome back</p>
+          <h2>Sign in to your workspace</h2>
+          <p className="vos-auth-copy">
+            Access for founders, operators, partners and invited team members.
           </p>
         </div>
 
@@ -85,12 +92,8 @@ export default function LoginPage() {
           {loading ? 'Signing in...' : 'Sign in'}
         </button>
 
-        <p style={{ fontSize: 12, color: 'var(--vos-text-muted)' }}>
-          Development login only. Credentials come from your local <code>.env</code>, seeded via{' '}
-          <code>pnpm db:seed</code>.
-        </p>
-        <p style={{ fontSize: 12, color: 'var(--vos-text-muted)' }}>
-          New here? <Link href="/register">Create a workspace</Link>
+        <p className="vos-auth-switch">
+          New to VentureOS? <Link href="/register">Create a workspace</Link>
         </p>
       </form>
     </main>
