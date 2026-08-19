@@ -132,6 +132,11 @@ export class WorkspacesService {
         select: { workspaceId: true },
       });
       if (!invitationRef) throw new NotFoundException('Invitation is invalid or unavailable');
+      // Every acceptance takes locks in account -> workspace order. The
+      // account lock closes the cross-workspace race where two invitations
+      // could otherwise both observe a new email before the unique user
+      // constraint is committed.
+      await lockTransactionKey(tx, `workspace-invite-account:${normalizedEmail}`);
       await lockWorkspace(tx, invitationRef.workspaceId);
 
       const invitation = await tx.workspaceInvitation.findUnique({
@@ -287,11 +292,15 @@ function assertInvitationActive<
 }
 
 async function lockWorkspace(tx: Prisma.TransactionClient, workspaceId: string): Promise<void> {
+  await lockTransactionKey(tx, `workspace:${workspaceId}`);
+}
+
+async function lockTransactionKey(tx: Prisma.TransactionClient, key: string): Promise<void> {
   // The pg adapter cannot deserialize PostgreSQL's native `void` result, so
   // project the lock call to a supported boolean while retaining its blocking
   // transaction-scoped semantics.
   await tx.$queryRaw<Array<{ locked: boolean }>>`
-    SELECT pg_advisory_xact_lock(hashtext(${workspaceId})) IS NULL AS "locked"
+    SELECT pg_advisory_xact_lock(hashtext(${key})) IS NULL AS "locked"
   `;
 }
 

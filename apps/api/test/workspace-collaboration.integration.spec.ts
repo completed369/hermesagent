@@ -285,6 +285,66 @@ describe('collaborative workspace invitations (integration)', () => {
     expect(await prisma.workspaceMember.count({ where: { workspaceId } })).toBe(2);
   });
 
+  it('serializes the same new email across workspaces without an enumeration failure', async () => {
+    const otherWorkspace = await prisma.workspace.create({
+      data: { name: 'Concurrent account tenant', slug: `account-race-${randomUUID()}` },
+    });
+    workspaceIds.push(otherWorkspace.id);
+    const otherFounder = await prisma.user.create({
+      data: {
+        email: `account-race-founder-${randomUUID()}@example.test`,
+        displayName: 'Other founder',
+        isFounder: true,
+      },
+    });
+    userIds.push(otherFounder.id);
+    const founderRole = await prisma.role.findUniqueOrThrow({ where: { key: 'FOUNDER' } });
+    await prisma.workspaceMember.create({
+      data: {
+        workspaceId: otherWorkspace.id,
+        userId: otherFounder.id,
+        roleId: founderRole.id,
+      },
+    });
+    await entitleTestWorkspace(otherWorkspace.id, { maxWorkspaceMembers: 5 });
+
+    const [first, second] = await Promise.all([
+      service.createInvitation(workspaceId, founderId, 'VIEWER', 24),
+      service.createInvitation(otherWorkspace.id, otherFounder.id, 'VIEWER', 24),
+    ]);
+    const sharedEmail = `cross-workspace-${randomUUID()}@example.test`;
+    const responses = await Promise.all([
+      request(app.getHttpServer()).post('/api/workspace-invitations/accept').send({
+        token: first.token,
+        email: sharedEmail,
+        password: 'correct-horse-battery',
+        displayName: 'Shared account',
+      }),
+      request(app.getHttpServer()).post('/api/workspace-invitations/accept').send({
+        token: second.token,
+        email: sharedEmail,
+        password: 'correct-horse-battery',
+        displayName: 'Shared account',
+      }),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([202, 202]);
+    expect(responses.every((response) => response.body.received === true)).toBe(true);
+    expect(await prisma.user.count({ where: { email: sharedEmail } })).toBe(1);
+    const sharedUser = await prisma.user.findUniqueOrThrow({ where: { email: sharedEmail } });
+    userIds.push(sharedUser.id);
+    expect(
+      await prisma.workspaceInvitation.count({
+        where: { id: { in: [first.id, second.id] }, acceptedAt: { not: null } },
+      }),
+    ).toBe(2);
+    expect(
+      await prisma.workspaceMember.count({
+        where: { userId: sharedUser.id, workspaceId: { in: [workspaceId, otherWorkspace.id] } },
+      }),
+    ).toBe(1);
+  });
+
   it('rejects invite creation when the workspace is already at quota', async () => {
     await prisma.plan.update({
       where: { key: `INTEGRATION_TEST_${workspaceId}` },
