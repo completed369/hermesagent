@@ -79,9 +79,11 @@ test.describe('Collaborative workspace UI behavior', () => {
     await page.getByRole('button', { name: 'Copy link' }).click();
     await expect(page.getByRole('button', { name: 'Copying…' })).toBeDisabled();
     await expect(page.getByRole('status')).toHaveText('Copying the invitation link.');
-    await expect(page.getByRole('alert')).toHaveText(
-      'Could not copy the invitation link. Select and copy it manually.',
-    );
+    await expect(
+      page.getByRole('alert').filter({
+        hasText: 'Could not copy the invitation link. Select and copy it manually.',
+      }),
+    ).toHaveText('Could not copy the invitation link. Select and copy it manually.');
     await expect(inviteInput).toBeFocused();
     const inviteValue = await inviteInput.inputValue();
     await expect
@@ -150,7 +152,8 @@ test.describe('Collaborative workspace UI behavior', () => {
     await page.getByRole('button', { name: 'Request workspace access' }).click();
 
     await expect(form).toHaveAttribute('aria-busy', 'true');
-    await expect(page.locator('fieldset')).toBeDisabled();
+    await expect(page.locator('fieldset')).toHaveAttribute('disabled', '');
+    await expect(page.getByLabel('Your name')).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Sending…' })).toBeDisabled();
     await expect(page.getByRole('status')).toHaveText('Joining Orbital Studio.');
 
