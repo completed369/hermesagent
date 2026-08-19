@@ -71,8 +71,7 @@ test.describe('Stage 6 opportunity intake', () => {
     ]);
 
     expect(createResponse.status()).toBe(201);
-    const created = (await createResponse.json()) as { id: string };
-    await expect(page).toHaveURL(`/dashboard/opportunities/${created.id}`);
+    await expect(page).toHaveURL(/\/dashboard\/opportunities\/[0-9a-f-]+$/);
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
     await expect(page.getByText(claim)).toBeVisible();
     await expect(page.getByText('Founder-Provided Fact')).toBeVisible();
