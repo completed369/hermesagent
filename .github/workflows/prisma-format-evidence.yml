@@ -1,0 +1,36 @@
+name: Prisma formatting evidence
+
+'on':
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/database/src/client.ts'
+      - '.github/workflows/prisma-format-evidence.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  format-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Print exact Prettier diff
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --write packages/database/src/client.ts
+          git diff -- packages/database/src/client.ts

@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1.7
+
+# Evidence-only candidate for the release-blocker remediation. Not used by product builds.
+ARG NODE_SOURCE=node:22-trixie-slim@sha256:db8a96a63e5264607ada2d206758876ebbed6a12be2ada7517793cbfb0c2a29c
+ARG CC_BASE=gcr.io/distroless/cc-debian13:latest-amd64
+
+FROM ${NODE_SOURCE} AS node-source
+
+FROM ${CC_BASE}
+COPY --from=node-source /usr/local/bin/node /nodejs/bin/node
+USER 65532:65532
+ENTRYPOINT ["/nodejs/bin/node"]
+CMD ["--version"]

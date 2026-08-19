@@ -200,6 +200,14 @@ test('type-only runtime pruning is target-specific and fail-closed', () => {
 
   assert.match(deployer, /prune_runtime_package\(\)/);
   assert.match(deployer, /prune_runtime_package \/runtime\/api '@types\+node@\*' '@types\/node'/);
+  for (const runtime of ['api', 'worker', 'tools', 'web']) {
+    assert.ok(
+      deployer.includes(
+        `prune_optional_runtime_package /runtime/${runtime} 'typescript@*' 'typescript'`,
+      ),
+      `${runtime} must prune TypeScript`,
+    );
+  }
   for (const [virtualStorePackage, packagePath] of [
     ['@types+node@*', '@types/node'],
     ['@types+estree@*', '@types/estree'],
@@ -213,8 +221,9 @@ test('type-only runtime pruning is target-specific and fail-closed', () => {
     );
   }
   assert.match(deployer, /cp -R \/workspace\/apps\/web\/\.next\/standalone \/runtime\/web/);
-  assert.match(deployer, /prune_runtime_package \/runtime\/web 'typescript@\*' 'typescript'/);
   assert.match(deployer, /test -e "\$1"/);
+  assert.match(deployer, /prune_optional_runtime_package\(\)/);
+  assert.match(deployer, /test ! -e "\$package_store" \|\| rm -rf "\$package_store"/);
   assert.match(deployer, /find "\$runtime\/node_modules" -type l -path/);
   assert.match(deployer, /test -z "\$\(find "\$runtime\/node_modules" -path/);
   assert.match(web, /COPY --from=deployer --chown=65532:65532 \/runtime\/web\/ \./);
@@ -248,4 +257,27 @@ test('generated Scarf compile-cache pruning is API-only, narrow, and fail-closed
     /rb"BEGIN \[A-Z \]\*PRIVATE KEY\|gh\[pousr\]_\[A-Za-z0-9\]\{20\}\|sk-ant-\[A-Za-z0-9_-\]\{20\}"/,
   );
   assert.doesNotMatch(rootfsChecker, /scarf[^\n]*(?:allow|exclude|whitelist)/i);
+});
+
+test('dotenv documentation pruning is service-runtime-only, narrow, and fail-closed', () => {
+  const dockerfile = read('Dockerfile.staging');
+  const deployer = dockerStage(dockerfile, 'deployer');
+  const rootfsChecker = read('scripts/verify-image-rootfs.py');
+
+  assert.match(deployer, /prune_dotenv_docs\(\)/);
+  assert.match(deployer, /"\$runtime\/node_modules\/\.pnpm"\/dotenv@\*\/node_modules\/dotenv/);
+  assert.match(deployer, /find "\$dotenv_store" -maxdepth 1 -type f -iname 'README\*' -delete/);
+  assert.match(
+    deployer,
+    /find "\$runtime\/node_modules\/\.pnpm" -path '\*\/node_modules\/dotenv\/README\*'/,
+  );
+  for (const target of ['api', 'worker', 'tools']) {
+    assert.match(deployer, new RegExp(`prune_dotenv_docs /runtime/${target}`));
+  }
+  for (const target of ['web']) {
+    assert.doesNotMatch(deployer, new RegExp(`prune_dotenv_docs /runtime/${target}`));
+  }
+
+  assert.match(rootfsChecker, /secret-like content detected/);
+  assert.doesNotMatch(rootfsChecker, /dotenv[^\n]*(?:allow|exclude|whitelist)/i);
 });
