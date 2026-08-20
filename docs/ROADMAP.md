@@ -28,42 +28,69 @@ application deployment has been dispatched.
 2. **Private staging experience:** PR #50 modernizes the core workspace shell
    and main product surfaces. It must be reconciled with PR #52 and rerun on
    the resulting exact head.
-3. **Secure collaboration:** active-workspace sessions, signed-in invitation
-   acceptance, workspace switching, scoped revocation, role enforcement, and
-   cross-tenant tests are release-blocking until a replacement collaboration
-   draft is green and reviewed.
-4. **Continuous security:** dependency, CodeQL, secret, SBOM, container, and
-   publication trust-boundary findings are handled in focused drafts; no alert
-   is considered resolved until its exact-head checks and review pass.
-5. **Founder command center:** `progress.ventureos.site` is maintained from the
+3. **Dependency and runtime remediation:** PR #53 at
+   `8c9e4c97fcc0079333f35e286c515fd1a7054931` is a green draft covering the
+   current PostCSS/dependency advisory repair; its CI, staging gate, lockfile
+   evidence, runtime evidence, and all five final-image build/scan jobs passed.
+   These results apply to that draft head, not to `main` or a deployed release.
+4. **Publication trust boundary:** PR #54 at
+   `d3568e782d6ff346251a0710401fd58959d4ebac` is a green draft with structured
+   workflow-binding regression coverage. CI, CodeQL, and the staging-security
+   gate passed. No publication workflow was dispatched and no image was
+   published.
+5. **Secure collaboration:** PR #55 at
+   `fcce210025cfdc2343ad7d3af63f6a6dad2488e2` has green automated checks but
+   remains blocked by two active P1 review findings: operator/viewer access to
+   founder-only onboarding data and an invitation replay/preview state oracle
+   that can disclose whether an account already exists. Both authorization
+   boundaries need fixes and regression tests before the draft is merge-ready.
+6. **Security-gate hardening:** PR #57 at
+   `58f194b01dcd04003784b2de1dc71c77db701992` repairs the clean-file staging
+   environment generator/caller contract. Its exact-head CI, CodeQL,
+   staging-security gate, runtime substrate gate, and all five final-image scans
+   passed. An independent review still requires a symlink-boundary regression
+   and `lstat`-style rejection for the root image manifest before merge.
+7. **Founder command center:** `progress.ventureos.site` is maintained from the
    separate operations repository and must clearly separate live evidence from
    validated-but-unmerged work.
 
-### Ready next
+### Release, staging, and pilot sequence
 
-- Merge the validated foundation in dependency order, with an exact-head review
-  before each merge.
-- Build and scan all five immutable application images for the resulting release
-  commit. Publication still requires a separate exact-SHA authorization.
-- Deploy only those scanned digests to private staging after a separate
-  deployment authorization, then verify Access, migrations, health, E2E,
-  responsive UX, security, load, rollback, and audit evidence against the real
-  environment.
-- Exercise a documented backup and restore drill before calling the release a
-  production candidate.
-- Run real-user testing and customer interviews before enabling billing or
-  making revenue claims.
+1. Resolve PR #55's two P1 authorization/privacy findings and PR #57's manifest
+   symlink boundary, then rerun review and all required checks on the new exact
+   heads.
+2. Review and merge the focused security/reliability prerequisites in their
+   dependency order. Reconcile PR #52 before PR #50, and rerun the resulting
+   product head rather than relying on checks from an ancestor branch.
+3. Select an exact merged release commit, build and scan all five immutable
+   application images, and retain digest/SBOM/provenance evidence. Publishing
+   those images requires a separate exact-SHA authorization.
+4. Deploy only the authorized digests to Access-protected private staging after
+   a separate deployment authorization. Validate migrations, health, E2E,
+   responsive/accessibility behavior, tenant isolation, audit evidence,
+   backup/restore, and rollback using synthetic data and disabled live providers.
+5. Run an internal synthetic-data rehearsal. An invited pilot follows only after
+   privacy/terms/data-handling, access, support, incident, and rollback ownership
+   are approved. Record observed pilot evidence; do not infer pricing, revenue,
+   conversion, or product-market fit from mock data or draft code.
+6. Consider paid/live-provider or production activation only from measured
+   staging/pilot evidence and a separately approved commercial and operational
+   plan.
 
-### External decisions and blocked actions
+### Founder decisions that require separate approval
 
-- Live AI, marketplace, email, payment, advertising, paid monitoring, and other
-  paid providers remain disabled. Enabling them requires provider-specific
-  security review plus separate credentials, cost, and commercial approval.
-- Production release requires exact release evidence, backup/restore and
-  rollback proof, privacy/legal readiness, and a separate high-impact deployment
-  decision.
-- No public form should collect personal information until an approved contact,
-  privacy, retention, and response process exists.
+- Any spend, paid account, provider contract, pricing, customer promise, or
+  other legal/commercial commitment.
+- Supplying or rotating production credentials, enabling live AI, marketplace,
+  email, payment, advertising, monitoring, or other external providers.
+- Collecting or accessing customer/personal data, approving privacy/terms/
+  retention/data-processing arrangements, or selecting a real pilot cohort.
+- Publishing images for an exact SHA; changing production DNS/infrastructure;
+  deploying to private staging or production; and accepting the associated
+  backup, rollback, incident, and support ownership.
+
+Ordinary code repair, tests, review, and draft-PR maintenance remain engineering
+work within the existing authorization and do not require a new founder decision.
 
 Phased delivery per master spec section 34. All 8 phases are now built and
 locally verified end-to-end (see `docs/EXECUTION_PLAN.md` for the canonical,

@@ -13,6 +13,19 @@
 > as live product state. Exact current PR, CI, deployment, and blocker evidence
 > belongs in the protected progress site and GitHub, not in an undated claim in
 > this historical plan.
+>
+> The current draft evidence is specific to exact heads: PR #53
+> `8c9e4c97fcc0079333f35e286c515fd1a7054931` passed its dependency/runtime
+> matrix; PR #54 `d3568e782d6ff346251a0710401fd58959d4ebac` passed its
+> publication-trust-boundary CI, CodeQL, and staging gate; and PR #57
+> `58f194b01dcd04003784b2de1dc71c77db701992` passed CI, CodeQL, the repaired
+> clean-file staging gate, the runtime substrate gate, and five final-image
+> scans. PR #55 `fcce210025cfdc2343ad7d3af63f6a6dad2488e2` also has green
+> automated checks but is not merge-ready: founder onboarding lacks a
+> founder-only authorization boundary, and invitation replay/preview behavior
+> exposes an account-existence state oracle. PR #57 additionally has an open
+> review requirement to reject a symlinked root image manifest. None of these
+> draft results means an image was published or an application was deployed.
 
 This is the single source of truth for "what is actually done" versus "what
 is still to build," across the entire master spec (all numbered phases 0–8, section
@@ -495,8 +508,32 @@ phase deliverables. Current status:
 
 ## Immediate next steps (in order)
 
-1. Phases 1 through 8 are all genuinely ✅ DONE — every acceptance criterion verified with real command output or live browser confirmation (see each phase's section above). Phase 6 is mock-only per the founder's explicit 2026-07-14 decision (no real Etsy account connected); Phase 8's billing is mock-only per ADR-010 (no real payment processor connected).
-2. Master spec section 34's numbered phases 0–8 are now all complete. Do not begin any further build work without explicit founder instruction on what comes next (e.g., connecting a real Etsy account, a real payment processor, or a genuinely new phase of scope).
+1. Preserve Phases 1–8 as historical product-scope evidence. Phase 6 remains
+   mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
+   mock-only under ADR-010. Neither milestone is a release-readiness claim.
+2. Fix PR #55's two active P1 authorization/privacy findings and PR #57's image
+   manifest symlink boundary; rerun exact-head review and required checks.
+3. Reconcile and merge the focused security/reliability drafts in dependency
+   order. PR #52 must be reconciled before PR #50, followed by verification of
+   the combined product head.
+4. Only after an exact merged release commit is selected: build and scan the five
+   immutable images. Image publication requires separate approval for that exact
+   SHA; private-staging deployment requires another separate approval. Neither
+   has occurred for the current `main` baseline.
+5. Exercise Access, migrations, health, E2E, accessibility/responsive behavior,
+   tenant isolation, audit evidence, backup/restore, and rollback in private
+   staging with synthetic data and live providers disabled.
+6. Complete an internal rehearsal before an invited pilot. Pilot access requires
+   approved privacy/terms/data-handling, support, incident, and rollback
+   ownership. Pricing, revenue, conversion, and product-market-fit claims must
+   come from observed evidence, not mock data or forecasts.
+
+Routine implementation, tests, review, and draft-PR updates continue under the
+existing engineering authorization. New founder approval is reserved for money
+or paid accounts, credentials/live providers, customer or personal data,
+legal/commercial commitments, exact-SHA publication, staging/production
+deployment, production DNS/infrastructure changes, and pilot/operational risk
+ownership.
 
 ### Approved release-security repair — 2026-08-19
 

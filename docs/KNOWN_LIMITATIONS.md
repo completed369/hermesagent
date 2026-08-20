@@ -9,6 +9,20 @@
 > live-provider validation, legal/privacy operations, billing, email delivery,
 > malware scanning, and production observability remain incomplete or disabled.
 > See `ROADMAP.md` for dependency order and do not treat a draft PR as shipped.
+>
+> Exact-head draft evidence does not remove review blockers. PR #53
+> `8c9e4c97fcc0079333f35e286c515fd1a7054931` and PR #54
+> `d3568e782d6ff346251a0710401fd58959d4ebac` have green automated security
+> gates for their stated dependency/runtime and publication-trust-boundary
+> scopes. PR #55 `fcce210025cfdc2343ad7d3af63f6a6dad2488e2` has green checks
+> but two active P1 findings: operator/viewer access to founder onboarding data,
+> and invitation replay/preview behavior that reveals an account-existence state.
+> PR #57 `58f194b01dcd04003784b2de1dc71c77db701992` repaired the clean-file
+> staging environment generator/caller contract and passed its exact-head CI,
+> CodeQL, staging-security gate, runtime substrate gate, and all five final-image
+> scans; it still needs explicit rejection and regression coverage for a
+> symlinked root image manifest. No result above is image-publication or
+> deployment evidence.
 
 > **Status note (2026-08-01):** this file began as a Phase 1 sandbox inventory
 > and still contains historical phase/sandbox statements. For current executed
@@ -68,6 +82,24 @@ deployment or production readiness.
 - **Onboarding save (`PUT /api/onboarding`) worked exactly once, then failed with a 500 on every subsequent save** — `GET /api/onboarding` returns Prisma's real column values, and Prisma represents an unset nullable column (`businessObjectives`, `weeklyTimeHours`, `approvalThresholdEur`, `refundThresholdEur`, `targetProfitEur`, `targetLaunchDate`, `availableBudgetEur`, `riskTolerance` — all declared nullable in `schema.prisma`) as `null`, not `undefined`. `apps/web`'s onboarding page round-trips the GET response straight into the PUT body (`setForm(data)` then `{...form}` on submit), so any field never explicitly filled in comes back as `null`. `onboardingSchema` only had `.optional()` (accepts `undefined`, rejects `null`), so Zod threw `Expected string/number, received null` and the API returned 500 — confirmed live via both a direct API call and clicking Save in the actual browser UI (the UI failure was initially mistaken for an automated-testing click/timing artifact before the real API error was found in the log). Fixed by adding `.nullable()` alongside `.optional()` for every affected field, matching the Prisma column nullability exactly. Confirmed live afterward: edited the budget field in the real UI, clicked Save, and `GET /api/onboarding` reflects the new value. Found during founder verification on 2026-07-13.
 
 ## Code-level gaps, honestly disclosed
+
+- **Collaboration authorization remains release-blocking in PR #55:** the
+  onboarding controller is session-authenticated but not founder-authorized, so
+  operator/viewer collaborators can read and update founder-only budget, risk,
+  and approval-threshold data. Navigation also exposes the surface. Add
+  founder-role enforcement plus HTTP and UI permission-boundary regressions.
+- **Invitation handling in PR #55 still exposes an account-existence state:** an
+  existing-user acceptance is neutral externally but leaves the invitation
+  active, while a new-user acceptance consumes it. A bearer holder can replay or
+  preview to distinguish those branches. The fix must preserve neutral external
+  behavior, single-use semantics, tenant isolation, and safe workspace-scoped
+  session selection; do not attach an ambiguous second membership to a session
+  without an explicit active-workspace model.
+- **PR #57's root image-manifest boundary is not yet symlink-safe:** its repaired
+  clean-file staging gate is green, but `stat` follows a root
+  `ventureos-images.json` symlink to an out-of-tree regular file. Reject symbolic
+  links with non-following metadata checks and add a negative symlink fixture
+  before treating the path boundary as complete.
 
 - **CSRF protection is origin-based, not a synchronizer token**: authenticated
   unsafe methods now require an exact `Origin` match in the API's global guard,
