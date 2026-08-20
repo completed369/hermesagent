@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 import { ACTIVE_WORKSPACE_STORAGE_KEY } from '@/lib/workspace-session';
 
@@ -17,9 +17,22 @@ export function WorkspaceSwitcher({
   activeWorkspaceId: string;
   memberships: AvailableWorkspace[];
 }) {
+  const selectorRef = useRef<HTMLSelectElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    const restoreAuthoritativeSelection = () => {
+      // Browsers may restore a select's pre-navigation value independently of
+      // the newly server-rendered tenant shell. Keep the visible control bound
+      // to the authoritative active workspace after reload/history traversal.
+      if (selectorRef.current) selectorRef.current.value = activeWorkspaceId;
+    };
+    restoreAuthoritativeSelection();
+    window.addEventListener('pageshow', restoreAuthoritativeSelection);
+    return () => window.removeEventListener('pageshow', restoreAuthoritativeSelection);
+  }, [activeWorkspaceId]);
 
   async function switchWorkspace(workspaceId: string) {
     if (workspaceId === activeWorkspaceId || busy) return;
@@ -57,7 +70,9 @@ export function WorkspaceSwitcher({
       <label>
         Active workspace
         <select
+          ref={selectorRef}
           className="vos-input"
+          autoComplete="off"
           value={activeWorkspaceId}
           disabled={busy || memberships.length === 1}
           onChange={(event) => void switchWorkspace(event.target.value)}
