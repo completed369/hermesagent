@@ -55,12 +55,12 @@ test.describe('Collaborative workspace UI behavior', () => {
     const inviteRegion = page.locator('.vos-team-invite');
     await expect(inviteRegion).toHaveAttribute('aria-busy', 'true');
     await expect(page.getByRole('button', { name: 'Creating…' })).toBeDisabled();
-    await expect(page.getByRole('status')).toHaveText('Creating a secure invitation.');
+    await expect(inviteRegion.getByRole('status')).toHaveText('Creating a secure invitation.');
 
     inviteGate.resolve();
     const inviteInput = page.getByRole('textbox', { name: 'Invitation link' });
     await expect(inviteInput).toHaveValue(/\/join#token=single-use-secret$/);
-    await expect(page.getByRole('status')).toHaveText(
+    await expect(inviteRegion.getByRole('status')).toHaveText(
       'Secure invitation created. Copy the link now.',
     );
 
@@ -78,7 +78,7 @@ test.describe('Collaborative workspace UI behavior', () => {
 
     await page.getByRole('button', { name: 'Copy link' }).click();
     await expect(page.getByRole('button', { name: 'Copying…' })).toBeDisabled();
-    await expect(page.getByRole('status')).toHaveText('Copying the invitation link.');
+    await expect(inviteRegion.getByRole('status')).toHaveText('Copying the invitation link.');
     await expect(
       page.getByRole('alert').filter({
         hasText: 'Could not copy the invitation link. Select and copy it manually.',
@@ -180,6 +180,7 @@ test.describe('Collaborative workspace UI behavior', () => {
   }) => {
     await login(page);
     const token = 'signed-in-fragment-secret';
+    const acceptGate = deferred();
     const requests: Array<{ body: unknown; method: string; url: string }> = [];
 
     await page.route('**/api/workspace-invitations/preview', async (route) => {
@@ -204,21 +205,28 @@ test.describe('Collaborative workspace UI behavior', () => {
           url: route.request().url(),
         });
       }
-      await fulfillJson(route, {
-        joined: true,
-        roleKey: 'OPERATOR',
-        workspaceId: '00000000-0000-4000-8000-000000000099',
-        workspaceName: 'Signed-in Studio',
-      });
+      await fulfillJson(
+        route,
+        {
+          joined: true,
+          roleKey: 'OPERATOR',
+          workspaceId: '00000000-0000-4000-8000-000000000099',
+          workspaceName: 'Signed-in Studio',
+        },
+        acceptGate.promise,
+      );
     });
 
     await page.goto(`/join#token=${token}`);
     await expect(page).toHaveURL(/\/join$/);
     await expect(page.getByRole('heading', { name: 'Join Signed-in Studio' })).toBeVisible();
     await expect(page.getByLabel('Email')).toHaveCount(0);
+    const form = page.locator('form');
     await page.getByRole('button', { name: 'Join workspace' }).click();
+    await expect(form).toHaveAttribute('aria-busy', 'true');
     await expect(page.getByRole('button', { name: 'Joining…' })).toBeDisabled();
-    await expect(page.getByRole('status')).toHaveText('Joining Signed-in Studio.');
+    await expect(form.getByRole('status')).toHaveText('Joining Signed-in Studio.');
+    acceptGate.resolve();
     await expect(page).toHaveURL(/\/dashboard$/);
 
     expect(requests).toHaveLength(2);
