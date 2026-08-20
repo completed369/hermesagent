@@ -3,6 +3,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 const FOUNDER_EMAIL = process.env.DEV_FOUNDER_EMAIL ?? 'founder@ventureos.local';
 const FOUNDER_PASSWORD = process.env.DEV_FOUNDER_PASSWORD ?? 'change-me-dev-only';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
+const WEB_ORIGIN = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const CORS_HEADERS = {
   'access-control-allow-credentials': 'true',
   'access-control-allow-headers': 'content-type',
@@ -327,7 +328,10 @@ test.describe('Collaborative workspace UI behavior', () => {
     expect(targetProvider).toBeTruthy();
     const invitationResponse = await founderPage.request.post(
       `${API_BASE_URL}/api/workspaces/invitations`,
-      { data: { roleKey: 'VIEWER', expiresInHours: 1 } },
+      {
+        data: { roleKey: 'VIEWER', expiresInHours: 1 },
+        headers: { Origin: WEB_ORIGIN },
+      },
     );
     expect(invitationResponse.ok()).toBe(true);
     const invitation = (await invitationResponse.json()) as { token: string };
@@ -350,12 +354,16 @@ test.describe('Collaborative workspace UI behavior', () => {
     const ownWorkspaceId = ownSession.user.workspaceId;
     const brandingResponse = await page.request.patch(`${API_BASE_URL}/api/workspaces/branding`, {
       data: { brandName: ownBrandName, primaryColorHex: '#7C3AED' },
+      headers: { Origin: WEB_ORIGIN },
     });
     expect(brandingResponse.ok()).toBe(true);
 
     const acceptedResponse = await page.request.post(
       `${API_BASE_URL}/api/workspace-invitations/accept-authenticated`,
-      { data: { token: invitation.token } },
+      {
+        data: { token: invitation.token },
+        headers: { Origin: WEB_ORIGIN },
+      },
     );
     expect(acceptedResponse.ok()).toBe(true);
     const accepted = (await acceptedResponse.json()) as { workspaceId: string };
@@ -363,6 +371,7 @@ test.describe('Collaborative workspace UI behavior', () => {
 
     const resetResponse = await page.request.post(`${API_BASE_URL}/api/workspaces/switch`, {
       data: { workspaceId: ownWorkspaceId },
+      headers: { Origin: WEB_ORIGIN },
     });
     expect(resetResponse.ok()).toBe(true);
     await page.goto('/dashboard');
