@@ -395,6 +395,33 @@ describe('collaborative workspace invitations (integration)', () => {
     expect(await prisma.user.count({ where: { email: sharedEmail } })).toBe(1);
     const sharedUser = await prisma.user.findUniqueOrThrow({ where: { email: sharedEmail } });
     userIds.push(sharedUser.id);
+    const invitationStates = await prisma.workspaceInvitation.findMany({
+      where: { id: { in: [first.id, second.id] } },
+      select: { id: true, acceptedAt: true, workspaceId: true },
+    });
+    expect(invitationStates.filter((invitation) => invitation.acceptedAt !== null)).toHaveLength(1);
+    const pendingState = invitationStates.find((invitation) => invitation.acceptedAt === null);
+    expect(pendingState).toBeDefined();
+    if (!pendingState) throw new Error('Concurrent neutral acceptance consumed both invitations');
+    expect(
+      await prisma.workspaceMember.count({
+        where: { userId: sharedUser.id, workspaceId: { in: [workspaceId, otherWorkspace.id] } },
+      }),
+    ).toBe(1);
+
+    const initialMembership = await prisma.workspaceMember.findFirstOrThrow({
+      where: { userId: sharedUser.id },
+      select: { workspaceId: true },
+    });
+    const sharedCookie = await sessionCookie(sharedUser.id, initialMembership.workspaceId);
+    const pendingInvitation = pendingState.id === first.id ? first : second;
+    const claim = await request(app.getHttpServer())
+      .post('/api/workspace-invitations/accept-authenticated')
+      .set('Cookie', sharedCookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ token: pendingInvitation.token });
+    expect(claim.status).toBe(200);
+    expect(claim.body).toMatchObject({ joined: true, workspaceId: pendingState.workspaceId });
     expect(
       await prisma.workspaceInvitation.count({
         where: { id: { in: [first.id, second.id] }, acceptedAt: { not: null } },
@@ -404,7 +431,7 @@ describe('collaborative workspace invitations (integration)', () => {
       await prisma.workspaceMember.count({
         where: { userId: sharedUser.id, workspaceId: { in: [workspaceId, otherWorkspace.id] } },
       }),
-    ).toBe(1);
+    ).toBe(2);
   });
 
   it('switches only to a real membership and resolves authorization from the active workspace', async () => {
