@@ -18,14 +18,15 @@
 > `8c9e4c97fcc0079333f35e286c515fd1a7054931` passed its dependency/runtime
 > matrix; PR #54 `d3568e782d6ff346251a0710401fd58959d4ebac` passed its
 > publication-trust-boundary CI, CodeQL, and staging gate; and PR #57
-> `58f194b01dcd04003784b2de1dc71c77db701992` passed CI, CodeQL, the repaired
-> clean-file staging gate, the runtime substrate gate, and five final-image
-> scans. PR #55 `fcce210025cfdc2343ad7d3af63f6a6dad2488e2` also has green
+> `9ee09efe3e1ddd9b9f29bfd96ba0ba7dfd4c8af4` repaired both the clean-file
+> staging generator/caller contract and the root image-manifest symlink boundary.
+> Its independent delta review is clean, and CI, CodeQL, the staging-security
+> gate, runtime substrate gate, and five final-image scans passed with zero open
+> branch CodeQL alerts. PR #55 `fcce210025cfdc2343ad7d3af63f6a6dad2488e2` has green
 > automated checks but is not merge-ready: founder onboarding lacks a
 > founder-only authorization boundary, and invitation replay/preview behavior
-> exposes an account-existence state oracle. PR #57 additionally has an open
-> review requirement to reject a symlinked root image manifest. None of these
-> draft results means an image was published or an application was deployed.
+> exposes an account-existence state oracle. None of these draft results means an
+> image was published or an application was deployed.
 
 This is the single source of truth for "what is actually done" versus "what
 is still to build," across the entire master spec (all numbered phases 0–8, section
@@ -511,8 +512,8 @@ phase deliverables. Current status:
 1. Preserve Phases 1–8 as historical product-scope evidence. Phase 6 remains
    mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
    mock-only under ADR-010. Neither milestone is a release-readiness claim.
-2. Fix PR #55's two active P1 authorization/privacy findings and PR #57's image
-   manifest symlink boundary; rerun exact-head review and required checks.
+2. Fix PR #55's two active P1 authorization/privacy findings; rerun exact-head
+   review and required checks.
 3. Reconcile and merge the focused security/reliability drafts in dependency
    order. PR #52 must be reconciled before PR #50, followed by verification of
    the combined product head.

@@ -17,12 +17,12 @@
 > scopes. PR #55 `fcce210025cfdc2343ad7d3af63f6a6dad2488e2` has green checks
 > but two active P1 findings: operator/viewer access to founder onboarding data,
 > and invitation replay/preview behavior that reveals an account-existence state.
-> PR #57 `58f194b01dcd04003784b2de1dc71c77db701992` repaired the clean-file
-> staging environment generator/caller contract and passed its exact-head CI,
+> PR #57 `9ee09efe3e1ddd9b9f29bfd96ba0ba7dfd4c8af4` repaired the clean-file
+> staging environment generator/caller contract and the root image-manifest
+> symlink boundary. Its independent delta review is clean; exact-head CI,
 > CodeQL, staging-security gate, runtime substrate gate, and all five final-image
-> scans; it still needs explicit rejection and regression coverage for a
-> symlinked root image manifest. No result above is image-publication or
-> deployment evidence.
+> scans passed, with zero open branch CodeQL alerts. No result above is
+> image-publication or deployment evidence.
 
 > **Status note (2026-08-01):** this file began as a Phase 1 sandbox inventory
 > and still contains historical phase/sandbox statements. For current executed
@@ -95,12 +95,6 @@ deployment or production readiness.
   behavior, single-use semantics, tenant isolation, and safe workspace-scoped
   session selection; do not attach an ambiguous second membership to a session
   without an explicit active-workspace model.
-- **PR #57's root image-manifest boundary is not yet symlink-safe:** its repaired
-  clean-file staging gate is green, but `stat` follows a root
-  `ventureos-images.json` symlink to an out-of-tree regular file. Reject symbolic
-  links with non-following metadata checks and add a negative symlink fixture
-  before treating the path boundary as complete.
-
 - **CSRF protection is origin-based, not a synchronizer token**: authenticated
   unsafe methods now require an exact `Origin` match in the API's global guard,
   in addition to `sameSite=lax` and the CORS allowlist. Deployments must keep a

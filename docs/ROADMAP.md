@@ -45,20 +45,19 @@ application deployment has been dispatched.
    that can disclose whether an account already exists. Both authorization
    boundaries need fixes and regression tests before the draft is merge-ready.
 6. **Security-gate hardening:** PR #57 at
-   `58f194b01dcd04003784b2de1dc71c77db701992` repairs the clean-file staging
-   environment generator/caller contract. Its exact-head CI, CodeQL,
-   staging-security gate, runtime substrate gate, and all five final-image scans
-   passed. An independent review still requires a symlink-boundary regression
-   and `lstat`-style rejection for the root image manifest before merge.
+   `9ee09efe3e1ddd9b9f29bfd96ba0ba7dfd4c8af4` repairs the clean-file staging
+   environment generator/caller contract and rejects a symlinked root image
+   manifest with regression coverage. Its independent delta review is clean;
+   exact-head CI, CodeQL, staging-security gate, runtime substrate gate, and all
+   five final-image scans passed, with zero open branch CodeQL alerts.
 7. **Founder command center:** `progress.ventureos.site` is maintained from the
    separate operations repository and must clearly separate live evidence from
    validated-but-unmerged work.
 
 ### Release, staging, and pilot sequence
 
-1. Resolve PR #55's two P1 authorization/privacy findings and PR #57's manifest
-   symlink boundary, then rerun review and all required checks on the new exact
-   heads.
+1. Resolve PR #55's two P1 authorization/privacy findings, then rerun review and
+   all required checks on its new exact head.
 2. Review and merge the focused security/reliability prerequisites in their
    dependency order. Reconcile PR #52 before PR #50, and rerun the resulting
    product head rather than relying on checks from an ancestor branch.
