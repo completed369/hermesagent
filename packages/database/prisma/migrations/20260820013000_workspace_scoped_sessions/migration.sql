@@ -3,6 +3,13 @@
 -- the migration destructive. Every newly-created session sets it.
 ALTER TABLE "sessions" ADD COLUMN "activeWorkspaceId" UUID;
 
+-- An unauthenticated acceptance for an existing account consumes the bearer
+-- token immediately while reserving one authenticated continuation for that
+-- exact account. This keeps preview/replay behavior independent of whether an
+-- email address already exists.
+ALTER TABLE "workspace_invitations"
+  ADD COLUMN "claimPending" BOOLEAN NOT NULL DEFAULT false;
+
 -- Existing installations currently have one membership per account. Choose a
 -- deterministic membership for each session so the migration is safe even if
 -- a test or early adopter already created multiple memberships.

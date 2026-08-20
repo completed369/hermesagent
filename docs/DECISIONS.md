@@ -595,10 +595,15 @@ to one of them. Switching, signed-in invitation acceptance, and member removal
 share an account-scoped lock so concurrent operations cannot leave an active
 session pointing at a deleted cross-tenant membership.
 
-Existing-account invitation links are not consumed by the public account form.
-After authentication, the account owner accepts through a cookie-authenticated,
-CSRF-protected endpoint that creates the membership, consumes the invitation,
-updates only that session's active workspace, and records both membership and
-session-switch audit events atomically. Removing a member revokes only sessions
-whose active workspace is the removed tenant; the user's sessions in other
-workspaces remain valid.
+The public account form consumes every accepted invitation identically. When
+the submitted email already belongs to an account, the consumed record reserves
+one account-bound authenticated continuation without exposing that fact in the
+response, preview, or replay behavior. After sign-in, the matching account
+completes the claim through the cookie-authenticated, CSRF-protected endpoint.
+An existing membership is retained even when the invitation names a different
+role; only the founder's audited role-management endpoint may change roles.
+Completion updates only that session's active workspace and records the claim
+and session switch atomically. Removing a member revokes only sessions whose
+active workspace is the removed tenant; sessions in other workspaces remain
+valid. Founder onboarding is likewise guarded by the founder-only
+`workspace:manage` permission and a service-layer tenant-local founder check.

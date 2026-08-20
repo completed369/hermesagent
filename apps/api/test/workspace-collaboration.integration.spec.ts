@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
@@ -10,6 +12,7 @@ import { loadEnv } from '@ventureos/config';
 import { AppModule } from '../src/app.module';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { WorkspacesService } from '../src/modules/workspaces/workspaces.service';
+import { OnboardingService } from '../src/modules/onboarding/onboarding.service';
 import { entitleTestWorkspace } from './helpers/entitled-workspace';
 
 describe('collaborative workspace invitations (integration)', () => {
@@ -57,6 +60,11 @@ describe('collaborative workspace invitations (integration)', () => {
         description: 'Manage workspace membership',
       },
     });
+    const workspaceManagePermission = await prisma.permission.upsert({
+      where: { key: 'workspace:manage' },
+      update: {},
+      create: { key: 'workspace:manage', description: 'Manage workspace settings' },
+    });
     await prisma.rolePermission.upsert({
       where: {
         roleId_permissionId: {
@@ -67,9 +75,19 @@ describe('collaborative workspace invitations (integration)', () => {
       update: {},
       create: { roleId: founderRole.id, permissionId: memberManagePermission.id },
     });
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: founderRole.id,
+          permissionId: workspaceManagePermission.id,
+        },
+      },
+      update: {},
+      create: { roleId: founderRole.id, permissionId: workspaceManagePermission.id },
+    });
     await prisma.rolePermission.deleteMany({
       where: {
-        permissionId: memberManagePermission.id,
+        permissionId: { in: [memberManagePermission.id, workspaceManagePermission.id] },
         role: { key: { in: ['OPERATOR', 'VIEWER'] } },
       },
     });
@@ -224,17 +242,30 @@ describe('collaborative workspace invitations (integration)', () => {
     expect(
       await prisma.workspaceInvitation.findUniqueOrThrow({
         where: { id: existingAccountInvite.id },
-        select: { acceptedAt: true, acceptedById: true },
+        select: { acceptedAt: true, acceptedById: true, claimPending: true },
       }),
-    ).toMatchObject({ acceptedAt: null, acceptedById: null });
+    ).toMatchObject({
+      acceptedAt: expect.any(Date),
+      acceptedById: existingUser.id,
+      claimPending: true,
+    });
     expect(
       await prisma.workspaceMember.findUnique({
         where: { workspaceId_userId: { workspaceId, userId: existingUser.id } },
       }),
     ).toBeNull();
-    await expect(service.getInvitation(existingAccountInvite.token)).resolves.toMatchObject({
-      workspaceName: 'Collaboration test',
-    });
+    await expect(service.getInvitation(existingAccountInvite.token)).rejects.toThrow(
+      'already been used',
+    );
+    const neutralReplay = await request(app.getHttpServer())
+      .post('/api/workspace-invitations/accept')
+      .send({
+        token: existingAccountInvite.token,
+        email: existingUser.email,
+        password: 'existing-account-password',
+        displayName: 'Existing account',
+      });
+    expect(neutralReplay.status).toBe(409);
 
     const authenticatedResult = await request(app.getHttpServer())
       .post('/api/workspace-invitations/accept-authenticated')
@@ -251,9 +282,13 @@ describe('collaborative workspace invitations (integration)', () => {
     expect(
       await prisma.workspaceInvitation.findUniqueOrThrow({
         where: { id: existingAccountInvite.id },
-        select: { acceptedAt: true, acceptedById: true },
+        select: { acceptedAt: true, acceptedById: true, claimPending: true },
       }),
-    ).toMatchObject({ acceptedAt: expect.any(Date), acceptedById: existingUser.id });
+    ).toMatchObject({
+      acceptedAt: expect.any(Date),
+      acceptedById: existingUser.id,
+      claimPending: false,
+    });
     expect(
       await prisma.workspaceMember.findUnique({
         where: { workspaceId_userId: { workspaceId, userId: existingUser.id } },
@@ -274,6 +309,22 @@ describe('collaborative workspace invitations (integration)', () => {
         },
       }),
     ).toBe(2);
+    expect(
+      await prisma.auditEvent.findFirst({
+        where: {
+          workspaceId,
+          actorId: null,
+          action: 'WORKSPACE_INVITATION_CLAIM_DEFERRED',
+          entityId: existingAccountInvite.id,
+        },
+      }),
+    ).not.toBeNull();
+    const authenticatedReplay = await request(app.getHttpServer())
+      .post('/api/workspace-invitations/accept-authenticated')
+      .set('Cookie', existingCookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ token: existingAccountInvite.token });
+    expect(authenticatedReplay.status).toBe(409);
   });
 
   it('enforces tenant isolation for founder member mutations', async () => {
@@ -397,12 +448,12 @@ describe('collaborative workspace invitations (integration)', () => {
     userIds.push(sharedUser.id);
     const invitationStates = await prisma.workspaceInvitation.findMany({
       where: { id: { in: [first.id, second.id] } },
-      select: { id: true, acceptedAt: true, workspaceId: true },
+      select: { id: true, acceptedAt: true, claimPending: true, workspaceId: true },
     });
-    expect(invitationStates.filter((invitation) => invitation.acceptedAt !== null)).toHaveLength(1);
-    const pendingState = invitationStates.find((invitation) => invitation.acceptedAt === null);
+    expect(invitationStates.every((invitation) => invitation.acceptedAt !== null)).toBe(true);
+    const pendingState = invitationStates.find((invitation) => invitation.claimPending);
     expect(pendingState).toBeDefined();
-    if (!pendingState) throw new Error('Concurrent neutral acceptance consumed both invitations');
+    if (!pendingState) throw new Error('Concurrent neutral acceptance did not reserve a claim');
     expect(
       await prisma.workspaceMember.count({
         where: { userId: sharedUser.id, workspaceId: { in: [workspaceId, otherWorkspace.id] } },
@@ -424,7 +475,7 @@ describe('collaborative workspace invitations (integration)', () => {
     expect(claim.body).toMatchObject({ joined: true, workspaceId: pendingState.workspaceId });
     expect(
       await prisma.workspaceInvitation.count({
-        where: { id: { in: [first.id, second.id] }, acceptedAt: { not: null } },
+        where: { id: { in: [first.id, second.id] }, claimPending: false },
       }),
     ).toBe(2);
     expect(
@@ -432,6 +483,40 @@ describe('collaborative workspace invitations (integration)', () => {
         where: { userId: sharedUser.id, workspaceId: { in: [workspaceId, otherWorkspace.id] } },
       }),
     ).toBe(2);
+  });
+
+  it('keeps an existing membership role when an invitation proposes either higher or lower access', async () => {
+    const founderCookie = await sessionCookie(founderId);
+    const cases = [
+      { memberRole: 'VIEWER' as const, invitationRole: 'OPERATOR' as const },
+      { memberRole: 'OPERATOR' as const, invitationRole: 'VIEWER' as const },
+    ];
+
+    for (const testCase of cases) {
+      const existing = await createMember(testCase.memberRole);
+      const invitationResponse = await request(app.getHttpServer())
+        .post('/api/workspaces/invitations')
+        .set('Cookie', founderCookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ roleKey: testCase.invitationRole, expiresInHours: 24 });
+      expect(invitationResponse.status).toBe(201);
+
+      const claim = await request(app.getHttpServer())
+        .post('/api/workspace-invitations/accept-authenticated')
+        .set('Cookie', existing.cookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ token: invitationResponse.body.token });
+      expect(claim.status).toBe(200);
+      expect(claim.body.roleKey).toBe(testCase.memberRole);
+      expect(
+        await prisma.workspaceMember.findUniqueOrThrow({
+          where: {
+            workspaceId_userId: { workspaceId, userId: existing.user.id },
+          },
+          select: { role: { select: { key: true } } },
+        }),
+      ).toEqual({ role: { key: testCase.memberRole } });
+    }
   });
 
   it('switches only to a real membership and resolves authorization from the active workspace', async () => {
@@ -540,6 +625,99 @@ describe('collaborative workspace invitations (integration)', () => {
     );
   });
 
+  it('upgrades legacy one, multiple, and orphan memberships and fails closed after workspace deletion', async () => {
+    const viewerRole = await prisma.role.findUniqueOrThrow({ where: { key: 'VIEWER' } });
+    const fixtureWorkspaces = await Promise.all(
+      ['single', 'older', 'newer'].map((label) =>
+        prisma.workspace.create({
+          data: { name: `Migration ${label}`, slug: `migration-${label}-${randomUUID()}` },
+        }),
+      ),
+    );
+    workspaceIds.push(...fixtureWorkspaces.map((workspace) => workspace.id));
+    const [singleUser, multipleUser, orphanUser] = await Promise.all(
+      ['single', 'multiple', 'orphan'].map((label) =>
+        prisma.user.create({
+          data: { email: `migration-${label}-${randomUUID()}@example.test`, displayName: label },
+        }),
+      ),
+    );
+    userIds.push(singleUser.id, multipleUser.id, orphanUser.id);
+    await prisma.workspaceMember.create({
+      data: {
+        workspaceId: fixtureWorkspaces[0]!.id,
+        userId: singleUser.id,
+        roleId: viewerRole.id,
+      },
+    });
+    await prisma.workspaceMember.create({
+      data: {
+        workspaceId: fixtureWorkspaces[1]!.id,
+        userId: multipleUser.id,
+        roleId: viewerRole.id,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      },
+    });
+    await prisma.workspaceMember.create({
+      data: {
+        workspaceId: fixtureWorkspaces[2]!.id,
+        userId: multipleUser.id,
+        roleId: viewerRole.id,
+        createdAt: new Date('2026-01-02T00:00:00Z'),
+      },
+    });
+
+    const singleToken = randomUUID();
+    const sessions = await Promise.all(
+      [
+        { userId: singleUser.id, token: singleToken },
+        { userId: multipleUser.id, token: randomUUID() },
+        { userId: orphanUser.id, token: randomUUID() },
+      ].map(({ userId, token }) =>
+        prisma.session.create({
+          data: {
+            userId,
+            activeWorkspaceId: null,
+            tokenDigest: hashSessionToken(token),
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          },
+        }),
+      ),
+    );
+
+    const migration = readFileSync(
+      resolve(
+        import.meta.dirname,
+        '../../../packages/database/prisma/migrations/20260820013000_workspace_scoped_sessions/migration.sql',
+      ),
+      'utf8',
+    );
+    const backfill = migration.match(
+      /UPDATE "sessions" AS s[\s\S]*?WHERE s\."activeWorkspaceId" IS NULL;/,
+    )?.[0];
+    if (!backfill) throw new Error('Workspace session migration backfill is missing');
+    await prisma.$executeRawUnsafe(backfill);
+
+    expect(
+      await prisma.session.findUniqueOrThrow({ where: { id: sessions[0]!.id } }),
+    ).toMatchObject({ activeWorkspaceId: fixtureWorkspaces[0]!.id });
+    expect(
+      await prisma.session.findUniqueOrThrow({ where: { id: sessions[1]!.id } }),
+    ).toMatchObject({ activeWorkspaceId: fixtureWorkspaces[1]!.id });
+    expect(
+      await prisma.session.findUniqueOrThrow({ where: { id: sessions[2]!.id } }),
+    ).toMatchObject({ activeWorkspaceId: null });
+
+    await prisma.workspace.delete({ where: { id: fixtureWorkspaces[0]!.id } });
+    expect(
+      await prisma.session.findUniqueOrThrow({ where: { id: sessions[0]!.id } }),
+    ).toMatchObject({ activeWorkspaceId: null });
+    const denied = await request(app.getHttpServer())
+      .get('/api/workspaces/current')
+      .set('Cookie', `${env.AUTH_COOKIE_NAME}=${singleToken}`);
+    expect(denied.status).toBe(401);
+  });
+
   it('rejects invite creation when the workspace is already at quota', async () => {
     await prisma.plan.update({
       where: { key: `INTEGRATION_TEST_${workspaceId}` },
@@ -554,6 +732,7 @@ describe('collaborative workspace invitations (integration)', () => {
     const founderCookie = await sessionCookie(founderId);
     const operator = await createMember('OPERATOR');
     const viewer = await createMember('VIEWER');
+    const onboardingService = new OnboardingService(new AuditService());
     const retainedWorkspace = await prisma.workspace.create({
       data: { name: 'Retained tenant', slug: `retained-${randomUUID()}` },
     });
@@ -575,6 +754,27 @@ describe('collaborative workspace invitations (integration)', () => {
     expect(founderList.status).toBe(200);
     expect(founderList.body).toHaveLength(3);
 
+    const founderOnboarding = await request(app.getHttpServer())
+      .get('/api/onboarding')
+      .set('Cookie', founderCookie);
+    expect(founderOnboarding.status).toBe(200);
+
+    for (const cookie of [operator.cookie, viewer.cookie]) {
+      const forbiddenRead = await request(app.getHttpServer())
+        .get('/api/onboarding')
+        .set('Cookie', cookie);
+      expect(forbiddenRead.status).toBe(403);
+      const forbiddenWrite = await request(app.getHttpServer())
+        .put('/api/onboarding')
+        .set('Cookie', cookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ businessObjectives: 'Must not be saved' });
+      expect(forbiddenWrite.status).toBe(403);
+    }
+    await expect(onboardingService.get(workspaceId, operator.user.id)).rejects.toThrow(
+      'Founder authority is required',
+    );
+
     const invitation = await request(app.getHttpServer())
       .post('/api/workspaces/invitations')
       .set('Cookie', founderCookie)
@@ -589,6 +789,23 @@ describe('collaborative workspace invitations (integration)', () => {
         .get('/api/workspaces/members')
         .set('Cookie', cookie);
       expect(forbidden.status).toBe(403);
+      const forbiddenInvitation = await request(app.getHttpServer())
+        .post('/api/workspaces/invitations')
+        .set('Cookie', cookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ roleKey: 'VIEWER', expiresInHours: 24 });
+      expect(forbiddenInvitation.status).toBe(403);
+      const forbiddenRoleChange = await request(app.getHttpServer())
+        .patch(`/api/workspaces/members/${operator.member.id}/role`)
+        .set('Cookie', cookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ roleKey: 'VIEWER' });
+      expect(forbiddenRoleChange.status).toBe(403);
+      const forbiddenRemoval = await request(app.getHttpServer())
+        .delete(`/api/workspaces/members/${viewer.member.id}`)
+        .set('Cookie', cookie)
+        .set('Origin', env.API_CORS_ORIGIN);
+      expect(forbiddenRemoval.status).toBe(403);
     }
 
     const otherWorkspace = await prisma.workspace.create({

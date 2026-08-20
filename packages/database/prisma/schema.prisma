@@ -224,6 +224,7 @@ model WorkspaceInvitation {
   tokenDigest  String    @unique
   expiresAt    DateTime
   acceptedAt   DateTime?
+  claimPending Boolean   @default(false)
   revokedAt    DateTime?
   createdAt    DateTime  @default(now())
 

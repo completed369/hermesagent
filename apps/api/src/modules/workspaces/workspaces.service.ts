@@ -206,9 +206,29 @@ export class WorkspacesService {
 
         const existingUser = await tx.user.findUnique({ where: { email: normalizedEmail } });
         if (existingUser) {
-          // Do not consume or mutate the invitation from an unauthenticated
-          // account-existence check. The neutral response prevents enumeration;
-          // the account owner can sign in and claim the same token safely.
+          // Consume the bearer credential exactly as for a new account, but
+          // reserve one authenticated continuation for this exact user. A
+          // preview or anonymous replay now has identical post-response state
+          // regardless of whether the supplied email already existed.
+          const consumed = await tx.workspaceInvitation.updateMany({
+            where: { id: invitation.id, acceptedAt: null, revokedAt: null },
+            data: {
+              acceptedAt: new Date(),
+              acceptedById: existingUser.id,
+              claimPending: true,
+            },
+          });
+          if (consumed.count !== 1) throw new ConflictException('Invitation has already been used');
+          await this.auditService.record(
+            invitation.workspaceId,
+            {
+              action: 'WORKSPACE_INVITATION_CLAIM_DEFERRED',
+              entityType: 'WorkspaceInvitation',
+              entityId: invitation.id,
+              after: { roleKey: invitation.role.key, accountBound: true },
+            },
+            tx,
+          );
           return { received: true as const, workspaceName: invitation.workspace.name };
         }
 
@@ -267,9 +287,15 @@ export class WorkspacesService {
     const tokenDigest = digestInvitationToken(token);
     const preflight = await prisma.workspaceInvitation.findUnique({
       where: { tokenDigest },
-      select: { acceptedAt: true, revokedAt: true, expiresAt: true },
+      select: {
+        acceptedAt: true,
+        acceptedById: true,
+        claimPending: true,
+        revokedAt: true,
+        expiresAt: true,
+      },
     });
-    assertInvitationActive(preflight);
+    assertInvitationClaimableByActor(preflight, actor.userId);
 
     return prisma.$transaction(async (tx) => {
       const invitationRef = await tx.workspaceInvitation.findUnique({
@@ -296,7 +322,8 @@ export class WorkspacesService {
         where: { tokenDigest },
         include: { role: true, workspace: true },
       });
-      assertInvitationActive(invitation);
+      assertInvitationClaimableByActor(invitation, actor.userId);
+      const completingDeferredClaim = invitation.claimPending;
 
       let membership = await tx.workspaceMember.findUnique({
         where: {
@@ -317,10 +344,23 @@ export class WorkspacesService {
         });
       }
 
-      const consumed = await tx.workspaceInvitation.updateMany({
-        where: { id: invitation.id, acceptedAt: null, revokedAt: null },
-        data: { acceptedAt: new Date(), acceptedById: actor.userId },
-      });
+      // Existing memberships are deliberately retained, including when the
+      // invitation proposes a different role. Only a founder may change a
+      // member's role through the dedicated audited role-management endpoint.
+      const consumed = completingDeferredClaim
+        ? await tx.workspaceInvitation.updateMany({
+            where: {
+              id: invitation.id,
+              acceptedById: actor.userId,
+              claimPending: true,
+              revokedAt: null,
+            },
+            data: { claimPending: false },
+          })
+        : await tx.workspaceInvitation.updateMany({
+            where: { id: invitation.id, acceptedAt: null, revokedAt: null },
+            data: { acceptedAt: new Date(), acceptedById: actor.userId },
+          });
       if (consumed.count !== 1) throw new ConflictException('Invitation has already been used');
       await tx.workspace.update({
         where: { id: invitation.workspaceId },
@@ -346,6 +386,7 @@ export class WorkspacesService {
           entityId: membership.id,
           after: {
             invitationRoleKey: invitation.role.key,
+            completedDeferredClaim: completingDeferredClaim,
             membershipAlreadyExisted,
             roleKey: membership.role.key,
           },
@@ -479,6 +520,25 @@ function assertInvitationActive<
   if (invitation.acceptedAt) throw new ConflictException('Invitation has already been used');
   if (invitation.expiresAt.getTime() <= Date.now()) {
     throw new ConflictException('Invitation has expired');
+  }
+}
+
+function assertInvitationClaimableByActor<
+  T extends {
+    acceptedAt: Date | null;
+    acceptedById: string | null;
+    claimPending: boolean;
+    revokedAt: Date | null;
+    expiresAt: Date;
+  },
+>(invitation: T | null, actorId: string): asserts invitation is T {
+  if (!invitation) throw new NotFoundException('Invitation is invalid or unavailable');
+  if (invitation.revokedAt) throw new ConflictException('Invitation is no longer available');
+  if (invitation.expiresAt.getTime() <= Date.now()) {
+    throw new ConflictException('Invitation has expired');
+  }
+  if (invitation.acceptedAt && (!invitation.claimPending || invitation.acceptedById !== actorId)) {
+    throw new ConflictException('Invitation has already been used');
   }
 }
 

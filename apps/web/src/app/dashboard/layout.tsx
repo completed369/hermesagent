@@ -47,7 +47,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           memberships={memberships ?? []}
         />
         <p className="vos-dashboard-section-label">Workspace</p>
-        <DashboardNav />
+        <DashboardNav permissions={data.user.permissions} />
         <div className="vos-dashboard-signout">
           <SignOutButton />
         </div>
