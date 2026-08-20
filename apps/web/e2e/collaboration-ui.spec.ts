@@ -308,7 +308,6 @@ test.describe('Collaborative workspace UI behavior', () => {
   }, testInfo) => {
     const suffix = `${Date.now()}-${testInfo.parallelIndex}`;
     const ownWorkspaceName = `Solo Workspace ${suffix}`;
-    const ownBrandName = `Solo Capsule ${suffix}`;
     const memberEmail = `workspace-switch-${suffix}@example.test`;
     const memberPassword = `Switch-${suffix}-A9!`;
 
@@ -352,11 +351,6 @@ test.describe('Collaborative workspace UI behavior', () => {
       user: { workspaceId: string };
     };
     const ownWorkspaceId = ownSession.user.workspaceId;
-    const brandingResponse = await page.request.patch(`${API_BASE_URL}/api/workspaces/branding`, {
-      data: { brandName: ownBrandName, primaryColorHex: '#7C3AED' },
-      headers: { Origin: WEB_ORIGIN },
-    });
-    expect(brandingResponse.ok()).toBe(true);
 
     const acceptedResponse = await page.request.post(
       `${API_BASE_URL}/api/workspace-invitations/accept-authenticated`,
@@ -380,7 +374,7 @@ test.describe('Collaborative workspace UI behavior', () => {
     const switcher = sidebar.locator('.vos-workspace-switcher');
     const selector = switcher.getByRole('combobox', { name: 'Active workspace' });
     await expect(selector).toHaveValue(ownWorkspaceId);
-    await expect(sidebar.locator('.vos-dashboard-brand strong')).toHaveText(ownBrandName);
+    await expect(sidebar.locator('.vos-dashboard-brand strong')).toHaveText(ownWorkspaceName);
     await expect(sidebar.getByRole('link', { name: 'Settings' })).toBeVisible();
     await expect(page.getByRole('main')).not.toContainText(targetProvider!);
     await expect(
@@ -425,7 +419,7 @@ test.describe('Collaborative workspace UI behavior', () => {
     await expect(selector).toBeEnabled();
     await expect(sidebar.getByRole('link', { name: 'Settings' })).toHaveCount(0);
     await expect(sidebar.getByRole('link', { name: 'Onboarding' })).toHaveCount(0);
-    await expect(page.getByRole('main')).not.toContainText(ownBrandName);
+    await expect(page.getByRole('main')).not.toContainText(ownWorkspaceName);
     await expect(page.getByRole('main')).toContainText(targetProvider!);
     await page.unroute('**/api/workspaces/switch', allowSwitch);
 
@@ -461,7 +455,7 @@ test.describe('Collaborative workspace UI behavior', () => {
       targetSummary.branding?.brandName ?? 'VentureOS',
     );
     await expect(sidebar.getByRole('link', { name: 'Settings' })).toHaveCount(0);
-    await expect(page.getByRole('main')).not.toContainText(ownBrandName);
+    await expect(page.getByRole('main')).not.toContainText(ownWorkspaceName);
     await expect(page.getByRole('main')).toContainText(targetProvider!);
     await page.unroute('**/api/workspaces/switch', denySwitch);
   });
