@@ -126,6 +126,16 @@ export class WorkspaceInvitationsController {
     return this.workspacesService.getInvitation(input.token);
   }
 
+  @Post('preview-authenticated')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @UseGuards(SessionAuthGuard)
+  getAuthenticated(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    const input = parseRequestBody(previewInvitationSchema, body);
+    return this.workspacesService.getInvitationForAuthenticatedUser(input.token, user.userId);
+  }
+
   @Post('accept')
   @HttpCode(202)
   @Header('Cache-Control', 'no-store')

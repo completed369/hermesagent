@@ -1,11 +1,11 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { Prisma, prisma } from '@ventureos/database';
 import type { OnboardingInput } from './onboarding.dto';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class OnboardingService {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(@Inject(AuditService) private readonly auditService: AuditService) {}
 
   async get(workspaceId: string, actorId: string) {
     return prisma.$transaction(async (tx) => {

@@ -53,6 +53,16 @@ describe('workspace route parameter validation', () => {
     expect(service.acceptInvitation).not.toHaveBeenCalled();
   });
 
+  it('returns 400 before an authenticated preview service call for a malformed token', () => {
+    const service = {
+      getInvitationForAuthenticatedUser: vi.fn(),
+    } as unknown as WorkspacesService;
+    const controller = new WorkspaceInvitationsController(service);
+
+    expect(statusOf(() => controller.getAuthenticated({ token: 'short' }, user))).toBe(400);
+    expect(service.getInvitationForAuthenticatedUser).not.toHaveBeenCalled();
+  });
+
   it.each(['not-a-uuid', '00000000-0000-0000-0000-00000000000z'])(
     'returns 400 for malformed member ID %s',
     (memberId) => {

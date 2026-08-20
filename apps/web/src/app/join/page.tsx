@@ -8,6 +8,7 @@ import { apiFetch, ApiError } from '@/lib/api';
 interface InvitationPreview {
   workspaceName: string;
   roleKey: string;
+  currentRoleKey?: string | null;
   expiresAt: string;
 }
 
@@ -52,18 +53,25 @@ export default function JoinWorkspacePage() {
       };
     }
     setToken(invitationToken);
-    Promise.all([
-      apiFetch<InvitationPreview>('/workspace-invitations/preview', {
-        method: 'POST',
-        cache: 'no-store',
-        body: JSON.stringify({ token: invitationToken }),
-      }),
-      apiFetch('/auth/me').then(
+    apiFetch('/auth/me')
+      .then(
         () => true,
         () => false,
-      ),
-    ])
-      .then(([preview, hasSession]) => {
+      )
+      .then(async (hasSession) => {
+        const preview = await apiFetch<InvitationPreview>(
+          hasSession
+            ? '/workspace-invitations/preview-authenticated'
+            : '/workspace-invitations/preview',
+          {
+            method: 'POST',
+            cache: 'no-store',
+            body: JSON.stringify({ token: invitationToken }),
+          },
+        );
+        return { preview, hasSession };
+      })
+      .then(({ preview, hasSession }) => {
         if (!active) return;
         setInvitation(preview);
         setSignedIn(hasSession);
@@ -142,7 +150,10 @@ export default function JoinWorkspacePage() {
           </h2>
           {invitation ? (
             <p className="vos-auth-copy">
-              You’ll join as {invitation.roleKey.toLowerCase()}. This link is single-use.
+              {invitation.currentRoleKey
+                ? `You already belong as ${invitation.currentRoleKey.toLowerCase()}. Claiming this link keeps your current role.`
+                : `You’ll join as ${invitation.roleKey.toLowerCase()}.`}{' '}
+              This link is single-use.
               {signedIn ? ' Your current session will switch to this workspace.' : ''}
             </p>
           ) : null}

@@ -167,6 +167,24 @@ export class WorkspacesService {
     };
   }
 
+  async getInvitationForAuthenticatedUser(token: string, actorId: string) {
+    const invitation = await prisma.workspaceInvitation.findUnique({
+      where: { tokenDigest: digestInvitationToken(token) },
+      include: { workspace: { select: { name: true } }, role: { select: { key: true } } },
+    });
+    assertInvitationClaimableByActor(invitation, actorId);
+    const membership = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: invitation.workspaceId, userId: actorId } },
+      select: { role: { select: { key: true } } },
+    });
+    return {
+      workspaceName: invitation.workspace.name,
+      roleKey: invitation.role.key,
+      currentRoleKey: membership?.role.key ?? null,
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
   async acceptInvitation(
     token: string,
     input: { email: string; password: string; displayName: string },

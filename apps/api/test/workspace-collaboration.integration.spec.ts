@@ -24,11 +24,16 @@ describe('collaborative workspace invitations (integration)', () => {
   let founderId: string;
   let app: INestApplication;
 
+  async function createTestApplication(): Promise<INestApplication> {
+    const testApp = await NestFactory.create(AppModule);
+    testApp.use(cookieParser());
+    testApp.setGlobalPrefix('api');
+    await testApp.init();
+    return testApp;
+  }
+
   beforeAll(async () => {
-    app = await NestFactory.create(AppModule);
-    app.use(cookieParser());
-    app.setGlobalPrefix('api');
-    await app.init();
+    app = await createTestApplication();
   });
 
   afterAll(async () => {
@@ -257,6 +262,18 @@ describe('collaborative workspace invitations (integration)', () => {
     await expect(service.getInvitation(existingAccountInvite.token)).rejects.toThrow(
       'already been used',
     );
+    const authenticatedPreview = await request(app.getHttpServer())
+      .post('/api/workspace-invitations/preview-authenticated')
+      .set('Cookie', existingCookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ token: existingAccountInvite.token });
+    expect(authenticatedPreview.status).toBe(200);
+    expect(authenticatedPreview.headers['cache-control']).toBe('no-store');
+    expect(authenticatedPreview.body).toMatchObject({
+      workspaceName: 'Collaboration test',
+      roleKey: 'VIEWER',
+      currentRoleKey: null,
+    });
     const neutralReplay = await request(app.getHttpServer())
       .post('/api/workspace-invitations/accept')
       .send({
@@ -500,6 +517,17 @@ describe('collaborative workspace invitations (integration)', () => {
         .set('Origin', env.API_CORS_ORIGIN)
         .send({ roleKey: testCase.invitationRole, expiresInHours: 24 });
       expect(invitationResponse.status).toBe(201);
+
+      const preview = await request(app.getHttpServer())
+        .post('/api/workspace-invitations/preview-authenticated')
+        .set('Cookie', existing.cookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ token: invitationResponse.body.token });
+      expect(preview.status).toBe(200);
+      expect(preview.body).toMatchObject({
+        roleKey: testCase.invitationRole,
+        currentRoleKey: testCase.memberRole,
+      });
 
       const claim = await request(app.getHttpServer())
         .post('/api/workspace-invitations/accept-authenticated')
@@ -874,57 +902,65 @@ describe('collaborative workspace invitations (integration)', () => {
 
   it('returns HTTP 400 for malformed member IDs and invitation tokens', async () => {
     const founderCookie = await sessionCookie(founderId);
-    const malformedMember = await request(app.getHttpServer())
-      .delete('/api/workspaces/members/not-a-uuid')
-      .set('Cookie', founderCookie)
-      .set('Origin', env.API_CORS_ORIGIN);
-    expect(malformedMember.status).toBe(400);
+    // This assertion targets validation, not the cumulative suite-level abuse
+    // budget. A fresh application gives every throttler bucket an isolated
+    // in-memory store while preserving the production limits and guards.
+    const validationApp = await createTestApplication();
+    try {
+      const malformedMember = await request(validationApp.getHttpServer())
+        .delete('/api/workspaces/members/not-a-uuid')
+        .set('Cookie', founderCookie)
+        .set('Origin', env.API_CORS_ORIGIN);
+      expect(malformedMember.status).toBe(400);
 
-    const malformedInviteBody = await request(app.getHttpServer())
-      .post('/api/workspaces/invitations')
-      .set('Cookie', founderCookie)
-      .set('Origin', env.API_CORS_ORIGIN)
-      .send({ roleKey: 'ADMIN', expiresInHours: 24 });
-    expect(malformedInviteBody.status).toBe(400);
+      const malformedInviteBody = await request(validationApp.getHttpServer())
+        .post('/api/workspaces/invitations')
+        .set('Cookie', founderCookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ roleKey: 'ADMIN', expiresInHours: 24 });
+      expect(malformedInviteBody.status).toBe(400);
 
-    const malformedRoleBody = await request(app.getHttpServer())
-      .patch(`/api/workspaces/members/${randomUUID()}/role`)
-      .set('Cookie', founderCookie)
-      .set('Origin', env.API_CORS_ORIGIN)
-      .send({ roleKey: 'ADMIN' });
-    expect(malformedRoleBody.status).toBe(400);
+      const malformedRoleBody = await request(validationApp.getHttpServer())
+        .patch(`/api/workspaces/members/${randomUUID()}/role`)
+        .set('Cookie', founderCookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ roleKey: 'ADMIN' });
+      expect(malformedRoleBody.status).toBe(400);
 
-    const malformedSwitch = await request(app.getHttpServer())
-      .post('/api/workspaces/switch')
-      .set('Cookie', founderCookie)
-      .set('Origin', env.API_CORS_ORIGIN)
-      .send({ workspaceId: 'not-a-uuid' });
-    expect(malformedSwitch.status).toBe(400);
+      const malformedSwitch = await request(validationApp.getHttpServer())
+        .post('/api/workspaces/switch')
+        .set('Cookie', founderCookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ workspaceId: 'not-a-uuid' });
+      expect(malformedSwitch.status).toBe(400);
 
-    const malformedPreview = await request(app.getHttpServer())
-      .post('/api/workspace-invitations/preview')
-      .send({ token: 'not-a-token' });
-    expect(malformedPreview.status).toBe(400);
-    expect(malformedPreview.headers['cache-control']).toBe('no-store');
+      const malformedPreview = await request(validationApp.getHttpServer())
+        .post('/api/workspace-invitations/preview')
+        .send({ token: 'not-a-token' });
+      expect(malformedPreview.status).toBe(400);
+      expect(malformedPreview.headers['cache-control']).toBe('no-store');
 
-    const malformedAccept = await request(app.getHttpServer())
-      .post('/api/workspace-invitations/accept')
-      .send({
-        token: 'a'.repeat(44),
-        email: 'bad@example.test',
-        password: 'password123',
-        displayName: 'Bad',
-      });
-    expect(malformedAccept.status).toBe(400);
-    expect(malformedAccept.headers['cache-control']).toBe('no-store');
+      const malformedAccept = await request(validationApp.getHttpServer())
+        .post('/api/workspace-invitations/accept')
+        .send({
+          token: 'a'.repeat(44),
+          email: 'bad@example.test',
+          password: 'password123',
+          displayName: 'Bad',
+        });
+      expect(malformedAccept.status).toBe(400);
+      expect(malformedAccept.headers['cache-control']).toBe('no-store');
 
-    const malformedAuthenticatedAccept = await request(app.getHttpServer())
-      .post('/api/workspace-invitations/accept-authenticated')
-      .set('Cookie', founderCookie)
-      .set('Origin', env.API_CORS_ORIGIN)
-      .send({ token: 'short' });
-    expect(malformedAuthenticatedAccept.status).toBe(400);
-    expect(malformedAuthenticatedAccept.headers['cache-control']).toBe('no-store');
+      const malformedAuthenticatedAccept = await request(validationApp.getHttpServer())
+        .post('/api/workspace-invitations/accept-authenticated')
+        .set('Cookie', founderCookie)
+        .set('Origin', env.API_CORS_ORIGIN)
+        .send({ token: 'short' });
+      expect(malformedAuthenticatedAccept.status).toBe(400);
+      expect(malformedAuthenticatedAccept.headers['cache-control']).toBe('no-store');
+    } finally {
+      await validationApp.close();
+    }
   });
 
   it('rate-limits repeated unauthenticated invite acceptance attempts', async () => {

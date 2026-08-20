@@ -176,11 +176,10 @@ test.describe('Collaborative workspace UI behavior', () => {
     expect(requests.every((request) => !request.url.includes(token))).toBe(true);
   });
 
-  test('lets a signed-in account claim an invitation without submitting account credentials', async ({
+  test('continues an existing-account claim after sign-in and retains its current role', async ({
     page,
   }) => {
-    await login(page);
-    const token = 'signed-in-fragment-secret';
+    const token = 'existing-account-fragment-secret';
     const acceptGate = deferred();
     const requests: Array<{ body: unknown; method: string; url: string }> = [];
 
@@ -193,8 +192,33 @@ test.describe('Collaborative workspace UI behavior', () => {
         });
       }
       await fulfillJson(route, {
-        workspaceName: 'Signed-in Studio',
+        workspaceName: 'Existing Account Studio',
         roleKey: 'OPERATOR',
+        expiresAt: '2026-08-22T00:00:00Z',
+      });
+    });
+    await page.route('**/api/workspace-invitations/accept', async (route) => {
+      if (route.request().method() !== 'OPTIONS') {
+        requests.push({
+          body: route.request().postDataJSON(),
+          method: route.request().method(),
+          url: route.request().url(),
+        });
+      }
+      await fulfillJson(route, { received: true, workspaceName: 'Existing Account Studio' });
+    });
+    await page.route('**/api/workspace-invitations/preview-authenticated', async (route) => {
+      if (route.request().method() !== 'OPTIONS') {
+        requests.push({
+          body: route.request().postDataJSON(),
+          method: route.request().method(),
+          url: route.request().url(),
+        });
+      }
+      await fulfillJson(route, {
+        workspaceName: 'Existing Account Studio',
+        roleKey: 'OPERATOR',
+        currentRoleKey: 'VIEWER',
         expiresAt: '2026-08-22T00:00:00Z',
       });
     });
@@ -210,9 +234,9 @@ test.describe('Collaborative workspace UI behavior', () => {
         route,
         {
           joined: true,
-          roleKey: 'OPERATOR',
+          roleKey: 'VIEWER',
           workspaceId: '00000000-0000-4000-8000-000000000099',
-          workspaceName: 'Signed-in Studio',
+          workspaceName: 'Existing Account Studio',
         },
         acceptGate.promise,
       );
@@ -220,27 +244,55 @@ test.describe('Collaborative workspace UI behavior', () => {
 
     await page.goto(`/join#token=${token}`);
     await expect(page).toHaveURL(/\/join$/);
-    await expect(page.getByRole('heading', { name: 'Join Signed-in Studio' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Join Existing Account Studio' })).toBeVisible();
+    await page.getByLabel('Your name').fill('Existing Founder');
+    await page.getByLabel('Email').fill(FOUNDER_EMAIL);
+    await page.getByLabel('Create password').fill('Ignored-existing-account-password-9!');
+    await page.getByRole('button', { name: 'Request workspace access' }).click();
+    await expect(page).toHaveURL(/\/login$/);
+
+    await login(page);
+    await page.goto(`/join#token=${token}`);
+    await expect(page).toHaveURL(/\/join$/);
+    await expect(page.getByRole('heading', { name: 'Join Existing Account Studio' })).toBeVisible();
+    await expect(page.getByText(/already belong as viewer/i)).toContainText(
+      'Claiming this link keeps your current role.',
+    );
     await expect(page.getByLabel('Email')).toHaveCount(0);
     const form = page.locator('form');
     await page.getByRole('button', { name: 'Join workspace' }).click();
     await expect(form).toHaveAttribute('aria-busy', 'true');
     await expect(page.getByRole('button', { name: 'Joining…' })).toBeDisabled();
-    await expect(form.getByRole('status')).toHaveText('Joining Signed-in Studio.');
+    await expect(form.getByRole('status')).toHaveText('Joining Existing Account Studio.');
     acceptGate.resolve();
     await expect(page).toHaveURL(/\/dashboard$/);
 
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(4);
     expect(requests[0]).toMatchObject({
       body: { token },
       method: 'POST',
     });
     expect(requests[0]?.url).toMatch(/\/api\/workspace-invitations\/preview$/);
     expect(requests[1]).toMatchObject({
+      body: {
+        token,
+        displayName: 'Existing Founder',
+        email: FOUNDER_EMAIL,
+        password: 'Ignored-existing-account-password-9!',
+      },
+      method: 'POST',
+    });
+    expect(requests[1]?.url).toMatch(/\/api\/workspace-invitations\/accept$/);
+    expect(requests[2]).toMatchObject({
       body: { token },
       method: 'POST',
     });
-    expect(requests[1]?.url).toMatch(/\/api\/workspace-invitations\/accept-authenticated$/);
+    expect(requests[2]?.url).toMatch(/\/api\/workspace-invitations\/preview-authenticated$/);
+    expect(requests[3]).toMatchObject({
+      body: { token },
+      method: 'POST',
+    });
+    expect(requests[3]?.url).toMatch(/\/api\/workspace-invitations\/accept-authenticated$/);
     expect(requests.every((request) => !request.url.includes(token))).toBe(true);
   });
 });

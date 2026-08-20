@@ -480,8 +480,9 @@ without deployment or live providers.
 - ✅ Existing-account claims remain neutral while signed out: the public form
   consumes the bearer token and reserves one account-bound authenticated
   continuation, so preview and replay match the new-account path. After
-  sign-in, the matching account atomically completes the claim, retains any
-  existing role, audits the transition, and switches only the current session.
+  sign-in, the matching account can reopen the link through an account-bound
+  preview, atomically complete the claim, retain any existing role with accurate
+  UI copy, audit the transition, and switch only the current session.
 - ✅ Every session carries an explicit active workspace. The guard resolves
   permissions from that exact membership, the dashboard exposes a safe
   membership-backed workspace selector, and member removal revokes only

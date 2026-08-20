@@ -599,9 +599,11 @@ The public account form consumes every accepted invitation identically. When
 the submitted email already belongs to an account, the consumed record reserves
 one account-bound authenticated continuation without exposing that fact in the
 response, preview, or replay behavior. After sign-in, the matching account
+reopens the bearer link through an account-bound authenticated preview and
 completes the claim through the cookie-authenticated, CSRF-protected endpoint.
 An existing membership is retained even when the invitation names a different
-role; only the founder's audited role-management endpoint may change roles.
+role; the authenticated preview states that retained role explicitly, and only
+the founder's audited role-management endpoint may change roles.
 Completion updates only that session's active workspace and records the claim
 and session switch atomically. Removing a member revokes only sessions whose
 active workspace is the removed tenant; sessions in other workspaces remain

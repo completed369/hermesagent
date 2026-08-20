@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Put, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { OnboardingService } from './onboarding.service';
 import { onboardingSchema } from './onboarding.dto';
@@ -12,7 +12,7 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 @UseGuards(SessionAuthGuard, PermissionGuard)
 @RequirePermission('workspace:manage')
 export class OnboardingController {
-  constructor(private readonly onboardingService: OnboardingService) {}
+  constructor(@Inject(OnboardingService) private readonly onboardingService: OnboardingService) {}
 
   @Get()
   get(@CurrentUser() user: AuthenticatedUser) {
