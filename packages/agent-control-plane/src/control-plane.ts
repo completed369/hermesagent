@@ -227,6 +227,7 @@ export class InMemoryControlPlane {
   readonly #cancellations = new Map<string, RuntimeCancellationPermit>();
   readonly #dispatchedRuns = new Set<string>();
   readonly #claimedDispatchRuns = new Set<string>();
+  readonly #inFlightDispatchAdapters = new Map<string, EntityId>();
   readonly #cancelledRuns = new Set<string>();
 
   constructor(options: ControlPlaneOptions = {}) {
@@ -255,6 +256,9 @@ export class InMemoryControlPlane {
     const adapterKey = key(context.workspaceId, runtime.id);
     const previous = this.#runtimeAdapters.get(adapterKey);
     if (previous) {
+      const hasInFlightDispatch = [...this.#inFlightDispatchAdapters.values()].includes(
+        previous.registrationId,
+      );
       const hasActiveBoundRun = [...this.#runs.values()].some((run) => {
         if (
           run.workspaceId !== context.workspaceId ||
@@ -266,8 +270,10 @@ export class InMemoryControlPlane {
         const connection = this.#connections.get(key(run.workspaceId, run.runtimeConnectionId));
         return connection?.runtimeId === runtime.id;
       });
-      if (hasActiveBoundRun) {
-        throw new ControlPlanePolicyError('Cannot replace an adapter with active bound runs');
+      if (hasInFlightDispatch || hasActiveBoundRun) {
+        throw new ControlPlanePolicyError(
+          'Cannot replace an adapter with in-flight dispatches or active bound runs',
+        );
       }
     }
     this.#runtimeAdapters.set(adapterKey, {
@@ -356,6 +362,24 @@ export class InMemoryControlPlane {
       ) {
         throw new ControlPlanePolicyError(
           'Runtime identity and credential binding require authorizer rotation',
+        );
+      }
+    }
+    if (
+      previous &&
+      (connection.runtimeId !== previous.runtimeId ||
+        connection.authenticatedPrincipalId !== previous.authenticatedPrincipalId ||
+        connection.credentialReference !== previous.credentialReference)
+    ) {
+      const hasActiveRun = [...this.#runs.values()].some(
+        (run) =>
+          run.workspaceId === connection.workspaceId &&
+          run.runtimeConnectionId === connection.id &&
+          ['QUEUED', 'RUNNING', 'PAUSED'].includes(run.status),
+      );
+      if (hasActiveRun) {
+        throw new ControlPlanePolicyError(
+          'Cannot rotate connection identity while it has active or in-flight runs',
         );
       }
     }
@@ -635,6 +659,7 @@ export class InMemoryControlPlane {
   ): Promise<{ externalRunId: string }> {
     const validated = this.#claimDispatch(context, dispatch);
     const run = this.#require(this.#runs, context, validated.envelope.runId, 'Dispatch run');
+    const runKey = key(run.workspaceId, run.id);
     const connection = this.#require(
       this.#connections,
       context,
@@ -654,15 +679,19 @@ export class InMemoryControlPlane {
     ) {
       throw new ControlPlanePolicyError('Dispatch adapter registration is stale');
     }
-    const result = await adapterRegistration.adapter.start(context, validated);
-    assertString(result.externalRunId, 'externalRunId');
-    this.#bindExternalRun(
-      context,
-      run.id,
-      result.externalRunId,
-      adapterRegistration.registrationId,
-    );
-    return { externalRunId: result.externalRunId };
+    try {
+      const result = await adapterRegistration.adapter.start(context, validated);
+      assertString(result.externalRunId, 'externalRunId');
+      this.#bindExternalRun(
+        context,
+        run.id,
+        result.externalRunId,
+        adapterRegistration.registrationId,
+      );
+      return { externalRunId: result.externalRunId };
+    } finally {
+      this.#inFlightDispatchAdapters.delete(runKey);
+    }
   }
 
   #claimDispatch(
@@ -740,6 +769,7 @@ export class InMemoryControlPlane {
     }
     this.#dispatches.delete(dispatchKey);
     this.#claimedDispatchRuns.add(runKey);
+    this.#inFlightDispatchAdapters.set(runKey, stored.adapterRegistrationId);
     return deepFreeze(structuredClone(stored)) as unknown as ValidatedRuntimeDispatch;
   }
 
@@ -764,6 +794,11 @@ export class InMemoryControlPlane {
     }
     if (!this.#claimedDispatchRuns.has(key(run.workspaceId, run.id))) {
       throw new ControlPlanePolicyError('External run binding requires a claimed dispatch');
+    }
+    if (
+      this.#inFlightDispatchAdapters.get(key(run.workspaceId, run.id)) !== adapterRegistrationId
+    ) {
+      throw new ControlPlanePolicyError('External run binding requires its in-flight adapter');
     }
     const currentAdapter = this.#runtimeAdapters.get(
       key(context.workspaceId, connection.runtimeId),
@@ -914,6 +949,9 @@ export class InMemoryControlPlane {
 
   transitionRun(context: WorkspaceContext, runId: EntityId, next: RunStatus): void {
     const run = this.#require(this.#runs, context, runId, 'Run');
+    if (this.#inFlightDispatchAdapters.has(key(run.workspaceId, run.id))) {
+      throw new ControlPlanePolicyError('Run cannot transition while adapter start is in flight');
+    }
     const connection = this.#require(
       this.#connections,
       context,

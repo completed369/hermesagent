@@ -885,6 +885,79 @@ describe('runtime adapter boundary', () => {
     );
   });
 
+  it('prevents adapter replacement while a claimed dispatch is awaiting start', async () => {
+    const plane = new InMemoryControlPlane({
+      clock: () => NOW,
+      authorityPrincipals: [founder.principalId],
+    });
+    await queuedReviewRun(plane);
+    let releaseStart!: (value: { externalRunId: string }) => void;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const deferredResult = new Promise<{ externalRunId: string }>((resolve) => {
+      releaseStart = resolve;
+    });
+    plane.registerRuntimeAdapter(founder, 'runtime-1', {
+      adapterKind: 'generic.bridge',
+      discoverCapabilities: async () => ['repository.review'],
+      health: async () => 'HEALTHY',
+      start: async () => {
+        signalStarted();
+        return deferredResult;
+      },
+      cancel: async () => undefined,
+    });
+    const dispatch = plane.mintDispatch(founder, 'run-dispatch');
+    const execution = plane.executeDispatch(runtimePrincipal, dispatch);
+    await started;
+    expect(() =>
+      plane.registerRuntimeAdapter(founder, 'runtime-1', runtimeAdapter('replacement-run')),
+    ).toThrow(/in-flight dispatches/);
+    expect(() => plane.transitionRun(founder, 'run-dispatch', 'CANCELLED')).toThrow(/in flight/);
+    plane.putRuntime(founder, {
+      id: 'runtime-2',
+      workspaceId: founder.workspaceId,
+      name: 'Second bridge',
+      adapterKind: 'generic.bridge',
+      createdAt: '2026-08-20T12:00:00.000Z',
+    });
+    expect(() =>
+      plane.putConnection(founder, { ...partialConnection(), runtimeId: 'runtime-2' }),
+    ).toThrow(/active or in-flight runs/);
+    releaseStart({ externalRunId: 'external-deferred' });
+    await expect(execution).resolves.toEqual({ externalRunId: 'external-deferred' });
+    expect(plane.getRun(founder, 'run-dispatch')).toMatchObject({
+      externalRunId: 'external-deferred',
+    });
+  });
+
+  it('releases the adapter-generation lock when start or binding validation fails', async () => {
+    for (const mode of ['start-failure', 'invalid-result'] as const) {
+      const plane = new InMemoryControlPlane({
+        clock: () => NOW,
+        authorityPrincipals: [founder.principalId],
+      });
+      await queuedReviewRun(plane);
+      plane.registerRuntimeAdapter(founder, 'runtime-1', {
+        adapterKind: 'generic.bridge',
+        discoverCapabilities: async () => ['repository.review'],
+        health: async () => 'HEALTHY',
+        start: async () => {
+          if (mode === 'start-failure') throw new Error('provider start failed');
+          return { externalRunId: '' };
+        },
+        cancel: async () => undefined,
+      });
+      const dispatch = plane.mintDispatch(founder, 'run-dispatch');
+      await expect(plane.executeDispatch(runtimePrincipal, dispatch)).rejects.toThrow();
+      expect(() =>
+        plane.registerRuntimeAdapter(founder, 'runtime-1', runtimeAdapter('replacement-run')),
+      ).not.toThrow();
+    }
+  });
+
   it('deep-freezes exact authority and tool scopes before invoking the adapter', async () => {
     const plane = new InMemoryControlPlane({
       clock: () => NOW,
