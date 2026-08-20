@@ -38,6 +38,17 @@ providers remain absent, marketplace `Integration.writeEnabled` still requires
 its own final-boundary enforcement before a real adapter is introduced, and
 production MinIO/Temporal connectivity was not exercised.
 
+### PostCSS advisory amendment — 2026-08-20
+
+- A fresh production and complete lockfile audit identified the newly disclosed
+  moderate path-disclosure advisory `CVE-2026-69153` /
+  `GHSA-fxqj-rqcc-2cmp` in the prior `postcss@8.5.18` override.
+- The focused remediation updates only that override to `postcss@8.5.26`, above
+  the advisory's fixed floor of `8.5.23`, and regenerates the frozen lockfile.
+- After the update, both production and complete dependency audits report no
+  known vulnerabilities. Application and CI evidence for the repair belongs to
+  its exact pull-request head and does not establish a deployment.
+
 ## Security model observed
 
 - Passwords use salted scrypt and constant-time verification.
@@ -293,7 +304,7 @@ production MinIO/Temporal connectivity was not exercised.
   GHSA-jmr7-xgp7-cmfj, GHSA-v6h2-p8h4-qcjw, GHSA-7h2j-9565-4h9v, and
   GHSA-832h-xg76-4gv6.
 - **Exact vulnerable-child replacements:** reviewed pnpm overrides replace
-  `js-yaml` with 5.2.2, `postcss` with 8.5.18, `sharp` with 0.35.0, and `vite`
+  `js-yaml` with 5.2.2, `postcss` with 8.5.26, `sharp` with 0.35.0, and `vite`
   with 6.4.3. These replace vulnerable code retained by exact/incompatible
   parent ranges; they do not suppress audit output. They resolve
   GHSA-2g4f-4pwh-qvx6, GHSA-q7g4-2pjw-v29r, GHSA-566m-qj78-rww5, and
