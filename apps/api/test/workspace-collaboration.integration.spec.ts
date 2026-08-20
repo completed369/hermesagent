@@ -168,7 +168,7 @@ describe('collaborative workspace invitations (integration)', () => {
     userIds.length = 0;
   });
 
-  it('stores only a digest, expires links, and rejects replay', async () => {
+  it('stores only a digest and rejects expired, revoked, and replayed links', async () => {
     const invitation = await service.createInvitation(workspaceId, founderId, 'OPERATOR', 24);
     const stored = await prisma.workspaceInvitation.findUniqueOrThrow({
       where: { id: invitation.id },
@@ -190,6 +190,20 @@ describe('collaborative workspace invitations (integration)', () => {
       data: { expiresAt: new Date(Date.now() - 1_000) },
     });
     await expect(service.getInvitation(invitation.token)).rejects.toThrow('expired');
+
+    const revoked = await service.createInvitation(workspaceId, founderId, 'OPERATOR', 24);
+    await prisma.workspaceInvitation.update({
+      where: { id: revoked.id },
+      data: { revokedAt: new Date() },
+    });
+    await expect(service.getInvitation(revoked.token)).rejects.toThrow('no longer available');
+    await expect(
+      service.acceptInvitation(revoked.token, {
+        email: `revoked-${randomUUID()}@example.test`,
+        password: 'correct-horse-battery',
+        displayName: 'Revoked invitation',
+      }),
+    ).rejects.toThrow('no longer available');
 
     const active = await service.createInvitation(workspaceId, founderId, 'VIEWER', 24);
     await service.acceptInvitation(active.token, {
