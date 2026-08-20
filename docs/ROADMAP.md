@@ -39,11 +39,11 @@ published and no private-staging application deployment has been dispatched.
    are covered. CI, CodeQL, the staging-security gate, Prisma/runtime gates, and
    all five final-image scans passed. It remains unmerged and undeployed.
 3. **Public journey:** operations-repository PR #21 at
-   `f6c0c952b5446eb6e0fb67418b58944ee1abf085` is a validated, unmerged public
+   `0385a491118a116a353dcaec9f6a4edacd8eda9d` is a validated, unmerged public
    welcome-journey candidate. It must remain honest about pilot status and must
    not expose protected or confidential information.
 4. **Founder command center:** operations-repository PR #20 at
-   `12eb5cad692bda5a02f8ed9da2a5c4ac0fdc47db` is an unmerged progress-dashboard
+   `9a83af1f4b86433e78eafeefaf2c4b58a386c284` is an unmerged progress-dashboard
    candidate that must be reconciled after the product sequence. The protected
    `progress.ventureos.site` must distinguish current `main`, validated drafts,
    blockers, approvals, deployments, and live evidence without invented
