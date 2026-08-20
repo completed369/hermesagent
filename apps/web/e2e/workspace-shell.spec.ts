@@ -176,6 +176,9 @@ test.describe('Workspace shell UX', () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page);
+    await page.goto('/dashboard');
+    await expect(page.getByRole('heading', { name: 'Command Centre' })).toBeVisible();
+    await expect(page.locator('.vos-data-surface')).toBeVisible();
 
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 844 });
