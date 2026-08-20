@@ -129,6 +129,15 @@ test('staging image and topology contracts are fail-closed', () => {
   );
 });
 
+test('runtime entrypoint changes trigger the complete image security matrix', () => {
+  const workflow = read('.github/workflows/runtime-substrate-remediation.yml');
+
+  assert.match(workflow, /paths:\s*[\s\S]*?- 'scripts\/runtime-secret-entrypoint\.mjs'/);
+  assert.match(workflow, /image: \[api, web, worker, tools, ingress\]/);
+  assert.match(workflow, /Enforce fresh scanner database and CISA KEV policy/);
+  assert.match(workflow, /Generate SPDX JSON SBOM/);
+});
+
 test('the immutable migration chain matches the reviewed sequence', () => {
   const migrations = readdirSync(resolve(root, 'packages/database/prisma/migrations'), {
     withFileTypes: true,
