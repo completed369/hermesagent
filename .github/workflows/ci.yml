@@ -122,10 +122,28 @@ jobs:
       - name: Production build
         run: pnpm build
 
+      # GitHub's Azure Ubuntu mirror can stop responding while Playwright runs
+      # apt-get. Prefer the canonical HTTPS archive and bound apt retries so an
+      # external mirror outage fails promptly instead of consuming the job.
+      - name: Stabilize Ubuntu archive for browser dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+            test -f "$source" || continue
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
+          done
+          printf '%s\n' \
+            'Acquire::Retries "3";' \
+            'Acquire::http::Timeout "30";' \
+            'Acquire::https::Timeout "30";' \
+            | sudo tee /etc/apt/apt.conf.d/99ventureos-ci-network >/dev/null
+
       # Install only the browser exercised by apps/web/playwright.config.ts.
       # Playwright's webServer configuration owns deterministic API/web
       # readiness and tears both processes down when the suite exits.
       - name: Install Playwright Chromium
+        timeout-minutes: 8
         run: pnpm --filter @ventureos/web exec playwright install --with-deps chromium
 
       - name: Application E2E
@@ -166,7 +184,22 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Stabilize Ubuntu archive for browser dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+            test -f "$source" || continue
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
+          done
+          printf '%s\n' \
+            'Acquire::Retries "3";' \
+            'Acquire::http::Timeout "30";' \
+            'Acquire::https::Timeout "30";' \
+            | sudo tee /etc/apt/apt.conf.d/99ventureos-ci-network >/dev/null
+
       - name: Install Playwright Chromium
+        timeout-minutes: 8
         run: pnpm --filter @ventureos/web exec playwright install --with-deps chromium
 
       - name: Generate disposable synthetic staging environment

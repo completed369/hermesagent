@@ -529,3 +529,38 @@ it silently skipped — worth periodically confirming that every workspace
 package's tasks are genuinely running (e.g. checking turbo's task count
 against the expected package count), not just that the tasks that did run
 passed.
+
+## ADR-012: Compose the Node runtime on a pinned no-OpenSSL substrate
+
+**Status:** Approved for repair and verification on 2026-08-19; merge and
+deployment remain separately founder-gated.
+
+**Context:** The immutable publication scan for source SHA `662138b` found
+`CVE-2026-14456` in Debian's `libssl3t64` in all five final images. The
+application does not require a system OpenSSL package because Prisma uses its
+JavaScript engine and driver adapter. The prior
+`distroless/nodejs22-debian13` base nevertheless included that package.
+
+**Decision:** Build a shared runtime from three immutable sources: the Node 22
+executable from pinned `node:22-trixie-slim`, the scanner-clean pinned
+`distroless/base-nossl-debian13` root filesystem, and only the required
+`libgcc_s.so.1` and `libstdc++.so.6` runtime libraries plus
+their Debian package metadata from pinned `distroless/cc-debian13`. All five
+final targets inherit this runtime, its `/nodejs/bin/node` entrypoint, and keep
+their exact non-root user, commands, health checks, and application payloads.
+The migration-tools target uses Prisma's supported `linux-static-x64` schema
+engine through an explicit `PRISMA_SCHEMA_ENGINE_BINARY` path. This keeps all
+five final targets SSL-free and forbids both `libssl3` and the vulnerable
+Debian 13 `libssl3t64` package at runtime.
+
+The same repair upgrades the Prisma CLI, client, and PostgreSQL adapter in
+lockstep to `6.19.3`, which resolves fixed `effect 3.21.0`, and applies a
+targeted pnpm override so only `@prisma/config@6.19.3` receives
+`deepmerge-ts 8.0.1`.
+
+**Verification rule:** Pull requests must build and scan all five final images
+without publishing. The release-equivalent gate must reject HIGH/CRITICAL
+vulnerabilities, EOL bases, image/config secrets, stale scanner data, and CISA
+Known Exploited Vulnerabilities; it must also prove `libssl3t64` and the two
+vulnerable JavaScript versions are absent. Publishing and deployment remain
+disabled until the founder separately approves an exact merged SHA.

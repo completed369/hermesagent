@@ -4,6 +4,11 @@ name: Runtime substrate remediation evidence
   pull_request:
     branches: [main]
     paths:
+      - 'Dockerfile.staging'
+      - 'package.json'
+      - 'packages/database/package.json'
+      - 'pnpm-lock.yaml'
+      - 'scripts/staging-build-contract.test.mjs'
       - '.github/candidates/Dockerfile.nossl-libgcc'
       - '.github/workflows/runtime-substrate-remediation.yml'
 
@@ -12,7 +17,7 @@ permissions:
 
 jobs:
   nossl-libgcc:
-    name: Gate base-nossl plus provenanced libgcc
+    name: Gate base-nossl plus provenanced C/C++ runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -41,10 +46,15 @@ jobs:
           cid="$(docker create "$image" /nonexistent-inspection-command)"
           trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
           docker cp "$cid:/usr/lib/x86_64-linux-gnu/libgcc_s.so.1" /tmp/libgcc_s.so.1
+          docker cp "$cid:/usr/lib/x86_64-linux-gnu/libstdc++.so.6" /tmp/libstdc++.so.6
           docker cp "$cid:/var/lib/dpkg/status.d/libgcc-s1" /tmp/libgcc-s1.status
+          docker cp "$cid:/var/lib/dpkg/status.d/libstdc++6" /tmp/libstdc++6.status
           test -s /tmp/libgcc_s.so.1
+          test -s /tmp/libstdc++.so.6
           test -s /tmp/libgcc-s1.status
+          test -s /tmp/libstdc++6.status
           grep -q '^Package: libgcc-s1$' /tmp/libgcc-s1.status
+          grep -q '^Package: libstdc++6$' /tmp/libstdc++6.status
 
       - name: Generate complete vulnerability evidence
         shell: bash
@@ -61,6 +71,7 @@ jobs:
             --output /tmp/nossl-libgcc.trivy.json \
             --exit-code 0
           jq -e '[.Results[]?.Packages[]? | select(.Name == "libgcc-s1")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null
+          jq -e '[.Results[]?.Packages[]? | select(.Name == "libstdc++6")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null
           if jq -e '[.Results[]?.Packages[]? | select(.Name == "libssl3t64")] | length > 0' /tmp/nossl-libgcc.trivy.json >/dev/null; then
             echo 'Unexpected libssl3t64 package in no-ssl candidate.' >&2
             exit 1
@@ -88,6 +99,122 @@ jobs:
           name: nossl-libgcc-runtime-${{ github.event.pull_request.head.sha }}
           path: |
             /tmp/libgcc-s1.status
+            /tmp/libstdc++6.status
             /tmp/nossl-libgcc.trivy.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  final-images:
+    name: Build and scan final ${{ matrix.image }} image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, web, worker, tools, ingress]
+    steps:
+      - name: Checkout exact repair head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build exact linux/amd64 image without publishing
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile.staging
+          target: ${{ matrix.image }}
+          platforms: linux/amd64
+          push: false
+          no-cache: true
+          tags: local/ventureos-${{ matrix.image }}:${{ github.event.pull_request.head.sha }}
+          outputs: type=docker,dest=/tmp/ventureos-${{ matrix.image }}.tar
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=https://api-staging.ventureos.site
+          labels: |
+            org.opencontainers.image.source=https://github.com/completed369/hermesagent
+            org.opencontainers.image.revision=${{ github.event.pull_request.head.sha }}
+      - name: Generate complete vulnerability evidence
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          input: /tmp/ventureos-${{ matrix.image }}.tar
+          scanners: vuln
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          format: json
+          output: /tmp/ventureos-${{ matrix.image }}.trivy.json
+          exit-code: '0'
+      - name: Verify repaired runtime composition
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          report="/tmp/ventureos-${IMAGE_NAME}.trivy.json"
+          test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libgcc-s1")] | length' "$report")" -gt 0
+          test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libstdc++6")] | length' "$report")" -gt 0
+          test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libssl3t64")] | length' "$report")" -eq 0
+          test "$(jq '[.Results[]?.Packages[]? | select(.Name == "libssl3")] | length' "$report")" -eq 0
+          test "$(jq '[.Results[]?.Packages[]? | select(.Name == "deepmerge-ts" and .Version == "7.1.5")] | length' "$report")" -eq 0
+          test "$(jq '[.Results[]?.Packages[]? | select(.Name == "effect" and .Version == "3.18.4")] | length' "$report")" -eq 0
+      - name: Enforce fresh scanner database and CISA KEV policy
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trivy version --format json > "/tmp/${IMAGE_NAME}.trivy-version.json"
+          updated="$(jq -er '.VulnerabilityDB.UpdatedAt' "/tmp/${IMAGE_NAME}.trivy-version.json")"
+          updated_epoch="$(date --date="$updated" +%s)"
+          now_epoch="$(date +%s)"
+          age_seconds="$((now_epoch - updated_epoch))"
+          test "$age_seconds" -ge -300
+          test "$age_seconds" -le 86400
+
+          curl --fail --silent --show-error --location --retry 3 \
+            --output /tmp/known_exploited_vulnerabilities.json \
+            https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+          jq -e '.vulnerabilities | type == "array"' /tmp/known_exploited_vulnerabilities.json >/dev/null
+          jq -r '.vulnerabilities[].cveID' /tmp/known_exploited_vulnerabilities.json | sort -u > /tmp/kev.ids
+          jq -r '[.Results[]?.Vulnerabilities[]?.VulnerabilityID] | unique[]' \
+            "/tmp/ventureos-${IMAGE_NAME}.trivy.json" | sort -u > /tmp/findings.ids
+          comm -12 /tmp/findings.ids /tmp/kev.ids > "/tmp/${IMAGE_NAME}.kev-matches.txt"
+          test ! -s "/tmp/${IMAGE_NAME}.kev-matches.txt"
+      - name: Gate vulnerabilities, EOL bases, and image secrets
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trivy image \
+            --input "/tmp/ventureos-${IMAGE_NAME}.tar" \
+            --scanners vuln,secret \
+            --image-config-scanners secret \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed=false \
+            --exit-on-eol 1 \
+            --exit-code 1
+      - name: Generate SPDX JSON SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          input: /tmp/ventureos-${{ matrix.image }}.tar
+          scanners: vuln
+          format: spdx-json
+          output: /tmp/ventureos-${{ matrix.image }}.spdx.json
+          exit-code: '0'
+      - name: Preserve scan policy evidence and SBOM
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: repaired-${{ matrix.image }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/ventureos-${{ matrix.image }}.trivy.json
+            /tmp/${{ matrix.image }}.trivy-version.json
+            /tmp/${{ matrix.image }}.kev-matches.txt
+            /tmp/known_exploited_vulnerabilities.json
+            /tmp/ventureos-${{ matrix.image }}.spdx.json
           if-no-files-found: warn
           retention-days: 30

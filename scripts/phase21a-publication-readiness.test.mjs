@@ -67,8 +67,15 @@ test('all staging Docker targets use immutable bases and the minimized tools run
   const dockerfile = read('Dockerfile.staging');
   const fromLines = dockerfile.split('\n').filter((line) => line.startsWith('FROM '));
   assert.ok(fromLines.length >= 6);
-  for (const line of fromLines.filter((line) => !/^FROM (?:builder|deployer)\b/.test(line))) {
-    assert.match(line, /@sha256:[0-9a-f]{64}/);
+  const definedStages = new Set();
+  for (const line of fromLines) {
+    const match = line.match(/^FROM\s+(\S+)(?:\s+AS\s+(\S+))?$/);
+    assert.ok(match, `invalid FROM instruction: ${line}`);
+    const [, source, alias] = match;
+    if (!definedStages.has(source)) {
+      assert.match(source, /@sha256:[0-9a-f]{64}$/, `external base must be pinned: ${line}`);
+    }
+    if (alias) definedStages.add(alias);
   }
   assert.doesNotMatch(dockerfile, /FROM builder AS tools/);
   assert.match(dockerfile, /deploy --prod \/runtime\/tools/);
@@ -86,12 +93,21 @@ test('all staging Docker targets use immutable bases and the minimized tools run
 
 test('publication runtimes exclude the vulnerable build toolchain and scan-only Temporal sources', () => {
   const dockerfile = read('Dockerfile.staging');
-  const runtimeBase =
-    'gcr.io/distroless/nodejs22-debian13@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167';
 
-  for (const target of ['tools', 'api', 'worker', 'web', 'ingress']) {
-    assert.match(dockerfile, new RegExp(`FROM ${runtimeBase} AS ${target}\\b`));
+  for (const target of ['api', 'worker', 'web', 'ingress']) {
+    assert.match(dockerfile, new RegExp(`FROM runtime AS ${target}\\b`));
   }
+  assert.match(dockerfile, /FROM runtime AS tools\b/);
+  assert.match(dockerfile, /ENV PRISMA_CLI_BINARY_TARGETS=linux-static-x64/);
+  assert.match(dockerfile, /PRISMA_SCHEMA_ENGINE_BINARY=\/app\/prisma-schema-engine/);
+  assert.match(dockerfile, /schema-engine-linux-static-x64/);
+  assert.match(dockerfile, /FROM node:22-trixie-slim@sha256:[0-9a-f]{64} AS runtime-node/);
+  assert.match(
+    dockerfile,
+    /FROM gcr\.io\/distroless\/base-nossl-debian13@sha256:[0-9a-f]{64} AS runtime/,
+  );
+  assert.match(dockerfile, /COPY --from=runtime-node \/usr\/local\/bin\/node \/nodejs\/bin\/node/);
+  assert.doesNotMatch(dockerfile, /distroless\/nodejs22-debian13/);
   assert.match(dockerfile, /@temporalio\+core-bridge@\*\/node_modules\/@temporalio\/core-bridge/);
   assert.match(dockerfile, /rm -rf "\$core_bridge\/sdk-core" "\$core_bridge\/bridge-macros"/);
   assert.match(dockerfile, /"\$core_bridge\/Cargo\.lock" "\$core_bridge\/Cargo\.toml"/);

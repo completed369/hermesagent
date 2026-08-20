@@ -22,15 +22,15 @@
     "test:unit": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "6.18.0",
-    "@prisma/client": "6.18.0",
+    "@prisma/adapter-pg": "6.19.3",
+    "@prisma/client": "6.19.3",
     "@ventureos/auth": "workspace:*",
     "@ventureos/scoring-engine": "workspace:*",
     "@ventureos/security": "workspace:*",
     "@ventureos/policy-engine": "workspace:*",
     "@ventureos/contracts": "workspace:*",
     "pg": "8.22.0",
-    "prisma": "6.18.0"
+    "prisma": "6.19.3"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
