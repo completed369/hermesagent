@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 export const NAV_ITEMS = [
   { href: '/dashboard', label: 'Command Centre', available: true },
@@ -17,12 +20,20 @@ export const NAV_ITEMS = [
 ];
 
 export function DashboardNav() {
+  const pathname = usePathname();
+
   return (
-    <nav className="vos-dashboard-nav">
+    <nav className="vos-dashboard-nav" aria-label="Workspace navigation">
       {NAV_ITEMS.map((item) =>
         item.available ? (
-          <Link key={item.label} href={item.href} className="vos-dashboard-navlink">
-            {item.label}
+          <Link
+            key={item.label}
+            href={item.href}
+            className="vos-dashboard-navlink"
+            aria-current={isActiveDashboardRoute(pathname, item.href) ? 'page' : undefined}
+          >
+            <span className="vos-dashboard-nav-indicator" aria-hidden="true" />
+            <span>{item.label}</span>
           </Link>
         ) : (
           <div
@@ -39,4 +50,9 @@ export function DashboardNav() {
       )}
     </nav>
   );
+}
+
+export function isActiveDashboardRoute(pathname: string, href: string): boolean {
+  if (href === '/dashboard') return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
