@@ -488,6 +488,15 @@ export class InMemoryControlPlane {
   startRun(context: WorkspaceContext, run: AgentRun): void {
     assertWorkspace(context, run.workspaceId);
     if (run.status !== 'QUEUED') throw new ControlPlanePolicyError('New runs must start QUEUED');
+    if (
+      run.externalRunId !== undefined ||
+      run.startedAt !== undefined ||
+      run.completedAt !== undefined
+    ) {
+      throw new ControlPlanePolicyError(
+        'New runs cannot pre-bind external ownership or lifecycle timestamps',
+      );
+    }
     const task = this.#require(this.#tasks, context, run.taskId, 'Task');
     const { agent, authority } = this.#validateCurrentTaskPolicy(context, task);
     const connection = this.#require(
@@ -508,6 +517,7 @@ export class InMemoryControlPlane {
     if (
       task.status !== 'READY' ||
       task.assignedAgentId !== agent.id ||
+      run.agentId !== agent.id ||
       connection.runtimeId !== agent.runtimeId
     ) {
       throw new ControlPlanePolicyError(

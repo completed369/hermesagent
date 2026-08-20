@@ -705,6 +705,57 @@ describe('runtime adapter boundary', () => {
     });
   }
 
+  it('rejects caller-supplied run ownership and lifecycle state before adapter dispatch', async () => {
+    const plane = new InMemoryControlPlane({
+      clock: () => NOW,
+      authorityPrincipals: [founder.principalId],
+    });
+    await connect(plane);
+    let cancellationCalled = false;
+    plane.registerRuntimeAdapter(
+      founder,
+      'runtime-1',
+      runtimeAdapter('adapter-owned-run', {
+        onCancel: () => {
+          cancellationCalled = true;
+        },
+      }),
+    );
+
+    for (const [taskId, injected] of [
+      ['task-prebound-external', { externalRunId: 'attacker-selected-run' }],
+      ['task-prestarted', { startedAt: '2026-08-20T11:59:59.000Z' }],
+      ['task-precompleted', { completedAt: '2026-08-20T12:00:00.000Z' }],
+    ] as const) {
+      plane.createTask(founder, reviewTask(taskId));
+      expect(() =>
+        plane.startRun(runtimePrincipal, {
+          id: `run-${taskId}`,
+          workspaceId: founder.workspaceId,
+          taskId,
+          agentId: 'agent-1',
+          runtimeConnectionId: 'connection-1',
+          status: 'QUEUED',
+          ...injected,
+        }),
+      ).toThrow(/cannot pre-bind/);
+      expect(() => plane.mintCancellation(runtimePrincipal, `run-${taskId}`)).toThrow(/not found/);
+    }
+
+    plane.createTask(founder, reviewTask('task-wrong-agent'));
+    expect(() =>
+      plane.startRun(runtimePrincipal, {
+        id: 'run-wrong-agent',
+        workspaceId: founder.workspaceId,
+        taskId: 'task-wrong-agent',
+        agentId: 'attacker-selected-agent',
+        runtimeConnectionId: 'connection-1',
+        status: 'QUEUED',
+      }),
+    ).toThrow(/do not match/);
+    expect(cancellationCalled).toBe(false);
+  });
+
   it('accepts only an exact, one-use policy-minted dispatch envelope', async () => {
     const plane = new InMemoryControlPlane({
       clock: () => NOW,
