@@ -369,6 +369,7 @@ test.describe('Collaborative workspace UI behavior', () => {
     });
     expect(resetResponse.ok()).toBe(true);
     await page.goto('/dashboard');
+    await page.goto('/dashboard?workspace-switch-history=1');
 
     const sidebar = page.getByLabel('Workspace sidebar');
     const switcher = sidebar.locator('.vos-workspace-switcher');
@@ -410,7 +411,12 @@ test.describe('Collaborative workspace UI behavior', () => {
       `Switching to ${targetSummary.workspace.name}.`,
     );
 
+    const dashboardNavigation = page.waitForRequest(
+      (request) =>
+        request.isNavigationRequest() && new URL(request.url()).pathname === '/dashboard',
+    );
     switchGate.resolve();
+    await dashboardNavigation;
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(sidebar.locator('.vos-dashboard-brand strong')).toHaveText(
       targetSummary.branding?.brandName ?? 'VentureOS',
@@ -422,6 +428,24 @@ test.describe('Collaborative workspace UI behavior', () => {
     await expect(page.getByRole('main')).not.toContainText(ownWorkspaceName);
     await expect(page.getByRole('main')).toContainText(targetProvider!);
     await page.unroute('**/api/workspaces/switch', allowSwitch);
+
+    await page.goBack();
+    await expect(sidebar.locator('.vos-dashboard-brand strong')).toHaveText(
+      targetSummary.branding?.brandName ?? 'VentureOS',
+    );
+    await expect(selector).toHaveValue(targetSummary.workspace.id);
+    await expect(sidebar.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+    await expect(page.getByRole('main')).not.toContainText(ownWorkspaceName);
+    await expect(page.getByRole('main')).toContainText(targetProvider!);
+
+    await page.reload();
+    await expect(sidebar.locator('.vos-dashboard-brand strong')).toHaveText(
+      targetSummary.branding?.brandName ?? 'VentureOS',
+    );
+    await expect(selector).toHaveValue(targetSummary.workspace.id);
+    await expect(sidebar.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+    await expect(page.getByRole('main')).not.toContainText(ownWorkspaceName);
+    await expect(page.getByRole('main')).toContainText(targetProvider!);
 
     const deniedGate = deferred();
     const denySwitch = async (route: Route) => {

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
+import { ACTIVE_WORKSPACE_STORAGE_KEY } from '@/lib/workspace-session';
 
 export interface AvailableWorkspace {
   id: string;
@@ -17,10 +17,22 @@ export function WorkspaceSwitcher({
   activeWorkspaceId: string;
   memberships: AvailableWorkspace[];
 }) {
-  const router = useRouter();
+  const selectorRef = useRef<HTMLSelectElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    const restoreAuthoritativeSelection = () => {
+      // Browsers may restore a select's pre-navigation value independently of
+      // the newly server-rendered tenant shell. Keep the visible control bound
+      // to the authoritative active workspace after reload/history traversal.
+      if (selectorRef.current) selectorRef.current.value = activeWorkspaceId;
+    };
+    restoreAuthoritativeSelection();
+    window.addEventListener('pageshow', restoreAuthoritativeSelection);
+    return () => window.removeEventListener('pageshow', restoreAuthoritativeSelection);
+  }, [activeWorkspaceId]);
 
   async function switchWorkspace(workspaceId: string) {
     if (workspaceId === activeWorkspaceId || busy) return;
@@ -34,12 +46,16 @@ export function WorkspaceSwitcher({
         body: JSON.stringify({ workspaceId }),
       });
       setStatus(`Active workspace changed to ${workspace?.workspace.name ?? 'workspace'}.`);
-      router.push('/dashboard');
-      router.refresh();
+      // The active workspace lives in an HttpOnly cookie that is consumed by the
+      // server-rendered shell. A client-router refresh can race the cookie update
+      // while already on /dashboard and retain the previous tenant's shell. A
+      // hard replacement creates a fresh server request without leaving the stale
+      // tenant view as the current browser-history entry.
+      window.sessionStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
+      window.location.replace('/dashboard');
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not switch workspace.');
       setStatus('');
-    } finally {
       setBusy(false);
     }
   }
@@ -54,7 +70,9 @@ export function WorkspaceSwitcher({
       <label>
         Active workspace
         <select
+          ref={selectorRef}
           className="vos-input"
+          autoComplete="off"
           value={activeWorkspaceId}
           disabled={busy || memberships.length === 1}
           onChange={(event) => void switchWorkspace(event.target.value)}
