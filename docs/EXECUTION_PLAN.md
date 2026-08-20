@@ -14,11 +14,10 @@
 > with zero open CodeQL alerts. No application image for this baseline has been
 > published and no private-staging application deployment was dispatched.
 >
-> The next product candidate is draft PR #59 at exact head
-> `e0fe3d4948d1cad3dd5d0213fc0cf05675ae1fe3`, a provider-neutral Agent Control
-> Plane contract foundation. Its prior exact-head checks were green, but it must
-> be refreshed onto this newer `main`, rerun, and independently reviewed before
-> merge. It is not evidence that Codex, Hermes, Pi, or any other runtime is
+> The next product candidate is draft PR #59, a provider-neutral Agent Control
+> Plane contract foundation. It has been refreshed onto this `main` and is in
+> adversarial repair and exact-head gate review; GitHub is authoritative for its
+> mutable head and checks. It is not evidence that Codex, Hermes, Pi, or any other runtime is
 > connected: authenticated registration, capability exchange, heartbeat,
 > task/status exchange, and an event/result round trip have not yet been
 > evidenced. Runtime Broker, Dynamic Agent Factory, AI COO, Mission Control,
@@ -551,9 +550,9 @@ phase deliverables. Current status:
 1. Preserve Phases 1–8 as historical product-scope evidence. Phase 6 remains
    mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
    mock-only under ADR-010. Neither milestone is a release-readiness claim.
-2. Preserve the merged PR #52 security/reliability foundation. PR #50 is
-   already reconciled against that exact `main` baseline; review and merge its
-   exact validated head before reconciling the stacked PR #55 candidate.
+2. Preserve the merged PR #50/#55 workspace and collaboration foundation.
+   Complete this documentation reconciliation, then finish the deploy-aware
+   operations sequence and the refreshed PR #59 exact-head/adversarial gates.
 3. Only after an exact merged release commit is selected: build and scan the five
    immutable images. Image publication requires separate approval for that exact
    SHA; private-staging deployment requires another separate approval. Neither

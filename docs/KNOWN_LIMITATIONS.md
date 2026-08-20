@@ -11,10 +11,10 @@
 > application image has been published and no private-staging application
 > deployment has been dispatched.
 >
-> The Agent Control Plane foundation remains draft PR #59 at exact head
-> `e0fe3d4948d1cad3dd5d0213fc0cf05675ae1fe3`. Its prior checks are not a merge
-> claim and must be repeated after refresh onto current `main`. No external
-> runtime is verified connected; Codex, Hermes, and Pi remain NOT CONFIGURED for
+> The Agent Control Plane foundation remains draft PR #59. It has been refreshed
+> onto current `main` and is in adversarial repair and exact-head gate review;
+> GitHub is authoritative for its mutable head and checks. No external runtime is
+> verified connected; Codex, Hermes, and Pi remain NOT CONFIGURED for
 > product-status purposes until the full authenticated registration, capability,
 > heartbeat, task/status, event, and result exchange is demonstrated.
 >

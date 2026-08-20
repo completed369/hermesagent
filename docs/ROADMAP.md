@@ -40,12 +40,11 @@ private-staging application deployment has been dispatched.
    documents onto the collaboration baseline. GitHub is authoritative for its
    changing PR head and checks; this document must not circularly pin its own
    mutable commit.
-2. **Agent Control Plane foundation:** product PR #59 is an open draft at exact
-   head `e0fe3d4948d1cad3dd5d0213fc0cf05675ae1fe3`. Its previous exact-head CI,
-   staging-security, CodeQL, Prisma/runtime, and five-image checks passed. It
-   must be refreshed onto current `main`, rerun, and independently reviewed.
-   It establishes provider-neutral contracts only; it does not prove any
-   runtime connection.
+2. **Agent Control Plane foundation:** product PR #59 is an open draft refreshed
+   onto current `main` and in adversarial repair and exact-head gate review as
+   observed on 2026-08-20. GitHub is authoritative for its mutable head and
+   checks. It establishes provider-neutral contracts only; it does not prove
+   any runtime connection.
 3. **Public journey:** operations-repository PR #21 is an open, validation-green
    draft as observed on 2026-08-20. The operations repository remains
    authoritative for its mutable head and checks. It collects no personal data
