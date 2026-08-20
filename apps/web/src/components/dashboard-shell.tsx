@@ -138,6 +138,7 @@ export function DashboardShell({
         className={`vos-sidebar-scrim${open ? ' is-open' : ''}`}
         type="button"
         aria-label="Close navigation"
+        aria-hidden="true"
         tabIndex={-1}
         onClick={() => closeDrawer(true)}
       />
