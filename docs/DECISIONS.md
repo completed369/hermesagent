@@ -564,3 +564,48 @@ vulnerabilities, EOL bases, image/config secrets, stale scanner data, and CISA
 Known Exploited Vulnerabilities; it must also prove `libssl3t64` and the two
 vulnerable JavaScript versions are absent. Publishing and deployment remain
 disabled until the founder separately approves an exact merged SHA.
+
+## ADR-013: Collaborative access uses provider-free, single-use bearer invitations
+
+**Decision (2026-08-19):** Founders can create copyable workspace invitation
+links for an `OPERATOR` or `VIEWER`. VentureOS stores only a domain-separated
+SHA-256 digest of the random 256-bit token. Tokens expire, are consumed once,
+and are checked inside a workspace-serialized transaction before creating the
+member. The same transaction enforces the plan's `maxWorkspaceMembers` limit,
+updates the workspace to collaborative mode, and writes the acceptance audit
+event. Invitation creation, member listing, role changes, and removal remain
+founder-only and every lookup is scoped to the authenticated workspace.
+
+**Why:** This enables staged collaboration without adding an email service,
+paid provider, customer-data integration, or production dependency. The raw
+link is returned only in the creation response and must be copied then; it is
+never recoverable from storage or audit logs.
+
+**Role map:** `FOUNDER` retains all authority, `OPERATOR` receives normal
+workflow read/write capabilities but no billing, approval-decision, branding,
+or membership-management authority, and `VIEWER` receives only the explicit
+collaboration-safe view permissions (not billing, audit, security, branding,
+or member data). Founder memberships cannot be demoted or removed.
+
+**Workspace-scoped sessions (2026-08-20):** Every newly created session stores
+an explicit `activeWorkspaceId`; the authentication guard resolves role and
+permissions only from that exact membership and fails closed when it is absent.
+Users can list only their own memberships and switch only the current session
+to one of them. Switching, signed-in invitation acceptance, and member removal
+share an account-scoped lock so concurrent operations cannot leave an active
+session pointing at a deleted cross-tenant membership.
+
+The public account form consumes every accepted invitation identically. When
+the submitted email already belongs to an account, the consumed record reserves
+one account-bound authenticated continuation without exposing that fact in the
+response, preview, or replay behavior. After sign-in, the matching account
+reopens the bearer link through an account-bound authenticated preview and
+completes the claim through the cookie-authenticated, CSRF-protected endpoint.
+An existing membership is retained even when the invitation names a different
+role; the authenticated preview states that retained role explicitly, and only
+the founder's audited role-management endpoint may change roles.
+Completion updates only that session's active workspace and records the claim
+and session switch atomically. Removing a member revokes only sessions whose
+active workspace is the removed tenant; sessions in other workspaces remain
+valid. Founder onboarding is likewise guarded by the founder-only
+`workspace:manage` permission and a service-layer tenant-local founder check.

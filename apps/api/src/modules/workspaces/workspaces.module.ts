@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
-import { WorkspacesController } from './workspaces.controller';
+import { WorkspaceInvitationsController, WorkspacesController } from './workspaces.controller';
 import { WorkspacesService } from './workspaces.service';
 import { envProvider } from '../../config/env.provider';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  controllers: [WorkspacesController],
+  imports: [AuditModule],
+  controllers: [WorkspacesController, WorkspaceInvitationsController],
   providers: [WorkspacesService, envProvider],
 })
 export class WorkspacesModule {}

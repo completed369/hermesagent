@@ -77,6 +77,10 @@ function hashPassword(password: string): string {
 
 const PERMISSIONS = [
   { key: 'workspace:manage', description: 'Manage workspace settings' },
+  {
+    key: 'workspace:members:manage',
+    description: 'Invite, change roles, and remove workspace members',
+  },
   { key: 'approval:decide', description: 'Approve, reject or revise approval requests' },
   { key: 'approval:view', description: 'View approval requests' },
   { key: 'audit:view', description: 'View audit and security events' },
@@ -169,10 +173,59 @@ async function main() {
     });
   }
 
-  await prisma.role.upsert({
+  const operatorRole = await prisma.role.upsert({
+    where: { key: 'OPERATOR' },
+    update: {
+      name: 'Operator',
+      description: 'Operate workspace workflows without founder-only authority',
+    },
+    create: {
+      key: 'OPERATOR',
+      name: 'Operator',
+      description: 'Operate workspace workflows without founder-only authority',
+    },
+  });
+
+  const viewerRole = await prisma.role.upsert({
     where: { key: 'VIEWER' },
-    update: {},
+    update: { name: 'Viewer', description: 'Read-only workspace access' },
     create: { key: 'VIEWER', name: 'Viewer', description: 'Read-only access' },
+  });
+
+  const collaboratorViewPermissionKeys = [
+    'approval:view',
+    'workflow:view',
+    'opportunity:view',
+    'board:view',
+    'product:view',
+    'research:view',
+    'marketplace:view',
+    'finance:view',
+  ];
+  const operatorPermissionKeys = new Set([
+    ...collaboratorViewPermissionKeys,
+    'opportunity:manage',
+    'board:manage',
+    'product:manage',
+    'research:manage',
+    'marketplace:manage',
+    'finance:manage',
+  ]);
+  const viewerPermissionKeys = new Set(collaboratorViewPermissionKeys);
+
+  await prisma.rolePermission.deleteMany({
+    where: { roleId: { in: [operatorRole.id, viewerRole.id] } },
+  });
+  await prisma.rolePermission.createMany({
+    data: allPermissions.flatMap((permission) => [
+      ...(operatorPermissionKeys.has(permission.key)
+        ? [{ roleId: operatorRole.id, permissionId: permission.id }]
+        : []),
+      ...(viewerPermissionKeys.has(permission.key)
+        ? [{ roleId: viewerRole.id, permissionId: permission.id }]
+        : []),
+    ]),
+    skipDuplicates: true,
   });
 
   // --- Founder user (explicit non-placeholder env credentials only) ---

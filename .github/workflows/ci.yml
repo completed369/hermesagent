@@ -8,7 +8,7 @@ name: CI
 # Prisma client is generated before typecheck/build, and keeps the clean
 # PostgreSQL migration check.
 #
-# CI is authoritative for "does the complete eleven-migration chain apply on a
+# CI is authoritative for "does the complete migration chain apply on a
 # fresh database". The local ./scripts/run-validation.ps1 verifies code
 # quality and build on the developer machine but does NOT apply migrations.
 

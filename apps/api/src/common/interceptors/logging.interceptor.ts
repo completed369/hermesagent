@@ -8,6 +8,7 @@ import {
 import type { Request, Response } from 'express';
 import { Observable, tap } from 'rxjs';
 import { StructuredLogger } from '@ventureos/observability';
+import { safeRequestPath } from '../logging/safe-request-path';
 
 const logger = new StructuredLogger('api');
 
@@ -23,7 +24,7 @@ export class LoggingInterceptor implements NestInterceptor {
         next: () => {
           logger.info('request completed', {
             method: req.method,
-            path: req.path,
+            path: safeRequestPath(req.path),
             statusCode: res.statusCode,
             durationMs: Date.now() - start,
             correlationId: req.correlationId,
@@ -33,7 +34,7 @@ export class LoggingInterceptor implements NestInterceptor {
           const statusCode = err instanceof HttpException ? err.getStatus() : undefined;
           const context = {
             method: req.method,
-            path: req.path,
+            path: safeRequestPath(req.path),
             statusCode,
             durationMs: Date.now() - start,
             correlationId: req.correlationId,

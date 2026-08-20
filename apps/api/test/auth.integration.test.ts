@@ -96,6 +96,20 @@ describe('Auth flow (integration)', () => {
     expect(persisted).not.toBeNull();
     expect(persisted?.tokenDigest).toBe(digest);
     expect(persisted?.tokenDigest).not.toBe(rawToken);
+    expect(persisted?.activeWorkspaceId).not.toBeNull();
+    if (!persisted?.activeWorkspaceId) {
+      throw new Error('Login session did not receive an active workspace');
+    }
+    expect(
+      await prisma.workspaceMember.findUnique({
+        where: {
+          workspaceId_userId: {
+            workspaceId: persisted.activeWorkspaceId,
+            userId: persisted.userId,
+          },
+        },
+      }),
+    ).not.toBeNull();
     expect(rawLookup).toBeNull();
 
     const meRes = await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', cookie);

@@ -103,6 +103,22 @@ ready spine.
 All new tables use UUID PKs and cascade-delete with their parent
 `Workspace`.
 
+## Phase 9 identity extension
+
+`Session.activeWorkspaceId` is the server-owned tenant context for every
+authenticated request. The field is nullable only for migration safety;
+`SessionAuthGuard` rejects a session unless the referenced workspace has a
+current `WorkspaceMember` row for the same user. New logins always select a
+deterministic existing membership, and users may switch only to workspaces in
+their own membership list. The foreign key uses `ON DELETE SET NULL`, which
+turns a deleted workspace into a fail-closed session rather than silently
+selecting another tenant.
+
+`WorkspaceInvitation` stores only the domain-separated digest of a random
+single-use bearer token. Signed-in acceptance creates the tenant membership,
+records `acceptedById`, and changes only the accepting session's active
+workspace in one transaction.
+
 ## Migrations
 
 The Phase 2 migration is generated and applied via

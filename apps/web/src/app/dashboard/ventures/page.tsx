@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
+import { DataSurface, EmptyState, PageHeader } from '@/components/workspace-ui';
+import { resolveListResponse } from '@/lib/list-response';
 
 interface VentureListItem {
   id: string;
@@ -30,46 +32,55 @@ function statusBadgeClass(status: string) {
 }
 
 export default async function VenturesPage() {
-  const [{ data: ventures }, { data: billing }] = await Promise.all([
+  const [{ data: ventureData, status: ventureStatus }, { data: billing }] = await Promise.all([
     serverApiFetch<VentureListItem[]>('/ventures'),
     serverApiFetch<BillingUsage>('/billing'),
   ]);
+  const ventures = resolveListResponse(ventureData, ventureStatus);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24 }}>Ventures</h1>
-          <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, marginTop: 4 }}>
-            Every concurrent venture in this workspace -- promote an opportunity in the Opportunity
-            Feed to start a new one.
-          </p>
-        </div>
-        {billing && (
-          <div className="vos-card" style={{ padding: '10px 16px', textAlign: 'right' }}>
-            <div style={{ fontSize: 12, color: 'var(--vos-text-muted)' }}>
-              {billing.subscription.plan.name} plan
+    <div className="vos-page-stack">
+      <PageHeader
+        eyebrow="Portfolio view"
+        title="Ventures"
+        description="Track every promoted venture and move between its governance, finance, and product workspaces."
+        action={
+          billing ? (
+            <div className="vos-usage-chip">
+              <span>{billing.subscription.plan.name} plan</span>
+              <strong>
+                {billing.usage.ventures.used} / {billing.usage.ventures.limit}
+              </strong>
+              <small>ventures used</small>
+              <Link href="/dashboard/settings" className="vos-usage-link">
+                Manage plan
+              </Link>
             </div>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>
-              {billing.usage.ventures.used} / {billing.usage.ventures.limit} ventures used
-            </div>
-            <Link href="/dashboard/settings" style={{ fontSize: 12, color: 'var(--vos-accent)' }}>
-              Manage plan
-            </Link>
-          </div>
-        )}
-      </div>
-
-      <div className="vos-card">
-        {!ventures || ventures.length === 0 ? (
-          <p style={{ color: 'var(--vos-text-muted)', fontSize: 14 }}>
-            No ventures yet. Promote an opportunity from the Opportunity Feed to create one.
-          </p>
+          ) : undefined
+        }
+      />
+      <DataSurface
+        title="Active portfolio"
+        description={
+          ventures.kind === 'unavailable'
+            ? 'Venture count unavailable'
+            : `${ventures.items.length} venture proposals`
+        }
+      >
+        {ventures.kind === 'unavailable' ? (
+          <EmptyState title="Ventures unavailable">
+            The active portfolio could not be loaded. No empty-state assumptions have been made;
+            please retry.
+          </EmptyState>
+        ) : ventures.kind === 'empty' ? (
+          <EmptyState title="No ventures yet">
+            Promote an opportunity from the Opportunity Feed to begin a governed venture.
+          </EmptyState>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table className="vos-data-table">
             <thead>
-              <tr style={{ textAlign: 'left', color: 'var(--vos-text-muted)' }}>
-                <th style={{ padding: '8px 0' }}>Venture</th>
+              <tr>
+                <th>Venture</th>
                 <th>Proposal Status</th>
                 <th>Opportunity Score</th>
                 <th>Profit Confidence</th>
@@ -78,13 +89,15 @@ export default async function VenturesPage() {
               </tr>
             </thead>
             <tbody>
-              {ventures.map((v) => (
-                <tr key={v.id} style={{ borderTop: '1px solid var(--vos-border)' }}>
-                  <td style={{ padding: '10px 0' }}>{v.opportunity.title}</td>
-                  <td>
+              {ventures.items.map((v) => (
+                <tr key={v.id}>
+                  <td data-label="Venture">
+                    <strong>{v.opportunity.title}</strong>
+                  </td>
+                  <td data-label="Proposal status">
                     <span className={statusBadgeClass(v.status)}>{v.status}</span>
                   </td>
-                  <td>
+                  <td data-label="Opportunity score">
                     {v.opportunity.latestOpportunityScore ?? '—'}
                     {v.opportunity.isSpeculative && (
                       <span className="vos-badge vos-badge--mock" style={{ marginLeft: 6 }}>
@@ -92,32 +105,25 @@ export default async function VenturesPage() {
                       </span>
                     )}
                   </td>
-                  <td>{v.opportunity.latestProfitConfidence ?? '—'}</td>
-                  <td>
+                  <td data-label="Profit confidence">
+                    {v.opportunity.latestProfitConfidence ?? '—'}
+                  </td>
+                  <td data-label="Product">
                     {v.product ? (
                       <span className="vos-badge vos-badge--mock">{v.product.status}</span>
                     ) : (
                       '—'
                     )}
                   </td>
-                  <td style={{ display: 'flex', gap: 12 }}>
-                    <Link
-                      href={`/dashboard/board-room/${v.id}`}
-                      style={{ color: 'var(--vos-accent)' }}
-                    >
-                      Board Room
+                  <td data-label="Open" className="vos-row-actions">
+                    <Link href={`/dashboard/board-room/${v.id}`} className="vos-row-link">
+                      Board
                     </Link>
-                    <Link
-                      href={`/dashboard/finance/${v.id}`}
-                      style={{ color: 'var(--vos-accent)' }}
-                    >
+                    <Link href={`/dashboard/finance/${v.id}`} className="vos-row-link">
                       Finance
                     </Link>
                     {v.product && (
-                      <Link
-                        href={`/dashboard/products/${v.product.id}`}
-                        style={{ color: 'var(--vos-accent)' }}
-                      >
+                      <Link href={`/dashboard/products/${v.product.id}`} className="vos-row-link">
                         Product
                       </Link>
                     )}
@@ -127,7 +133,7 @@ export default async function VenturesPage() {
             </tbody>
           </table>
         )}
-      </div>
+      </DataSurface>
     </div>
   );
 }

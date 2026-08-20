@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
+import { DataSurface, EmptyState, PageHeader } from '@/components/workspace-ui';
+import { resolveListResponse } from '@/lib/list-response';
 
 interface OpportunityListItem {
   id: string;
@@ -21,37 +23,43 @@ function statusBadgeClass(status: string) {
 }
 
 export default async function OpportunitiesPage() {
-  const { data } = await serverApiFetch<OpportunityListItem[]>('/opportunities');
+  const { data, status } = await serverApiFetch<OpportunityListItem[]>('/opportunities');
+  const opportunities = resolveListResponse(data, status);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: 16,
-        }}
+    <div className="vos-page-stack">
+      <PageHeader
+        eyebrow="Discovery pipeline"
+        title="Opportunities"
+        description="Compare candidate ventures using scored assumptions, confidence, and their supporting evidence trail."
+        action={
+          <Link className="vos-btn" href="/dashboard/opportunities/new">
+            New opportunity <span aria-hidden="true">＋</span>
+          </Link>
+        }
+      />
+      <DataSurface
+        title="Opportunity feed"
+        description={
+          opportunities.kind === 'unavailable'
+            ? 'Candidate count unavailable'
+            : `${opportunities.items.length} candidates in the current workspace`
+        }
       >
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24 }}>Opportunity Feed</h1>
-          <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, marginTop: 4 }}>
-            Every candidate venture, with its Opportunity Score, Profit Confidence Score, and
-            evidence trail.
-          </p>
-        </div>
-        <Link className="vos-btn" href="/dashboard/opportunities/new">
-          New opportunity
-        </Link>
-      </div>
-      <div className="vos-card">
-        {!data || data.length === 0 ? (
-          <p style={{ color: 'var(--vos-text-muted)', fontSize: 14 }}>No opportunities yet.</p>
+        {opportunities.kind === 'unavailable' ? (
+          <EmptyState title="Opportunities unavailable">
+            The opportunity feed could not be loaded. No empty-state assumptions have been made;
+            please retry.
+          </EmptyState>
+        ) : opportunities.kind === 'empty' ? (
+          <EmptyState title="No opportunities yet">
+            Create a candidate to begin evidence-backed evaluation.
+          </EmptyState>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table className="vos-data-table">
             <thead>
-              <tr style={{ textAlign: 'left', color: 'var(--vos-text-muted)' }}>
-                <th style={{ padding: '8px 0' }}>Title</th>
+              <tr>
+                <th>Title</th>
                 <th>Status</th>
                 <th>Opportunity Score</th>
                 <th>Profit Confidence</th>
@@ -62,13 +70,15 @@ export default async function OpportunitiesPage() {
               </tr>
             </thead>
             <tbody>
-              {data.map((o) => (
-                <tr key={o.id} style={{ borderTop: '1px solid var(--vos-border)' }}>
-                  <td style={{ padding: '10px 0' }}>{o.title}</td>
-                  <td>
+              {opportunities.items.map((o) => (
+                <tr key={o.id}>
+                  <td data-label="Title">
+                    <strong>{o.title}</strong>
+                  </td>
+                  <td data-label="Status">
                     <span className={statusBadgeClass(o.status)}>{o.status}</span>
                   </td>
-                  <td>
+                  <td data-label="Opportunity score">
                     {o.latestOpportunityScore ?? '—'}
                     {o.isSpeculative && (
                       <span className="vos-badge vos-badge--mock" style={{ marginLeft: 6 }}>
@@ -76,16 +86,17 @@ export default async function OpportunitiesPage() {
                       </span>
                     )}
                   </td>
-                  <td>{o.latestProfitConfidence ?? '—'}</td>
-                  <td>{o.estimatedProfitEur ? `€${o.estimatedProfitEur}` : '—'}</td>
-                  <td>{o.timeToLaunchDays != null ? `${o.timeToLaunchDays}d` : '—'}</td>
-                  <td>{o.evidenceClaims.length} sources</td>
-                  <td>
-                    <Link
-                      href={`/dashboard/opportunities/${o.id}`}
-                      style={{ color: 'var(--vos-accent)' }}
-                    >
-                      Open
+                  <td data-label="Profit confidence">{o.latestProfitConfidence ?? '—'}</td>
+                  <td data-label="Estimated profit">
+                    {o.estimatedProfitEur ? `€${o.estimatedProfitEur}` : '—'}
+                  </td>
+                  <td data-label="Time to launch">
+                    {o.timeToLaunchDays != null ? `${o.timeToLaunchDays}d` : '—'}
+                  </td>
+                  <td data-label="Evidence">{o.evidenceClaims.length} sources</td>
+                  <td data-label="Action">
+                    <Link href={`/dashboard/opportunities/${o.id}`} className="vos-row-link">
+                      Open <span aria-hidden="true">↗</span>
                     </Link>
                   </td>
                 </tr>
@@ -93,7 +104,7 @@ export default async function OpportunitiesPage() {
             </tbody>
           </table>
         )}
-      </div>
+      </DataSurface>
     </div>
   );
 }

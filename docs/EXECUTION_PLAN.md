@@ -486,6 +486,41 @@ was marked done):
 
 ---
 
+## Phase 9 — Collaborative Workspace Access — 🟡 DRAFT PR
+
+**Approved scope:** provider-free collaboration for non-founder members,
+without deployment or live providers.
+
+- ✅ Hashed, expiring, single-use invite records; the raw token is returned
+  only once and is never stored or audited.
+- ✅ Deterministic `FOUNDER` / `OPERATOR` / `VIEWER` permission maps.
+- ✅ Founder-only member list, invite, role-change, and removal APIs with
+  tenant-scoped lookups and mutation audit events.
+- ✅ Plan member quota enforced in a workspace-serialized acceptance
+  transaction, including concurrent acceptance protection.
+- ✅ Public `/join#token=…` fragment-to-body account-creation flow and Settings → Team UI with
+  a one-time copy action; no email or other external provider.
+- ✅ Existing-account claims remain neutral while signed out: the public form
+  consumes the bearer token and reserves one account-bound authenticated
+  continuation, so preview and replay match the new-account path. After
+  sign-in, the matching account can reopen the link through an account-bound
+  preview, atomically complete the claim, retain any existing role with accurate
+  UI copy, audit the transition, and switch only the current session.
+- ✅ Every session carries an explicit active workspace. The guard resolves
+  permissions from that exact membership, the dashboard exposes a safe
+  membership-backed workspace selector, and member removal revokes only
+  sessions active in the removed tenant.
+- ✅ Production build, typecheck, lint, formatting, and immutable migration
+  contract pass locally.
+- ✅ Database integration coverage includes digest-only storage, expiry,
+  replay, tenant isolation, quota, concurrent acceptance, active-workspace
+  authorization, signed-in claims, safe switching/removal races, audit events,
+  workspace-scoped session revocation, deterministic legacy-session backfill,
+  orphan fail-closed behavior, and workspace deletion. Founder-only onboarding
+  is enforced by both permission and service boundaries, with collaborator
+  GET/PUT denials and permission-aware navigation. CI remains the authoritative
+  clean PostgreSQL migration and integration environment.
+
 ## Cross-cutting tracker (applies across all phases, not phase-gated)
 
 These spec sections describe standing requirements rather than one-time
