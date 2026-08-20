@@ -52,15 +52,16 @@ test.describe('Collaborative workspace UI behavior', () => {
     );
 
     await page.getByRole('button', { name: 'Create secure invite' }).click();
-    const inviteRegion = page.locator('.vos-team-invite');
+    const teamActions = page.locator('.vos-team-actions');
+    const inviteRegion = teamActions.locator('.vos-team-invite');
     await expect(inviteRegion).toHaveAttribute('aria-busy', 'true');
     await expect(page.getByRole('button', { name: 'Creating…' })).toBeDisabled();
-    await expect(inviteRegion.getByRole('status')).toHaveText('Creating a secure invitation.');
+    await expect(teamActions.getByRole('status')).toHaveText('Creating a secure invitation.');
 
     inviteGate.resolve();
     const inviteInput = page.getByRole('textbox', { name: 'Invitation link' });
     await expect(inviteInput).toHaveValue(/\/join#token=single-use-secret$/);
-    await expect(inviteRegion.getByRole('status')).toHaveText(
+    await expect(teamActions.getByRole('status')).toHaveText(
       'Secure invitation created. Copy the link now.',
     );
 
@@ -78,7 +79,7 @@ test.describe('Collaborative workspace UI behavior', () => {
 
     await page.getByRole('button', { name: 'Copy link' }).click();
     await expect(page.getByRole('button', { name: 'Copying…' })).toBeDisabled();
-    await expect(inviteRegion.getByRole('status')).toHaveText('Copying the invitation link.');
+    await expect(teamActions.getByRole('status')).toHaveText('Copying the invitation link.');
     await expect(
       page.getByRole('alert').filter({
         hasText: 'Could not copy the invitation link. Select and copy it manually.',
