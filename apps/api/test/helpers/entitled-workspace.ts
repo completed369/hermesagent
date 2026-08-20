@@ -11,6 +11,7 @@ export async function entitleTestWorkspace(
     planActive?: boolean;
     maxMarketplaceAccounts?: number;
     maxVentures?: number;
+    maxWorkspaceMembers?: number;
   } = {},
 ): Promise<void> {
   // Direct package-boundary integration tests must declare the authoritative
@@ -36,6 +37,7 @@ export async function entitleTestWorkspace(
       ],
       maxMarketplaceAccounts: options.maxMarketplaceAccounts ?? 100,
       maxVentures: options.maxVentures ?? 100,
+      maxWorkspaceMembers: options.maxWorkspaceMembers ?? 100,
     },
     create: {
       key: testPlanKey,
@@ -43,7 +45,7 @@ export async function entitleTestWorkspace(
       priceMonthlyEur: 0,
       maxVentures: options.maxVentures ?? 100,
       maxMarketplaceAccounts: options.maxMarketplaceAccounts ?? 100,
-      maxWorkspaceMembers: 100,
+      maxWorkspaceMembers: options.maxWorkspaceMembers ?? 100,
       features: options.features ?? [
         'opportunities',
         'board',

@@ -31,4 +31,15 @@ describe('buildAuditEventRecord', () => {
     );
     expect(a.integrityHash).not.toBe(b.integrityHash);
   });
+
+  it('supports integrity-protected anonymous security events', () => {
+    const event = buildAuditEventRecord(
+      { action: 'INVITE_CLAIM_DEFERRED', entityType: 'Invitation', entityId: 'invite1' },
+      'evt-anonymous',
+      new Date('2026-01-01T00:00:00Z'),
+    );
+
+    expect(event.actorId).toBeUndefined();
+    expect(event.integrityHash).toMatch(/^[a-f0-9]{64}$/);
+  });
 });

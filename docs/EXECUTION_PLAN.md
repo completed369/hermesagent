@@ -463,6 +463,32 @@ was marked done):
 
 ---
 
+## Phase 9 — Collaborative Workspace Access — 🟡 DRAFT PR
+
+**Approved scope:** provider-free collaboration for non-founder members,
+without deployment or live providers.
+
+- ✅ Hashed, expiring, single-use invite records; the raw token is returned
+  only once and is never stored or audited.
+- ✅ Deterministic `FOUNDER` / `OPERATOR` / `VIEWER` permission maps.
+- ✅ Founder-only member list, invite, role-change, and removal APIs with
+  tenant-scoped lookups and mutation audit events.
+- ✅ Plan member quota enforced in a workspace-serialized acceptance
+  transaction, including concurrent acceptance protection.
+- ✅ Public `/join#token=…` fragment-to-body account-creation flow and Settings → Team UI with
+  a one-time copy action; no email or other external provider.
+- 🟡 Existing-account claims return a neutral, audited response without
+  attaching a second tenant. Completing that path requires workspace-scoped
+  sessions (an active workspace on each session), a workspace selector, and
+  workspace-scoped revocation; the current guard's unscoped `memberships[0]`
+  selection cannot safely support multi-workspace accounts.
+- ✅ Production build, typecheck, lint, formatting, and immutable migration
+  contract pass locally.
+- 🟡 Database integration suite added for digest-only storage, expiry, replay,
+  tenant isolation, quota, and concurrent acceptance. Local execution requires
+  PostgreSQL; Docker was unavailable in the Windows review environment, so CI
+  remains the authoritative integration run for the draft PR.
+
 ## Cross-cutting tracker (applies across all phases, not phase-gated)
 
 These spec sections describe standing requirements rather than one-time

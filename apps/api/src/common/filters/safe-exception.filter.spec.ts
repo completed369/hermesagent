@@ -4,7 +4,7 @@ import { StructuredLogger } from '@ventureos/observability';
 import { SafeExceptionFilter } from './safe-exception.filter';
 import { AuthCooldownException } from '../../modules/auth/auth-abuse.service';
 
-function createHost() {
+function createHost(path = '/api/auth/login') {
   const response = {
     setHeader: vi.fn(),
     status: vi.fn(),
@@ -13,7 +13,7 @@ function createHost() {
   response.status.mockReturnValue(response);
   const request = {
     correlationId: 'correlation-test',
-    path: '/api/auth/login',
+    path,
     originalUrl: '/api/auth/login?token=must-not-be-logged',
   };
   const host = {
@@ -116,5 +116,19 @@ describe('SafeExceptionFilter authentication cooldown response', () => {
     );
     expect(errorSpy).not.toHaveBeenCalled();
     expect(JSON.stringify(response.json.mock.calls)).not.toContain('internal policy reason');
+  });
+
+  it('redacts invitation bearer credentials from exception logs', () => {
+    const errorSpy = vi
+      .spyOn(StructuredLogger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    const { host } = createHost('/api/workspace-invitations/super-secret-token/accept');
+
+    new SafeExceptionFilter().catch(new Error('failed'), host);
+
+    const serializedCalls = JSON.stringify(errorSpy.mock.calls);
+    expect(serializedCalls).toContain('/api/workspace-invitations/:token/accept');
+    expect(serializedCalls).not.toContain('super-secret-token');
+    vi.restoreAllMocks();
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HttpException, type CallHandler, type ExecutionContext } from '@nestjs/common';
-import { lastValueFrom, throwError } from 'rxjs';
+import { lastValueFrom, of, throwError } from 'rxjs';
 import { StructuredLogger } from '@ventureos/observability';
 import { LoggingInterceptor } from './logging.interceptor.js';
 
@@ -14,6 +14,15 @@ function context(): ExecutionContext {
         correlationId: 'test-correlation-id',
       }),
       getResponse: () => ({ statusCode: 401 }),
+    }),
+  } as ExecutionContext;
+}
+
+function invitationContext(path: string): ExecutionContext {
+  return {
+    switchToHttp: () => ({
+      getRequest: () => ({ method: 'POST', path, correlationId: 'invite-correlation' }),
+      getResponse: () => ({ statusCode: 201 }),
     }),
   } as ExecutionContext;
 }
@@ -53,6 +62,21 @@ describe('LoggingInterceptor', () => {
     expect(serializedCalls).not.toContain('secret@database');
     expect(serializedCalls).not.toContain('must-not-be-logged');
     expect(serializedCalls).toContain('/api/auth/login');
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    '/api/workspace-invitations/super-secret-bearer-token',
+    '/api/workspace-invitations/super-secret-bearer-token/accept',
+  ])('redacts invitation bearer credentials from logged paths', async (path) => {
+    const info = vi.spyOn(StructuredLogger.prototype, 'info').mockImplementation(() => undefined);
+    const next = { handle: () => of({}) } as CallHandler;
+
+    await lastValueFrom(new LoggingInterceptor().intercept(invitationContext(path), next));
+
+    const serializedCalls = JSON.stringify(info.mock.calls);
+    expect(serializedCalls).toContain('/api/workspace-invitations/:token');
+    expect(serializedCalls).not.toContain('super-secret-bearer-token');
     vi.restoreAllMocks();
   });
 });
