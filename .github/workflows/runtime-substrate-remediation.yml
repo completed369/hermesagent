@@ -8,6 +8,7 @@ name: Runtime substrate remediation evidence
       - 'package.json'
       - 'packages/database/package.json'
       - 'pnpm-lock.yaml'
+      - 'scripts/runtime-secret-entrypoint.mjs'
       - 'scripts/staging-build-contract.test.mjs'
       - '.github/candidates/Dockerfile.nossl-libgcc'
       - '.github/workflows/runtime-substrate-remediation.yml'

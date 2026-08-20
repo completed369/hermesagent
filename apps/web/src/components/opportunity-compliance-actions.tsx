@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 
 export interface OpportunityComplianceStatus {
@@ -24,6 +23,13 @@ export interface OpportunityComplianceStatus {
   } | null;
 }
 
+type OpportunityComplianceAssessmentResponse = NonNullable<
+  OpportunityComplianceStatus['assessment']
+> & {
+  auditEventId: string;
+  createdAt: string;
+};
+
 const ASSESSABLE_STATUSES = new Set(['NEW', 'UNDER_REVIEW']);
 
 function lines(value: string): string[] {
@@ -44,7 +50,9 @@ export function OpportunityComplianceActions({
   evidenceClaimIds: string[];
   current: OpportunityComplianceStatus | null;
 }) {
-  const router = useRouter();
+  const [displayedCurrent, setDisplayedCurrent] = useState<OpportunityComplianceStatus | null>(
+    current,
+  );
   const [categories, setCategories] = useState(
     current?.assessment?.declarations.declaredCategories.join('\n') ?? '',
   );
@@ -57,16 +65,18 @@ export function OpportunityComplianceActions({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => setDisplayedCurrent(current), [current]);
+
   const canAssess = ASSESSABLE_STATUSES.has(status);
-  const displayResult = !current
+  const displayResult = !displayedCurrent
     ? 'NOT ASSESSED'
-    : current.stateCurrent
-      ? current.currentResult
+    : displayedCurrent.stateCurrent
+      ? displayedCurrent.currentResult
       : 'STALE / BLOCKED';
   const resultClass =
-    current?.stateCurrent && current.currentResult === 'PASS'
+    displayedCurrent?.stateCurrent && displayedCurrent.currentResult === 'PASS'
       ? 'vos-badge--ok'
-      : current
+      : displayedCurrent
         ? 'vos-badge--danger'
         : 'vos-badge--mock';
 
@@ -85,16 +95,29 @@ export function OpportunityComplianceActions({
 
     setSubmitting(true);
     try {
-      await apiFetch(`/opportunities/${id}/compliance-assessment`, {
-        method: 'POST',
-        body: JSON.stringify({
-          declaredCategories,
-          thirdPartyTrademarksPresent,
-          copyrightedStockWithoutLicence,
-          evidenceClaimIds,
-        }),
+      const assessment = await apiFetch<OpportunityComplianceAssessmentResponse>(
+        `/opportunities/${id}/compliance-assessment`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            declaredCategories,
+            thirdPartyTrademarksPresent,
+            copyrightedStockWithoutLicence,
+            evidenceClaimIds,
+          }),
+        },
+      );
+      // The response is returned only after the assessment and its audit event
+      // are persisted. Render that authoritative result directly rather than
+      // depending on a second server refresh to make the mutation visible.
+      setDisplayedCurrent({
+        auditEventId: assessment.auditEventId,
+        createdAt: assessment.createdAt,
+        stateCurrent: true,
+        currentResult: assessment.result,
+        currentBlockers: assessment.blockers,
+        assessment,
       });
-      router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Compliance assessment failed');
     } finally {
@@ -104,36 +127,44 @@ export function OpportunityComplianceActions({
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span className={`vos-badge ${resultClass}`} data-testid="compliance-current-result">
-          Gate 1: {displayResult}
-        </span>
-        {current?.assessment?.formulaVersion ? (
-          <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
-            {current.assessment.formulaVersion}
+      <div
+        data-testid="compliance-status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ display: 'grid', gap: 8 }}
+      >
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className={`vos-badge ${resultClass}`} data-testid="compliance-current-result">
+            Gate 1: {displayResult}
           </span>
-        ) : null}
-        {current?.assessment?.policyPackVersion ? (
-          <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
-            Policy pack {current.assessment.policyPackVersion}
-          </span>
+          {displayedCurrent?.assessment?.formulaVersion ? (
+            <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
+              {displayedCurrent.assessment.formulaVersion}
+            </span>
+          ) : null}
+          {displayedCurrent?.assessment?.policyPackVersion ? (
+            <span style={{ color: 'var(--vos-text-muted)', fontSize: 12 }}>
+              Policy pack {displayedCurrent.assessment.policyPackVersion}
+            </span>
+          ) : null}
+        </div>
+
+        {displayedCurrent?.auditEventId ? (
+          <p
+            data-testid="compliance-audit-id"
+            style={{ margin: 0, fontSize: 12, color: 'var(--vos-text-muted)' }}
+          >
+            Audit evidence: {displayedCurrent.auditEventId}
+          </p>
         ) : null}
       </div>
 
-      {current?.auditEventId ? (
-        <p
-          data-testid="compliance-audit-id"
-          style={{ margin: 0, fontSize: 12, color: 'var(--vos-text-muted)' }}
-        >
-          Audit evidence: {current.auditEventId}
-        </p>
-      ) : null}
-
-      {current?.currentBlockers.length ? (
-        <div className="vos-error" data-testid="compliance-blockers">
+      {displayedCurrent?.currentBlockers.length ? (
+        <div className="vos-error" data-testid="compliance-blockers" role="alert">
           <strong>Current blocker(s)</strong>
           <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-            {current.currentBlockers.map((blocker) => (
+            {displayedCurrent.currentBlockers.map((blocker) => (
               <li key={`${blocker.code}:${blocker.reason}`}>{blocker.reason}</li>
             ))}
           </ul>
@@ -141,7 +172,12 @@ export function OpportunityComplianceActions({
       ) : null}
 
       {canAssess ? (
-        <form onSubmit={submitAssessment} style={{ display: 'grid', gap: 10, maxWidth: 720 }}>
+        <form
+          data-testid="compliance-form"
+          aria-busy={submitting}
+          onSubmit={submitAssessment}
+          style={{ display: 'grid', gap: 10, maxWidth: 720 }}
+        >
           <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
             Product/category declarations (one per line)
             <textarea
@@ -178,7 +214,12 @@ export function OpportunityComplianceActions({
             cannot authorize Stage-6 promotion.
           </p>
           {error ? (
-            <p data-testid="compliance-error" className="vos-error" style={{ margin: 0 }}>
+            <p
+              data-testid="compliance-error"
+              className="vos-error"
+              role="alert"
+              style={{ margin: 0 }}
+            >
               {error}
             </p>
           ) : null}
@@ -191,7 +232,7 @@ export function OpportunityComplianceActions({
           >
             {submitting
               ? 'Assessing…'
-              : current
+              : displayedCurrent
                 ? 'Re-run compliance assessment'
                 : 'Run compliance assessment'}
           </button>
