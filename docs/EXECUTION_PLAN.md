@@ -1,5 +1,36 @@
 # Execution Plan — Phase 0 to Phase 8
 
+> **CURRENT DELIVERY UPDATE — 2026-08-20.** The Phase 0–8 record below is
+> historical implementation evidence, not a production-readiness or deployment
+> claim. The current product baseline is `main`
+> `e3017aeb881bf47cd911550f19256646b0ba8bbb`. PRs #50 and #55 have joined
+> PRs #53, #54, #57, and #52 on `main`. The PR #55 merge preserved the modern
+> private-staging workspace shell and added workspace-scoped collaboration,
+> invitations, active-workspace sessions, role enforcement, and tenant
+> isolation. Its exact-head matrix passed formatting, lint, typecheck, unit,
+> integration, migration, build, E2E, accessibility, staging-security/load,
+> CodeQL, Prisma/runtime, and five-image checks. Post-merge `main` build/test,
+> application E2E, migration, staging-security/load, and CodeQL jobs are green,
+> with zero open CodeQL alerts. No application image for this baseline has been
+> published and no private-staging application deployment was dispatched.
+>
+> The next product candidate is draft PR #59, a provider-neutral Agent Control
+> Plane contract foundation. It has been refreshed onto this `main` and is in
+> adversarial repair and exact-head gate review; GitHub is authoritative for its
+> mutable head and checks. It is not evidence that Codex, Hermes, Pi, or any other runtime is
+> connected: authenticated registration, capability exchange, heartbeat,
+> task/status exchange, and an event/result round trip have not yet been
+> evidenced. Runtime Broker, Dynamic Agent Factory, AI COO, Mission Control,
+> Voice, and autonomous-company work remain roadmap work unless supported by
+> later repository and deployment evidence.
+>
+> Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
+> `ventureos.site` is the public entry point; `staging.ventureos.site`,
+> `api-staging.ventureos.site`, and `progress.ventureos.site` are
+> Access-protected. GitHub remains the source of
+> exact commit and CI evidence; the progress site must mirror that evidence and
+> clearly label validated-but-unmerged work.
+
 This is the single source of truth for "what is actually done" versus "what
 is still to build," across the entire master spec (all numbered phases 0–8, section
 34). It exists because the master spec explicitly forbids building every
@@ -516,8 +547,30 @@ phase deliverables. Current status:
 
 ## Immediate next steps (in order)
 
-1. Phases 1 through 8 are all genuinely ✅ DONE — every acceptance criterion verified with real command output or live browser confirmation (see each phase's section above). Phase 6 is mock-only per the founder's explicit 2026-07-14 decision (no real Etsy account connected); Phase 8's billing is mock-only per ADR-010 (no real payment processor connected).
-2. Master spec section 34's numbered phases 0–8 are now all complete. Do not begin any further build work without explicit founder instruction on what comes next (e.g., connecting a real Etsy account, a real payment processor, or a genuinely new phase of scope).
+1. Preserve Phases 1–8 as historical product-scope evidence. Phase 6 remains
+   mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
+   mock-only under ADR-010. Neither milestone is a release-readiness claim.
+2. Preserve the merged PR #50/#55 workspace and collaboration foundation.
+   Complete this documentation reconciliation, then finish the deploy-aware
+   operations sequence and the refreshed PR #59 exact-head/adversarial gates.
+3. Only after an exact merged release commit is selected: build and scan the five
+   immutable images. Image publication requires separate approval for that exact
+   SHA; private-staging deployment requires another separate approval. Neither
+   has occurred for the current `main` baseline.
+4. Exercise Access, migrations, health, E2E, accessibility/responsive behavior,
+   tenant isolation, audit evidence, backup/restore, and rollback in private
+   staging with synthetic data and live providers disabled.
+5. Complete an internal rehearsal before an invited pilot. Pilot access requires
+   approved privacy/terms/data-handling, support, incident, and rollback
+   ownership. Pricing, revenue, conversion, and product-market-fit claims must
+   come from observed evidence, not mock data or forecasts.
+
+Routine implementation, tests, review, and draft-PR updates continue under the
+existing engineering authorization. New founder approval is reserved for money
+or paid accounts, credentials/live providers, customer or personal data,
+legal/commercial commitments, exact-SHA publication, staging/production
+deployment, production DNS/infrastructure changes, and pilot/operational risk
+ownership.
 
 ### Approved release-security repair — 2026-08-19
 

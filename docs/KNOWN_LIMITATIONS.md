@@ -1,5 +1,33 @@
 # Known Limitations
 
+> **Current release note (2026-08-20):** VentureOS is not production-ready or
+> production-deployed. The current `main` baseline is
+> `e3017aeb881bf47cd911550f19256646b0ba8bbb`; PRs #50 and #55 are merged in
+> addition to PRs #53, #54, #57, and #52. The collaboration exact-head matrix
+> passed its application, migration, browser, accessibility, tenant-isolation,
+> staging-security/load, CodeQL, Prisma/runtime, and five-image gates. Post-merge
+> `main` build/test, application E2E, migration, staging-security/load, and
+> CodeQL jobs are green, with zero open CodeQL alerts. No current-main
+> application image has been published and no private-staging application
+> deployment has been dispatched.
+>
+> The Agent Control Plane foundation remains draft PR #59. It has been refreshed
+> onto current `main` and is in adversarial repair and exact-head gate review;
+> GitHub is authoritative for its mutable head and checks. No external runtime is
+> verified connected; Codex, Hermes, and Pi remain NOT CONFIGURED for
+> product-status purposes until the full authenticated registration, capability,
+> heartbeat, task/status, event, and result exchange is demonstrated.
+>
+> Backup/restore rehearsal, live-provider validation, legal/privacy operations,
+> real billing and email delivery, malware scanning, production observability,
+> AI Workforce, Runtime Broker, AI COO, Mission Control telemetry, and Voice
+> remain incomplete, disabled, or planned. `ventureos.site` is public;
+> `staging.ventureos.site`, `api-staging.ventureos.site`, and
+> `progress.ventureos.site` remain Access-protected. See `ROADMAP.md` for
+> dependency order and never treat draft
+> code, a workflow template, or a passing image scan as publication or
+> deployment evidence.
+
 > **Status note (2026-08-01):** this file began as a Phase 1 sandbox inventory
 > and still contains historical phase/sandbox statements. For current executed
 > release evidence use `TECHNICAL_RELEASE_BASELINE.md`; for the current security
