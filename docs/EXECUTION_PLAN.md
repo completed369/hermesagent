@@ -2,24 +2,33 @@
 
 > **CURRENT DELIVERY UPDATE — 2026-08-20.** The Phase 0–8 record below is
 > historical implementation evidence, not a production-readiness or deployment
-> claim. The current verified baseline is `main`
-> `815935c3463151bff33f724ff0a457fee162d564`. PRs #53, #54, #57, and #52 are
-> merged into that exact baseline; post-merge CI and CodeQL are green and the
-> repository currently has zero open CodeQL alerts. No application image was
+> claim. The current product baseline is `main`
+> `e3017aeb881bf47cd911550f19256646b0ba8bbb`. PRs #50 and #55 have joined
+> PRs #53, #54, #57, and #52 on `main`. The PR #55 merge preserved the modern
+> private-staging workspace shell and added workspace-scoped collaboration,
+> invitations, active-workspace sessions, role enforcement, and tenant
+> isolation. Its exact-head matrix passed formatting, lint, typecheck, unit,
+> integration, migration, build, E2E, accessibility, staging-security/load,
+> CodeQL, Prisma/runtime, and five-image checks. Post-merge `main` build/test,
+> application E2E, migration, staging-security/load, and CodeQL jobs are green,
+> with zero open CodeQL alerts. No application image for this baseline has been
 > published and no private-staging application deployment was dispatched.
 >
-> Current product candidates remain unmerged. PR #50 at
-> `f4a9f1a28fcf1afabc54303ebd76feb7c96e6c76` is a clean, fully green draft for
-> the modern staging experience. PR #55 at
-> `13e3846d4be091b5f828cda3fcfb5e5b005c4715` is a clean, fully green draft
-> stacked on that exact PR #50 head; it covers secure collaboration and includes
-> a real workspace-switch browser journey. Its CI, staging-security, CodeQL,
-> Prisma/runtime, and five-image gates passed. These results apply only to those
-> exact unmerged heads and are not live-product or deployment evidence.
+> The next product candidate is draft PR #59 at exact head
+> `e0fe3d4948d1cad3dd5d0213fc0cf05675ae1fe3`, a provider-neutral Agent Control
+> Plane contract foundation. Its prior exact-head checks were green, but it must
+> be refreshed onto this newer `main`, rerun, and independently reviewed before
+> merge. It is not evidence that Codex, Hermes, Pi, or any other runtime is
+> connected: authenticated registration, capability exchange, heartbeat,
+> task/status exchange, and an event/result round trip have not yet been
+> evidenced. Runtime Broker, Dynamic Agent Factory, AI COO, Mission Control,
+> Voice, and autonomous-company work remain roadmap work unless supported by
+> later repository and deployment evidence.
 >
 > Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
-> `ventureos.site` is the public entry point; `staging.ventureos.site` and
-> `progress.ventureos.site` are Access-protected. GitHub remains the source of
+> `ventureos.site` is the public entry point; `staging.ventureos.site`,
+> `api-staging.ventureos.site`, and `progress.ventureos.site` are
+> Access-protected. GitHub remains the source of
 > exact commit and CI evidence; the progress site must mirror that evidence and
 > clearly label validated-but-unmerged work.
 

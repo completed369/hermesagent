@@ -1,25 +1,30 @@
 # Known Limitations
 
 > **Current release note (2026-08-20):** VentureOS is not production-ready or
-> production-deployed. The verified `main` baseline is
-> `815935c3463151bff33f724ff0a457fee162d564`; PRs #53, #54, #57, and #52 are
-> merged, post-merge CI and CodeQL are green, and there are zero open CodeQL
-> alerts. No current-main application image has been published and no
-> private-staging application deployment has been dispatched.
+> production-deployed. The current `main` baseline is
+> `e3017aeb881bf47cd911550f19256646b0ba8bbb`; PRs #50 and #55 are merged in
+> addition to PRs #53, #54, #57, and #52. The collaboration exact-head matrix
+> passed its application, migration, browser, accessibility, tenant-isolation,
+> staging-security/load, CodeQL, Prisma/runtime, and five-image gates. Post-merge
+> `main` build/test, application E2E, migration, staging-security/load, and
+> CodeQL jobs are green, with zero open CodeQL alerts. No current-main
+> application image has been published and no private-staging application
+> deployment has been dispatched.
 >
-> The modern staging experience remains draft PR #50 at exact head
-> `f4a9f1a28fcf1afabc54303ebd76feb7c96e6c76`. Secure collaboration remains
-> draft PR #55 at exact head `13e3846d4be091b5f828cda3fcfb5e5b005c4715`,
-> stacked on that PR #50 head. Both are clean and fully green, and PR #55 also
-> passed Prisma/runtime and five-image gates plus a real workspace-switch E2E.
-> Neither candidate is merged or deployed; PR #55 must be reconciled with
-> `main` after PR #50 lands and all exact-head gates must pass again.
+> The Agent Control Plane foundation remains draft PR #59 at exact head
+> `e0fe3d4948d1cad3dd5d0213fc0cf05675ae1fe3`. Its prior checks are not a merge
+> claim and must be repeated after refresh onto current `main`. No external
+> runtime is verified connected; Codex, Hermes, and Pi remain NOT CONFIGURED for
+> product-status purposes until the full authenticated registration, capability,
+> heartbeat, task/status, event, and result exchange is demonstrated.
 >
 > Backup/restore rehearsal, live-provider validation, legal/privacy operations,
-> real billing and email delivery, malware scanning, and production
-> observability remain incomplete or disabled. `ventureos.site` is public;
-> `staging.ventureos.site` and `progress.ventureos.site` remain
-> Access-protected. See `ROADMAP.md` for dependency order and never treat draft
+> real billing and email delivery, malware scanning, production observability,
+> AI Workforce, Runtime Broker, AI COO, Mission Control telemetry, and Voice
+> remain incomplete, disabled, or planned. `ventureos.site` is public;
+> `staging.ventureos.site`, `api-staging.ventureos.site`, and
+> `progress.ventureos.site` remain Access-protected. See `ROADMAP.md` for
+> dependency order and never treat draft
 > code, a workflow template, or a passing image scan as publication or
 > deployment evidence.
 
