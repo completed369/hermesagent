@@ -7,6 +7,7 @@ import { DashboardNav } from '@/components/dashboard-nav';
 import { SignOutButton } from '@/components/sign-out-button';
 import { WorkspaceSwitcher, type AvailableWorkspace } from '@/components/workspace-switcher';
 import { deriveAccentTokens } from '@/lib/color-contrast';
+import { ACTIVE_WORKSPACE_STORAGE_KEY } from '@/lib/workspace-session';
 
 interface DashboardShellProps {
   brandName: string;
@@ -60,15 +61,26 @@ export function DashboardShell({
     return () => media.removeEventListener('change', update);
   }, []);
   useEffect(() => {
+    const reconcileRestoredWorkspace = (mustMatch: boolean) => {
+      const expectedWorkspaceId = window.sessionStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY);
+      if (mustMatch && expectedWorkspaceId && expectedWorkspaceId !== activeWorkspaceId) {
+        window.location.reload();
+        return;
+      }
+      window.sessionStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, activeWorkspaceId);
+    };
     const refreshRestoredShell = (event: PageTransitionEvent) => {
       // A dashboard restored from the back-forward cache may predate an
       // HttpOnly active-workspace cookie change. Reload it before the previous
       // tenant's server-rendered shell can remain interactive.
-      if (event.persisted) window.location.reload();
+      if (event.persisted) reconcileRestoredWorkspace(true);
     };
+    const navigation = window.performance.getEntriesByType('navigation')[0] as
+      PerformanceNavigationTiming | undefined;
+    reconcileRestoredWorkspace(navigation?.type === 'back_forward');
     window.addEventListener('pageshow', refreshRestoredShell);
     return () => window.removeEventListener('pageshow', refreshRestoredShell);
-  }, []);
+  }, [activeWorkspaceId]);
   useEffect(() => {
     if (!open || !isMobile) return;
     const sidebar = sidebarRef.current;

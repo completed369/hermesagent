@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
+import { ACTIVE_WORKSPACE_STORAGE_KEY } from '@/lib/workspace-session';
 
 export interface AvailableWorkspace {
   id: string;
@@ -37,6 +38,7 @@ export function WorkspaceSwitcher({
       // while already on /dashboard and retain the previous tenant's shell. A
       // hard replacement creates a fresh server request without leaving the stale
       // tenant view as the current browser-history entry.
+      window.sessionStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
       window.location.replace('/dashboard');
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not switch workspace.');
