@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
 
 export interface AvailableWorkspace {
@@ -17,7 +16,6 @@ export function WorkspaceSwitcher({
   activeWorkspaceId: string;
   memberships: AvailableWorkspace[];
 }) {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
@@ -34,12 +32,15 @@ export function WorkspaceSwitcher({
         body: JSON.stringify({ workspaceId }),
       });
       setStatus(`Active workspace changed to ${workspace?.workspace.name ?? 'workspace'}.`);
-      router.push('/dashboard');
-      router.refresh();
+      // The active workspace lives in an HttpOnly cookie that is consumed by the
+      // server-rendered shell. A client-router refresh can race the cookie update
+      // while already on /dashboard and retain the previous tenant's shell. A
+      // hard replacement creates a fresh server request without leaving the stale
+      // tenant view as the current browser-history entry.
+      window.location.replace('/dashboard');
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not switch workspace.');
       setStatus('');
-    } finally {
       setBusy(false);
     }
   }

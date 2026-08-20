@@ -60,6 +60,16 @@ export function DashboardShell({
     return () => media.removeEventListener('change', update);
   }, []);
   useEffect(() => {
+    const refreshRestoredShell = (event: PageTransitionEvent) => {
+      // A dashboard restored from the back-forward cache may predate an
+      // HttpOnly active-workspace cookie change. Reload it before the previous
+      // tenant's server-rendered shell can remain interactive.
+      if (event.persisted) window.location.reload();
+    };
+    window.addEventListener('pageshow', refreshRestoredShell);
+    return () => window.removeEventListener('pageshow', refreshRestoredShell);
+  }, []);
+  useEffect(() => {
     if (!open || !isMobile) return;
     const sidebar = sidebarRef.current;
     if (!sidebar) return;
