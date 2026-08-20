@@ -24,6 +24,9 @@ export const createInvitationSchema = z.object({
 });
 
 export const changeMemberRoleSchema = z.object({ roleKey: collaborationRoleSchema });
+export const switchWorkspaceSchema = z.object({
+  workspaceId: z.string().uuid('Workspace ID must be a UUID'),
+});
 
 export const acceptInvitationSchema = z.object({
   token: invitationTokenSchema,

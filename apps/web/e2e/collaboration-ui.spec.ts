@@ -174,4 +174,64 @@ test.describe('Collaborative workspace UI behavior', () => {
     });
     expect(requests.every((request) => !request.url.includes(token))).toBe(true);
   });
+
+  test('lets a signed-in account claim an invitation without submitting account credentials', async ({
+    page,
+  }) => {
+    await login(page);
+    const token = 'signed-in-fragment-secret';
+    const requests: Array<{ body: unknown; method: string; url: string }> = [];
+
+    await page.route('**/api/workspace-invitations/preview', async (route) => {
+      if (route.request().method() !== 'OPTIONS') {
+        requests.push({
+          body: route.request().postDataJSON(),
+          method: route.request().method(),
+          url: route.request().url(),
+        });
+      }
+      await fulfillJson(route, {
+        workspaceName: 'Signed-in Studio',
+        roleKey: 'OPERATOR',
+        expiresAt: '2026-08-22T00:00:00Z',
+      });
+    });
+    await page.route('**/api/workspace-invitations/accept-authenticated', async (route) => {
+      if (route.request().method() !== 'OPTIONS') {
+        requests.push({
+          body: route.request().postDataJSON(),
+          method: route.request().method(),
+          url: route.request().url(),
+        });
+      }
+      await fulfillJson(route, {
+        joined: true,
+        roleKey: 'OPERATOR',
+        workspaceId: '00000000-0000-4000-8000-000000000099',
+        workspaceName: 'Signed-in Studio',
+      });
+    });
+
+    await page.goto(`/join#token=${token}`);
+    await expect(page).toHaveURL(/\/join$/);
+    await expect(page.getByRole('heading', { name: 'Join Signed-in Studio' })).toBeVisible();
+    await expect(page.getByLabel('Email')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Join workspace' }).click();
+    await expect(page.getByRole('button', { name: 'Joining…' })).toBeDisabled();
+    await expect(page.getByRole('status')).toHaveText('Joining Signed-in Studio.');
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toMatchObject({
+      body: { token },
+      method: 'POST',
+    });
+    expect(requests[0]?.url).toMatch(/\/api\/workspace-invitations\/preview$/);
+    expect(requests[1]).toMatchObject({
+      body: { token },
+      method: 'POST',
+    });
+    expect(requests[1]?.url).toMatch(/\/api\/workspace-invitations\/accept-authenticated$/);
+    expect(requests.every((request) => !request.url.includes(token))).toBe(true);
+  });
 });

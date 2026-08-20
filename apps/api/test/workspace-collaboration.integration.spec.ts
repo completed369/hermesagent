@@ -93,11 +93,12 @@ describe('collaborative workspace invitations (integration)', () => {
     await entitleTestWorkspace(workspaceId, { maxWorkspaceMembers: 5 });
   });
 
-  async function sessionCookie(userId: string): Promise<string> {
+  async function sessionCookie(userId: string, activeWorkspaceId = workspaceId): Promise<string> {
     const token = randomUUID();
     await prisma.session.create({
       data: {
         userId,
+        activeWorkspaceId,
         tokenDigest: hashSessionToken(token),
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       },
@@ -193,6 +194,16 @@ describe('collaborative workspace invitations (integration)', () => {
       },
     });
     userIds.push(existingUser.id);
+    const sourceWorkspace = await prisma.workspace.create({
+      data: { name: 'Existing account home', slug: `existing-home-${randomUUID()}` },
+    });
+    workspaceIds.push(sourceWorkspace.id);
+    await entitleTestWorkspace(sourceWorkspace.id, { maxWorkspaceMembers: 5 });
+    const viewerRole = await prisma.role.findUniqueOrThrow({ where: { key: 'VIEWER' } });
+    await prisma.workspaceMember.create({
+      data: { workspaceId: sourceWorkspace.id, userId: existingUser.id, roleId: viewerRole.id },
+    });
+    const existingCookie = await sessionCookie(existingUser.id, sourceWorkspace.id);
     const existingAccountInvite = await service.createInvitation(
       workspaceId,
       founderId,
@@ -215,25 +226,54 @@ describe('collaborative workspace invitations (integration)', () => {
         where: { id: existingAccountInvite.id },
         select: { acceptedAt: true, acceptedById: true },
       }),
-    ).toMatchObject({ acceptedAt: expect.any(Date), acceptedById: null });
+    ).toMatchObject({ acceptedAt: null, acceptedById: null });
     expect(
       await prisma.workspaceMember.findUnique({
         where: { workspaceId_userId: { workspaceId, userId: existingUser.id } },
       }),
     ).toBeNull();
+    await expect(service.getInvitation(existingAccountInvite.token)).resolves.toMatchObject({
+      workspaceName: 'Collaboration test',
+    });
+
+    const authenticatedResult = await request(app.getHttpServer())
+      .post('/api/workspace-invitations/accept-authenticated')
+      .set('Cookie', existingCookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ token: existingAccountInvite.token });
+    expect(authenticatedResult.status).toBe(200);
+    expect(authenticatedResult.headers['cache-control']).toBe('no-store');
+    expect(authenticatedResult.body).toMatchObject({
+      joined: true,
+      roleKey: 'VIEWER',
+      workspaceId,
+    });
     expect(
-      await prisma.auditEvent.findFirst({
-        where: {
-          workspaceId,
-          action: 'WORKSPACE_INVITATION_ACCEPTANCE_DEFERRED',
-          entityId: existingAccountInvite.id,
-          actorId: null,
-        },
+      await prisma.workspaceInvitation.findUniqueOrThrow({
+        where: { id: existingAccountInvite.id },
+        select: { acceptedAt: true, acceptedById: true },
+      }),
+    ).toMatchObject({ acceptedAt: expect.any(Date), acceptedById: existingUser.id });
+    expect(
+      await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId: existingUser.id } },
       }),
     ).not.toBeNull();
-    await expect(service.getInvitation(existingAccountInvite.token)).rejects.toThrow(
-      'already been used',
-    );
+    expect(
+      await prisma.session.findFirstOrThrow({
+        where: { userId: existingUser.id, revokedAt: null },
+        select: { activeWorkspaceId: true },
+      }),
+    ).toEqual({ activeWorkspaceId: workspaceId });
+    expect(
+      await prisma.auditEvent.count({
+        where: {
+          workspaceId,
+          actorId: existingUser.id,
+          action: { in: ['WORKSPACE_INVITATION_ACCEPTED', 'WORKSPACE_SESSION_SWITCHED'] },
+        },
+      }),
+    ).toBe(2);
   });
 
   it('enforces tenant isolation for founder member mutations', async () => {
@@ -259,6 +299,28 @@ describe('collaborative workspace invitations (integration)', () => {
     expect(
       await prisma.workspaceMember.findUnique({ where: { id: outsideMember.id } }),
     ).not.toBeNull();
+  });
+
+  it('protects founders by their tenant-local role rather than a global founder flag', async () => {
+    const viewerRole = await prisma.role.findUniqueOrThrow({ where: { key: 'VIEWER' } });
+    const founderElsewhere = await prisma.user.create({
+      data: {
+        email: `founder-elsewhere-${randomUUID()}@example.test`,
+        displayName: 'Founder elsewhere',
+        isFounder: true,
+      },
+    });
+    userIds.push(founderElsewhere.id);
+    const localViewer = await prisma.workspaceMember.create({
+      data: { workspaceId, userId: founderElsewhere.id, roleId: viewerRole.id },
+    });
+
+    await expect(
+      service.changeMemberRole(workspaceId, founderId, localViewer.id, 'OPERATOR'),
+    ).resolves.toMatchObject({ role: { key: 'OPERATOR' } });
+    await expect(service.removeMember(workspaceId, founderId, localViewer.id)).resolves.toEqual({
+      removed: true,
+    });
   });
 
   it('serializes concurrent accepts so plan quota cannot be exceeded', async () => {
@@ -345,6 +407,112 @@ describe('collaborative workspace invitations (integration)', () => {
     ).toBe(1);
   });
 
+  it('switches only to a real membership and resolves authorization from the active workspace', async () => {
+    const operator = await createMember('OPERATOR');
+    const secondWorkspace = await prisma.workspace.create({
+      data: { name: 'Second tenant', slug: `second-tenant-${randomUUID()}` },
+    });
+    workspaceIds.push(secondWorkspace.id);
+    await entitleTestWorkspace(secondWorkspace.id, { maxWorkspaceMembers: 5 });
+    const viewerRole = await prisma.role.findUniqueOrThrow({ where: { key: 'VIEWER' } });
+    await prisma.workspaceMember.create({
+      data: { workspaceId: secondWorkspace.id, userId: operator.user.id, roleId: viewerRole.id },
+    });
+
+    const outsiderWorkspace = await prisma.workspace.create({
+      data: { name: 'Outsider tenant', slug: `outsider-tenant-${randomUUID()}` },
+    });
+    workspaceIds.push(outsiderWorkspace.id);
+    await entitleTestWorkspace(outsiderWorkspace.id, { maxWorkspaceMembers: 5 });
+
+    const available = await request(app.getHttpServer())
+      .get('/api/workspaces/available')
+      .set('Cookie', operator.cookie);
+    expect(available.status).toBe(200);
+    expect(
+      available.body.map((entry: { workspace: { id: string } }) => entry.workspace.id),
+    ).toEqual(expect.arrayContaining([workspaceId, secondWorkspace.id]));
+
+    const forbidden = await request(app.getHttpServer())
+      .post('/api/workspaces/switch')
+      .set('Cookie', operator.cookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ workspaceId: outsiderWorkspace.id });
+    expect(forbidden.status).toBe(403);
+
+    const switched = await request(app.getHttpServer())
+      .post('/api/workspaces/switch')
+      .set('Cookie', operator.cookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ workspaceId: secondWorkspace.id });
+    expect(switched.status).toBe(200);
+    expect(switched.body.workspace.id).toBe(secondWorkspace.id);
+    expect(switched.body.role.key).toBe('VIEWER');
+
+    const current = await request(app.getHttpServer())
+      .get('/api/workspaces/current')
+      .set('Cookie', operator.cookie);
+    expect(current.status).toBe(200);
+    expect(current.body.workspace.id).toBe(secondWorkspace.id);
+
+    const viewerCannotManageMembers = await request(app.getHttpServer())
+      .get('/api/workspaces/members')
+      .set('Cookie', operator.cookie);
+    expect(viewerCannotManageMembers.status).toBe(403);
+    const switchAudit = await prisma.auditEvent.findFirst({
+      where: {
+        workspaceId: secondWorkspace.id,
+        actorId: operator.user.id,
+        action: 'WORKSPACE_SESSION_SWITCHED',
+      },
+    });
+    expect(switchAudit).not.toBeNull();
+    expect(switchAudit?.before).toMatchObject({ activeWorkspaceSelected: true });
+    expect(JSON.stringify(switchAudit)).not.toContain(workspaceId);
+  });
+
+  it('serializes workspace switching against removal without leaving an active orphan session', async () => {
+    const viewerRole = await prisma.role.findUniqueOrThrow({ where: { key: 'VIEWER' } });
+    const user = await prisma.user.create({
+      data: { email: `switch-race-${randomUUID()}@example.test`, displayName: 'Switch race' },
+    });
+    userIds.push(user.id);
+    const targetMembership = await prisma.workspaceMember.create({
+      data: { workspaceId, userId: user.id, roleId: viewerRole.id },
+    });
+    const sourceWorkspace = await prisma.workspace.create({
+      data: { name: 'Switch race source', slug: `switch-race-source-${randomUUID()}` },
+    });
+    workspaceIds.push(sourceWorkspace.id);
+    await entitleTestWorkspace(sourceWorkspace.id, { maxWorkspaceMembers: 5 });
+    await prisma.workspaceMember.create({
+      data: { workspaceId: sourceWorkspace.id, userId: user.id, roleId: viewerRole.id },
+    });
+    const session = await prisma.session.create({
+      data: {
+        userId: user.id,
+        activeWorkspaceId: sourceWorkspace.id,
+        tokenDigest: hashSessionToken(randomUUID()),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    await Promise.allSettled([
+      service.switchWorkspace(session.id, user.id, workspaceId),
+      service.removeMember(workspaceId, founderId, targetMembership.id),
+    ]);
+
+    expect(
+      await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId: user.id } },
+      }),
+    ).toBeNull();
+    const finalSession = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(finalSession.activeWorkspaceId === workspaceId && finalSession.revokedAt === null).toBe(
+      false,
+    );
+  });
+
   it('rejects invite creation when the workspace is already at quota', async () => {
     await prisma.plan.update({
       where: { key: `INTEGRATION_TEST_${workspaceId}` },
@@ -359,6 +527,20 @@ describe('collaborative workspace invitations (integration)', () => {
     const founderCookie = await sessionCookie(founderId);
     const operator = await createMember('OPERATOR');
     const viewer = await createMember('VIEWER');
+    const retainedWorkspace = await prisma.workspace.create({
+      data: { name: 'Retained tenant', slug: `retained-${randomUUID()}` },
+    });
+    workspaceIds.push(retainedWorkspace.id);
+    await entitleTestWorkspace(retainedWorkspace.id, { maxWorkspaceMembers: 5 });
+    const viewerRoleForRetained = await prisma.role.findUniqueOrThrow({ where: { key: 'VIEWER' } });
+    await prisma.workspaceMember.create({
+      data: {
+        workspaceId: retainedWorkspace.id,
+        userId: viewer.user.id,
+        roleId: viewerRoleForRetained.id,
+      },
+    });
+    await sessionCookie(viewer.user.id, retainedWorkspace.id);
 
     const founderList = await request(app.getHttpServer())
       .get('/api/workspaces/members')
@@ -423,13 +605,27 @@ describe('collaborative workspace invitations (integration)', () => {
       .set('Origin', env.API_CORS_ORIGIN);
     expect(removal.status).toBe(200);
     expect(await prisma.session.count({ where: { userId: viewer.user.id, revokedAt: null } })).toBe(
-      0,
+      1,
     );
     expect(
-      await prisma.auditEvent.findFirst({
-        where: { workspaceId, action: 'WORKSPACE_MEMBER_REMOVED', entityId: viewer.member.id },
+      await prisma.session.count({
+        where: { userId: viewer.user.id, activeWorkspaceId: workspaceId, revokedAt: { not: null } },
       }),
-    ).not.toBeNull();
+    ).toBe(1);
+    expect(
+      await prisma.session.count({
+        where: {
+          userId: viewer.user.id,
+          activeWorkspaceId: retainedWorkspace.id,
+          revokedAt: null,
+        },
+      }),
+    ).toBe(1);
+    const removalAudit = await prisma.auditEvent.findFirst({
+      where: { workspaceId, action: 'WORKSPACE_MEMBER_REMOVED', entityId: viewer.member.id },
+    });
+    expect(removalAudit).not.toBeNull();
+    expect(removalAudit?.after).toMatchObject({ revokedSessionCount: 1 });
   });
 
   it('returns HTTP 400 for malformed member IDs and invitation tokens', async () => {
@@ -454,6 +650,13 @@ describe('collaborative workspace invitations (integration)', () => {
       .send({ roleKey: 'ADMIN' });
     expect(malformedRoleBody.status).toBe(400);
 
+    const malformedSwitch = await request(app.getHttpServer())
+      .post('/api/workspaces/switch')
+      .set('Cookie', founderCookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ workspaceId: 'not-a-uuid' });
+    expect(malformedSwitch.status).toBe(400);
+
     const malformedPreview = await request(app.getHttpServer())
       .post('/api/workspace-invitations/preview')
       .send({ token: 'not-a-token' });
@@ -470,6 +673,14 @@ describe('collaborative workspace invitations (integration)', () => {
       });
     expect(malformedAccept.status).toBe(400);
     expect(malformedAccept.headers['cache-control']).toBe('no-store');
+
+    const malformedAuthenticatedAccept = await request(app.getHttpServer())
+      .post('/api/workspace-invitations/accept-authenticated')
+      .set('Cookie', founderCookie)
+      .set('Origin', env.API_CORS_ORIGIN)
+      .send({ token: 'short' });
+    expect(malformedAuthenticatedAccept.status).toBe(400);
+    expect(malformedAuthenticatedAccept.headers['cache-control']).toBe('no-store');
   });
 
   it('rate-limits repeated unauthenticated invite acceptance attempts', async () => {

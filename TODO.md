@@ -1,5 +1,14 @@
 # TODO
 
+<!-- STATUS UPDATE — 2026-08-20:
+Phase 9 collaborative access is implemented on a draft replacement branch:
+hashed provider-free invitations, non-founder roles, explicit per-session
+active-workspace context, safe workspace switching, signed-in existing-account
+claims, tenant-scoped authorization, and workspace-scoped session revocation.
+Merge and deployment remain separately founder-gated; no live provider or paid
+service was enabled. Older historical status blocks below are retained as
+evidence and are superseded by docs/EXECUTION_PLAN.md. -->
+
 <!-- STATUS UPDATE — 2026-07-16:
 The two UI tasks flagged open on 2026-07-15 are now RESOLVED, and a local-dev
 founder credential rotation utility was added and used. Branch:

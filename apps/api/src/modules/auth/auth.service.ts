@@ -110,12 +110,21 @@ export class AuthService {
     }
 
     await this.authAbuseService.clearLoginAccount(context);
+    const initialMembership = await prisma.workspaceMember.findFirst({
+      where: { userId: user.id },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { workspaceId: true },
+    });
+    if (!initialMembership) {
+      throw new UnauthorizedException('Account has no workspace access');
+    }
     const sessionToken = generateSessionToken();
     const expiresAt = sessionExpiryDate(this.env.AUTH_SESSION_MAX_AGE_SECONDS);
 
     await prisma.session.create({
       data: {
         userId: user.id,
+        activeWorkspaceId: initialMembership.workspaceId,
         tokenDigest: hashSessionToken(sessionToken),
         expiresAt,
         ipAddress: undefined,

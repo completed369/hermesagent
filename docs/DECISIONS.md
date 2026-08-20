@@ -586,3 +586,19 @@ workflow read/write capabilities but no billing, approval-decision, branding,
 or membership-management authority, and `VIEWER` receives only the explicit
 collaboration-safe view permissions (not billing, audit, security, branding,
 or member data). Founder memberships cannot be demoted or removed.
+
+**Workspace-scoped sessions (2026-08-20):** Every newly created session stores
+an explicit `activeWorkspaceId`; the authentication guard resolves role and
+permissions only from that exact membership and fails closed when it is absent.
+Users can list only their own memberships and switch only the current session
+to one of them. Switching, signed-in invitation acceptance, and member removal
+share an account-scoped lock so concurrent operations cannot leave an active
+session pointing at a deleted cross-tenant membership.
+
+Existing-account invitation links are not consumed by the public account form.
+After authentication, the account owner accepts through a cookie-authenticated,
+CSRF-protected endpoint that creates the membership, consumes the invitation,
+updates only that session's active workspace, and records both membership and
+session-switch audit events atomically. Removing a member revokes only sessions
+whose active workspace is the removed tenant; the user's sessions in other
+workspaces remain valid.

@@ -63,18 +63,21 @@ model Account {
 }
 
 model Session {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @db.Uuid
-  tokenDigest String    @unique
-  ipAddress   String?
-  userAgent   String?
-  expiresAt   DateTime
-  createdAt   DateTime  @default(now())
-  revokedAt   DateTime?
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
+  activeWorkspaceId String?   @db.Uuid
+  tokenDigest       String    @unique
+  ipAddress         String?
+  userAgent         String?
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  revokedAt         DateTime?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeWorkspace Workspace? @relation(fields: [activeWorkspaceId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([userId, activeWorkspaceId])
   @@map("sessions")
 }
 
@@ -117,6 +120,7 @@ model Workspace {
   branding                 WorkspaceBranding?
   memoryEntries            MemoryEntry[]
   invitations              WorkspaceInvitation[]
+  activeSessions           Session[]
 
   @@map("workspaces")
 }

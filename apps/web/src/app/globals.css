@@ -460,6 +460,34 @@ a {
   padding-top: 12px;
   border-top: 1px solid rgba(143, 151, 184, 0.12);
 }
+
+.vos-workspace-switcher {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 18px;
+}
+
+.vos-workspace-switcher label {
+  display: grid;
+  gap: 6px;
+  color: var(--vos-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vos-workspace-switcher .vos-input {
+  min-width: 0;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.vos-workspace-switcher .vos-error {
+  margin: 0;
+  font-size: 11px;
+}
 .vos-dashboard-main {
   flex: 1;
   min-width: 0;

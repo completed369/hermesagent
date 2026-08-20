@@ -5,10 +5,12 @@ import type { WorkspacesService } from './workspaces.service';
 import type { AuthenticatedUser } from '../../common/guards/session-auth.guard';
 
 const user: AuthenticatedUser = {
+  sessionId: '00000000-0000-4000-8000-000000000000',
   userId: '00000000-0000-4000-8000-000000000001',
   email: 'founder@example.test',
   isFounder: true,
   workspaceId: '00000000-0000-4000-8000-000000000002',
+  workspaceName: 'Founder workspace',
   roleKey: 'FOUNDER',
   permissions: ['workspace:members:manage'],
 };

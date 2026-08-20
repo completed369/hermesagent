@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { Prisma, prisma } from '@ventureos/database';
@@ -12,6 +13,7 @@ import { enforceCapabilityAdmission } from '../../common/policy/capability-admis
 import { AuditService } from '../audit/audit.service';
 import { normalizeAccountIdentifier } from '../auth/auth-identifiers';
 import type { CollaborationRole } from './workspaces.dto';
+import type { AuthenticatedUser } from '../../common/guards/session-auth.guard';
 
 export interface UpdateBrandingInput {
   brandName?: string;
@@ -58,6 +60,61 @@ export class WorkspacesService {
         user: { select: { id: true, email: true, displayName: true, isFounder: true } },
         role: { select: { key: true, name: true } },
       },
+    });
+  }
+
+  async listAvailableWorkspaces(userId: string) {
+    return prisma.workspaceMember.findMany({
+      where: { userId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        workspace: { select: { id: true, name: true, slug: true } },
+        role: { select: { key: true, name: true } },
+      },
+    });
+  }
+
+  async switchWorkspace(sessionId: string, userId: string, workspaceId: string) {
+    return prisma.$transaction(async (tx) => {
+      await lockMemberAccount(tx, userId);
+      const session = await tx.session.findFirst({
+        where: { id: sessionId, userId, revokedAt: null, expiresAt: { gt: new Date() } },
+        select: { activeWorkspaceId: true },
+      });
+      if (!session) throw new UnauthorizedException('Session invalid or expired');
+
+      const membership = await tx.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId } },
+        select: {
+          workspace: { select: { id: true, name: true, slug: true } },
+          role: { select: { key: true, name: true } },
+        },
+      });
+      if (!membership) throw new ForbiddenException('Workspace membership is required');
+
+      const switched = await tx.session.updateMany({
+        where: { id: sessionId, userId, revokedAt: null, expiresAt: { gt: new Date() } },
+        data: { activeWorkspaceId: workspaceId },
+      });
+      if (switched.count !== 1) throw new UnauthorizedException('Session invalid or expired');
+      if (session.activeWorkspaceId !== workspaceId) {
+        await this.auditService.record(
+          workspaceId,
+          {
+            actorId: userId,
+            action: 'WORKSPACE_SESSION_SWITCHED',
+            entityType: 'Session',
+            entityId: sessionId,
+            // This audit record belongs to the target workspace. Do not copy
+            // a foreign workspace identifier across the tenant boundary.
+            before: { activeWorkspaceSelected: session.activeWorkspaceId !== null },
+            after: { activeWorkspaceId: workspaceId },
+          },
+          tx,
+        );
+      }
+      return membership;
     });
   }
 
@@ -149,21 +206,9 @@ export class WorkspacesService {
 
         const existingUser = await tx.user.findUnique({ where: { email: normalizedEmail } });
         if (existingUser) {
-          const consumed = await tx.workspaceInvitation.updateMany({
-            where: { id: invitation.id, acceptedAt: null, revokedAt: null },
-            data: { acceptedAt: new Date() },
-          });
-          if (consumed.count !== 1) throw new ConflictException('Invitation has already been used');
-          await this.auditService.record(
-            invitation.workspaceId,
-            {
-              action: 'WORKSPACE_INVITATION_ACCEPTANCE_DEFERRED',
-              entityType: 'WorkspaceInvitation',
-              entityId: invitation.id,
-              after: { reason: 'WORKSPACE_SCOPED_SESSION_REQUIRED' },
-            },
-            tx,
-          );
+          // Do not consume or mutate the invitation from an unauthenticated
+          // account-existence check. The neutral response prevents enumeration;
+          // the account owner can sign in and claim the same token safely.
           return { received: true as const, workspaceName: invitation.workspace.name };
         }
 
@@ -218,6 +263,124 @@ export class WorkspacesService {
     }
   }
 
+  async acceptInvitationForAuthenticatedUser(token: string, actor: AuthenticatedUser) {
+    const tokenDigest = digestInvitationToken(token);
+    const preflight = await prisma.workspaceInvitation.findUnique({
+      where: { tokenDigest },
+      select: { acceptedAt: true, revokedAt: true, expiresAt: true },
+    });
+    assertInvitationActive(preflight);
+
+    return prisma.$transaction(async (tx) => {
+      const invitationRef = await tx.workspaceInvitation.findUnique({
+        where: { tokenDigest },
+        select: { workspaceId: true },
+      });
+      if (!invitationRef) throw new NotFoundException('Invitation is invalid or unavailable');
+
+      await lockMemberAccount(tx, actor.userId);
+      await lockWorkspace(tx, invitationRef.workspaceId);
+
+      const session = await tx.session.findFirst({
+        where: {
+          id: actor.sessionId,
+          userId: actor.userId,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        select: { activeWorkspaceId: true },
+      });
+      if (!session) throw new UnauthorizedException('Session invalid or expired');
+
+      const invitation = await tx.workspaceInvitation.findUnique({
+        where: { tokenDigest },
+        include: { role: true, workspace: true },
+      });
+      assertInvitationActive(invitation);
+
+      let membership = await tx.workspaceMember.findUnique({
+        where: {
+          workspaceId_userId: { workspaceId: invitation.workspaceId, userId: actor.userId },
+        },
+        include: { role: true },
+      });
+      const membershipAlreadyExisted = membership !== null;
+      if (!membership) {
+        await assertMemberCapacity(tx, invitation.workspaceId);
+        membership = await tx.workspaceMember.create({
+          data: {
+            workspaceId: invitation.workspaceId,
+            userId: actor.userId,
+            roleId: invitation.roleId,
+          },
+          include: { role: true },
+        });
+      }
+
+      const consumed = await tx.workspaceInvitation.updateMany({
+        where: { id: invitation.id, acceptedAt: null, revokedAt: null },
+        data: { acceptedAt: new Date(), acceptedById: actor.userId },
+      });
+      if (consumed.count !== 1) throw new ConflictException('Invitation has already been used');
+      await tx.workspace.update({
+        where: { id: invitation.workspaceId },
+        data: { mode: 'COLLABORATIVE' },
+      });
+      const switched = await tx.session.updateMany({
+        where: {
+          id: actor.sessionId,
+          userId: actor.userId,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { activeWorkspaceId: invitation.workspaceId },
+      });
+      if (switched.count !== 1) throw new UnauthorizedException('Session invalid or expired');
+
+      await this.auditService.record(
+        invitation.workspaceId,
+        {
+          actorId: actor.userId,
+          action: 'WORKSPACE_INVITATION_ACCEPTED',
+          entityType: 'WorkspaceMember',
+          entityId: membership.id,
+          after: {
+            invitationRoleKey: invitation.role.key,
+            membershipAlreadyExisted,
+            roleKey: membership.role.key,
+          },
+        },
+        tx,
+      );
+      if (session.activeWorkspaceId !== invitation.workspaceId) {
+        await this.auditService.record(
+          invitation.workspaceId,
+          {
+            actorId: actor.userId,
+            action: 'WORKSPACE_SESSION_SWITCHED',
+            entityType: 'Session',
+            entityId: actor.sessionId,
+            // Keep the target tenant's audit trail useful without disclosing
+            // the identifier of the workspace the member came from.
+            before: { activeWorkspaceSelected: session.activeWorkspaceId !== null },
+            after: {
+              activeWorkspaceId: invitation.workspaceId,
+              reason: 'INVITATION_ACCEPTED',
+            },
+          },
+          tx,
+        );
+      }
+
+      return {
+        joined: true as const,
+        roleKey: membership.role.key,
+        workspaceId: invitation.workspaceId,
+        workspaceName: invitation.workspace.name,
+      };
+    });
+  }
+
   async changeMemberRole(
     workspaceId: string,
     actorId: string,
@@ -225,13 +388,20 @@ export class WorkspacesService {
     roleKey: CollaborationRole,
   ) {
     return prisma.$transaction(async (tx) => {
+      const memberRef = await tx.workspaceMember.findFirst({
+        where: { id: memberId, workspaceId },
+        select: { userId: true },
+      });
+      if (!memberRef) throw new NotFoundException('Workspace member not found');
+      await lockMemberAccount(tx, memberRef.userId);
+      await lockWorkspace(tx, workspaceId);
       await assertFounderMembership(tx, workspaceId, actorId);
       const member = await tx.workspaceMember.findFirst({
         where: { id: memberId, workspaceId },
         include: { role: true, user: true },
       });
       if (!member) throw new NotFoundException('Workspace member not found');
-      if (member.role.key === 'FOUNDER' || member.user.isFounder) {
+      if (member.role.key === 'FOUNDER') {
         throw new ForbiddenException('Founder role cannot be changed');
       }
       const role = await tx.role.findUnique({ where: { key: roleKey } });
@@ -259,18 +429,25 @@ export class WorkspacesService {
 
   async removeMember(workspaceId: string, actorId: string, memberId: string) {
     return prisma.$transaction(async (tx) => {
+      const memberRef = await tx.workspaceMember.findFirst({
+        where: { id: memberId, workspaceId },
+        select: { userId: true },
+      });
+      if (!memberRef) throw new NotFoundException('Workspace member not found');
+      await lockMemberAccount(tx, memberRef.userId);
+      await lockWorkspace(tx, workspaceId);
       await assertFounderMembership(tx, workspaceId, actorId);
       const member = await tx.workspaceMember.findFirst({
         where: { id: memberId, workspaceId },
         include: { role: true, user: true },
       });
       if (!member) throw new NotFoundException('Workspace member not found');
-      if (member.userId === actorId || member.role.key === 'FOUNDER' || member.user.isFounder) {
+      if (member.userId === actorId || member.role.key === 'FOUNDER') {
         throw new ForbiddenException('Founder membership cannot be removed');
       }
       await tx.workspaceMember.delete({ where: { id: member.id } });
-      await tx.session.updateMany({
-        where: { userId: member.userId, revokedAt: null },
+      const revokedSessions = await tx.session.updateMany({
+        where: { userId: member.userId, activeWorkspaceId: workspaceId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
       await this.auditService.record(
@@ -281,6 +458,7 @@ export class WorkspacesService {
           entityType: 'WorkspaceMember',
           entityId: member.id,
           before: { roleKey: member.role.key, userId: member.userId },
+          after: { revokedSessionCount: revokedSessions.count },
         },
         tx,
       );
@@ -315,6 +493,10 @@ async function lockTransactionKey(tx: Prisma.TransactionClient, key: string): Pr
   await tx.$queryRaw<Array<{ locked: boolean }>>`
     SELECT pg_advisory_xact_lock(hashtext(${key})) IS NULL AS "locked"
   `;
+}
+
+async function lockMemberAccount(tx: Prisma.TransactionClient, userId: string): Promise<void> {
+  await lockTransactionKey(tx, `workspace-member-account:${userId}`);
 }
 
 function identifiesUserEmailConstraint(error: unknown): boolean {

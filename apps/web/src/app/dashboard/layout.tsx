@@ -4,15 +4,17 @@ import { serverApiFetch } from '@/lib/server-api';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { SignOutButton } from '@/components/sign-out-button';
 import type { AuthenticatedUser } from '@/lib/types';
+import { WorkspaceSwitcher, type AvailableWorkspace } from '@/components/workspace-switcher';
 
 interface WorkspaceSummary {
   branding: { brandName: string | null; logoUrl: string | null; primaryColorHex: string } | null;
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [{ data, status }, { data: workspaceSummary }] = await Promise.all([
+  const [{ data, status }, { data: workspaceSummary }, { data: memberships }] = await Promise.all([
     serverApiFetch<{ user: AuthenticatedUser }>('/auth/me'),
     serverApiFetch<WorkspaceSummary>('/workspaces/current'),
+    serverApiFetch<AvailableWorkspace[]>('/workspaces/available'),
   ]);
 
   if (status === 401 || !data) {
@@ -40,6 +42,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <p>{data.user.email}</p>
           </div>
         </Link>
+        <WorkspaceSwitcher
+          activeWorkspaceId={data.user.workspaceId}
+          memberships={memberships ?? []}
+        />
         <p className="vos-dashboard-section-label">Workspace</p>
         <DashboardNav />
         <div className="vos-dashboard-signout">

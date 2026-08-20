@@ -21,6 +21,7 @@ import {
   changeMemberRoleSchema,
   createInvitationSchema,
   previewInvitationSchema,
+  switchWorkspaceSchema,
   updateBrandingSchema,
   workspaceMemberIdSchema,
 } from './workspaces.dto';
@@ -53,6 +54,18 @@ export class WorkspacesController {
   @RequirePermission('workspace:members:manage')
   listMembers(@CurrentUser() user: AuthenticatedUser) {
     return this.workspacesService.listMembers(user.workspaceId);
+  }
+
+  @Get('available')
+  listAvailable(@CurrentUser() user: AuthenticatedUser) {
+    return this.workspacesService.listAvailableWorkspaces(user.userId);
+  }
+
+  @Post('switch')
+  @HttpCode(200)
+  switchWorkspace(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    const input = parseRequestBody(switchWorkspaceSchema, body);
+    return this.workspacesService.switchWorkspace(user.sessionId, user.userId, input.workspaceId);
   }
 
   @Post('invitations')
@@ -120,6 +133,16 @@ export class WorkspaceInvitationsController {
   accept(@Body() body: unknown) {
     const input = parseRequestBody(acceptInvitationSchema, body);
     return this.workspacesService.acceptInvitation(input.token, input);
+  }
+
+  @Post('accept-authenticated')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(SessionAuthGuard)
+  acceptAuthenticated(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    const input = parseRequestBody(previewInvitationSchema, body);
+    return this.workspacesService.acceptInvitationForAuthenticatedUser(input.token, user);
   }
 }
 

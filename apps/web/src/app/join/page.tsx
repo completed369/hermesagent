@@ -24,6 +24,7 @@ export default function JoinWorkspacePage() {
     'checking',
   );
   const [accepting, setAccepting] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
   const [status, setStatus] = useState('Checking this invitation.');
 
   useEffect(() => {
@@ -51,14 +52,21 @@ export default function JoinWorkspacePage() {
       };
     }
     setToken(invitationToken);
-    apiFetch<InvitationPreview>('/workspace-invitations/preview', {
-      method: 'POST',
-      cache: 'no-store',
-      body: JSON.stringify({ token: invitationToken }),
-    })
-      .then((preview) => {
+    Promise.all([
+      apiFetch<InvitationPreview>('/workspace-invitations/preview', {
+        method: 'POST',
+        cache: 'no-store',
+        body: JSON.stringify({ token: invitationToken }),
+      }),
+      apiFetch('/auth/me').then(
+        () => true,
+        () => false,
+      ),
+    ])
+      .then(([preview, hasSession]) => {
         if (!active) return;
         setInvitation(preview);
+        setSignedIn(hasSession);
         setPreviewState('ready');
         setStatus(`Invitation verified for ${preview.workspaceName}.`);
       })
@@ -80,13 +88,20 @@ export default function JoinWorkspacePage() {
     setError(null);
     setStatus(`Joining ${invitation.workspaceName}.`);
     try {
-      await apiFetch('/workspace-invitations/accept', {
-        method: 'POST',
-        cache: 'no-store',
-        body: JSON.stringify({ token, displayName, email, password }),
-      });
-      setStatus('Access request received. Redirecting to sign in.');
-      router.push('/login');
+      await apiFetch(
+        signedIn ? '/workspace-invitations/accept-authenticated' : '/workspace-invitations/accept',
+        {
+          method: 'POST',
+          cache: 'no-store',
+          body: JSON.stringify(signedIn ? { token } : { token, displayName, email, password }),
+        },
+      );
+      setStatus(
+        signedIn
+          ? 'Workspace joined. Opening the dashboard.'
+          : 'Access request received. Redirecting to sign in.',
+      );
+      router.push(signedIn ? '/dashboard' : '/login');
       router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not join this workspace.');
@@ -128,6 +143,7 @@ export default function JoinWorkspacePage() {
           {invitation ? (
             <p className="vos-auth-copy">
               You’ll join as {invitation.roleKey.toLowerCase()}. This link is single-use.
+              {signedIn ? ' Your current session will switch to this workspace.' : ''}
             </p>
           ) : null}
         </div>
@@ -141,48 +157,57 @@ export default function JoinWorkspacePage() {
         ) : null}
         {invitation ? (
           <>
-            <fieldset className="vos-join-fields" disabled={accepting}>
-              <label>
-                Your name
-                <input
-                  className="vos-input"
-                  required
-                  autoComplete="name"
-                  value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                />
-              </label>
-              <label>
-                Email
-                <input
-                  className="vos-input"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </label>
-              <label>
-                Create password
-                <input
-                  className="vos-input"
-                  type="password"
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
-              <button className="vos-btn" type="submit">
-                {accepting ? 'Sending…' : 'Request workspace access'}
+            {signedIn ? (
+              <button className="vos-btn" type="submit" disabled={accepting}>
+                {accepting ? 'Joining…' : 'Join workspace'}
               </button>
-            </fieldset>
-            <p className="vos-auth-switch vos-join-account-note">
-              For privacy, VentureOS gives the same result whether an account already exists. Use an
-              email you control and contact the founder if access does not appear.
-            </p>
+            ) : (
+              <fieldset className="vos-join-fields" disabled={accepting}>
+                <label>
+                  Your name
+                  <input
+                    className="vos-input"
+                    required
+                    autoComplete="name"
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Email
+                  <input
+                    className="vos-input"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Create password
+                  <input
+                    className="vos-input"
+                    type="password"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </label>
+                <button className="vos-btn" type="submit">
+                  {accepting ? 'Sending…' : 'Request workspace access'}
+                </button>
+              </fieldset>
+            )}
+            {!signedIn ? (
+              <p className="vos-auth-switch vos-join-account-note">
+                Already have an account? <Link href="/login">Sign in</Link>, then reopen this
+                invitation link to join securely. For privacy, VentureOS gives the same result
+                whether an account already exists.
+              </p>
+            ) : null}
           </>
         ) : null}
       </form>

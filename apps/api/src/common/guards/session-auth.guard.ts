@@ -12,10 +12,12 @@ import { ENV_TOKEN } from '../../config/env.provider';
 import type { Env } from '@ventureos/config';
 
 export interface AuthenticatedUser {
+  sessionId: string;
   userId: string;
   email: string;
   isFounder: boolean;
   workspaceId: string;
+  workspaceName: string;
   roleKey: string;
   permissions: string[];
 }
@@ -44,6 +46,7 @@ export class SessionAuthGuard implements CanActivate {
           include: {
             memberships: {
               include: {
+                workspace: { select: { name: true } },
                 role: { include: { rolePermissions: { include: { permission: true } } } },
               },
             },
@@ -56,16 +59,22 @@ export class SessionAuthGuard implements CanActivate {
       throw new UnauthorizedException('Session invalid or expired');
     }
 
-    const membership = session.user.memberships[0];
+    const membership = session.activeWorkspaceId
+      ? session.user.memberships.find(
+          (candidate) => candidate.workspaceId === session.activeWorkspaceId,
+        )
+      : undefined;
     if (!membership) {
-      throw new UnauthorizedException('User has no workspace membership');
+      throw new UnauthorizedException('Session has no active workspace membership');
     }
 
     req.user = {
+      sessionId: session.id,
       userId: session.user.id,
       email: session.user.email,
       isFounder: session.user.isFounder,
       workspaceId: membership.workspaceId,
+      workspaceName: membership.workspace.name,
       roleKey: membership.role.key,
       permissions: membership.role.rolePermissions.map((rp) => rp.permission.key),
     };

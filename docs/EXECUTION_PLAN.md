@@ -477,17 +477,21 @@ without deployment or live providers.
   transaction, including concurrent acceptance protection.
 - ✅ Public `/join#token=…` fragment-to-body account-creation flow and Settings → Team UI with
   a one-time copy action; no email or other external provider.
-- 🟡 Existing-account claims return a neutral, audited response without
-  attaching a second tenant. Completing that path requires workspace-scoped
-  sessions (an active workspace on each session), a workspace selector, and
-  workspace-scoped revocation; the current guard's unscoped `memberships[0]`
-  selection cannot safely support multi-workspace accounts.
+- ✅ Existing-account claims remain neutral while signed out and leave the
+  invitation reusable. After sign-in, acceptance atomically attaches the
+  membership, consumes the token, audits the claim, and switches only the
+  current session to the new workspace.
+- ✅ Every session carries an explicit active workspace. The guard resolves
+  permissions from that exact membership, the dashboard exposes a safe
+  membership-backed workspace selector, and member removal revokes only
+  sessions active in the removed tenant.
 - ✅ Production build, typecheck, lint, formatting, and immutable migration
   contract pass locally.
-- 🟡 Database integration suite added for digest-only storage, expiry, replay,
-  tenant isolation, quota, and concurrent acceptance. Local execution requires
-  PostgreSQL; Docker was unavailable in the Windows review environment, so CI
-  remains the authoritative integration run for the draft PR.
+- ✅ Database integration coverage includes digest-only storage, expiry,
+  replay, tenant isolation, quota, concurrent acceptance, active-workspace
+  authorization, signed-in claims, safe switching/removal races, audit events,
+  and workspace-scoped session revocation. CI remains the authoritative clean
+  PostgreSQL migration and integration environment.
 
 ## Cross-cutting tracker (applies across all phases, not phase-gated)
 

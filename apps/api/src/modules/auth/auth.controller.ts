@@ -140,6 +140,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(SessionAuthGuard)
   me(@CurrentUser() user: AuthenticatedUser) {
-    return { user };
+    const { sessionId: _sessionId, ...publicUser } = user;
+    return { user: publicUser };
   }
 }
