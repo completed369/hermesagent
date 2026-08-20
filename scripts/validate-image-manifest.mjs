@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
@@ -28,8 +28,8 @@ export function resolveImageManifestPath(inputPath) {
   if (!inputPath || resolve(repositoryRoot, inputPath) !== expectedManifestPath) {
     throw new Error('Image manifest path must be the repository-root ventureos-images.json');
   }
-  const metadata = statSync(expectedManifestPath);
-  if (!metadata.isFile() || metadata.size > MAX_MANIFEST_BYTES) {
+  const metadata = lstatSync(expectedManifestPath);
+  if (metadata.isSymbolicLink() || !metadata.isFile() || metadata.size > MAX_MANIFEST_BYTES) {
     throw new Error('Image manifest must be a regular file no larger than 1 MiB');
   }
   return expectedManifestPath;
