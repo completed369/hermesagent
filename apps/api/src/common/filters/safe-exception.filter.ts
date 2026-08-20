@@ -2,6 +2,7 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from
 import type { Request, Response } from 'express';
 import { isCapabilityPolicyDeniedError } from '@ventureos/database';
 import { StructuredLogger } from '@ventureos/observability';
+import { safeRequestPath } from '../logging/safe-request-path';
 
 const logger = new StructuredLogger('api');
 
@@ -32,7 +33,7 @@ export class SafeExceptionFilter implements ExceptionFilter {
 
     const logContext = {
       correlationId: req.correlationId,
-      path: req.path,
+      path: safeRequestPath(req.path),
       status,
     };
     const isControlledClientOutcome =

@@ -11,6 +11,7 @@ import type { AuthAbuseService } from './auth-abuse.service';
 vi.mock('@ventureos/database', () => ({
   prisma: {
     user: { findUnique: vi.fn() },
+    workspaceMember: { findFirst: vi.fn() },
     role: { findUnique: vi.fn() },
     workspace: { findUnique: vi.fn() },
     session: { create: vi.fn(), updateMany: vi.fn() },
@@ -92,6 +93,9 @@ describe('AuthService login password verification', () => {
     vi.clearAllMocks();
     vi.mocked(prisma.securityEvent.create).mockResolvedValue({} as never);
     vi.mocked(prisma.session.create).mockResolvedValue({} as never);
+    vi.mocked(prisma.workspaceMember.findFirst).mockResolvedValue({
+      workspaceId: '00000000-0000-4000-8000-000000000010',
+    } as never);
     vi.mocked(verifyPasswordAsync).mockResolvedValue(false);
     vi.mocked(authAbuseService.getActiveBlock).mockResolvedValue(null);
     vi.mocked(authAbuseService.recordAttempt).mockResolvedValue(null);
@@ -189,7 +193,23 @@ describe('AuthService login password verification', () => {
       where: { email: 'founder@example.test' },
     });
     expect(authAbuseService.clearLoginAccount).toHaveBeenCalledWith(abuseContext);
-    expect(prisma.session.create).toHaveBeenCalledOnce();
+    expect(prisma.session.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        activeWorkspaceId: '00000000-0000-4000-8000-000000000010',
+        userId: user.id,
+      }),
+    });
+  });
+
+  it('does not create a workspace-less session after valid credentials', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(existingUser());
+    vi.mocked(verifyPasswordAsync).mockResolvedValue(true);
+    vi.mocked(prisma.workspaceMember.findFirst).mockResolvedValue(null);
+
+    await expect(
+      service.login('founder@example.test', 'correct-password', request),
+    ).rejects.toMatchObject({ status: 401, message: 'Account has no workspace access' });
+    expect(prisma.session.create).not.toHaveBeenCalled();
   });
 
   it('records failed authentication without the submitted identifier, password, or raw IP', async () => {

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { SignOutButton } from '@/components/sign-out-button';
+import { WorkspaceSwitcher, type AvailableWorkspace } from '@/components/workspace-switcher';
 import { deriveAccentTokens } from '@/lib/color-contrast';
 
 interface DashboardShellProps {
@@ -13,6 +14,9 @@ interface DashboardShellProps {
   logoUrl: string | null;
   email: string;
   accentColor: string;
+  activeWorkspaceId: string;
+  memberships: AvailableWorkspace[];
+  permissions: string[];
   children: React.ReactNode;
 }
 
@@ -22,6 +26,9 @@ export function DashboardShell({
   logoUrl,
   email,
   accentColor,
+  activeWorkspaceId,
+  memberships,
+  permissions,
   children,
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -170,6 +177,7 @@ export function DashboardShell({
             <p>{email}</p>
           </div>
         </Link>
+        <WorkspaceSwitcher activeWorkspaceId={activeWorkspaceId} memberships={memberships} />
         <div className="vos-workspace-pulse">
           <span aria-hidden="true" />
           <div>
@@ -178,7 +186,7 @@ export function DashboardShell({
           </div>
         </div>
         <p className="vos-dashboard-section-label">Navigate</p>
-        <DashboardNav />
+        <DashboardNav permissions={permissions} />
         <div className="vos-dashboard-signout">
           <SignOutButton />
         </div>

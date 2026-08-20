@@ -3,6 +3,7 @@ export interface AuthenticatedUser {
   email: string;
   isFounder: boolean;
   workspaceId: string;
+  workspaceName: string;
   roleKey: string;
   permissions: string[];
 }

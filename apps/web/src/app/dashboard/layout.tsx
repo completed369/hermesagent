@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { serverApiFetch } from '@/lib/server-api';
 import { DashboardShell } from '@/components/dashboard-shell';
 import type { AuthenticatedUser } from '@/lib/types';
+import type { AvailableWorkspace } from '@/components/workspace-switcher';
 
 interface WorkspaceSummary {
   workspace: { name: string };
@@ -9,9 +10,10 @@ interface WorkspaceSummary {
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [{ data, status }, { data: workspaceSummary }] = await Promise.all([
+  const [{ data, status }, { data: workspaceSummary }, { data: memberships }] = await Promise.all([
     serverApiFetch<{ user: AuthenticatedUser }>('/auth/me'),
     serverApiFetch<WorkspaceSummary>('/workspaces/current'),
+    serverApiFetch<AvailableWorkspace[]>('/workspaces/available'),
   ]);
 
   if (status === 401 || !data) {
@@ -32,6 +34,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       logoUrl={logoUrl}
       email={data.user.email}
       accentColor={accentColor}
+      activeWorkspaceId={data.user.workspaceId}
+      memberships={memberships ?? []}
+      permissions={data.user.permissions}
     >
       {children}
     </DashboardShell>

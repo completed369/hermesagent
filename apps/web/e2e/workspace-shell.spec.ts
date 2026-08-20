@@ -93,6 +93,19 @@ test.describe('Workspace shell UX', () => {
     await expect(sidebar).toHaveAttribute('aria-modal', 'true');
     await expect(sidebar).toBeVisible();
     await expect(page.getByRole('button', { name: 'Close navigation' })).toBeFocused();
+    const workspaceSwitcher = sidebar.getByRole('combobox', { name: 'Active workspace' });
+    await expect(workspaceSwitcher).toBeVisible();
+    await expect(
+      workspaceSwitcher.getByRole('option', { name: new RegExp(workspaceSummary.workspace.name) }),
+    ).toBeAttached();
+    const workspaceNavigation = sidebar.getByRole('navigation', {
+      name: 'Workspace navigation',
+    });
+    await expect(workspaceNavigation.getByRole('link', { name: 'Command Centre' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(workspaceNavigation.getByRole('link', { name: 'Settings' })).toBeVisible();
 
     const header = page.locator('.vos-mobile-header');
     const main = page.locator('#dashboard-content');

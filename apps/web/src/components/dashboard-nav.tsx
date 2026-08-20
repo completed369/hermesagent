@@ -3,28 +3,96 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-export const NAV_ITEMS = [
+interface NavigationItem {
+  href: string;
+  label: string;
+  available: boolean;
+  statusLabel?: string;
+  requiredPermissions?: string[];
+}
+
+export const NAV_ITEMS: NavigationItem[] = [
   { href: '/dashboard', label: 'Command Centre', available: true },
-  { href: '/dashboard/onboarding', label: 'Onboarding', available: true },
-  { href: '/dashboard/audit', label: 'Audit Centre', available: true },
-  { href: '/dashboard/security', label: 'Security Events', available: true },
-  { href: '/dashboard/settings', label: 'Settings', available: true },
-  { href: '/dashboard/ventures', label: 'Ventures', available: true },
-  { href: '/dashboard/opportunities', label: 'Opportunity Feed', available: true },
-  { href: '/dashboard/board-room', label: 'Board Room', available: true },
-  { href: '/dashboard/approvals', label: 'Approval Centre', available: true },
-  { href: '/dashboard/products', label: 'Product Studio', available: true },
-  { href: '/dashboard/research', label: 'Research Connectors', available: true },
-  { href: '/dashboard/finance', label: 'Finance Centre', available: true },
+  {
+    href: '/dashboard/onboarding',
+    label: 'Onboarding',
+    available: true,
+    requiredPermissions: ['workspace:manage'],
+  },
+  {
+    href: '/dashboard/audit',
+    label: 'Audit Centre',
+    available: true,
+    requiredPermissions: ['audit:view'],
+  },
+  {
+    href: '/dashboard/security',
+    label: 'Security Events',
+    available: true,
+    requiredPermissions: ['audit:view'],
+  },
+  {
+    href: '/dashboard/settings',
+    label: 'Settings',
+    available: true,
+    requiredPermissions: ['workspace:branding:manage', 'workspace:members:manage', 'billing:view'],
+  },
+  {
+    href: '/dashboard/ventures',
+    label: 'Ventures',
+    available: true,
+    requiredPermissions: ['opportunity:view'],
+  },
+  {
+    href: '/dashboard/opportunities',
+    label: 'Opportunity Feed',
+    available: true,
+    requiredPermissions: ['opportunity:view'],
+  },
+  {
+    href: '/dashboard/board-room',
+    label: 'Board Room',
+    available: true,
+    requiredPermissions: ['board:view'],
+  },
+  {
+    href: '/dashboard/approvals',
+    label: 'Approval Centre',
+    available: true,
+    requiredPermissions: ['approval:view'],
+  },
+  {
+    href: '/dashboard/products',
+    label: 'Product Studio',
+    available: true,
+    requiredPermissions: ['product:view'],
+  },
+  {
+    href: '/dashboard/research',
+    label: 'Research Connectors',
+    available: true,
+    requiredPermissions: ['research:view'],
+  },
+  {
+    href: '/dashboard/finance',
+    label: 'Finance Centre',
+    available: true,
+    requiredPermissions: ['finance:view'],
+  },
   { href: '#', label: 'Workflow Centre', available: false, statusLabel: 'Planned' },
 ];
 
-export function DashboardNav() {
+export function DashboardNav({ permissions }: { permissions: string[] }) {
   const pathname = usePathname();
+  const visibleItems = NAV_ITEMS.filter(
+    (item) =>
+      !item.requiredPermissions ||
+      item.requiredPermissions.some((permission) => permissions.includes(permission)),
+  );
 
   return (
     <nav className="vos-dashboard-nav" aria-label="Workspace navigation">
-      {NAV_ITEMS.map((item) =>
+      {visibleItems.map((item) =>
         item.available ? (
           <Link
             key={item.label}
@@ -42,9 +110,7 @@ export function DashboardNav() {
             title="Planned capability - not available yet"
           >
             <span>{item.label}</span>
-            <span className="vos-badge vos-badge--mock">
-              {'statusLabel' in item ? item.statusLabel : 'Planned'}
-            </span>
+            <span className="vos-badge vos-badge--mock">{item.statusLabel ?? 'Planned'}</span>
           </div>
         ),
       )}

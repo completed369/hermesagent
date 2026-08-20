@@ -32,12 +32,14 @@ model User {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  sessions        Session[]
-  accounts        Account[]
-  memberships     WorkspaceMember[]
-  founderProfile  FounderProfile?
-  securityEvents  SecurityEvent[]
-  auditEventsMade AuditEvent[]      @relation("AuditActor")
+  sessions            Session[]
+  accounts            Account[]
+  memberships         WorkspaceMember[]
+  founderProfile      FounderProfile?
+  securityEvents      SecurityEvent[]
+  auditEventsMade     AuditEvent[]          @relation("AuditActor")
+  invitationsCreated  WorkspaceInvitation[] @relation("InvitationCreator")
+  invitationsAccepted WorkspaceInvitation[] @relation("InvitationAcceptor")
 
   @@index([email])
   @@map("users")
@@ -61,18 +63,21 @@ model Account {
 }
 
 model Session {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @db.Uuid
-  tokenDigest String    @unique
-  ipAddress   String?
-  userAgent   String?
-  expiresAt   DateTime
-  createdAt   DateTime  @default(now())
-  revokedAt   DateTime?
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
+  activeWorkspaceId String?   @db.Uuid
+  tokenDigest       String    @unique
+  ipAddress         String?
+  userAgent         String?
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  revokedAt         DateTime?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeWorkspace Workspace? @relation(fields: [activeWorkspaceId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([userId, activeWorkspaceId])
   @@map("sessions")
 }
 
@@ -114,6 +119,8 @@ model Workspace {
   licenseKeys              LicenseKey[]
   branding                 WorkspaceBranding?
   memoryEntries            MemoryEntry[]
+  invitations              WorkspaceInvitation[]
+  activeSessions           Session[]
 
   @@map("workspaces")
 }
@@ -162,6 +169,7 @@ model Role {
 
   rolePermissions RolePermission[]
   memberships     WorkspaceMember[]
+  invitations     WorkspaceInvitation[]
 
   @@map("roles")
 }
@@ -203,6 +211,31 @@ model WorkspaceMember {
   @@unique([workspaceId, userId])
   @@index([workspaceId])
   @@map("workspace_members")
+}
+
+/// Provider-free, single-use workspace invitation. Only a SHA-256 digest is
+/// persisted; the bearer token is returned once to the founder who creates it.
+model WorkspaceInvitation {
+  id           String    @id @default(uuid()) @db.Uuid
+  workspaceId  String    @db.Uuid
+  roleId       String    @db.Uuid
+  createdById  String    @db.Uuid
+  acceptedById String?   @db.Uuid
+  tokenDigest  String    @unique
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  claimPending Boolean   @default(false)
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role       Role      @relation(fields: [roleId], references: [id])
+  createdBy  User      @relation("InvitationCreator", fields: [createdById], references: [id])
+  acceptedBy User?     @relation("InvitationAcceptor", fields: [acceptedById], references: [id])
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("workspace_invitations")
 }
 
 model FounderProfile {

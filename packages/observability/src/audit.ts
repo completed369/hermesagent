@@ -1,7 +1,7 @@
 import { hashObject } from '@ventureos/security';
 
 export interface AuditEventInput {
-  actorId: string;
+  actorId?: string;
   action: string;
   entityType: string;
   entityId: string;
