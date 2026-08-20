@@ -81,6 +81,12 @@ that images have been published, that credentials/settings exist in GitHub, that
 a VPS or tunnel is reachable, or that an external staging environment is
 currently deployed.
 
+Image publication is bound to the exact commit of the protected branch from
+which the manual workflow is dispatched (`github.sha`). The workflow does not
+accept an operator-supplied checkout reference; the separately configured
+approved SHA must match that protected-branch commit before any source is
+checked out or executed.
+
 Externally verified staging state must come from separate operational evidence,
 not from repository files alone.
 

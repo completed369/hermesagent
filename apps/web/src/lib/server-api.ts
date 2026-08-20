@@ -1,5 +1,7 @@
 import { cookies } from 'next/headers';
 
+import { buildApiUrl } from './api-url';
+
 // Browser requests use NEXT_PUBLIC_API_BASE_URL, while server components in a
 // container need the API's private Compose address rather than host loopback.
 const API_BASE_URL =
@@ -17,7 +19,7 @@ export async function serverApiFetch<T>(path: string): Promise<{ data: T | null;
   const cookieStore = await cookies();
   const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
 
-  const res = await fetch(`${API_BASE_URL}/api${path}`, {
+  const res = await fetch(buildApiUrl(API_BASE_URL, path), {
     headers: token ? { Cookie: `${AUTH_COOKIE_NAME}=${token}` } : {},
     cache: 'no-store',
   });

@@ -62,6 +62,18 @@ test.describe('Stage 6 opportunity intake', () => {
     await fillAll(page, '[data-testid^="opportunity-factor-"]', '80');
     await fillAll(page, '[data-testid^="profit-factor-"]', '80');
 
+    let createdId: string | null = null;
+    await page.route('**/api/opportunities', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const created = (await response.json()) as { id: string };
+      createdId = created.id;
+      await route.fulfill({ response });
+    });
+
     const [createResponse] = await Promise.all([
       page.waitForResponse(
         (candidate) =>
@@ -71,7 +83,9 @@ test.describe('Stage 6 opportunity intake', () => {
     ]);
 
     expect(createResponse.status()).toBe(201);
-    await expect(page).toHaveURL(/\/dashboard\/opportunities\/[0-9a-f-]+$/);
+    expect(createdId).toMatch(/^[0-9a-f-]+$/);
+    if (!createdId) throw new Error('Opportunity response did not include an ID');
+    await expect(page).toHaveURL(`/dashboard/opportunities/${createdId}`);
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
     await expect(page.getByText(claim)).toBeVisible();
     await expect(page.getByText('Founder-Provided Fact')).toBeVisible();
@@ -79,23 +93,61 @@ test.describe('Stage 6 opportunity intake', () => {
     await expect(page.getByText('opportunity-evidence-quality-v1')).toBeVisible();
     await expect(page.getByTestId('compliance-current-result')).toContainText('NOT ASSESSED');
 
-    await page.getByTestId('compliance-categories').fill('digital planning templates');
-    const [complianceResponse] = await Promise.all([
-      page.waitForResponse(
-        (candidate) =>
-          candidate.request().method() === 'POST' &&
-          candidate.url().includes('/api/opportunities/') &&
-          candidate.url().endsWith('/compliance-assessment'),
-      ),
-      page.getByTestId('compliance-submit').click(),
-    ]);
+    const complianceStatus = page.getByTestId('compliance-status');
+    await expect(complianceStatus).toHaveAttribute('role', 'status');
+    await expect(complianceStatus).toHaveAttribute('aria-live', 'polite');
+    await expect(complianceStatus).toHaveAttribute('aria-atomic', 'true');
+
+    const complianceCategories = page.getByTestId('compliance-categories');
+    const complianceSubmit = page.getByTestId('compliance-submit');
+    await complianceCategories.fill('   ');
+    await complianceSubmit.click();
+    const complianceError = page.getByTestId('compliance-error');
+    await expect(complianceError).toHaveAttribute('role', 'alert');
+    await expect(complianceError).toHaveText(
+      'Enter at least one truthful product/category declaration.',
+    );
+
+    await page.route('**/api/opportunities/*/compliance-assessment', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.fulfill({ response });
+    });
+    await complianceCategories.fill('digital planning templates');
+    const complianceResponsePromise = page.waitForResponse(
+      (candidate) =>
+        candidate.request().method() === 'POST' &&
+        candidate.url().includes('/api/opportunities/') &&
+        candidate.url().endsWith('/compliance-assessment'),
+    );
+    await complianceSubmit.click();
+    await expect(page.getByTestId('compliance-form')).toHaveAttribute('aria-busy', 'true');
+    const complianceResponse = await complianceResponsePromise;
 
     expect(complianceResponse.status()).toBe(201);
-    await expect(page.getByTestId('compliance-current-result')).toContainText('PASS');
-    await expect(page.getByText('opportunity-compliance-v1')).toBeVisible();
-    await expect(page.getByText('Policy pack v1')).toBeVisible();
-    await expect(page.getByTestId('compliance-audit-id')).toContainText(
-      /Audit evidence: [0-9a-f-]+/,
+    const compliance = (await complianceResponse.json()) as {
+      auditEventId: string;
+      formulaVersion: string;
+      policyPackVersion: string;
+      result: string;
+    };
+    expect(compliance).toMatchObject({
+      formulaVersion: 'opportunity-compliance-v1',
+      policyPackVersion: 'v1',
+      result: 'PASS',
+    });
+    await expect(page.getByTestId('compliance-current-result')).toHaveText(
+      `Gate 1: ${compliance.result}`,
+    );
+    await expect(page.getByTestId('compliance-form')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.getByText(compliance.formulaVersion, { exact: true })).toBeVisible();
+    await expect(page.getByText(`Policy pack ${compliance.policyPackVersion}`)).toBeVisible();
+    await expect(page.getByTestId('compliance-audit-id')).toHaveText(
+      `Audit evidence: ${compliance.auditEventId}`,
     );
     await expect(page.getByTestId('compliance-blockers')).toHaveCount(0);
 
