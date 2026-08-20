@@ -47,6 +47,9 @@ task-ingestion APIs must never become a general shell, script, argument-vector, 
 command-execution endpoint.
 Adapter registration is authorizer-only and private to the control plane. Each permit binds the
 exact registration generation and becomes stale if that adapter is replaced before execution.
+Adapters must implement cancellation idempotently by external run ID: an ambiguous cancellation
+failure consumes its one-use permit, but the control plane may mint a fresh revalidated permit for
+the same external run. A bound run cannot become `CANCELLED` until adapter cancellation succeeds.
 Even when an agent holds broader tool scopes, a validated adapter envelope contains only the one
 scope required by the allowlisted task-kind policy.
 

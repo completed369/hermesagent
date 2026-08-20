@@ -278,5 +278,6 @@ export interface RuntimeAdapter {
     context: WorkspaceContext,
     dispatch: ValidatedRuntimeDispatch,
   ): Promise<{ externalRunId: string }>;
+  /** Must be idempotent by externalRunId because ambiguous failures use a fresh one-use permit. */
   cancel(context: WorkspaceContext, cancellation: ValidatedRuntimeCancellation): Promise<void>;
 }

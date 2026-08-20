@@ -229,6 +229,7 @@ export class InMemoryControlPlane {
   readonly #claimedDispatchRuns = new Set<string>();
   readonly #inFlightDispatchAdapters = new Map<string, EntityId>();
   readonly #cancelledRuns = new Set<string>();
+  readonly #successfulCancellations = new Set<string>();
 
   constructor(options: ControlPlaneOptions = {}) {
     this.#clock = options.clock ?? Date.now;
@@ -879,27 +880,34 @@ export class InMemoryControlPlane {
     cancellation: RuntimeCancellationPermit,
   ): Promise<void> {
     const validated = this.#claimCancellation(context, cancellation);
-    const run = this.#require(this.#runs, context, validated.runId, 'Cancellation run');
-    const connection = this.#require(
-      this.#connections,
-      context,
-      run.runtimeConnectionId,
-      'Cancellation connection',
-    );
-    const runtime = this.#require(
-      this.#runtimes,
-      context,
-      connection.runtimeId,
-      'Cancellation runtime',
-    );
-    const adapterRegistration = this.#runtimeAdapters.get(key(context.workspaceId, runtime.id));
-    if (
-      !adapterRegistration ||
-      adapterRegistration.registrationId !== validated.adapterRegistrationId
-    ) {
-      throw new ControlPlanePolicyError('Cancellation adapter registration is stale');
+    const runKey = key(context.workspaceId, validated.runId);
+    try {
+      const run = this.#require(this.#runs, context, validated.runId, 'Cancellation run');
+      const connection = this.#require(
+        this.#connections,
+        context,
+        run.runtimeConnectionId,
+        'Cancellation connection',
+      );
+      const runtime = this.#require(
+        this.#runtimes,
+        context,
+        connection.runtimeId,
+        'Cancellation runtime',
+      );
+      const adapterRegistration = this.#runtimeAdapters.get(key(context.workspaceId, runtime.id));
+      if (
+        !adapterRegistration ||
+        adapterRegistration.registrationId !== validated.adapterRegistrationId
+      ) {
+        throw new ControlPlanePolicyError('Cancellation adapter registration is stale');
+      }
+      await adapterRegistration.adapter.cancel(context, validated);
+      this.#successfulCancellations.add(runKey);
+    } catch (error) {
+      this.#cancelledRuns.delete(runKey);
+      throw error;
     }
-    await adapterRegistration.adapter.cancel(context, validated);
   }
 
   #claimCancellation(
@@ -949,7 +957,8 @@ export class InMemoryControlPlane {
 
   transitionRun(context: WorkspaceContext, runId: EntityId, next: RunStatus): void {
     const run = this.#require(this.#runs, context, runId, 'Run');
-    if (this.#inFlightDispatchAdapters.has(key(run.workspaceId, run.id))) {
+    const runKey = key(run.workspaceId, run.id);
+    if (this.#inFlightDispatchAdapters.has(runKey)) {
       throw new ControlPlanePolicyError('Run cannot transition while adapter start is in flight');
     }
     const connection = this.#require(
@@ -968,6 +977,11 @@ export class InMemoryControlPlane {
     }
     if (!RUN_TRANSITIONS[run.status].includes(next)) {
       throw new ControlPlanePolicyError(`Illegal run transition ${run.status} -> ${next}`);
+    }
+    if (next === 'CANCELLED' && run.externalRunId && !this.#successfulCancellations.has(runKey)) {
+      throw new ControlPlanePolicyError(
+        'A bound external run requires successful adapter cancellation before terminal transition',
+      );
     }
     if (
       run.status === 'QUEUED' &&

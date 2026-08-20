@@ -1124,4 +1124,58 @@ describe('runtime adapter boundary', () => {
       /not bound/,
     );
   });
+
+  it('requires successful idempotent adapter cancellation and permits retry after failure', async () => {
+    const plane = new InMemoryControlPlane({
+      clock: () => NOW,
+      authorityPrincipals: [founder.principalId],
+    });
+    await queuedReviewRun(plane);
+    let rejectFirstCancellation!: (reason: Error) => void;
+    let signalCancellationStarted!: () => void;
+    const cancellationStarted = new Promise<void>((resolve) => {
+      signalCancellationStarted = resolve;
+    });
+    const firstCancellation = new Promise<void>((_resolve, reject) => {
+      rejectFirstCancellation = reject;
+    });
+    let cancellationAttempts = 0;
+    plane.registerRuntimeAdapter(founder, 'runtime-1', {
+      adapterKind: 'generic.bridge',
+      discoverCapabilities: async () => ['repository.review'],
+      health: async () => 'HEALTHY',
+      start: async () => ({ externalRunId: 'external-retry-cancel' }),
+      cancel: async () => {
+        cancellationAttempts += 1;
+        if (cancellationAttempts === 1) {
+          signalCancellationStarted();
+          return firstCancellation;
+        }
+      },
+    });
+    const dispatch = plane.mintDispatch(founder, 'run-dispatch');
+    await plane.executeDispatch(runtimePrincipal, dispatch);
+
+    const firstPermit = plane.mintCancellation(founder, 'run-dispatch');
+    const firstExecution = plane.executeCancellation(runtimePrincipal, firstPermit);
+    await cancellationStarted;
+    expect(() => plane.transitionRun(founder, 'run-dispatch', 'CANCELLED')).toThrow(
+      /successful adapter cancellation/,
+    );
+    rejectFirstCancellation(new Error('transient provider timeout'));
+    await expect(firstExecution).rejects.toThrow(/transient provider timeout/);
+    await expect(plane.executeCancellation(runtimePrincipal, firstPermit)).rejects.toThrow(
+      /not bound/,
+    );
+    expect(() => plane.transitionRun(founder, 'run-dispatch', 'CANCELLED')).toThrow(
+      /successful adapter cancellation/,
+    );
+
+    const retryPermit = plane.mintCancellation(founder, 'run-dispatch');
+    await plane.executeCancellation(runtimePrincipal, retryPermit);
+    plane.transitionRun(founder, 'run-dispatch', 'CANCELLED');
+    expect(plane.getRun(founder, 'run-dispatch')?.status).toBe('CANCELLED');
+    expect(plane.getTask(founder, 'task-dispatch')?.status).toBe('CANCELLED');
+    expect(cancellationAttempts).toBe(2);
+  });
 });
