@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import { DataSurface, EmptyState, PageHeader } from '@/components/workspace-ui';
+import { resolveListResponse } from '@/lib/list-response';
 
 interface OpportunityListItem {
   id: string;
@@ -22,7 +23,8 @@ function statusBadgeClass(status: string) {
 }
 
 export default async function OpportunitiesPage() {
-  const { data } = await serverApiFetch<OpportunityListItem[]>('/opportunities');
+  const { data, status } = await serverApiFetch<OpportunityListItem[]>('/opportunities');
+  const opportunities = resolveListResponse(data, status);
 
   return (
     <div className="vos-page-stack">
@@ -38,9 +40,18 @@ export default async function OpportunitiesPage() {
       />
       <DataSurface
         title="Opportunity feed"
-        description={`${data?.length ?? 0} candidates in the current workspace`}
+        description={
+          opportunities.kind === 'unavailable'
+            ? 'Candidate count unavailable'
+            : `${opportunities.items.length} candidates in the current workspace`
+        }
       >
-        {!data || data.length === 0 ? (
+        {opportunities.kind === 'unavailable' ? (
+          <EmptyState title="Opportunities unavailable">
+            The opportunity feed could not be loaded. No empty-state assumptions have been made;
+            please retry.
+          </EmptyState>
+        ) : opportunities.kind === 'empty' ? (
           <EmptyState title="No opportunities yet">
             Create a candidate to begin evidence-backed evaluation.
           </EmptyState>
@@ -59,7 +70,7 @@ export default async function OpportunitiesPage() {
               </tr>
             </thead>
             <tbody>
-              {data.map((o) => (
+              {opportunities.items.map((o) => (
                 <tr key={o.id}>
                   <td data-label="Title">
                     <strong>{o.title}</strong>

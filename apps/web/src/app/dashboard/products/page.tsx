@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import { DataSurface, EmptyState, PageHeader } from '@/components/workspace-ui';
+import { resolveListResponse } from '@/lib/list-response';
 
 interface ProductListItem {
   id: string;
@@ -24,11 +25,7 @@ function statusBadgeClass(status: string) {
 
 export default async function ProductStudioPage() {
   const { data, status } = await serverApiFetch<ProductListItem[]>('/products');
-
-  // A non-2xx (auth/permission/API failure) renders a safe unavailable state.
-  // We never pretend there are no products when the request simply failed.
-  const unavailable = status !== 200;
-  const products = data ?? [];
+  const products = resolveListResponse(data, status);
 
   return (
     <div className="vos-page-stack">
@@ -39,14 +36,18 @@ export default async function ProductStudioPage() {
       />
       <DataSurface
         title="Product studio"
-        description={`${products.length} products in this workspace`}
+        description={
+          products.kind === 'unavailable'
+            ? 'Product count unavailable'
+            : `${products.items.length} products in this workspace`
+        }
       >
-        {unavailable ? (
+        {products.kind === 'unavailable' ? (
           <EmptyState title="Products unavailable">
             The product list could not be loaded. No empty-state assumptions have been made; please
             retry.
           </EmptyState>
-        ) : products.length === 0 ? (
+        ) : products.kind === 'empty' ? (
           <EmptyState title="No products yet">
             Approve a venture in the Board Room, then begin generation to create a product.
           </EmptyState>
@@ -61,7 +62,7 @@ export default async function ProductStudioPage() {
               </tr>
             </thead>
             <tbody>
-              {products.map((p) => (
+              {products.items.map((p) => (
                 <tr key={p.id}>
                   <td data-label="Product">
                     <strong>{p.title}</strong>

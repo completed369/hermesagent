@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
 import { DataSurface, EmptyState, PageHeader } from '@/components/workspace-ui';
+import { resolveListResponse } from '@/lib/list-response';
 
 interface VentureListItem {
   id: string;
@@ -31,10 +32,11 @@ function statusBadgeClass(status: string) {
 }
 
 export default async function VenturesPage() {
-  const [{ data: ventures }, { data: billing }] = await Promise.all([
+  const [{ data: ventureData, status: ventureStatus }, { data: billing }] = await Promise.all([
     serverApiFetch<VentureListItem[]>('/ventures'),
     serverApiFetch<BillingUsage>('/billing'),
   ]);
+  const ventures = resolveListResponse(ventureData, ventureStatus);
 
   return (
     <div className="vos-page-stack">
@@ -59,9 +61,18 @@ export default async function VenturesPage() {
       />
       <DataSurface
         title="Active portfolio"
-        description={`${ventures?.length ?? 0} venture proposals`}
+        description={
+          ventures.kind === 'unavailable'
+            ? 'Venture count unavailable'
+            : `${ventures.items.length} venture proposals`
+        }
       >
-        {!ventures || ventures.length === 0 ? (
+        {ventures.kind === 'unavailable' ? (
+          <EmptyState title="Ventures unavailable">
+            The active portfolio could not be loaded. No empty-state assumptions have been made;
+            please retry.
+          </EmptyState>
+        ) : ventures.kind === 'empty' ? (
           <EmptyState title="No ventures yet">
             Promote an opportunity from the Opportunity Feed to begin a governed venture.
           </EmptyState>
@@ -78,7 +89,7 @@ export default async function VenturesPage() {
               </tr>
             </thead>
             <tbody>
-              {ventures.map((v) => (
+              {ventures.items.map((v) => (
                 <tr key={v.id}>
                   <td data-label="Venture">
                     <strong>{v.opportunity.title}</strong>

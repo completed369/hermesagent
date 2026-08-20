@@ -5,6 +5,8 @@
   --vos-text: #e6e8ee;
   --vos-text-muted: #9aa2b1;
   --vos-accent: #7c6cff;
+  --vos-accent-readable: #8f84ff;
+  --vos-accent-on-readable: #0b0e14;
   --vos-cyan: #39d9ff;
   --vos-success: #34c38f;
   --vos-warning: #f1b44c;
@@ -23,6 +25,8 @@
     --vos-border: #e2e5eb;
     --vos-text: #12141a;
     --vos-text-muted: #5b6270;
+    --vos-accent-readable: #5943c4;
+    --vos-accent-on-readable: #ffffff;
     --vos-sidebar: rgba(255, 255, 255, 0.92);
     --vos-surface-soft: rgba(40, 52, 78, 0.035);
     --vos-grid: rgba(40, 52, 78, 0.045);
@@ -42,7 +46,7 @@ body {
 }
 
 :where(a, button, input, select, textarea):focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--vos-accent) 34%, transparent);
+  outline: 3px solid var(--vos-accent-readable);
   outline-offset: 3px;
 }
 
@@ -198,8 +202,8 @@ a {
 }
 
 .vos-btn {
-  background: linear-gradient(135deg, var(--vos-accent), #4d9fe8);
-  color: white;
+  background: var(--vos-accent-readable);
+  color: var(--vos-accent-on-readable);
   border: none;
   border-radius: 12px;
   padding: 13px 18px;
@@ -222,8 +226,9 @@ a {
   font-size: 14px;
 }
 .vos-input:focus {
-  border-color: #7769ef;
-  outline: 3px solid rgba(124, 108, 255, 0.12);
+  border-color: var(--vos-accent-readable);
+  outline: 3px solid var(--vos-accent-readable);
+  outline-offset: 3px;
 }
 
 @media (max-width: 900px) {
@@ -254,6 +259,8 @@ a {
 }
 
 .vos-dashboard-shell {
+  --vos-accent-readable: var(--vos-accent-readable-dark);
+  --vos-accent-on-readable: #0b0e14;
   display: flex;
   min-height: 100vh;
   background:
@@ -277,8 +284,8 @@ a {
   z-index: 100;
   padding: 11px 15px;
   border-radius: 9px;
-  background: var(--vos-accent);
-  color: #fff;
+  background: var(--vos-accent-readable);
+  color: var(--vos-accent-on-readable);
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
@@ -305,9 +312,16 @@ a {
   display: flex;
   align-items: center;
   gap: 11px;
+  min-width: 0;
   padding: 4px 5px 20px;
   color: inherit;
   text-decoration: none;
+}
+.vos-dashboard-brand > div {
+  min-width: 0;
+}
+.vos-dashboard-brand strong {
+  overflow-wrap: anywhere;
 }
 .vos-dashboard-brand img,
 .vos-dashboard-brandmark {
@@ -378,10 +392,10 @@ a {
   background: color-mix(in srgb, var(--vos-accent) 14%, transparent);
   color: var(--vos-text);
   font-weight: 700;
-  box-shadow: inset 3px 0 var(--vos-accent);
+  box-shadow: inset 3px 0 var(--vos-accent-readable);
 }
 .vos-dashboard-navlink[aria-current='page'] .vos-dashboard-nav-indicator {
-  background: var(--vos-accent);
+  background: var(--vos-accent-readable);
   opacity: 1;
   box-shadow: 0 0 10px var(--vos-accent);
 }
@@ -390,7 +404,6 @@ a {
   border-color: color-mix(in srgb, var(--vos-accent) 18%, transparent);
   background: color-mix(in srgb, var(--vos-accent) 9%, transparent);
   color: var(--vos-text);
-  outline: none;
 }
 .vos-dashboard-navlink--planned {
   color: color-mix(in srgb, var(--vos-text-muted) 72%, transparent);
@@ -407,6 +420,9 @@ a {
 }
 .vos-mobile-header,
 .vos-sidebar-scrim {
+  display: none;
+}
+.vos-drawer-close {
   display: none;
 }
 .vos-workspace-pulse {
@@ -459,7 +475,7 @@ a {
 }
 .vos-eyebrow {
   margin: 0 0 9px;
-  color: var(--vos-accent);
+  color: var(--vos-accent-readable);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -582,6 +598,7 @@ a {
   border-top: 1px solid var(--vos-border);
   color: color-mix(in srgb, var(--vos-text) 88%, var(--vos-text-muted));
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 .vos-data-table tbody tr {
   transition: background 0.15s ease;
@@ -590,7 +607,8 @@ a {
   background: color-mix(in srgb, var(--vos-accent) 4%, transparent);
 }
 .vos-row-link {
-  color: var(--vos-accent);
+  max-width: 100%;
+  color: var(--vos-accent-readable);
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
@@ -617,7 +635,7 @@ a {
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--vos-accent) 26%, var(--vos-border));
   border-radius: 50%;
-  color: var(--vos-accent);
+  color: var(--vos-accent-readable);
   font-size: 21px;
 }
 .vos-empty-state h2 {
@@ -650,7 +668,7 @@ a {
   place-items: center;
   border-radius: 50%;
   background: color-mix(in srgb, var(--vos-accent) 18%, transparent);
-  color: var(--vos-accent);
+  color: var(--vos-accent-readable);
   font-size: 11px;
   font-weight: 900;
 }
@@ -682,7 +700,7 @@ a {
 }
 .vos-usage-link {
   margin-top: 5px;
-  color: var(--vos-accent);
+  color: var(--vos-accent-readable);
   font-size: 10px;
   font-weight: 700;
   text-decoration: none;
@@ -845,6 +863,19 @@ a {
   .vos-dashboard-sidebar.is-open {
     transform: translateX(0);
   }
+  .vos-drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: flex-end;
+    padding: 8px 10px;
+    border: 1px solid var(--vos-border);
+    border-radius: 9px;
+    background: var(--vos-bg-elevated);
+    color: var(--vos-text);
+    font-size: 11px;
+    font-weight: 700;
+  }
   .vos-sidebar-scrim {
     position: fixed;
     inset: 0;
@@ -904,7 +935,7 @@ a {
   }
   .vos-data-table td {
     display: grid;
-    grid-template-columns: minmax(110px, 0.7fr) 1fr;
+    grid-template-columns: minmax(96px, 0.7fr) minmax(0, 1fr);
     gap: 12px;
     padding: 7px 0;
     border: 0;
@@ -921,6 +952,8 @@ a {
   }
   .vos-row-actions {
     display: flex !important;
+    min-width: 0;
+    flex-wrap: wrap;
     justify-content: flex-end;
   }
   .vos-row-actions:before {
@@ -931,6 +964,13 @@ a {
   }
   .vos-usage-chip {
     width: 100%;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .vos-dashboard-shell {
+    --vos-accent-readable: var(--vos-accent-readable-light);
+    --vos-accent-on-readable: #ffffff;
   }
 }
 

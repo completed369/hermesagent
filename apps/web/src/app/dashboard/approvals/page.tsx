@@ -1,6 +1,7 @@
 import { serverApiFetch } from '@/lib/server-api';
 import Link from 'next/link';
 import { DataSurface, EmptyState, PageHeader } from '@/components/workspace-ui';
+import { resolveListResponse } from '@/lib/list-response';
 
 interface ApprovalRequestListItem {
   id: string;
@@ -23,7 +24,8 @@ function stateBadgeClass(state: string) {
 }
 
 export default async function ApprovalsPage() {
-  const { data } = await serverApiFetch<ApprovalRequestListItem[]>('/approval-requests');
+  const { data, status } = await serverApiFetch<ApprovalRequestListItem[]>('/approval-requests');
+  const requests = resolveListResponse(data, status);
 
   return (
     <div className="vos-page-stack">
@@ -39,8 +41,20 @@ export default async function ApprovalsPage() {
           was proposed.
         </p>
       </div>
-      <DataSurface title="Decision queue" description={`${data?.length ?? 0} requests recorded`}>
-        {!data || data.length === 0 ? (
+      <DataSurface
+        title="Decision queue"
+        description={
+          requests.kind === 'unavailable'
+            ? 'Request count unavailable'
+            : `${requests.items.length} requests recorded`
+        }
+      >
+        {requests.kind === 'unavailable' ? (
+          <EmptyState title="Approvals unavailable">
+            The decision queue could not be loaded. No empty-state assumptions have been made;
+            please retry.
+          </EmptyState>
+        ) : requests.kind === 'empty' ? (
           <EmptyState title="Decision queue clear">
             No approval requests are waiting in this workspace.
           </EmptyState>
@@ -56,7 +70,7 @@ export default async function ApprovalsPage() {
               </tr>
             </thead>
             <tbody>
-              {data.map((req) => (
+              {requests.items.map((req) => (
                 <tr key={req.id}>
                   <td data-label="Requested action">
                     <strong>{req.requestedAction}</strong>

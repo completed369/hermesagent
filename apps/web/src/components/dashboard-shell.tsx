@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { SignOutButton } from '@/components/sign-out-button';
+import { deriveAccentTokens } from '@/lib/color-contrast';
 
 interface DashboardShellProps {
   brandName: string;
@@ -28,12 +29,25 @@ export function DashboardShell({
   const [isMobile, setIsMobile] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
+  const previousPathnameRef = useRef(pathname);
   const sidebarClosed = isMobile && !open;
+  const drawerOpen = isMobile && open;
+  const accentTokens = deriveAccentTokens(accentColor);
 
-  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (previousPathnameRef.current === pathname) return;
+    previousPathnameRef.current = pathname;
+    if (!open || !isMobile) return;
+
+    setOpen(false);
+    requestAnimationFrame(() => document.getElementById('dashboard-content')?.focus());
+  }, [isMobile, open, pathname]);
   useEffect(() => {
     const media = window.matchMedia('(max-width: 760px)');
-    const update = () => setIsMobile(media.matches);
+    const update = () => {
+      setIsMobile(media.matches);
+      if (!media.matches) setOpen(false);
+    };
     update();
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
@@ -86,13 +100,22 @@ export function DashboardShell({
   }
 
   return (
-    <div className="vos-dashboard-shell" style={{ ['--vos-accent' as string]: accentColor }}>
-      <a className="vos-skip-link" href="#dashboard-content">
+    <div
+      className="vos-dashboard-shell"
+      style={{
+        ['--vos-accent' as string]: accentTokens.brand,
+        ['--vos-accent-readable-dark' as string]: accentTokens.readableOnDark,
+        ['--vos-accent-readable-light' as string]: accentTokens.readableOnLight,
+      }}
+    >
+      <a className="vos-skip-link" href="#dashboard-content" inert={drawerOpen || undefined}>
         Skip to workspace content
       </a>
-      <header className="vos-mobile-header">
+      <header className="vos-mobile-header" inert={drawerOpen || undefined}>
         <Link href="/dashboard" className="vos-mobile-brand">
-          <span className="vos-dashboard-brandmark">V</span>
+          <span className="vos-dashboard-brandmark" aria-hidden="true">
+            V
+          </span>
           <strong data-testid="mobile-workspace-name">{workspaceName}</strong>
         </Link>
         <button
@@ -123,15 +146,24 @@ export function DashboardShell({
         id="workspace-navigation"
         className={`vos-dashboard-sidebar${open ? ' is-open' : ''}`}
         aria-label="Workspace sidebar"
+        aria-modal={drawerOpen || undefined}
         aria-hidden={sidebarClosed || undefined}
         inert={sidebarClosed || undefined}
+        role={drawerOpen ? 'dialog' : undefined}
       >
+        <button className="vos-drawer-close" type="button" onClick={() => closeDrawer(true)}>
+          Close navigation
+        </button>
         <Link href="/dashboard" className="vos-dashboard-brand">
           {logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt="" />
           )}
-          {!logoUrl ? <span className="vos-dashboard-brandmark">V</span> : null}
+          {!logoUrl ? (
+            <span className="vos-dashboard-brandmark" aria-hidden="true">
+              V
+            </span>
+          ) : null}
           <div>
             <strong>{brandName}</strong>
             <p>{email}</p>
@@ -150,7 +182,12 @@ export function DashboardShell({
           <SignOutButton />
         </div>
       </aside>
-      <main className="vos-dashboard-main" id="dashboard-content" tabIndex={-1}>
+      <main
+        className="vos-dashboard-main"
+        id="dashboard-content"
+        tabIndex={-1}
+        inert={drawerOpen || undefined}
+      >
         {children}
       </main>
     </div>
