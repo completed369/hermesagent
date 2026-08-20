@@ -18,11 +18,10 @@ const previousLegacyBuildInfo = existsSync(legacyBuildInfo)
 function runApiBuild() {
   const result =
     process.platform === 'win32'
-      ? spawnSync(
-          process.env.ComSpec ?? 'cmd.exe',
-          ['/d', '/s', '/c', 'pnpm --filter @ventureos/api run build'],
-          { cwd: repositoryRoot, stdio: 'inherit' },
-        )
+      ? spawnSync('cmd.exe', ['/d', '/s', '/c', 'pnpm --filter @ventureos/api run build'], {
+          cwd: repositoryRoot,
+          stdio: 'inherit',
+        })
       : spawnSync('pnpm', ['--filter', '@ventureos/api', 'run', 'build'], {
           cwd: repositoryRoot,
           stdio: 'inherit',

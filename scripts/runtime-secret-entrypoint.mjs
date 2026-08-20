@@ -14,6 +14,28 @@ const SECRET_ENV_NAMES = Object.freeze([
 
 const MAX_SECRET_BYTES = 64 * 1024;
 
+export function resolveRuntimeCommand(commandArguments) {
+  switch (JSON.stringify(commandArguments)) {
+    case '["/nodejs/bin/node","dist/main.js"]':
+      return { command: '/nodejs/bin/node', arguments: ['dist/main.js'] };
+    case '["/nodejs/bin/node","dist/index.js"]':
+      return { command: '/nodejs/bin/node', arguments: ['dist/index.js'] };
+    case '["/nodejs/bin/node","node_modules/prisma/build/index.js","migrate","deploy","--schema","prisma/schema.prisma"]':
+      return {
+        command: '/nodejs/bin/node',
+        arguments: [
+          'node_modules/prisma/build/index.js',
+          'migrate',
+          'deploy',
+          '--schema',
+          'prisma/schema.prisma',
+        ],
+      };
+    default:
+      throw new Error('Runtime command is not approved for this immutable image');
+  }
+}
+
 export function applySecretFiles(environment = process.env) {
   for (const name of SECRET_ENV_NAMES) {
     const fileName = `${name}_FILE`;
@@ -77,10 +99,9 @@ function run() {
   const environment = applySecretFiles(process.env);
   const commandArguments = process.argv.slice(2);
   if (commandArguments[0] === '--') commandArguments.shift();
-  const command = commandArguments.shift();
-  if (!command) throw new Error('A runtime command is required');
+  const approved = resolveRuntimeCommand(commandArguments);
 
-  const child = spawn(command, commandArguments, {
+  const child = spawn(approved.command, approved.arguments, {
     env: environment,
     stdio: 'inherit',
   });

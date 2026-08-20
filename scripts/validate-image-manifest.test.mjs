@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { test } from 'node:test';
-import { validateImageManifest } from './validate-image-manifest.mjs';
+import { resolveImageManifestPath, validateImageManifest } from './validate-image-manifest.mjs';
 
 const validManifest = {
   schemaVersion: 1,
@@ -31,4 +33,24 @@ test('image manifest validator rejects mutable, incomplete, and extra content', 
       }),
     /must match pattern/,
   );
+});
+
+test('image manifest CLI accepts only the bounded repository-root artifact', () => {
+  const expectedPath = resolve(import.meta.dirname, '..', 'ventureos-images.json');
+  const previous = existsSync(expectedPath) ? readFileSync(expectedPath) : undefined;
+  try {
+    writeFileSync(expectedPath, '{}\n');
+    assert.equal(resolveImageManifestPath('ventureos-images.json'), expectedPath);
+    assert.throws(
+      () => resolveImageManifestPath('../ventureos-images.json'),
+      /repository-root ventureos-images\.json/,
+    );
+    assert.throws(
+      () => resolveImageManifestPath('deploy/private-staging/image-manifest.schema.json'),
+      /repository-root ventureos-images\.json/,
+    );
+  } finally {
+    if (previous === undefined) rmSync(expectedPath, { force: true });
+    else writeFileSync(expectedPath, previous);
+  }
 });

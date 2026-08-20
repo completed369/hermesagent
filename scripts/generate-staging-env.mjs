@@ -1,9 +1,14 @@
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-const target = resolve(process.argv[2] ?? '.staging/phase15.env');
+const repositoryRoot = resolve(import.meta.dirname, '..');
+const target = join(repositoryRoot, '.staging', 'phase15.env');
 const force = process.argv.includes('--force');
+const unsupportedArguments = process.argv.slice(2).filter((argument) => argument !== '--force');
+if (unsupportedArguments.length > 0) {
+  throw new Error('generate-staging-env accepts only the optional --force flag');
+}
 if (existsSync(target) && !force) {
   console.log(`Synthetic staging environment already exists: ${target}`);
   process.exit(0);
