@@ -1,5 +1,15 @@
 # Known Limitations
 
+> **Current release note (2026-08-20):** VentureOS is not production-ready or
+> production-deployed. The verified `main` baseline does not yet contain the
+> pending collaboration/session work required for signed-in invitation
+> acceptance, explicit active-workspace selection, workspace switching, and
+> workspace-scoped session revocation. Private-staging image publication and
+> deployment have not occurred for current `main`; backup/restore rehearsal,
+> live-provider validation, legal/privacy operations, billing, email delivery,
+> malware scanning, and production observability remain incomplete or disabled.
+> See `ROADMAP.md` for dependency order and do not treat a draft PR as shipped.
+
 > **Status note (2026-08-01):** this file began as a Phase 1 sandbox inventory
 > and still contains historical phase/sandbox statements. For current executed
 > release evidence use `TECHNICAL_RELEASE_BASELINE.md`; for the current security

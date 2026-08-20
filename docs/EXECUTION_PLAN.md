@@ -1,5 +1,19 @@
 # Execution Plan — Phase 0 to Phase 8
 
+> **CURRENT DELIVERY UPDATE — 2026-08-20.** The Phase 0–8 record below is
+> historical implementation evidence, not a statement that VentureOS is
+> production-ready. The current verified baseline is `main`
+> `56450df103b74add0c5553b8d54e747eb4c1b587` after the PR #49 container/runtime
+> security repair; its post-merge CI passed. No current-main application images
+> were published and no private-staging application deployment was dispatched.
+> Active delivery work is tracked in `ROADMAP.md`: deterministic Stage 6
+> reliability/accessibility, the modern staging shell, secure multi-workspace
+> collaboration, continuous CodeQL/dependency/supply-chain remediation, and the
+> protected progress command center. A draft or local branch is never counted
+> as live product state. Exact current PR, CI, deployment, and blocker evidence
+> belongs in the protected progress site and GitHub, not in an undated claim in
+> this historical plan.
+
 This is the single source of truth for "what is actually done" versus "what
 is still to build," across the entire master spec (all numbered phases 0–8, section
 34). It exists because the master spec explicitly forbids building every

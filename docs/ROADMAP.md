@@ -1,5 +1,70 @@
 # Roadmap
 
+## Current delivery roadmap (2026-08-20)
+
+The Phase 0–8 checklist below is a historical record of implemented product
+scope. It is **not** a production-readiness or deployment claim. The current
+verified product baseline is `main` commit
+`56450df103b74add0c5553b8d54e747eb4c1b587`; its post-merge CI passed, but no
+application images for that commit have been published and no private-staging
+application deployment has been dispatched.
+
+### Completed
+
+- The Phase 0–8 mock-provider product baseline and its documented gates.
+- The runtime/container security repair merged through PR #49, including five
+  final-image vulnerability gates.
+- A public `ventureos.site` entry point plus Access-protected staging and
+  progress hostnames, managed separately from product deployment.
+- Fail-closed publication and private-staging workflow templates. Their
+  presence remains capability evidence, not deployment evidence.
+
+### In progress
+
+1. **Reliability and accessibility foundation:** PR #52 is a validated draft
+   that makes Stage 6 UI transitions deterministic and improves live status
+   semantics. It must be reviewed and merged before the staging redesign is
+   finalized.
+2. **Private staging experience:** PR #50 modernizes the core workspace shell
+   and main product surfaces. It must be reconciled with PR #52 and rerun on
+   the resulting exact head.
+3. **Secure collaboration:** active-workspace sessions, signed-in invitation
+   acceptance, workspace switching, scoped revocation, role enforcement, and
+   cross-tenant tests are release-blocking until a replacement collaboration
+   draft is green and reviewed.
+4. **Continuous security:** dependency, CodeQL, secret, SBOM, container, and
+   publication trust-boundary findings are handled in focused drafts; no alert
+   is considered resolved until its exact-head checks and review pass.
+5. **Founder command center:** `progress.ventureos.site` is maintained from the
+   separate operations repository and must clearly separate live evidence from
+   validated-but-unmerged work.
+
+### Ready next
+
+- Merge the validated foundation in dependency order, with an exact-head review
+  before each merge.
+- Build and scan all five immutable application images for the resulting release
+  commit. Publication still requires a separate exact-SHA authorization.
+- Deploy only those scanned digests to private staging after a separate
+  deployment authorization, then verify Access, migrations, health, E2E,
+  responsive UX, security, load, rollback, and audit evidence against the real
+  environment.
+- Exercise a documented backup and restore drill before calling the release a
+  production candidate.
+- Run real-user testing and customer interviews before enabling billing or
+  making revenue claims.
+
+### External decisions and blocked actions
+
+- Live AI, marketplace, email, payment, advertising, paid monitoring, and other
+  paid providers remain disabled. Enabling them requires provider-specific
+  security review plus separate credentials, cost, and commercial approval.
+- Production release requires exact release evidence, backup/restore and
+  rollback proof, privacy/legal readiness, and a separate high-impact deployment
+  decision.
+- No public form should collect personal information until an approved contact,
+  privacy, retention, and response process exists.
+
 Phased delivery per master spec section 34. All 8 phases are now built and
 locally verified end-to-end (see `docs/EXECUTION_PLAN.md` for the canonical,
 itemized verification record). Phase 6 is mock-only per the founder's
@@ -228,7 +293,10 @@ connected, see `docs/DECISIONS.md` ADR-010).
    real bugs found and fixed via the verification suite along the way (see
    `docs/DECISIONS.md` ADR-011)
 
-## Master spec's 8 phases are now all complete
+## Historical master-spec milestone
 
-Per master spec section 35's phasing rule, do not begin any further build
-work without explicit founder instruction on what comes next.
+The original eight implementation phases were completed as a product-scope
+milestone. The prior instruction to stop after Phase 8 was superseded by the
+founder's 2026-08-20 autonomous completion directive. Current work follows the
+delivery roadmap above and the repository's protected review, security, and
+deployment gates.
