@@ -1,32 +1,27 @@
 # Known Limitations
 
 > **Current release note (2026-08-20):** VentureOS is not production-ready or
-> production-deployed. The verified `main` baseline does not yet contain the
-> pending collaboration/session work required for signed-in invitation
-> acceptance, explicit active-workspace selection, workspace switching, and
-> workspace-scoped session revocation. Private-staging image publication and
-> deployment have not occurred for current `main`; backup/restore rehearsal,
-> live-provider validation, legal/privacy operations, billing, email delivery,
-> malware scanning, and production observability remain incomplete or disabled.
-> See `ROADMAP.md` for dependency order and do not treat a draft PR as shipped.
+> production-deployed. The verified `main` baseline is
+> `815935c3463151bff33f724ff0a457fee162d564`; PRs #53, #54, #57, and #52 are
+> merged, post-merge CI and CodeQL are green, and there are zero open CodeQL
+> alerts. No current-main application image has been published and no
+> private-staging application deployment has been dispatched.
 >
-> Exact-head draft evidence does not remove review blockers. PR #53
-> `8c9e4c97fcc0079333f35e286c515fd1a7054931` and PR #54
-> `d3568e782d6ff346251a0710401fd58959d4ebac` have green automated security
-> gates for their stated dependency/runtime and publication-trust-boundary
-> scopes. PR #55 `b07e538a7405fd54bba4f39fefe61bd008ac161c`
-> is independently clean and mergeable as a draft; CI, CodeQL, lockfile/runtime
-> evidence, the staging-security gate, and all five final-image scans passed.
-> Its prior founder-onboarding authorization and invitation-state findings are
-> resolved with permission/service defense, account-bound continuation,
-> active-workspace sessions, migration and tenant-isolation coverage, and a full
-> browser journey. PR #51 was closed as obsolete in favor of PR #55.
-> PR #57 `9ee09efe3e1ddd9b9f29bfd96ba0ba7dfd4c8af4` repaired the clean-file
-> staging environment generator/caller contract and the root image-manifest
-> symlink boundary. Its independent delta review is clean; exact-head CI,
-> CodeQL, staging-security gate, runtime substrate gate, and all five final-image
-> scans passed, with zero open branch CodeQL alerts. No result above is
-> image-publication or deployment evidence.
+> The modern staging experience remains draft PR #50 at exact head
+> `f4a9f1a28fcf1afabc54303ebd76feb7c96e6c76`. Secure collaboration remains
+> draft PR #55 at exact head `13e3846d4be091b5f828cda3fcfb5e5b005c4715`,
+> stacked on that PR #50 head. Both are clean and fully green, and PR #55 also
+> passed Prisma/runtime and five-image gates plus a real workspace-switch E2E.
+> Neither candidate is merged or deployed; PR #55 must be reconciled with
+> `main` after PR #50 lands and all exact-head gates must pass again.
+>
+> Backup/restore rehearsal, live-provider validation, legal/privacy operations,
+> real billing and email delivery, malware scanning, and production
+> observability remain incomplete or disabled. `ventureos.site` is public;
+> `staging.ventureos.site` and `progress.ventureos.site` remain
+> Access-protected. See `ROADMAP.md` for dependency order and never treat draft
+> code, a workflow template, or a passing image scan as publication or
+> deployment evidence.
 
 > **Status note (2026-08-01):** this file began as a Phase 1 sandbox inventory
 > and still contains historical phase/sandbox statements. For current executed

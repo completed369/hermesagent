@@ -5,75 +5,71 @@
 The Phase 0–8 checklist below is a historical record of implemented product
 scope. It is **not** a production-readiness or deployment claim. The current
 verified product baseline is `main` commit
-`56450df103b74add0c5553b8d54e747eb4c1b587`; its post-merge CI passed, but no
-application images for that commit have been published and no private-staging
-application deployment has been dispatched.
+`815935c3463151bff33f724ff0a457fee162d564`. PRs #53, #54, #57, and #52 are
+merged into that exact commit; post-merge CI and CodeQL are green and there are
+zero open CodeQL alerts. No application image for this baseline has been
+published and no private-staging application deployment has been dispatched.
 
 ### Completed
 
 - The Phase 0–8 mock-provider product baseline and its documented gates.
 - The runtime/container security repair merged through PR #49, including five
   final-image vulnerability gates.
+- The focused PostCSS/dependency repair, publication trust-boundary hardening,
+  security-gate hardening, and deterministic Stage 6 reliability/accessibility
+  work merged through PRs #53, #54, #57, and #52.
 - A public `ventureos.site` entry point plus Access-protected staging and
-  progress hostnames, managed separately from product deployment.
+  progress hostnames at `staging.ventureos.site` and
+  `progress.ventureos.site`, managed separately from product deployment.
 - Fail-closed publication and private-staging workflow templates. Their
   presence remains capability evidence, not deployment evidence.
 
 ### In progress
 
-1. **Reliability and accessibility foundation:** PR #52 is a validated draft
-   that makes Stage 6 UI transitions deterministic and improves live status
-   semantics. It must be reviewed and merged before the staging redesign is
-   finalized.
-2. **Private staging experience:** PR #50 modernizes the core workspace shell
-   and main product surfaces. It must be reconciled with PR #52 and rerun on
-   the resulting exact head.
-3. **Dependency and runtime remediation:** PR #53 at
-   `8c9e4c97fcc0079333f35e286c515fd1a7054931` is a green draft covering the
-   current PostCSS/dependency advisory repair; its CI, staging gate, lockfile
-   evidence, runtime evidence, and all five final-image build/scan jobs passed.
-   These results apply to that draft head, not to `main` or a deployed release.
-4. **Publication trust boundary:** PR #54 at
-   `d3568e782d6ff346251a0710401fd58959d4ebac` is a green draft with structured
-   workflow-binding regression coverage. CI, CodeQL, and the staging-security
-   gate passed. No publication workflow was dispatched and no image was
-   published.
-5. **Secure collaboration:** PR #55 at
-   `b07e538a7405fd54bba4f39fefe61bd008ac161c` is independently clean and
-   mergeable as a draft. Founder onboarding is enforced at permission and
-   service boundaries; existing-account invitation state is neutral and
-   account-bound; active-workspace sessions, retained-role semantics,
-   tenant-scoped revocation, migration/backfill behavior, and the complete
-   public-to-login-to-join path are covered. Exact-head CI, CodeQL, lockfile and
-   runtime evidence, the staging-security gate, and all five final-image scans
-   passed. PR #51 was closed as obsolete in favor of this replacement.
-6. **Security-gate hardening:** PR #57 at
-   `9ee09efe3e1ddd9b9f29bfd96ba0ba7dfd4c8af4` repairs the clean-file staging
-   environment generator/caller contract and rejects a symlinked root image
-   manifest with regression coverage. Its independent delta review is clean;
-   exact-head CI, CodeQL, staging-security gate, runtime substrate gate, and all
-   five final-image scans passed, with zero open branch CodeQL alerts.
-7. **Founder command center:** `progress.ventureos.site` is maintained from the
-   separate operations repository and must clearly separate live evidence from
-   validated-but-unmerged work.
+1. **Private staging experience:** PR #50 at exact head
+   `f4a9f1a28fcf1afabc54303ebd76feb7c96e6c76` is a clean, fully green draft
+   modernizing the core workspace shell and product surfaces. It is validated
+   but unmerged and undeployed.
+2. **Secure collaboration:** PR #55 at exact head
+   `13e3846d4be091b5f828cda3fcfb5e5b005c4715` is a clean, fully green draft
+   stacked on PR #50 at `f4a9f1a28fcf1afabc54303ebd76feb7c96e6c76`.
+   Founder authorization, account-bound invitation continuation,
+   active-workspace sessions, retained-role semantics, tenant-scoped
+   revocation, migration behavior, and a real workspace-switch browser journey
+   are covered. CI, CodeQL, the staging-security gate, Prisma/runtime gates, and
+   all five final-image scans passed. It remains unmerged and undeployed.
+3. **Public journey:** operations-repository PR #21 at
+   `f6c0c952b5446eb6e0fb67418b58944ee1abf085` is a validated, unmerged public
+   welcome-journey candidate. It must remain honest about pilot status and must
+   not expose protected or confidential information.
+4. **Founder command center:** operations-repository PR #20 at
+   `12eb5cad692bda5a02f8ed9da2a5c4ac0fdc47db` is an unmerged progress-dashboard
+   candidate that must be reconciled after the product sequence. The protected
+   `progress.ventureos.site` must distinguish current `main`, validated drafts,
+   blockers, approvals, deployments, and live evidence without invented
+   percentages or milestone claims.
 
 ### Release, staging, and pilot sequence
 
-1. Review and merge the focused security/reliability prerequisites in their
-   dependency order. Reconcile PR #52 before PR #50, and rerun the resulting
-   product head rather than relying on checks from an ancestor branch.
-2. Select an exact merged release commit, build and scan all five immutable
+1. Review PR #50 at its exact head and obtain merge approval. After it lands,
+   reconcile PR #55 onto the resulting `main`, rerun every required exact-head
+   CI/security/migration/runtime/image gate, review its delta, and obtain merge
+   approval. Passing checks do not authorize either merge.
+2. Reconcile this roadmap and the operations-repository public/progress drafts
+   to the resulting exact merged state. Keep `ventureos.site` public and keep
+   `staging.ventureos.site` and `progress.ventureos.site` Access-protected.
+3. Select one exact merged release-candidate commit, build and scan all five immutable
    application images, and retain digest/SBOM/provenance evidence. Publishing
    those images requires a separate exact-SHA authorization.
-3. Deploy only the authorized digests to Access-protected private staging after
+4. Deploy only the authorized digests to Access-protected private staging after
    a separate deployment authorization. Validate migrations, health, E2E,
    responsive/accessibility behavior, tenant isolation, audit evidence,
    backup/restore, and rollback using synthetic data and disabled live providers.
-4. Run an internal synthetic-data rehearsal. An invited pilot follows only after
+5. Run an internal synthetic-data rehearsal. An invited pilot follows only after
    privacy/terms/data-handling, access, support, incident, and rollback ownership
    are approved. Record observed pilot evidence; do not infer pricing, revenue,
    conversion, or product-market fit from mock data or draft code.
-5. Consider paid/live-provider or production activation only from measured
+6. Consider paid/live-provider or production activation only from measured
    staging/pilot evidence and a separately approved commercial and operational
    plan.
 

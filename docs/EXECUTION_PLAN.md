@@ -1,36 +1,27 @@
 # Execution Plan — Phase 0 to Phase 8
 
 > **CURRENT DELIVERY UPDATE — 2026-08-20.** The Phase 0–8 record below is
-> historical implementation evidence, not a statement that VentureOS is
-> production-ready. The current verified baseline is `main`
-> `56450df103b74add0c5553b8d54e747eb4c1b587` after the PR #49 container/runtime
-> security repair; its post-merge CI passed. No current-main application images
-> were published and no private-staging application deployment was dispatched.
-> Active delivery work is tracked in `ROADMAP.md`: deterministic Stage 6
-> reliability/accessibility, the modern staging shell, secure multi-workspace
-> collaboration, continuous CodeQL/dependency/supply-chain remediation, and the
-> protected progress command center. A draft or local branch is never counted
-> as live product state. Exact current PR, CI, deployment, and blocker evidence
-> belongs in the protected progress site and GitHub, not in an undated claim in
-> this historical plan.
+> historical implementation evidence, not a production-readiness or deployment
+> claim. The current verified baseline is `main`
+> `815935c3463151bff33f724ff0a457fee162d564`. PRs #53, #54, #57, and #52 are
+> merged into that exact baseline; post-merge CI and CodeQL are green and the
+> repository currently has zero open CodeQL alerts. No application image was
+> published and no private-staging application deployment was dispatched.
 >
-> The current draft evidence is specific to exact heads: PR #53
-> `8c9e4c97fcc0079333f35e286c515fd1a7054931` passed its dependency/runtime
-> matrix; PR #54 `d3568e782d6ff346251a0710401fd58959d4ebac` passed its
-> publication-trust-boundary CI, CodeQL, and staging gate; and PR #57
-> `9ee09efe3e1ddd9b9f29bfd96ba0ba7dfd4c8af4` repaired both the clean-file
-> staging generator/caller contract and the root image-manifest symlink boundary.
-> Its independent delta review is clean, and CI, CodeQL, the staging-security
-> gate, runtime substrate gate, and five final-image scans passed with zero open
-> branch CodeQL alerts. PR #55
-> `b07e538a7405fd54bba4f39fefe61bd008ac161c` is independently clean and
-> mergeable as a draft: its founder authorization, account-bound invitation
-> continuation, active-workspace sessions, retained-role semantics, migration
-> behavior, tenant-scoped revocation, and browser journey were reviewed, and its
-> CI, CodeQL, lockfile/runtime evidence, staging-security gate, and five
-> final-image scans passed. PR #51 was closed as obsolete in favor of PR #55.
-> None of these draft results means an image was published or an application was
-> deployed.
+> Current product candidates remain unmerged. PR #50 at
+> `f4a9f1a28fcf1afabc54303ebd76feb7c96e6c76` is a clean, fully green draft for
+> the modern staging experience. PR #55 at
+> `13e3846d4be091b5f828cda3fcfb5e5b005c4715` is a clean, fully green draft
+> stacked on that exact PR #50 head; it covers secure collaboration and includes
+> a real workspace-switch browser journey. Its CI, staging-security, CodeQL,
+> Prisma/runtime, and five-image gates passed. These results apply only to those
+> exact unmerged heads and are not live-product or deployment evidence.
+>
+> Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
+> `ventureos.site` is the public entry point; `staging.ventureos.site` and
+> `progress.ventureos.site` are Access-protected. GitHub remains the source of
+> exact commit and CI evidence; the progress site must mirror that evidence and
+> clearly label validated-but-unmerged work.
 
 This is the single source of truth for "what is actually done" versus "what
 is still to build," across the entire master spec (all numbered phases 0–8, section
