@@ -507,9 +507,9 @@ phase deliverables. Current status:
 1. Preserve Phases 1–8 as historical product-scope evidence. Phase 6 remains
    mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
    mock-only under ADR-010. Neither milestone is a release-readiness claim.
-2. Reconcile and merge the focused security/reliability drafts in dependency
-   order. PR #52 must be reconciled before PR #50, followed by verification of
-   the combined product head.
+2. Preserve the merged PR #52 security/reliability foundation. PR #50 is
+   already reconciled against that exact `main` baseline; review and merge its
+   exact validated head before reconciling the stacked PR #55 candidate.
 3. Only after an exact merged release commit is selected: build and scan the five
    immutable images. Image publication requires separate approval for that exact
    SHA; private-staging deployment requires another separate approval. Neither
