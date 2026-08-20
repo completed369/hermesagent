@@ -22,11 +22,15 @@
 > staging generator/caller contract and the root image-manifest symlink boundary.
 > Its independent delta review is clean, and CI, CodeQL, the staging-security
 > gate, runtime substrate gate, and five final-image scans passed with zero open
-> branch CodeQL alerts. PR #55 `fcce210025cfdc2343ad7d3af63f6a6dad2488e2` has green
-> automated checks but is not merge-ready: founder onboarding lacks a
-> founder-only authorization boundary, and invitation replay/preview behavior
-> exposes an account-existence state oracle. None of these draft results means an
-> image was published or an application was deployed.
+> branch CodeQL alerts. PR #55
+> `b07e538a7405fd54bba4f39fefe61bd008ac161c` is independently clean and
+> mergeable as a draft: its founder authorization, account-bound invitation
+> continuation, active-workspace sessions, retained-role semantics, migration
+> behavior, tenant-scoped revocation, and browser journey were reviewed, and its
+> CI, CodeQL, lockfile/runtime evidence, staging-security gate, and five
+> final-image scans passed. PR #51 was closed as obsolete in favor of PR #55.
+> None of these draft results means an image was published or an application was
+> deployed.
 
 This is the single source of truth for "what is actually done" versus "what
 is still to build," across the entire master spec (all numbered phases 0–8, section
@@ -512,19 +516,17 @@ phase deliverables. Current status:
 1. Preserve Phases 1–8 as historical product-scope evidence. Phase 6 remains
    mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
    mock-only under ADR-010. Neither milestone is a release-readiness claim.
-2. Fix PR #55's two active P1 authorization/privacy findings; rerun exact-head
-   review and required checks.
-3. Reconcile and merge the focused security/reliability drafts in dependency
+2. Reconcile and merge the focused security/reliability drafts in dependency
    order. PR #52 must be reconciled before PR #50, followed by verification of
    the combined product head.
-4. Only after an exact merged release commit is selected: build and scan the five
+3. Only after an exact merged release commit is selected: build and scan the five
    immutable images. Image publication requires separate approval for that exact
    SHA; private-staging deployment requires another separate approval. Neither
    has occurred for the current `main` baseline.
-5. Exercise Access, migrations, health, E2E, accessibility/responsive behavior,
+4. Exercise Access, migrations, health, E2E, accessibility/responsive behavior,
    tenant isolation, audit evidence, backup/restore, and rollback in private
    staging with synthetic data and live providers disabled.
-6. Complete an internal rehearsal before an invited pilot. Pilot access requires
+5. Complete an internal rehearsal before an invited pilot. Pilot access requires
    approved privacy/terms/data-handling, support, incident, and rollback
    ownership. Pricing, revenue, conversion, and product-market-fit claims must
    come from observed evidence, not mock data or forecasts.

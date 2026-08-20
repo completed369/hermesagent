@@ -14,9 +14,13 @@
 > `8c9e4c97fcc0079333f35e286c515fd1a7054931` and PR #54
 > `d3568e782d6ff346251a0710401fd58959d4ebac` have green automated security
 > gates for their stated dependency/runtime and publication-trust-boundary
-> scopes. PR #55 `fcce210025cfdc2343ad7d3af63f6a6dad2488e2` has green checks
-> but two active P1 findings: operator/viewer access to founder onboarding data,
-> and invitation replay/preview behavior that reveals an account-existence state.
+> scopes. PR #55 `b07e538a7405fd54bba4f39fefe61bd008ac161c`
+> is independently clean and mergeable as a draft; CI, CodeQL, lockfile/runtime
+> evidence, the staging-security gate, and all five final-image scans passed.
+> Its prior founder-onboarding authorization and invitation-state findings are
+> resolved with permission/service defense, account-bound continuation,
+> active-workspace sessions, migration and tenant-isolation coverage, and a full
+> browser journey. PR #51 was closed as obsolete in favor of PR #55.
 > PR #57 `9ee09efe3e1ddd9b9f29bfd96ba0ba7dfd4c8af4` repaired the clean-file
 > staging environment generator/caller contract and the root image-manifest
 > symlink boundary. Its independent delta review is clean; exact-head CI,
@@ -83,18 +87,6 @@ deployment or production readiness.
 
 ## Code-level gaps, honestly disclosed
 
-- **Collaboration authorization remains release-blocking in PR #55:** the
-  onboarding controller is session-authenticated but not founder-authorized, so
-  operator/viewer collaborators can read and update founder-only budget, risk,
-  and approval-threshold data. Navigation also exposes the surface. Add
-  founder-role enforcement plus HTTP and UI permission-boundary regressions.
-- **Invitation handling in PR #55 still exposes an account-existence state:** an
-  existing-user acceptance is neutral externally but leaves the invitation
-  active, while a new-user acceptance consumes it. A bearer holder can replay or
-  preview to distinguish those branches. The fix must preserve neutral external
-  behavior, single-use semantics, tenant isolation, and safe workspace-scoped
-  session selection; do not attach an ambiguous second membership to a session
-  without an explicit active-workspace model.
 - **CSRF protection is origin-based, not a synchronizer token**: authenticated
   unsafe methods now require an exact `Origin` match in the API's global guard,
   in addition to `sameSite=lax` and the CORS allowlist. Deployments must keep a

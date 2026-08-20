@@ -39,11 +39,14 @@ application deployment has been dispatched.
    gate passed. No publication workflow was dispatched and no image was
    published.
 5. **Secure collaboration:** PR #55 at
-   `fcce210025cfdc2343ad7d3af63f6a6dad2488e2` has green automated checks but
-   remains blocked by two active P1 review findings: operator/viewer access to
-   founder-only onboarding data and an invitation replay/preview state oracle
-   that can disclose whether an account already exists. Both authorization
-   boundaries need fixes and regression tests before the draft is merge-ready.
+   `b07e538a7405fd54bba4f39fefe61bd008ac161c` is independently clean and
+   mergeable as a draft. Founder onboarding is enforced at permission and
+   service boundaries; existing-account invitation state is neutral and
+   account-bound; active-workspace sessions, retained-role semantics,
+   tenant-scoped revocation, migration/backfill behavior, and the complete
+   public-to-login-to-join path are covered. Exact-head CI, CodeQL, lockfile and
+   runtime evidence, the staging-security gate, and all five final-image scans
+   passed. PR #51 was closed as obsolete in favor of this replacement.
 6. **Security-gate hardening:** PR #57 at
    `9ee09efe3e1ddd9b9f29bfd96ba0ba7dfd4c8af4` repairs the clean-file staging
    environment generator/caller contract and rejects a symlinked root image
@@ -56,23 +59,21 @@ application deployment has been dispatched.
 
 ### Release, staging, and pilot sequence
 
-1. Resolve PR #55's two P1 authorization/privacy findings, then rerun review and
-   all required checks on its new exact head.
-2. Review and merge the focused security/reliability prerequisites in their
+1. Review and merge the focused security/reliability prerequisites in their
    dependency order. Reconcile PR #52 before PR #50, and rerun the resulting
    product head rather than relying on checks from an ancestor branch.
-3. Select an exact merged release commit, build and scan all five immutable
+2. Select an exact merged release commit, build and scan all five immutable
    application images, and retain digest/SBOM/provenance evidence. Publishing
    those images requires a separate exact-SHA authorization.
-4. Deploy only the authorized digests to Access-protected private staging after
+3. Deploy only the authorized digests to Access-protected private staging after
    a separate deployment authorization. Validate migrations, health, E2E,
    responsive/accessibility behavior, tenant isolation, audit evidence,
    backup/restore, and rollback using synthetic data and disabled live providers.
-5. Run an internal synthetic-data rehearsal. An invited pilot follows only after
+4. Run an internal synthetic-data rehearsal. An invited pilot follows only after
    privacy/terms/data-handling, access, support, incident, and rollback ownership
    are approved. Record observed pilot evidence; do not infer pricing, revenue,
    conversion, or product-market fit from mock data or draft code.
-6. Consider paid/live-provider or production activation only from measured
+5. Consider paid/live-provider or production activation only from measured
    staging/pilot evidence and a separately approved commercial and operational
    plan.
 
