@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 const FOUNDER_EMAIL = process.env.DEV_FOUNDER_EMAIL ?? 'founder@ventureos.local';
 const FOUNDER_PASSWORD = process.env.DEV_FOUNDER_PASSWORD ?? 'change-me-dev-only';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
 const CORS_HEADERS = {
   'access-control-allow-credentials': 'true',
   'access-control-allow-headers': 'content-type',
@@ -31,9 +32,13 @@ async function fulfillJson(route: Route, body: unknown, waitFor?: Promise<void>)
 }
 
 async function login(page: Page) {
+  await loginAs(page, FOUNDER_EMAIL, FOUNDER_PASSWORD);
+}
+
+async function loginAs(page: Page, email: string, password: string) {
   await page.goto('/login');
-  await page.getByTestId('login-email').fill(FOUNDER_EMAIL);
-  await page.getByTestId('login-password').fill(FOUNDER_PASSWORD);
+  await page.getByTestId('login-email').fill(email);
+  await page.getByTestId('login-password').fill(password);
   await page.getByTestId('login-submit').click();
   await expect(page).toHaveURL(/\/dashboard/);
 }
@@ -294,5 +299,161 @@ test.describe('Collaborative workspace UI behavior', () => {
     });
     expect(requests[3]?.url).toMatch(/\/api\/workspace-invitations\/accept-authenticated$/);
     expect(requests.every((request) => !request.url.includes(token))).toBe(true);
+  });
+
+  test('switches the live tenant shell and recovers from a denied switch', async ({
+    browser,
+    page,
+  }, testInfo) => {
+    const suffix = `${Date.now()}-${testInfo.parallelIndex}`;
+    const ownWorkspaceName = `Solo Workspace ${suffix}`;
+    const ownBrandName = `Solo Capsule ${suffix}`;
+    const memberEmail = `workspace-switch-${suffix}@example.test`;
+    const memberPassword = `Switch-${suffix}-A9!`;
+
+    const founderContext = await browser.newContext();
+    const founderPage = await founderContext.newPage();
+    await login(founderPage);
+    const targetSummaryResponse = await founderPage.request.get(
+      `${API_BASE_URL}/api/workspaces/current`,
+    );
+    expect(targetSummaryResponse.ok()).toBe(true);
+    const targetSummary = (await targetSummaryResponse.json()) as {
+      workspace: { id: string; name: string };
+      branding: { brandName: string | null } | null;
+      integrations: Array<{ provider: string }>;
+    };
+    const targetProvider = targetSummary.integrations[0]?.provider;
+    expect(targetProvider).toBeTruthy();
+    const invitationResponse = await founderPage.request.post(
+      `${API_BASE_URL}/api/workspaces/invitations`,
+      { data: { roleKey: 'VIEWER', expiresInHours: 1 } },
+    );
+    expect(invitationResponse.ok()).toBe(true);
+    const invitation = (await invitationResponse.json()) as { token: string };
+    await founderContext.close();
+
+    await page.goto('/register');
+    await page.getByLabel('Workspace name').fill(ownWorkspaceName);
+    await page.getByLabel('Your name').fill('Workspace Switch QA');
+    await page.getByLabel('Email').fill(memberEmail);
+    await page.getByLabel('Password').fill(memberPassword);
+    await page.getByRole('button', { name: 'Start free trial' }).click();
+    await expect(page).toHaveURL(/\/login/);
+    await loginAs(page, memberEmail, memberPassword);
+
+    const ownSessionResponse = await page.request.get(`${API_BASE_URL}/api/auth/me`);
+    expect(ownSessionResponse.ok()).toBe(true);
+    const ownSession = (await ownSessionResponse.json()) as {
+      user: { workspaceId: string };
+    };
+    const ownWorkspaceId = ownSession.user.workspaceId;
+    const brandingResponse = await page.request.patch(`${API_BASE_URL}/api/workspaces/branding`, {
+      data: { brandName: ownBrandName, primaryColorHex: '#7C3AED' },
+    });
+    expect(brandingResponse.ok()).toBe(true);
+
+    const acceptedResponse = await page.request.post(
+      `${API_BASE_URL}/api/workspace-invitations/accept-authenticated`,
+      { data: { token: invitation.token } },
+    );
+    expect(acceptedResponse.ok()).toBe(true);
+    const accepted = (await acceptedResponse.json()) as { workspaceId: string };
+    expect(accepted.workspaceId).toBe(targetSummary.workspace.id);
+
+    const resetResponse = await page.request.post(`${API_BASE_URL}/api/workspaces/switch`, {
+      data: { workspaceId: ownWorkspaceId },
+    });
+    expect(resetResponse.ok()).toBe(true);
+    await page.goto('/dashboard');
+
+    const sidebar = page.getByLabel('Workspace sidebar');
+    const switcher = sidebar.locator('.vos-workspace-switcher');
+    const selector = switcher.getByRole('combobox', { name: 'Active workspace' });
+    await expect(selector).toHaveValue(ownWorkspaceId);
+    await expect(sidebar.locator('.vos-dashboard-brand strong')).toHaveText(ownBrandName);
+    await expect(sidebar.getByRole('link', { name: 'Settings' })).toBeVisible();
+    await expect(page.getByRole('main')).not.toContainText(targetProvider!);
+    await expect(
+      selector.getByRole('option', { name: `${targetSummary.workspace.name} · Viewer` }),
+    ).toBeAttached();
+
+    const switchGate = deferred();
+    let observedSwitch: { body: unknown; method: string } | undefined;
+    const allowSwitch = async (route: Route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      observedSwitch = {
+        body: route.request().postDataJSON(),
+        method: route.request().method(),
+      };
+      await switchGate.promise;
+      await route.continue();
+    };
+    await page.route('**/api/workspaces/switch', allowSwitch);
+
+    await selector.selectOption(targetSummary.workspace.id);
+    await expect
+      .poll(() => observedSwitch)
+      .toEqual({
+        body: { workspaceId: targetSummary.workspace.id },
+        method: 'POST',
+      });
+    await expect(switcher).toHaveAttribute('aria-busy', 'true');
+    await expect(selector).toBeDisabled();
+    await expect(switcher.getByRole('status')).toHaveText(
+      `Switching to ${targetSummary.workspace.name}.`,
+    );
+
+    switchGate.resolve();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(sidebar.locator('.vos-dashboard-brand strong')).toHaveText(
+      targetSummary.branding?.brandName ?? 'VentureOS',
+    );
+    await expect(selector).toHaveValue(targetSummary.workspace.id);
+    await expect(selector).toBeEnabled();
+    await expect(sidebar.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+    await expect(sidebar.getByRole('link', { name: 'Onboarding' })).toHaveCount(0);
+    await expect(page.getByRole('main')).not.toContainText(ownBrandName);
+    await expect(page.getByRole('main')).toContainText(targetProvider!);
+    await page.unroute('**/api/workspaces/switch', allowSwitch);
+
+    const deniedGate = deferred();
+    const denySwitch = async (route: Route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      await deniedGate.promise;
+      await route.fulfill({
+        status: 403,
+        headers: {
+          ...CORS_HEADERS,
+          'access-control-allow-origin':
+            route.request().headers().origin ?? 'http://localhost:3000',
+        },
+        json: { message: 'Workspace membership is required' },
+      });
+    };
+    await page.route('**/api/workspaces/switch', denySwitch);
+
+    await selector.selectOption(ownWorkspaceId);
+    await expect(switcher).toHaveAttribute('aria-busy', 'true');
+    await expect(selector).toBeDisabled();
+    await expect(switcher.getByRole('status')).toHaveText(`Switching to ${ownWorkspaceName}.`);
+    deniedGate.resolve();
+    await expect(switcher.getByRole('alert')).toHaveText('Workspace membership is required');
+    await expect(switcher).toHaveAttribute('aria-busy', 'false');
+    await expect(selector).toBeEnabled();
+    await expect(selector).toHaveValue(targetSummary.workspace.id);
+    await expect(sidebar.locator('.vos-dashboard-brand strong')).toHaveText(
+      targetSummary.branding?.brandName ?? 'VentureOS',
+    );
+    await expect(sidebar.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+    await expect(page.getByRole('main')).not.toContainText(ownBrandName);
+    await expect(page.getByRole('main')).toContainText(targetProvider!);
+    await page.unroute('**/api/workspaces/switch', denySwitch);
   });
 });
