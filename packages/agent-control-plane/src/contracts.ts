@@ -155,6 +155,7 @@ export interface AgentRun {
   runtimeConnectionId: EntityId;
   status: RunStatus;
   externalRunId?: string;
+  adapterRegistrationId?: EntityId;
   startedAt?: string;
   completedAt?: string;
 }

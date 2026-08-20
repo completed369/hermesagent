@@ -476,6 +476,95 @@ describe('authenticated connection evidence', () => {
       }),
     ).toThrow(ControlPlanePolicyError);
   });
+
+  it('requires trusted provisioning and keeps runtime identity immutable to runtime callers', async () => {
+    const plane = new InMemoryControlPlane({
+      clock: () => NOW,
+      authorityPrincipals: [founder.principalId],
+    });
+    provision(plane);
+    const partial = partialConnection();
+    expect(() => plane.putConnection(runtimePrincipal, partial)).toThrow(/authorizer/);
+    plane.putConnection(founder, partial);
+
+    plane.putRuntime(founder, {
+      id: 'runtime-2',
+      workspaceId: founder.workspaceId,
+      name: 'Second bridge',
+      adapterKind: 'generic.bridge',
+      createdAt: '2026-08-20T12:00:00.000Z',
+    });
+    expect(() =>
+      plane.putConnection(runtimePrincipal, { ...partial, runtimeId: 'runtime-2' }),
+    ).toThrow(/authorizer rotation/);
+    expect(() =>
+      plane.putConnection(runtimePrincipal, {
+        ...partial,
+        authenticatedPrincipalId: otherRuntimePrincipal.principalId,
+      }),
+    ).toThrow(/authorizer rotation/);
+    expect(() =>
+      plane.putConnection(runtimePrincipal, {
+        ...partial,
+        credentialReference: 'secret://runtime/rebound',
+      }),
+    ).toThrow(/authorizer rotation/);
+
+    const connectedPlane = new InMemoryControlPlane({
+      clock: () => NOW,
+      authorityPrincipals: [founder.principalId],
+    });
+    await connect(connectedPlane);
+    connectedPlane.putRuntime(founder, {
+      id: 'runtime-2',
+      workspaceId: founder.workspaceId,
+      name: 'Second bridge',
+      adapterKind: 'generic.bridge',
+      createdAt: '2026-08-20T12:00:00.000Z',
+    });
+    expect(() =>
+      connectedPlane.putConnection(founder, {
+        ...partialConnection(),
+        runtimeId: 'runtime-2',
+        status: 'CONNECTED',
+        registrationProof: {
+          ...partialConnection().registrationProof!,
+          runtimeId: 'runtime-2',
+        },
+        capabilityExchangeProof: {
+          ...partialConnection().capabilityExchangeProof!,
+          runtimeId: 'runtime-2',
+        },
+        heartbeatProof: {
+          connectionId: 'connection-1',
+          principalId: runtimePrincipal.principalId,
+          heartbeatId: 'heartbeat-1',
+          observedAt: '2026-08-20T11:59:55.000Z',
+        },
+        taskRoundTripProof: {
+          connectionId: 'connection-1',
+          principalId: runtimePrincipal.principalId,
+          taskId: 'task-health',
+          runId: 'run-health',
+          resultEventId: 'event-health-result',
+          completedAt: '2026-08-20T11:59:58.000Z',
+        },
+      }),
+    ).toThrow(/correlated result/);
+  });
+
+  it('does not let a partial runtime connection operate tasks', () => {
+    const plane = new InMemoryControlPlane({
+      clock: () => NOW,
+      authorityPrincipals: [founder.principalId],
+    });
+    provision(plane);
+    plane.putConnection(founder, partialConnection());
+    plane.createTask(founder, reviewTask('task-partial-operator'));
+    expect(() =>
+      plane.transitionTask(runtimePrincipal, 'task-partial-operator', 'BLOCKED'),
+    ).toThrow(/bound runtime/);
+  });
 });
 
 describe('runs, events, and budgets', () => {
@@ -910,7 +999,6 @@ describe('runtime adapter boundary', () => {
       }),
     ).toThrow(/does not own/);
 
-    await dispatchAndBind(plane, 'run-dispatch', 'external-123');
     let received: ValidatedRuntimeCancellation | undefined;
     plane.registerRuntimeAdapter(
       founder,
@@ -925,6 +1013,11 @@ describe('runtime adapter boundary', () => {
         },
       }),
     );
+    const dispatch = plane.mintDispatch(founder, 'run-dispatch');
+    await plane.executeDispatch(runtimePrincipal, dispatch);
+    expect(() =>
+      plane.registerRuntimeAdapter(founder, 'runtime-1', runtimeAdapter('replacement-run')),
+    ).toThrow(/active bound runs/);
     const cancellation = plane.mintCancellation(founder, 'run-dispatch');
     await expect(plane.executeCancellation(otherRuntimePrincipal, cancellation)).rejects.toThrow(
       /not bound to this runtime/,

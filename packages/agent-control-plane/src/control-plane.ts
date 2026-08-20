@@ -252,7 +252,25 @@ export class InMemoryControlPlane {
     if (adapter.adapterKind !== runtime.adapterKind) {
       throw new ControlPlanePolicyError('Adapter kind does not match the registered runtime');
     }
-    this.#runtimeAdapters.set(key(context.workspaceId, runtime.id), {
+    const adapterKey = key(context.workspaceId, runtime.id);
+    const previous = this.#runtimeAdapters.get(adapterKey);
+    if (previous) {
+      const hasActiveBoundRun = [...this.#runs.values()].some((run) => {
+        if (
+          run.workspaceId !== context.workspaceId ||
+          run.adapterRegistrationId !== previous.registrationId ||
+          !['QUEUED', 'RUNNING', 'PAUSED'].includes(run.status)
+        ) {
+          return false;
+        }
+        const connection = this.#connections.get(key(run.workspaceId, run.runtimeConnectionId));
+        return connection?.runtimeId === runtime.id;
+      });
+      if (hasActiveBoundRun) {
+        throw new ControlPlanePolicyError('Cannot replace an adapter with active bound runs');
+      }
+    }
+    this.#runtimeAdapters.set(adapterKey, {
       registrationId: randomUUID(),
       adapter: Object.freeze(adapter),
     });
@@ -318,13 +336,28 @@ export class InMemoryControlPlane {
 
   putConnection(context: WorkspaceContext, connection: RuntimeConnection): void {
     assertWorkspace(context, connection.workspaceId);
-    if (
-      !this.#authorityPrincipals.has(context.principalId) &&
-      context.principalId !== connection.authenticatedPrincipalId
-    ) {
-      throw new ControlPlanePolicyError(
-        'Only an authorizer or the bound runtime principal may update a connection',
-      );
+    const connectionKey = key(connection.workspaceId, connection.id);
+    const previous = this.#connections.get(connectionKey);
+    const isAuthorizer = this.#authorityPrincipals.has(context.principalId);
+    if (!previous) {
+      if (!isAuthorizer) {
+        throw new ControlPlanePolicyError('Initial connection provisioning requires an authorizer');
+      }
+    } else if (!isAuthorizer) {
+      if (context.principalId !== previous.authenticatedPrincipalId) {
+        throw new ControlPlanePolicyError(
+          'Connection update requires its existing runtime principal',
+        );
+      }
+      if (
+        connection.runtimeId !== previous.runtimeId ||
+        connection.authenticatedPrincipalId !== previous.authenticatedPrincipalId ||
+        connection.credentialReference !== previous.credentialReference
+      ) {
+        throw new ControlPlanePolicyError(
+          'Runtime identity and credential binding require authorizer rotation',
+        );
+      }
     }
     this.#require(this.#runtimes, context, connection.runtimeId, 'Runtime');
     if (
@@ -334,8 +367,6 @@ export class InMemoryControlPlane {
       throw new ControlPlanePolicyError('Runtime credentials must be stored as secret references');
     }
     this.#validateConnectionProofs(context, connection);
-    const connectionKey = key(connection.workspaceId, connection.id);
-    const previous = this.#connections.get(connectionKey);
     this.#connections.set(connectionKey, structuredClone(connection));
     try {
       if (
@@ -417,11 +448,15 @@ export class InMemoryControlPlane {
     const task = this.#tasks.get(key(connection.workspaceId, roundTrip.taskId));
     const run = this.#runs.get(key(connection.workspaceId, roundTrip.runId));
     const event = this.#eventsById.get(key(connection.workspaceId, roundTrip.resultEventId));
+    const agent = run ? this.#agents.get(key(connection.workspaceId, run.agentId)) : undefined;
     if (
       !task ||
       !run ||
       !event ||
+      !agent ||
       run.taskId !== task.id ||
+      task.assignedAgentId !== agent.id ||
+      agent.runtimeId !== connection.runtimeId ||
       run.runtimeConnectionId !== connection.id ||
       run.status !== 'COMPLETED' ||
       event.runId !== run.id ||
@@ -490,6 +525,7 @@ export class InMemoryControlPlane {
     if (run.status !== 'QUEUED') throw new ControlPlanePolicyError('New runs must start QUEUED');
     if (
       run.externalRunId !== undefined ||
+      run.adapterRegistrationId !== undefined ||
       run.startedAt !== undefined ||
       run.completedAt !== undefined
     ) {
@@ -620,7 +656,12 @@ export class InMemoryControlPlane {
     }
     const result = await adapterRegistration.adapter.start(context, validated);
     assertString(result.externalRunId, 'externalRunId');
-    this.#bindExternalRun(context, run.id, result.externalRunId);
+    this.#bindExternalRun(
+      context,
+      run.id,
+      result.externalRunId,
+      adapterRegistration.registrationId,
+    );
     return { externalRunId: result.externalRunId };
   }
 
@@ -702,7 +743,12 @@ export class InMemoryControlPlane {
     return deepFreeze(structuredClone(stored)) as unknown as ValidatedRuntimeDispatch;
   }
 
-  #bindExternalRun(context: WorkspaceContext, runId: EntityId, externalRunId: string): void {
+  #bindExternalRun(
+    context: WorkspaceContext,
+    runId: EntityId,
+    externalRunId: string,
+    adapterRegistrationId: EntityId,
+  ): void {
     assertString(externalRunId, 'externalRunId');
     const run = this.#require(this.#runs, context, runId, 'External run');
     const connection = this.#require(
@@ -718,6 +764,12 @@ export class InMemoryControlPlane {
     }
     if (!this.#claimedDispatchRuns.has(key(run.workspaceId, run.id))) {
       throw new ControlPlanePolicyError('External run binding requires a claimed dispatch');
+    }
+    const currentAdapter = this.#runtimeAdapters.get(
+      key(context.workspaceId, connection.runtimeId),
+    );
+    if (!currentAdapter || currentAdapter.registrationId !== adapterRegistrationId) {
+      throw new ControlPlanePolicyError('External run adapter registration is stale');
     }
     if (!['QUEUED', 'RUNNING', 'PAUSED'].includes(run.status)) {
       throw new ControlPlanePolicyError('Only an active run may bind an external run');
@@ -735,12 +787,20 @@ export class InMemoryControlPlane {
     if (externalRunAlreadyBound) {
       throw new ControlPlanePolicyError('External run is already bound to another run');
     }
-    this.#runs.set(key(run.workspaceId, run.id), { ...run, externalRunId });
+    this.#runs.set(key(run.workspaceId, run.id), {
+      ...run,
+      externalRunId,
+      adapterRegistrationId,
+    });
   }
 
   mintCancellation(context: WorkspaceContext, runId: EntityId): RuntimeCancellationPermit {
     const run = this.#require(this.#runs, context, runId, 'Cancellation run');
-    if (!['QUEUED', 'RUNNING', 'PAUSED'].includes(run.status) || !run.externalRunId) {
+    if (
+      !['QUEUED', 'RUNNING', 'PAUSED'].includes(run.status) ||
+      !run.externalRunId ||
+      !run.adapterRegistrationId
+    ) {
       throw new ControlPlanePolicyError('Cancellation requires an active bound external run');
     }
     const runKey = key(run.workspaceId, run.id);
@@ -760,10 +820,13 @@ export class InMemoryControlPlane {
     if (!adapterRegistration) {
       throw new ControlPlanePolicyError('Runtime adapter is not registered');
     }
+    if (adapterRegistration.registrationId !== run.adapterRegistrationId) {
+      throw new ControlPlanePolicyError('Originating runtime adapter is no longer registered');
+    }
     const cancellation = {
       cancellationId: randomUUID(),
       connectionId: connection.id,
-      adapterRegistrationId: adapterRegistration.registrationId,
+      adapterRegistrationId: run.adapterRegistrationId,
       runtimePrincipalId: connection.authenticatedPrincipalId!,
       runId: run.id,
       externalRunId: run.externalRunId,
@@ -830,6 +893,7 @@ export class InMemoryControlPlane {
         !['QUEUED', 'RUNNING', 'PAUSED'].includes(run.status) ||
         run.runtimeConnectionId !== connection.id ||
         !run.externalRunId ||
+        run.adapterRegistrationId !== stored.adapterRegistrationId ||
         run.externalRunId !== stored.externalRunId ||
         stored.adapterRegistrationId !==
           this.#runtimeAdapters.get(key(context.workspaceId, connection.runtimeId))
@@ -987,7 +1051,8 @@ export class InMemoryControlPlane {
       (connection) =>
         connection.workspaceId === task.workspaceId &&
         connection.runtimeId === agent.runtimeId &&
-        connection.authenticatedPrincipalId === context.principalId,
+        connection.authenticatedPrincipalId === context.principalId &&
+        this.deriveConnectionStatus(context, connection.id) === 'CONNECTED',
     );
     if (!boundRuntime) {
       throw new ControlPlanePolicyError('Task transition requires an authorizer or bound runtime');
@@ -1238,6 +1303,7 @@ export class InMemoryControlPlane {
         connection.taskRoundTripProof.runId,
         'Task proof run',
       );
+      const agent = this.#require(this.#agents, context, run.agentId, 'Task proof agent');
       const event = this.#require(
         this.#eventsById,
         context,
@@ -1247,6 +1313,8 @@ export class InMemoryControlPlane {
       if (
         run.taskId !== task.id ||
         run.runtimeConnectionId !== connection.id ||
+        task.assignedAgentId !== agent.id ||
+        agent.runtimeId !== connection.runtimeId ||
         event.runId !== run.id ||
         event.actorId !== principal ||
         event.type !== 'run.completed'
