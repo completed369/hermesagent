@@ -5,9 +5,6 @@ name: Publish immutable VentureOS images
 'on':
   workflow_dispatch:
     inputs:
-      source_sha:
-        description: Exact reviewed source commit
-        required: true
       publish_authorized:
         description: Founder has separately authorized image publication
         required: true
@@ -22,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ventureos-image-publication-${{ inputs.source_sha }}
+  group: ventureos-image-publication-${{ github.sha }}
   cancel-in-progress: false
 
 env:
@@ -63,7 +60,7 @@ jobs:
       - name: Enforce founder authorization, canonical source, and stable origins
         shell: bash
         env:
-          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          INPUT_SOURCE_SHA: ${{ github.sha }}
           INPUT_AUTHORIZED: ${{ inputs.publish_authorized }}
           INPUT_PHRASE: ${{ inputs.authorization_phrase }}
           CURRENT_REF: ${{ github.ref }}
@@ -82,11 +79,10 @@ jobs:
       - name: Checkout reviewed source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.source_sha }}
           persist-credentials: false
       - name: Verify checked-out commit
         env:
-          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          INPUT_SOURCE_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$INPUT_SOURCE_SHA"
       - name: Enable Corepack
         run: corepack enable
@@ -141,7 +137,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.source_sha }}
           persist-credentials: false
       - run: corepack enable
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -182,7 +177,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.source_sha }}
           persist-credentials: false
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Build exact linux/amd64 image to a runner-local archive
@@ -194,13 +188,13 @@ jobs:
           platforms: linux/amd64
           push: false
           no-cache: true
-          tags: local/ventureos-${{ matrix.image }}:${{ inputs.source_sha }}
+          tags: local/ventureos-${{ matrix.image }}:${{ github.sha }}
           outputs: type=docker,dest=/tmp/ventureos-${{ matrix.image }}.tar
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=${{ env.STAGING_API_ORIGIN }}
           labels: |
             org.opencontainers.image.source=https://github.com/completed369/hermesagent
-            org.opencontainers.image.revision=${{ inputs.source_sha }}
+            org.opencontainers.image.revision=${{ github.sha }}
       - name: Generate complete vulnerability JSON evidence
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -266,7 +260,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: scanned-${{ matrix.image }}-${{ inputs.source_sha }}
+          name: scanned-${{ matrix.image }}-${{ github.sha }}
           path: |
             /tmp/ventureos-${{ matrix.image }}.tar
             /tmp/ventureos-${{ matrix.image }}.trivy.json
@@ -296,7 +290,7 @@ jobs:
       - name: Download exact scanned bytes
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: scanned-${{ matrix.image }}-${{ inputs.source_sha }}
+          name: scanned-${{ matrix.image }}-${{ github.sha }}
           path: /tmp/scanned
       - name: Login to GHCR with job-scoped GITHUB_TOKEN
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -309,7 +303,7 @@ jobs:
         shell: bash
         env:
           IMAGE_NAME: ${{ matrix.image }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
           docker load --input "/tmp/scanned/ventureos-${IMAGE_NAME}.tar"
@@ -349,7 +343,7 @@ jobs:
       - name: Upload digest evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: digest-${{ matrix.image }}-${{ inputs.source_sha }}
+          name: digest-${{ matrix.image }}-${{ github.sha }}
           path: /tmp/${{ matrix.image }}.digest
           if-no-files-found: error
           retention-days: 90
@@ -366,11 +360,10 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.source_sha }}
           persist-credentials: false
       - name: Verify manifest schema source
         env:
-          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          INPUT_SOURCE_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$INPUT_SOURCE_SHA"
       - run: corepack enable
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -380,12 +373,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: digest-*-${{ inputs.source_sha }}
+          pattern: digest-*-${{ github.sha }}
           path: /tmp/digests
           merge-multiple: true
       - name: Require exactly five unique digest-pinned images
         env:
-          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
           test "$(find /tmp/digests -name '*.digest' -type f | wc -l)" -eq 5
@@ -406,7 +399,7 @@ jobs:
       - name: Preserve digest manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ventureos-images-${{ inputs.source_sha }}
+          name: ventureos-images-${{ github.sha }}
           path: ventureos-images.json
           if-no-files-found: error
           retention-days: 90

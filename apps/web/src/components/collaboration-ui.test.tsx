@@ -3,6 +3,7 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 vi.mock('next/navigation', () => ({
+  usePathname: () => '/dashboard',
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 vi.stubGlobal('React', React);

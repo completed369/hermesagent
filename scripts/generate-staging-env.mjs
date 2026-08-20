@@ -1,9 +1,61 @@
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { chmodSync, existsSync, lstatSync, mkdirSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-const target = resolve(process.argv[2] ?? '.staging/phase15.env');
-const force = process.argv.includes('--force');
+const repositoryRoot = resolve(import.meta.dirname, '..');
+const stagingRoot = join(repositoryRoot, '.staging');
+let targetArgument = '.staging/phase15.env';
+let targetWasProvided = false;
+let force = false;
+
+for (let index = 2; index < process.argv.length; index += 1) {
+  const argument = process.argv[index];
+  if (argument === '--force' && !force) {
+    force = true;
+    continue;
+  }
+  if (argument === '--target' && !targetWasProvided) {
+    const value = process.argv[index + 1];
+    if (!value || value.startsWith('--')) {
+      throw new Error('--target requires a repository-local .staging environment file');
+    }
+    targetArgument = value;
+    targetWasProvided = true;
+    index += 1;
+    continue;
+  }
+  throw new Error(
+    'generate-staging-env accepts only --target <path> and the optional --force flag',
+  );
+}
+
+const candidateTarget = resolve(repositoryRoot, targetArgument);
+const targetRelative = relative(stagingRoot, candidateTarget);
+const targetName = basename(candidateTarget);
+if (
+  !targetRelative ||
+  isAbsolute(targetRelative) ||
+  targetRelative.startsWith('..') ||
+  dirname(targetRelative) !== '.' ||
+  !/^[A-Za-z0-9][A-Za-z0-9._-]*\.env$/.test(targetName)
+) {
+  throw new Error(
+    'staging environment target must be a direct .env file inside repository .staging',
+  );
+}
+const target = join(stagingRoot, targetName);
+
+mkdirSync(stagingRoot, { recursive: true });
+const stagingRootMetadata = lstatSync(stagingRoot);
+if (!stagingRootMetadata.isDirectory() || stagingRootMetadata.isSymbolicLink()) {
+  throw new Error('repository .staging must be a real directory');
+}
+if (existsSync(target)) {
+  const targetMetadata = lstatSync(target);
+  if (!targetMetadata.isFile() || targetMetadata.isSymbolicLink()) {
+    throw new Error('staging environment target must be a regular file');
+  }
+}
 if (existsSync(target) && !force) {
   console.log(`Synthetic staging environment already exists: ${target}`);
   process.exit(0);
@@ -43,7 +95,6 @@ const lines = [
   '',
 ];
 
-mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, lines.join('\n'), { encoding: 'utf8', mode: 0o600 });
 try {
   chmodSync(target, 0o600);

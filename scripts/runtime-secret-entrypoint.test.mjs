@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { applySecretFiles } from './runtime-secret-entrypoint.mjs';
+import { applySecretFiles, resolveRuntimeCommand } from './runtime-secret-entrypoint.mjs';
 
 const withSecretDirectory = (run) => {
   const directory = mkdtempSync(join(tmpdir(), 'ventureos-secret-adapter-'));
@@ -76,4 +76,47 @@ test('runtime secret adapter enforces the required PostgreSQL migration role', (
       }),
     /must explicitly assume PostgreSQL role ventureos_owner/,
   );
+});
+
+test('runtime entrypoint accepts only immutable image commands', () => {
+  assert.deepEqual(resolveRuntimeCommand(['/nodejs/bin/node', 'dist/main.js']), {
+    command: '/nodejs/bin/node',
+    arguments: ['dist/main.js'],
+  });
+  assert.deepEqual(resolveRuntimeCommand(['/nodejs/bin/node', 'dist/index.js']), {
+    command: '/nodejs/bin/node',
+    arguments: ['dist/index.js'],
+  });
+  assert.deepEqual(
+    resolveRuntimeCommand([
+      '/nodejs/bin/node',
+      'node_modules/prisma/build/index.js',
+      'migrate',
+      'deploy',
+      '--schema',
+      'prisma/schema.prisma',
+    ]),
+    {
+      command: '/nodejs/bin/node',
+      arguments: [
+        'node_modules/prisma/build/index.js',
+        'migrate',
+        'deploy',
+        '--schema',
+        'prisma/schema.prisma',
+      ],
+    },
+  );
+});
+
+test('runtime entrypoint rejects executable or argument overrides', () => {
+  assert.throws(
+    () => resolveRuntimeCommand(['/bin/sh', '-c', 'echo unsafe']),
+    /not approved for this immutable image/,
+  );
+  assert.throws(
+    () => resolveRuntimeCommand(['/nodejs/bin/node', 'dist/main.js', '--inspect']),
+    /not approved for this immutable image/,
+  );
+  assert.throws(() => resolveRuntimeCommand([]), /not approved for this immutable image/);
 });

@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { serverApiFetch } from '@/lib/server-api';
+import { DataSurface, EmptyState, PageHeader } from '@/components/workspace-ui';
+import { resolveListResponse } from '@/lib/list-response';
 
 interface ProductListItem {
   id: string;
@@ -23,56 +25,57 @@ function statusBadgeClass(status: string) {
 
 export default async function ProductStudioPage() {
   const { data, status } = await serverApiFetch<ProductListItem[]>('/products');
-
-  // A non-2xx (auth/permission/API failure) renders a safe unavailable state.
-  // We never pretend there are no products when the request simply failed.
-  const unavailable = status !== 200;
-  const products = data ?? [];
+  const products = resolveListResponse(data, status);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Product Studio</h1>
-        <p style={{ color: 'var(--vos-text-muted)', fontSize: 13, marginTop: 4 }}>
-          Generated products and their listing workflows. Products are created from an approved
-          venture proposal in the Board Room.
-        </p>
-      </div>
-
-      <div className="vos-card">
-        {unavailable ? (
-          <p style={{ color: 'var(--vos-text-muted)', fontSize: 14 }}>
-            Product list is currently unavailable. Please try again later.
-          </p>
-        ) : products.length === 0 ? (
-          <p style={{ color: 'var(--vos-text-muted)', fontSize: 14 }}>
-            No products yet. Promote and approve a venture in the Board Room, then start product
-            generation to create one.
-          </p>
+    <div className="vos-page-stack">
+      <PageHeader
+        eyebrow="Creation pipeline"
+        title="Products"
+        description="Review generated products and the governed listing workflows connected to approved ventures."
+      />
+      <DataSurface
+        title="Product studio"
+        description={
+          products.kind === 'unavailable'
+            ? 'Product count unavailable'
+            : `${products.items.length} products in this workspace`
+        }
+      >
+        {products.kind === 'unavailable' ? (
+          <EmptyState title="Products unavailable">
+            The product list could not be loaded. No empty-state assumptions have been made; please
+            retry.
+          </EmptyState>
+        ) : products.kind === 'empty' ? (
+          <EmptyState title="No products yet">
+            Approve a venture in the Board Room, then begin generation to create a product.
+          </EmptyState>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table className="vos-data-table">
             <thead>
-              <tr style={{ textAlign: 'left', color: 'var(--vos-text-muted)' }}>
-                <th style={{ padding: '8px 0' }}>Product</th>
+              <tr>
+                <th>Product</th>
                 <th>Source opportunity</th>
                 <th>Status</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {products.map((p) => (
-                <tr key={p.id} style={{ borderTop: '1px solid var(--vos-border)' }}>
-                  <td style={{ padding: '10px 0' }}>{p.title}</td>
-                  <td>{p.ventureProposal?.opportunity.title ?? '—'}</td>
-                  <td>
+              {products.items.map((p) => (
+                <tr key={p.id}>
+                  <td data-label="Product">
+                    <strong>{p.title}</strong>
+                  </td>
+                  <td data-label="Source opportunity">
+                    {p.ventureProposal?.opportunity.title ?? '—'}
+                  </td>
+                  <td data-label="Status">
                     <span className={statusBadgeClass(p.status)}>{p.status}</span>
                   </td>
-                  <td>
-                    <Link
-                      href={`/dashboard/products/${p.id}`}
-                      style={{ color: 'var(--vos-accent)' }}
-                    >
-                      Open
+                  <td data-label="Action">
+                    <Link href={`/dashboard/products/${p.id}`} className="vos-row-link">
+                      Open <span aria-hidden="true">↗</span>
                     </Link>
                   </td>
                 </tr>
@@ -80,7 +83,7 @@ export default async function ProductStudioPage() {
             </tbody>
           </table>
         )}
-      </div>
+      </DataSurface>
     </div>
   );
 }

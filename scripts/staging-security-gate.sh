@@ -5,11 +5,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 ENV_FILE=${STAGING_ENV_FILE:-.staging/phase15.env}
 COMPOSE_FILE=docker-compose.staging.yml
-mkdir -p .staging
-
-if [[ ! -f "$ENV_FILE" ]]; then
-  node scripts/generate-staging-env.mjs "$ENV_FILE"
-fi
+node scripts/generate-staging-env.mjs --target "$ENV_FILE"
 
 compose() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"

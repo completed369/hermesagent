@@ -123,10 +123,20 @@ test('staging image and topology contracts are fail-closed', () => {
   assert.match(ingressProxy, /new Map\(\[\s*\['api', 3001\],\s*\['web', 3000\],?\s*\]\)/);
   assert.doesNotMatch(ingressProxy, /UPSTREAM_HOST|UPSTREAM_PORT/);
   assert.match(imageScan, /ingress_image/);
+  assert.match(gate, /node scripts\/generate-staging-env\.mjs --target "\$ENV_FILE"/);
   assert.match(
     ci,
     /if ! test -f \.staging\/phase15\.env; then\s+node scripts\/generate-staging-env\.mjs/,
   );
+});
+
+test('runtime entrypoint changes trigger the complete image security matrix', () => {
+  const workflow = read('.github/workflows/runtime-substrate-remediation.yml');
+
+  assert.match(workflow, /paths:\s*[\s\S]*?- 'scripts\/runtime-secret-entrypoint\.mjs'/);
+  assert.match(workflow, /image: \[api, web, worker, tools, ingress\]/);
+  assert.match(workflow, /Enforce fresh scanner database and CISA KEV policy/);
+  assert.match(workflow, /Generate SPDX JSON SBOM/);
 });
 
 test('the immutable migration chain matches the reviewed sequence', () => {
