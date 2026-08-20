@@ -1,23 +1,49 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-const API_BASE = process.env.STAGING_LOAD_API_BASE_URL ?? 'http://localhost:3001/api';
-const WEB_ORIGIN =
-  process.env.STAGING_LOAD_WEB_ORIGIN ?? process.env.E2E_BASE_URL ?? 'http://localhost:3000';
+const API_BASE = 'http://127.0.0.1:3001/api';
+const repositoryRoot = resolve(import.meta.dirname, '..');
+const RESULT_FILE = join(repositoryRoot, '.staging', 'load-results.json');
+const WEB_ORIGIN = validateWebOrigin(
+  process.env.STAGING_LOAD_WEB_ORIGIN ?? process.env.E2E_BASE_URL ?? 'http://localhost:3000',
+);
 const EMAIL = process.env.STAGING_FOUNDER_EMAIL ?? process.env.DEV_FOUNDER_EMAIL;
 const PASSWORD = process.env.STAGING_FOUNDER_PASSWORD ?? process.env.DEV_FOUNDER_PASSWORD;
-const RESULT_FILE = resolve(process.env.STAGING_LOAD_RESULT_FILE ?? '.staging/load-results.json');
-const RATE_LIMIT_SETTLE_MS = Number(process.env.STAGING_LOAD_RATE_LIMIT_SETTLE_MS ?? 65_000);
+const RATE_LIMIT_SETTLE_MS = 65_000;
 const CANONICAL_OPPORTUNITY_TITLE = 'Social Media Content Planning Kit';
 
 if (!EMAIL || !PASSWORD) throw new Error('Synthetic staging founder credentials are required');
 
+function validateWebOrigin(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('Synthetic staging web origin must be a valid URL');
+  }
+  if (
+    parsed.protocol !== 'http:' ||
+    !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname) ||
+    parsed.port !== '3000' ||
+    parsed.pathname !== '/' ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new Error('Synthetic staging web origin must be loopback HTTP on port 3000');
+  }
+  return parsed.origin;
+}
+
+const encodePathSegment = (value) => encodeURIComponent(String(value));
+
 function percentile(values, p) {
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[
-    Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))
-  ] ?? 0;
+  return (
+    sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))] ?? 0
+  );
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,17 +159,21 @@ if (!proposalId) {
     (item) => item?.title === CANONICAL_OPPORTUNITY_TITLE,
   );
   if (!opportunity?.id) throw new Error('Canonical seeded opportunity is unavailable');
-  const promotion = await fetchTimed(`/opportunities/${opportunity.id}/promote`, {
-    method: 'POST',
-    headers: authMutationHeaders,
-  });
+  const promotion = await fetchTimed(
+    `/opportunities/${encodePathSegment(opportunity.id)}/promote`,
+    {
+      method: 'POST',
+      headers: authMutationHeaders,
+    },
+  );
   if (![200, 201].includes(promotion.response.status) || !promotion.body?.proposal?.id) {
     throw new Error(`Opportunity promotion failed: ${promotion.response.status}`);
   }
   proposalId = promotion.body.proposal.id;
 }
 
-const reviewsBefore = await fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, {
+const encodedProposalId = encodePathSegment(proposalId);
+const reviewsBefore = await fetchTimed(`/venture-proposals/${encodedProposalId}/board-reviews`, {
   headers: authHeaders,
 });
 if (reviewsBefore.response.status !== 200 || !Array.isArray(reviewsBefore.body)) {
@@ -158,7 +188,7 @@ results.push(
     20,
     20,
     () =>
-      fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, {
+      fetchTimed(`/venture-proposals/${encodedProposalId}/board-reviews`, {
         method: 'POST',
         headers: authMutationHeaders,
       }),
@@ -169,7 +199,7 @@ results.push(
 let completedReviews = completedBefore;
 const reviewDeadline = Date.now() + 120_000;
 while (Date.now() < reviewDeadline) {
-  const reviews = await fetchTimed(`/venture-proposals/${proposalId}/board-reviews`, {
+  const reviews = await fetchTimed(`/venture-proposals/${encodedProposalId}/board-reviews`, {
     headers: authHeaders,
   });
   if (reviews.response.status === 200 && Array.isArray(reviews.body)) {
@@ -184,7 +214,11 @@ if (newlyCompletedReviews < 20) {
 }
 
 const contracts = await fetchTimed('/research/contracts', { headers: authHeaders });
-if (contracts.response.status !== 200 || !Array.isArray(contracts.body) || contracts.body.length === 0) {
+if (
+  contracts.response.status !== 200 ||
+  !Array.isArray(contracts.body) ||
+  contracts.body.length === 0
+) {
   throw new Error('Research contracts are unavailable for load testing');
 }
 const contract =
@@ -201,7 +235,7 @@ results.push(
     20,
     20,
     () =>
-      fetchTimed(`/research/contracts/${contract.id}/run`, {
+      fetchTimed(`/research/contracts/${encodePathSegment(contract.id)}/run`, {
         method: 'POST',
         headers: authMutationHeaders,
       }),
