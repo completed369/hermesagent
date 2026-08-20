@@ -7,6 +7,41 @@ const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const imagePattern = /^\s*image:\s+([^\s#]+)/gm;
 
+const indentedBlock = (source, marker, indentation) => {
+  const linePrefix = ' '.repeat(indentation);
+  const markerLine = `${linePrefix}${marker}\n`;
+  const start = source.indexOf(markerLine);
+  assert.notEqual(start, -1, `missing YAML block: ${marker}`);
+  const contentStart = start + markerLine.length;
+  const tail = source.slice(contentStart);
+  const next = tail.search(new RegExp(`^${linePrefix}\\S`, 'm'));
+  return next === -1 ? tail : tail.slice(0, next);
+};
+
+const jobBlock = (workflow, name) => indentedBlock(workflow, `${name}:`, 2);
+
+const stepBlock = (job, name) => {
+  const marker = `      - name: ${name}\n`;
+  const start = job.indexOf(marker);
+  assert.notEqual(start, -1, `missing workflow step: ${name}`);
+  const tail = job.slice(start + marker.length);
+  const next = tail.search(/^      - /m);
+  return next === -1 ? tail : tail.slice(0, next);
+};
+
+const checkoutSteps = (workflow) => {
+  const starts = [...workflow.matchAll(/^      - /gm)];
+  return starts
+    .map((match, index) => workflow.slice(match.index, starts[index + 1]?.index ?? workflow.length))
+    .filter((step) => /uses: actions\/checkout@[0-9a-f]{40}/.test(step));
+};
+
+const dispatchSourceIsApproved = ({ dispatchSha, dispatchRef, approvedSha, approvedRef }) =>
+  /^[0-9a-f]{40}$/.test(dispatchSha) &&
+  /^refs\/heads\/[A-Za-z0-9._/-]+$/.test(approvedRef) &&
+  dispatchSha === approvedSha &&
+  dispatchRef === approvedRef;
+
 const serviceBlock = (compose, name) => {
   const marker = `  ${name}:\n`;
   const start = compose.indexOf(marker);
@@ -28,16 +63,109 @@ test('publication workflow is disabled by default and enforces explicit founder 
 
 test('publication workflow binds all evidence and publication to one exact reviewed source SHA', () => {
   const workflow = read('.github/workflows/publish-images.yml');
+  const validate = jobBlock(workflow, 'validate');
+  const authorization = stepBlock(
+    validate,
+    'Enforce founder authorization, canonical source, and stable origins',
+  );
   assert.match(workflow, /VENTUREOS_APPROVED_PUBLICATION_SHA/);
   assert.match(workflow, /VENTUREOS_APPROVED_PUBLICATION_REF/);
-  assert.match(workflow, /test "\$CURRENT_REF" = "\$EXPECTED_SOURCE_REF"/);
-  assert.match(workflow, /\^\[0-9a-f\]\{40\}\$/);
-  assert.match(workflow, /git rev-parse HEAD/);
-  assert.match(workflow, /ref: \$\{\{ inputs\.source_sha \}\}/);
+  assert.match(authorization, /INPUT_SOURCE_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(authorization, /CURRENT_REF: \$\{\{ github\.ref \}\}/);
+  assert.match(authorization, /test "\$INPUT_SOURCE_SHA" = "\$EXPECTED_SOURCE_SHA"/);
+  assert.match(authorization, /test "\$CURRENT_REF" = "\$EXPECTED_SOURCE_REF"/);
+  assert.match(authorization, /\^\[0-9a-f\]\{40\}\$/);
+  assert.doesNotMatch(workflow, /inputs\.source_sha/);
+  const checkouts = checkoutSteps(workflow);
+  assert.equal(checkouts.length, 4, 'expected each of the four source-consuming jobs to checkout');
+  for (const checkout of checkouts) {
+    assert.match(checkout, /persist-credentials: false/);
+    assert.doesNotMatch(checkout, /^\s+ref:/m, 'checkout must use the immutable dispatch SHA');
+  }
+  assert.match(stepBlock(validate, 'Verify checked-out commit'), /git rev-parse HEAD/);
   assert.match(workflow, /pnpm install --frozen-lockfile/);
   assert.match(workflow, /platforms: linux\/amd64/);
   assert.match(workflow, /sha-\$\{SOURCE_SHA\}/);
   assert.doesNotMatch(workflow, /:latest\b/);
+});
+
+test('publication workflow rejects untrusted refs and mismatched dispatch commits', () => {
+  const approvedSha = 'a'.repeat(40);
+  const approvedRef = 'refs/heads/main';
+  assert.equal(
+    dispatchSourceIsApproved({
+      dispatchSha: approvedSha,
+      dispatchRef: approvedRef,
+      approvedSha,
+      approvedRef,
+    }),
+    true,
+  );
+  assert.equal(
+    dispatchSourceIsApproved({
+      dispatchSha: 'b'.repeat(40),
+      dispatchRef: approvedRef,
+      approvedSha,
+      approvedRef,
+    }),
+    false,
+    'a different dispatch commit must not inherit the approved SHA authorization',
+  );
+  assert.equal(
+    dispatchSourceIsApproved({
+      dispatchSha: approvedSha,
+      dispatchRef: 'refs/heads/untrusted-publication-source',
+      approvedSha,
+      approvedRef,
+    }),
+    false,
+    'an untrusted dispatch ref must not inherit the approved ref authorization',
+  );
+  assert.equal(
+    dispatchSourceIsApproved({
+      dispatchSha: approvedSha,
+      dispatchRef: 'refs/pull/54/merge',
+      approvedSha,
+      approvedRef: 'refs/pull/54/merge',
+    }),
+    false,
+    'pull-request merge refs are never valid publication sources',
+  );
+});
+
+test('publication workflow section bindings keep build, evidence, publish, and manifest on github.sha', () => {
+  const workflow = read('.github/workflows/publish-images.yml');
+  const buildScan = jobBlock(workflow, 'build-scan');
+  const publish = jobBlock(workflow, 'publish');
+  const manifest = jobBlock(workflow, 'manifest');
+
+  const build = stepBlock(buildScan, 'Build exact linux/amd64 image to a runner-local archive');
+  assert.match(build, /tags: local\/ventureos-\$\{\{ matrix\.image \}\}:\$\{\{ github\.sha \}\}/);
+  assert.match(build, /org\.opencontainers\.image\.revision=\$\{\{ github\.sha \}\}/);
+
+  const scannedUpload = stepBlock(
+    buildScan,
+    'Preserve exact scanned bytes, policy evidence, and SBOM',
+  );
+  assert.match(scannedUpload, /name: scanned-\$\{\{ matrix\.image \}\}-\$\{\{ github\.sha \}\}/);
+
+  const scannedDownload = stepBlock(publish, 'Download exact scanned bytes');
+  assert.match(scannedDownload, /name: scanned-\$\{\{ matrix\.image \}\}-\$\{\{ github\.sha \}\}/);
+  const push = stepBlock(publish, 'Push immutable SHA tag and record registry digest');
+  assert.match(push, /SOURCE_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(push, /sha-\$\{SOURCE_SHA\}/);
+  const digestUpload = stepBlock(publish, 'Upload digest evidence');
+  assert.match(digestUpload, /name: digest-\$\{\{ matrix\.image \}\}-\$\{\{ github\.sha \}\}/);
+
+  const manifestSource = stepBlock(manifest, 'Verify manifest schema source');
+  assert.match(manifestSource, /INPUT_SOURCE_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(manifestSource, /git rev-parse HEAD/);
+  assert.match(manifest, /pattern: digest-\*-\$\{\{ github\.sha \}\}/);
+  const assemble = stepBlock(manifest, 'Require exactly five unique digest-pinned images');
+  assert.match(assemble, /SOURCE_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(assemble, /sourceCommit:\$source/);
+  const finalArtifact = stepBlock(manifest, 'Preserve digest manifest');
+  assert.match(finalArtifact, /name: ventureos-images-\$\{\{ github\.sha \}\}/);
 });
 
 test('publication workflow gates and records all five images', () => {
