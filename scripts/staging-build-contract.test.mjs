@@ -123,6 +123,7 @@ test('staging image and topology contracts are fail-closed', () => {
   assert.match(ingressProxy, /new Map\(\[\s*\['api', 3001\],\s*\['web', 3000\],?\s*\]\)/);
   assert.doesNotMatch(ingressProxy, /UPSTREAM_HOST|UPSTREAM_PORT/);
   assert.match(imageScan, /ingress_image/);
+  assert.match(gate, /node scripts\/generate-staging-env\.mjs --target "\$ENV_FILE"/);
   assert.match(
     ci,
     /if ! test -f \.staging\/phase15\.env; then\s+node scripts\/generate-staging-env\.mjs/,

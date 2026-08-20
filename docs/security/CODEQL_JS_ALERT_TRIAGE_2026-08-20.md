@@ -37,8 +37,11 @@ it does not dismiss or suppress any alert.
   path is now the fixed repository `.staging/load-results.json`; the unused
   environment override was removed.
 - **#21–24 (`js/path-injection`) — synthetic environment generator.** Generated
-  credentials now write only to the fixed repository `.staging/phase15.env`.
-  The only accepted CLI option is `--force`.
+  credentials default to repository `.staging/phase15.env`. The staging gate may
+  pass a custom `--target`, but it must be a direct, regular `.env` file in the
+  repository `.staging` directory; traversal, nested paths, symlinks, and other
+  CLI shapes fail closed. The gate validates this boundary even when the target
+  already exists.
 - **#25 (`js/path-injection`) — CI manifest validator.** The validator accepts
   only the repository-root `ventureos-images.json`, requires a regular file and
   caps it at 1 MiB before parsing.
