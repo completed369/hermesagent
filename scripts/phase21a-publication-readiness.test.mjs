@@ -33,7 +33,9 @@ test('publication workflow binds all evidence and publication to one exact revie
   assert.match(workflow, /test "\$CURRENT_REF" = "\$EXPECTED_SOURCE_REF"/);
   assert.match(workflow, /\^\[0-9a-f\]\{40\}\$/);
   assert.match(workflow, /git rev-parse HEAD/);
-  assert.match(workflow, /ref: \$\{\{ inputs\.source_sha \}\}/);
+  assert.match(workflow, /INPUT_SOURCE_SHA: \$\{\{ github\.sha \}\}/);
+  assert.doesNotMatch(workflow, /inputs\.source_sha/);
+  assert.doesNotMatch(workflow, /^\s+ref:\s+\$\{\{.*\}\}/m);
   assert.match(workflow, /pnpm install --frozen-lockfile/);
   assert.match(workflow, /platforms: linux\/amd64/);
   assert.match(workflow, /sha-\$\{SOURCE_SHA\}/);
