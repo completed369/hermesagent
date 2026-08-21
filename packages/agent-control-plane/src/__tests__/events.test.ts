@@ -177,4 +177,26 @@ describe('operational event spine', () => {
       log.append(capability, context, event({ facts: { dependencyIds: ['chain-of-thought'] } })),
     ).toThrow(/Secret-like/);
   });
+
+  it.each([
+    ['event.id', { id: 'password-secret' }],
+    ['subjectType', { subjectType: 'private-reasoning' }],
+    ['subjectId', { subjectId: 'api-key-secret' }],
+    ['idempotencyKey', { idempotencyKey: 'password-secret' }],
+    ['correlationId', { correlationId: 'prompt-secret' }],
+  ])('rejects sensitive text in envelope %s', (_field, override) => {
+    const log = new InMemoryOperationalEventLog();
+    expect(() =>
+      log.append(capability, context, event(override as Partial<OperationalEvent>)),
+    ).toThrow(/safe non-sensitive (reference|subject code)/);
+  });
+
+  it.each([
+    ['workspaceId', { ...context, workspaceId: 'chain-of-thought' }],
+    ['principalId', { ...context, principalId: 'credential-secret' }],
+  ])('rejects sensitive text in capability %s', (_field, binding) => {
+    expect(() =>
+      OperationalEventCapability.issue('AI_COO', [{ ...binding, actorKind: 'HUMAN' }]),
+    ).toThrow(/safe non-sensitive reference/);
+  });
 });

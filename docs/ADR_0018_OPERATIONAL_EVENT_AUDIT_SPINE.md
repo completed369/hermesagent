@@ -41,6 +41,11 @@ that binds a specific workspace and authenticated principal to its actor kind; p
 workspace, source, or actor-kind claims cannot select another namespace. Sink injection does not
 claim that a production ACP process is configured.
 
+`OperationalEventCapability.issue()` is intentionally a trusted composition-root authority. Only
+server-side composition code may call it after resolving the authenticated principal, workspace,
+source, and actor kind. A controller, request payload, runtime message, or adapter must never mint
+its own capability. No production ingestion wiring is introduced by this foundation.
+
 `AuditService.recordOperationalEvent` is the durable application persistence mapper. It validates
 the event again, preserves runtime/agent principals in an immutable textual actor reference, and
 uses the nullable user relation only for a matching authenticated human. It is not yet wired into
@@ -66,6 +71,9 @@ user erasure clears it; the immutable `actorReference` remains bound. It detects
 mutation and supports verification when the stored checksum is independently trusted. It is not
 a digital signature, external transparency log, hash chain, or claim of cryptographic
 tamper-proofing against a database administrator who can rewrite both content and checksum.
+Every optional persisted version-2 field is canonicalized to explicit `NULL` before hashing and
+insertion, so omitted values, caller-supplied nulls, and a database row read produce the same
+verification shape.
 
 Database uniqueness is the durable replay boundary. The in-memory log is only the reference
 contract and test projection.

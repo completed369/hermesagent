@@ -46,7 +46,7 @@ describe('AuditService operational event persistence', () => {
     const data = create.mock.calls[0]?.[0].data;
     expect(data).toMatchObject({
       workspaceId: context.workspaceId,
-      actorId: undefined,
+      actorId: null,
       workspaceReference: context.workspaceId,
       actorReference: 'runtime-1',
       source: 'CONTROL_PLANE',

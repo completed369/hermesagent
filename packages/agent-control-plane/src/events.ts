@@ -94,6 +94,7 @@ const EVENT_SOURCES = new Set<OperationalEvent['source']>([
 ]);
 const ACTOR_KINDS = new Set<OperationalActorKind>(['HUMAN', 'AGENT', 'RUNTIME', 'SYSTEM']);
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
+const SAFE_SUBJECT_TYPE = /^[A-Z][A-Za-z0-9]{0,63}$/u;
 
 type FactKind = 'REFERENCE' | 'REFERENCE_LIST' | 'CODE' | 'INTEGER' | 'BOOLEAN';
 
@@ -158,6 +159,30 @@ const PRIVATE_FACT_TEXT =
 function boundedText(value: unknown, field: string, maximum = 2_048): asserts value is string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > maximum) {
     throw new OperationalEventPolicyError(`${field} must be non-empty and bounded`);
+  }
+}
+
+function safeReference(value: unknown, field: string): asserts value is string {
+  boundedText(value, field, 256);
+  if (
+    !SAFE_REFERENCE.test(value) ||
+    PRIVATE_FACT_VALUE.test(value) ||
+    PRIVATE_FACT_TEXT.test(value)
+  ) {
+    throw new OperationalEventPolicyError(`${field} must be a safe non-sensitive reference`);
+  }
+}
+
+function subjectTypeCode(value: unknown): asserts value is string {
+  boundedText(value, 'event.subjectType', 64);
+  if (
+    !SAFE_SUBJECT_TYPE.test(value) ||
+    PRIVATE_FACT_VALUE.test(value) ||
+    PRIVATE_FACT_TEXT.test(value)
+  ) {
+    throw new OperationalEventPolicyError(
+      'event.subjectType must be a safe non-sensitive subject code',
+    );
   }
 }
 
@@ -242,6 +267,11 @@ export class OperationalEventCapability {
     );
   }
 
+  /**
+   * Trusted composition-root boundary. Callers must derive bindings from an
+   * authenticated server-side principal; request/runtime payloads must never
+   * be allowed to issue their own capability.
+   */
   static issue(
     source: OperationalEvent['source'],
     bindings: readonly OperationalEventPrincipalBinding[],
@@ -253,8 +283,8 @@ export class OperationalEventCapability {
     }
     const keys = new Set<string>();
     for (const binding of bindings) {
-      boundedText(binding.workspaceId, 'capability workspaceId');
-      boundedText(binding.principalId, 'capability principalId');
+      safeReference(binding.workspaceId, 'capability workspaceId');
+      safeReference(binding.principalId, 'capability principalId');
       if (!ACTOR_KINDS.has(binding.actorKind)) {
         throw new OperationalEventPolicyError('Unsupported capability actor kind');
       }
@@ -310,13 +340,13 @@ export function validateOperationalEvent(
   if (context.principalId !== event.actorId) {
     throw new OperationalEventPolicyError('Event actor must match the authenticated principal');
   }
-  boundedText(event.id, 'event.id');
-  boundedText(event.workspaceId, 'event.workspaceId');
-  boundedText(event.actorId, 'event.actorId');
-  boundedText(event.subjectType, 'event.subjectType', 128);
-  boundedText(event.subjectId, 'event.subjectId');
-  boundedText(event.idempotencyKey, 'event.idempotencyKey');
-  if (event.correlationId !== undefined) boundedText(event.correlationId, 'event.correlationId');
+  safeReference(event.id, 'event.id');
+  safeReference(event.workspaceId, 'event.workspaceId');
+  safeReference(event.actorId, 'event.actorId');
+  subjectTypeCode(event.subjectType);
+  safeReference(event.subjectId, 'event.subjectId');
+  safeReference(event.idempotencyKey, 'event.idempotencyKey');
+  if (event.correlationId !== undefined) safeReference(event.correlationId, 'event.correlationId');
   if (!EVENT_TYPES.has(event.type)) {
     throw new OperationalEventPolicyError('Unsupported operational event type');
   }

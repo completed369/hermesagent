@@ -1,39 +1,50 @@
 import { hashObject } from '@ventureos/security';
 
 export interface AuditEventInput {
-  actorId?: string;
+  actorId?: string | null;
   action: string;
   entityType: string;
   entityId: string;
   before?: unknown;
   after?: unknown;
-  correlationId?: string;
-  workflowId?: string;
+  correlationId?: string | null;
+  workflowId?: string | null;
   policyResult?: unknown;
-  approvalReference?: string;
-  ipOrSessionId?: string;
+  approvalReference?: string | null;
+  ipOrSessionId?: string | null;
 }
 
-export interface AuditEventRecord extends AuditEventInput {
+export interface AuditEventRecord {
   id: string;
   timestamp: string;
-  workspaceReference?: string;
-  actorReference?: string;
+  actorId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  before: unknown | null;
+  after: unknown | null;
+  correlationId: string | null;
+  workflowId: string | null;
+  policyResult: unknown | null;
+  approvalReference: string | null;
+  ipOrSessionId: string | null;
+  workspaceReference: string | null;
+  actorReference: string | null;
   source: string;
-  sourceEventId?: string;
-  idempotencyKey?: string;
-  occurredAt?: string;
+  sourceEventId: string | null;
+  idempotencyKey: string | null;
+  occurredAt: string | null;
   integrityVersion: 1 | 2;
   integrityHash: string;
 }
 
 export interface AuditEventMetadata {
-  workspaceReference?: string;
-  actorReference?: string;
-  source?: string;
-  sourceEventId?: string;
-  idempotencyKey?: string;
-  occurredAt?: string;
+  workspaceReference?: string | null;
+  actorReference?: string | null;
+  source?: string | null;
+  sourceEventId?: string | null;
+  idempotencyKey?: string | null;
+  occurredAt?: string | null;
 }
 
 function integrityContent(record: Omit<AuditEventRecord, 'integrityHash'>): unknown {
@@ -55,16 +66,26 @@ export function buildAuditEventRecord(
   metadata: AuditEventMetadata = {},
 ): AuditEventRecord {
   const timestamp = now.toISOString();
-  const record = {
-    ...input,
+  const record: Omit<AuditEventRecord, 'integrityHash'> = {
     id,
     timestamp,
-    workspaceReference: metadata.workspaceReference,
-    actorReference: metadata.actorReference ?? input.actorId,
+    actorId: input.actorId ?? null,
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    before: input.before ?? null,
+    after: input.after ?? null,
+    correlationId: input.correlationId ?? null,
+    workflowId: input.workflowId ?? null,
+    policyResult: input.policyResult ?? null,
+    approvalReference: input.approvalReference ?? null,
+    ipOrSessionId: input.ipOrSessionId ?? null,
+    workspaceReference: metadata.workspaceReference ?? null,
+    actorReference: metadata.actorReference ?? input.actorId ?? null,
     source: metadata.source ?? 'APPLICATION',
-    sourceEventId: metadata.sourceEventId,
-    idempotencyKey: metadata.idempotencyKey,
-    occurredAt: metadata.occurredAt,
+    sourceEventId: metadata.sourceEventId ?? null,
+    idempotencyKey: metadata.idempotencyKey ?? null,
+    occurredAt: metadata.occurredAt ?? null,
     integrityVersion: 2 as const,
   };
   const integrityHash = hashObject(integrityContent(record));

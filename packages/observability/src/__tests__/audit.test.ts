@@ -39,7 +39,7 @@ describe('buildAuditEventRecord', () => {
       new Date('2026-01-01T00:00:00Z'),
     );
 
-    expect(event.actorId).toBeUndefined();
+    expect(event.actorId).toBeNull();
     expect(event.integrityHash).toMatch(/^[a-f0-9]{64}$/);
   });
 
@@ -62,6 +62,43 @@ describe('buildAuditEventRecord', () => {
     expect(verifyAuditEventRecord(record)).toBe(true);
     expect(verifyAuditEventRecord({ ...record, sourceEventId: 'substituted' })).toBe(false);
     expect(verifyAuditEventRecord({ ...record, actorReference: 'forged' })).toBe(false);
-    expect(verifyAuditEventRecord({ ...record, actorId: undefined })).toBe(true);
+    expect(verifyAuditEventRecord({ ...record, actorId: null })).toBe(true);
+  });
+
+  it('canonicalizes omitted and explicit null optional persisted fields identically', () => {
+    const now = new Date('2026-08-21T00:00:00.000Z');
+    const omitted = buildAuditEventRecord(
+      { action: 'SECURITY_CHECKED', entityType: 'Release', entityId: 'release-1' },
+      'event-canonical',
+      now,
+    );
+    const explicitNull = buildAuditEventRecord(
+      {
+        actorId: null,
+        action: 'SECURITY_CHECKED',
+        entityType: 'Release',
+        entityId: 'release-1',
+        before: null,
+        after: null,
+        correlationId: null,
+        workflowId: null,
+        policyResult: null,
+        approvalReference: null,
+        ipOrSessionId: null,
+      },
+      'event-canonical',
+      now,
+      {
+        workspaceReference: null,
+        actorReference: null,
+        source: null,
+        sourceEventId: null,
+        idempotencyKey: null,
+        occurredAt: null,
+      },
+    );
+
+    expect(explicitNull).toEqual(omitted);
+    expect(verifyAuditEventRecord(omitted)).toBe(true);
   });
 });
