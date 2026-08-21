@@ -55,6 +55,11 @@ scope required by the allowlisted task-kind policy.
 
 ## Verified runtime capability matrix
 
+This matrix is the original discovery snapshot. ADR-0015 records the current
+2026-08-21 interface verification and adapter decision. That later evidence
+does not change any runtime's status: all remain `NOT_CONFIGURED` until
+authenticated end-to-end proof exists.
+
 | Runtime | Repository evidence                                                                                          | Control-plane status | Next proof required                                                                        |
 | ------- | ------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------ |
 | Codex   | Used through external Codex work sessions; no product-owned adapter or telemetry endpoint                    | `NOT_CONFIGURED`     | Authenticated adapter registration, capability exchange, heartbeat, task/result round-trip |
