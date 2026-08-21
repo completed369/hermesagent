@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 
-import type { EntityId, WorkspaceContext } from './contracts';
+import type { AuthorityLevel, EntityId, WorkspaceContext } from './contracts';
 
 export type OperationalActorKind = 'HUMAN' | 'AGENT' | 'RUNTIME' | 'SYSTEM';
 
@@ -22,6 +22,8 @@ export type OperationalEventType =
   | 'run.completed'
   | 'run.failed'
   | 'approval.requested'
+  | 'approval.permit.issued'
+  | 'approval.permit.claimed'
   | 'usage.recorded'
   | 'agent.created'
   | 'agent.lifecycle.changed'
@@ -80,6 +82,8 @@ const EVENT_TYPES = new Set<OperationalEventType>([
   'run.completed',
   'run.failed',
   'approval.requested',
+  'approval.permit.issued',
+  'approval.permit.claimed',
   'usage.recorded',
   'agent.created',
   'agent.lifecycle.changed',
@@ -128,7 +132,13 @@ const FACT_POLICIES: Readonly<Record<OperationalEventType, Readonly<Record<strin
   'run.progress': { payloadFieldCount: 'INTEGER', payloadBytes: 'INTEGER' },
   'run.completed': { previousStatus: 'CODE', nextStatus: 'CODE', taskId: 'REFERENCE' },
   'run.failed': { previousStatus: 'CODE', nextStatus: 'CODE', taskId: 'REFERENCE' },
-  'approval.requested': { dependencyIds: 'REFERENCE_LIST' },
+  'approval.requested': {
+    dependencyIds: 'REFERENCE_LIST',
+    taskId: 'REFERENCE',
+    runId: 'REFERENCE',
+  },
+  'approval.permit.issued': { taskId: 'REFERENCE', runId: 'REFERENCE' },
+  'approval.permit.claimed': { taskId: 'REFERENCE', runId: 'REFERENCE' },
   'usage.recorded': {
     taskId: 'REFERENCE',
     runId: 'REFERENCE',
@@ -253,6 +263,7 @@ function validateFacts(
 export class OperationalEventCapability {
   readonly #source: OperationalEvent['source'];
   readonly #principalActorKinds: ReadonlyMap<string, OperationalActorKind>;
+  readonly #principalAuthorityLevels: ReadonlyMap<string, AuthorityLevel>;
 
   private constructor(
     source: OperationalEvent['source'],
@@ -264,6 +275,13 @@ export class OperationalEventCapability {
         JSON.stringify([binding.workspaceId, binding.principalId]),
         binding.actorKind,
       ]),
+    );
+    this.#principalAuthorityLevels = new Map(
+      bindings.flatMap((binding) =>
+        binding.authorityLevel === undefined
+          ? []
+          : [[JSON.stringify([binding.workspaceId, binding.principalId]), binding.authorityLevel]],
+      ),
     );
   }
 
@@ -288,6 +306,14 @@ export class OperationalEventCapability {
       if (!ACTOR_KINDS.has(binding.actorKind)) {
         throw new OperationalEventPolicyError('Unsupported capability actor kind');
       }
+      if (
+        binding.authorityLevel !== undefined &&
+        (!Number.isInteger(binding.authorityLevel) ||
+          binding.authorityLevel < 0 ||
+          binding.authorityLevel > 4)
+      ) {
+        throw new OperationalEventPolicyError('Unsupported capability authority level');
+      }
       const bindingKey = JSON.stringify([binding.workspaceId, binding.principalId]);
       if (keys.has(bindingKey)) {
         throw new OperationalEventPolicyError('Duplicate capability principal binding');
@@ -307,10 +333,25 @@ export class OperationalEventCapability {
     return actorKind;
   }
 
-  assertBinding(context: WorkspaceContext, event: OperationalEvent): void {
-    if (event.source !== this.#source) {
+  assertSource(source: OperationalEvent['source']): void {
+    if (source !== this.#source) {
       throw new OperationalEventPolicyError('Event source does not match its trusted capability');
     }
+  }
+
+  authorityLevelFor(context: WorkspaceContext): AuthorityLevel {
+    this.actorKindFor(context);
+    const authorityLevel = this.#principalAuthorityLevels.get(
+      JSON.stringify([context.workspaceId, context.principalId]),
+    );
+    if (authorityLevel === undefined) {
+      throw new OperationalEventPolicyError('No trusted principal authority binding exists');
+    }
+    return authorityLevel;
+  }
+
+  assertBinding(context: WorkspaceContext, event: OperationalEvent): void {
+    this.assertSource(event.source);
     if (this.actorKindFor(context) !== event.actorKind) {
       throw new OperationalEventPolicyError(
         'Event actor kind does not match its trusted principal binding',
@@ -323,6 +364,7 @@ export interface OperationalEventPrincipalBinding {
   readonly workspaceId: EntityId;
   readonly principalId: EntityId;
   readonly actorKind: OperationalActorKind;
+  readonly authorityLevel?: AuthorityLevel;
 }
 
 export function validateOperationalEvent(

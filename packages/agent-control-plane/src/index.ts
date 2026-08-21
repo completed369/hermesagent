@@ -5,3 +5,4 @@ export * from './runtime-broker';
 export * from './agent-factory';
 export * from './ai-coo';
 export * from './voice-gateway';
+export * from './approval-bridge';

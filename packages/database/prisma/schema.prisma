@@ -32,14 +32,15 @@ model User {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  sessions            Session[]
-  accounts            Account[]
-  memberships         WorkspaceMember[]
-  founderProfile      FounderProfile?
-  securityEvents      SecurityEvent[]
-  auditEventsMade     AuditEvent[]          @relation("AuditActor")
-  invitationsCreated  WorkspaceInvitation[] @relation("InvitationCreator")
-  invitationsAccepted WorkspaceInvitation[] @relation("InvitationAcceptor")
+  sessions             Session[]
+  accounts             Account[]
+  memberships          WorkspaceMember[]
+  founderProfile       FounderProfile?
+  securityEvents       SecurityEvent[]
+  auditEventsMade      AuditEvent[]          @relation("AuditActor")
+  invitationsCreated   WorkspaceInvitation[] @relation("InvitationCreator")
+  invitationsAccepted  WorkspaceInvitation[] @relation("InvitationAcceptor")
+  acpApprovalDecisions AcpApprovalDecision[] @relation("AcpApprovalApprover")
 
   @@index([email])
   @@map("users")
@@ -121,6 +122,9 @@ model Workspace {
   memoryEntries            MemoryEntry[]
   invitations              WorkspaceInvitation[]
   activeSessions           Session[]
+  acpApprovalRequests      AcpApprovalRequest[]
+  acpApprovalDecisions     AcpApprovalDecision[]
+  acpExecutionPermits      AcpExecutionPermit[]
 
   @@map("workspaces")
 }
@@ -866,6 +870,106 @@ model ApprovalDecision {
 
   @@index([approvalRequestId])
   @@map("approval_decisions")
+}
+
+/// Exact, workspace-scoped Level-4 authorization request for an ACP task/run.
+/// The binding columns are migration-protected from mutation after insertion.
+model AcpApprovalRequest {
+  id                      String   @id @default(uuid()) @db.Uuid
+  workspaceId             String   @db.Uuid
+  objectiveId             String
+  taskId                  String
+  runId                   String
+  actionCode              String
+  exactTarget             String
+  artifactVersionId       String
+  evidenceHash            String
+  policyVersion           String
+  policyHash              String
+  bindingHash             String
+  requesterReference      String
+  requesterActorKind      String
+  requesterAuthorityLevel Int
+  requiredAuthorityLevel  Int      @default(4)
+  idempotencyKey          String
+  state                   String   @default("PENDING")
+  expiresAt               DateTime
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  workspace Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  decisions AcpApprovalDecision[]
+  permit    AcpExecutionPermit?
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, state, createdAt(sort: Desc)])
+  @@index([workspaceId, taskId, runId])
+  @@map("acp_approval_requests")
+}
+
+/// Immutable human decision over the exact request binding. A later REVOKE
+/// decision is a new row; prior decision evidence is never overwritten.
+model AcpApprovalDecision {
+  id                     String   @id @default(uuid()) @db.Uuid
+  workspaceId            String   @db.Uuid
+  approvalRequestId      String   @db.Uuid
+  decision               String
+  approverId             String?  @db.Uuid
+  approverReference      String
+  approverAuthorityLevel Int      @default(4)
+  bindingHash            String
+  artifactVersionId      String
+  evidenceHash           String
+  policyVersion          String
+  policyHash             String
+  idempotencyKey         String
+  decidedAt              DateTime
+  expiresAt              DateTime
+  decisionHash           String
+  createdAt              DateTime @default(now())
+
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approvalRequest AcpApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  approver        User?              @relation("AcpApprovalApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([approvalRequestId, decidedAt(sort: Desc)])
+  @@map("acp_approval_decisions")
+}
+
+/// Prepared, non-executing, single-use authorization claim. Claiming consumes
+/// the permit but performs no external action or runtime dispatch.
+model AcpExecutionPermit {
+  id                          String    @id @default(uuid()) @db.Uuid
+  workspaceId                 String    @db.Uuid
+  approvalRequestId           String    @unique @db.Uuid
+  taskId                      String
+  runId                       String
+  actionCode                  String
+  exactTarget                 String
+  artifactVersionId           String
+  evidenceHash                String
+  policyVersion               String
+  policyHash                  String
+  bindingHash                 String
+  executionPrincipalReference String
+  issueIdempotencyKey         String
+  issuedAt                    DateTime
+  expiresAt                   DateTime
+  claimedAt                   DateTime?
+  claimedByReference          String?
+  claimIdempotencyKey         String?
+  claimHash                   String?
+  createdAt                   DateTime  @default(now())
+
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approvalRequest AcpApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, issueIdempotencyKey])
+  @@unique([workspaceId, claimIdempotencyKey])
+  @@index([workspaceId, taskId, runId])
+  @@index([expiresAt])
+  @@map("acp_execution_permits")
 }
 
 // ---------------------------------------------------------------------------

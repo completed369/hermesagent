@@ -59,6 +59,14 @@
 - Approval decisions use a conditional single-winner state transition; the
   winning request update and immutable decision evidence are committed in one
   transaction. Concurrent or stale decisions fail closed.
+- ACP Level-4 approvals bind the exact workspace, objective, task, run, action,
+  target, artifact, evidence digest, and policy version/digest. Only a current
+  founder with `approval:decide` may decide. Requester authority is taken from a
+  trusted principal capability (Level 0 cannot request). A trusted control-plane capability
+  may issue and a specifically bound execution principal may claim one permit;
+  a claim consumes authorization but performs no external action. Revocation,
+  expiry, drift, source forgery, cross-workspace access, and replay conflict fail
+  closed. AI COO cards and voice transcripts are never authority (ADR-0019).
 - Integration records start disabled (`Integration.writeEnabled=false`; seed
   creates mock/disconnected records). Centralized capability policy enforces
   subscription state, trial expiry, active plan, feature entitlement, quotas,
