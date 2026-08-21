@@ -25,7 +25,11 @@ fresh, and oversized audio declarations or UTF-8 transcripts fail before routing
 never accepted or persisted by this model. Raw transcripts remain ephemeral inputs: history stores
 only a SHA-256 hash and, when explicitly selected, a dedicated redacted session copy. Secret-like
 credentials, authorization values, private-key markers, and email addresses are redacted from both
-transcript and response history. Raw or sensitive retention modes are unsupported.
+transcript and response history. A transcript containing a high-risk credential marker (including
+private-key blocks, passwords, access tokens, authorization values, and common API-token prefixes)
+is replaced in full with a fixed sensitive-transcript marker before routing or history. This
+deliberately prefers over-redaction to partial secret retention. Raw or sensitive retention modes
+are unsupported.
 
 The routing request is a narrow, immutable contract for an injected AI COO port. It carries only
 workspace/principal/session correlation, a transcript hash, the redacted transcript, the `VOICE`
@@ -52,7 +56,10 @@ status, execution availability, network mode, credential mode, fallback flag, ca
 identifier and timestamp, byte/text limits, latency, quality, cost, availability, and data policy.
 Browser-local status requires verified browser capability, `LOCAL_BROWSER`, `OFFLINE`, and no
 credential. External providers cannot claim browser-local availability and require explicit egress
-and scoped credentials. Registration does not call the adapter or prove a live provider.
+and scoped credentials. Every registration also requires a fresh evidence timestamp and an
+injected trusted evidence verifier; caller-supplied status alone never makes an adapter usable.
+Gateway-wide and adapter-specific input limits are both enforced. Registration does not call the
+adapter or prove a live provider.
 
 Replay creates only a plan to synthesize a previously sanitized response. It never reroutes the
 transcript or replays an action. History is workspace- and principal-scoped and bounded. Stop is
@@ -71,6 +78,8 @@ Plane runtime run, whose separate one-use cancellation permit remains authoritat
 - hidden fields and private-reasoning payloads;
 - authority denial and Level-4 routine-outcome bypass;
 - raw-retention attempts and secret/contact-data leakage;
+- complete private-key/password/token transcript suppression;
+- forged, stale, or future adapter-availability evidence and adapter-specific limits;
 - bounded history, sanitized replay, and terminal stop behavior.
 
 ## Explicit non-capabilities

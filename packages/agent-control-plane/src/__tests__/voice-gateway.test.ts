@@ -6,6 +6,7 @@ import {
   type FinalTranscriptEnvelope,
   type TranscriptProofVerifier,
   type VoiceAuthorityEvaluator,
+  type VoiceAdapterEvidenceVerifier,
   type VoiceCommandRoutingRequest,
   type VoiceCommandRouter,
   type VoiceProviderMetadata,
@@ -62,6 +63,7 @@ function setup(
     reason: 'founder',
   })),
   proofVerifier: TranscriptProofVerifier['verify'] = vi.fn(() => true),
+  adapterEvidenceVerifier: VoiceAdapterEvidenceVerifier['verify'] = vi.fn(() => true),
 ) {
   let id = 0;
   const gateway = new GovernedVoiceGateway(
@@ -72,6 +74,7 @@ function setup(
       maximumResponseBytes: 1_000,
       maximumHistoryEntriesPerPrincipal: 2,
       transcriptFreshnessMs: 30_000,
+      availabilityEvidenceFreshnessMs: 30_000,
       clock: () => now,
       idFactory: () => `id-${++id}`,
     },
@@ -79,6 +82,7 @@ function setup(
       router: { route },
       authority: { evaluate: authority },
       proofVerifier: { verify: proofVerifier },
+      adapterEvidenceVerifier: { verify: adapterEvidenceVerifier },
     },
   );
   gateway.registerAdapter(context, metadata());
@@ -263,11 +267,27 @@ describe('GovernedVoiceGateway', () => {
     gateway.routeFinalTranscript(context, transcript({ transcript: raw }));
     expect(route).toHaveBeenCalledWith(
       context,
-      expect.objectContaining({ redactedTranscript: 'Email [REDACTED] and use [REDACTED]' }),
+      expect.objectContaining({ redactedTranscript: '[REDACTED_SENSITIVE_TRANSCRIPT]' }),
     );
     const history = gateway.listHistory(context);
-    expect(history[0]?.redactedTranscript).toBe('Email [REDACTED] and use [REDACTED]');
+    expect(history[0]?.redactedTranscript).toBe('[REDACTED_SENSITIVE_TRANSCRIPT]');
     expect(JSON.stringify(history)).not.toContain(raw);
+  });
+
+  it.each([
+    'password=hunter2-and-more',
+    '-----BEGIN PRIVATE KEY-----\nSUPERSECRETKEYBODY\n-----END PRIVATE KEY-----',
+    'Authorization: opaquecredentialvalue12345',
+  ])('fails closed instead of retaining sensitive transcript content: %s', (raw) => {
+    const { gateway, route } = setup();
+    ready(gateway);
+    gateway.routeFinalTranscript(context, transcript({ transcript: raw }));
+    expect(route).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ redactedTranscript: '[REDACTED_SENSITIVE_TRANSCRIPT]' }),
+    );
+    expect(JSON.stringify(gateway.listHistory(context))).not.toContain(raw);
+    expect(JSON.stringify(gateway.listHistory(context))).not.toContain('SUPERSECRETKEYBODY');
   });
 
   it('supports no-transcript retention, bounded history, stop and replay plans', () => {
@@ -332,6 +352,57 @@ describe('GovernedVoiceGateway', () => {
         browser: { ...browser, localSpeechToText: 'yes' as never },
       }),
     ).toThrow(/boolean/);
+  });
+
+  it('requires fresh verified adapter evidence and enforces adapter-specific limits', () => {
+    const rejected = setup(
+      undefined,
+      undefined,
+      undefined,
+      vi.fn((_context, adapter) => adapter.adapterId !== 'unverified'),
+    );
+    expect(() =>
+      rejected.gateway.registerAdapter(
+        context,
+        metadata({ adapterId: 'unverified', kind: 'REALTIME' }),
+      ),
+    ).toThrow(/evidence/);
+
+    const { gateway } = setup();
+    expect(() =>
+      gateway.registerAdapter(
+        context,
+        metadata({
+          adapterId: 'future',
+          kind: 'REALTIME',
+          availabilityVerifiedAt: '2026-08-21T06:01:00.000Z',
+        }),
+      ),
+    ).toThrow(/evidence/);
+    gateway.registerAdapter(
+      context,
+      metadata({ adapterId: 'limited-stt', maximumInputBytes: 100, maximumTextBytes: 100 }),
+    );
+    gateway.createSession(context, {
+      id: 'limited-session',
+      sttAdapterId: 'limited-stt',
+      browser,
+    });
+    gateway.requestMicrophonePermission(context, 'limited-session');
+    gateway.recordMicrophonePermission(context, 'limited-session', 'GRANTED');
+    gateway.pressToTalk(context, 'limited-session');
+    gateway.releaseToTalk(context, 'limited-session');
+    expect(() =>
+      gateway.routeFinalTranscript(
+        context,
+        transcript({
+          sessionId: 'limited-session',
+          adapterId: 'limited-stt',
+          transcript: 'x'.repeat(101),
+          audioBytes: 101,
+        }),
+      ),
+    ).toThrow(/adapter-specific/);
   });
 
   it('rejects malformed authority and routing enum values from injected ports', () => {

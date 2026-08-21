@@ -58,6 +58,10 @@ export interface RealtimeSpeechAdapter {
   open(request: Readonly<{ sessionId: EntityId }>): Promise<unknown>;
 }
 
+export interface VoiceAdapterEvidenceVerifier {
+  verify(context: WorkspaceContext, metadata: Readonly<VoiceProviderMetadata>): boolean;
+}
+
 export interface BrowserVoiceCapabilities {
   microphonePermissionApi: boolean;
   localSpeechToText: boolean;
@@ -185,6 +189,7 @@ export interface VoiceGatewayOptions {
   maximumResponseBytes: number;
   maximumHistoryEntriesPerPrincipal: number;
   transcriptFreshnessMs: number;
+  availabilityEvidenceFreshnessMs: number;
   clock?: () => number;
   idFactory?: () => string;
 }
@@ -261,7 +266,30 @@ const REDACTIONS: readonly RegExp[] = [
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu,
 ];
 
+const SENSITIVE_TRANSCRIPT_MARKERS = [
+  '-----begin private key-----',
+  '-----begin rsa private key-----',
+  '-----begin ec private key-----',
+  '-----begin openssh private key-----',
+  'password=',
+  'password:',
+  'api_key=',
+  'api-key=',
+  'apikey=',
+  'client_secret=',
+  'access_token=',
+  'refresh_token=',
+  'authorization:',
+  'bearer ',
+  'ghp_',
+  'gho_',
+  'sk-',
+] as const;
+
 function redact(value: string): string {
+  const lower = value.toLocaleLowerCase('en-US');
+  if (SENSITIVE_TRANSCRIPT_MARKERS.some((marker) => lower.includes(marker)))
+    return '[REDACTED_SENSITIVE_TRANSCRIPT]';
   let result = value;
   for (const pattern of REDACTIONS) result = result.replace(pattern, '[REDACTED]');
   return result;
@@ -360,6 +388,7 @@ export class GovernedVoiceGateway {
   readonly #clock: () => number;
   readonly #idFactory: () => string;
   readonly #proofVerifier: TranscriptProofVerifier;
+  readonly #adapterEvidenceVerifier: VoiceAdapterEvidenceVerifier;
   readonly #authority: VoiceAuthorityEvaluator;
   readonly #router: VoiceCommandRouter;
   readonly #adapters = new Map<string, VoiceProviderMetadata>();
@@ -372,6 +401,7 @@ export class GovernedVoiceGateway {
     options: VoiceGatewayOptions,
     dependencies: {
       proofVerifier: TranscriptProofVerifier;
+      adapterEvidenceVerifier: VoiceAdapterEvidenceVerifier;
       authority: VoiceAuthorityEvaluator;
       router: VoiceCommandRouter;
     },
@@ -380,6 +410,7 @@ export class GovernedVoiceGateway {
     this.#clock = options.clock ?? Date.now;
     this.#idFactory = options.idFactory ?? randomUUID;
     this.#proofVerifier = dependencies.proofVerifier;
+    this.#adapterEvidenceVerifier = dependencies.adapterEvidenceVerifier;
     this.#authority = dependencies.authority;
     this.#router = dependencies.router;
     this.#options = {
@@ -388,6 +419,7 @@ export class GovernedVoiceGateway {
       maximumResponseBytes: options.maximumResponseBytes,
       maximumHistoryEntriesPerPrincipal: options.maximumHistoryEntriesPerPrincipal,
       transcriptFreshnessMs: options.transcriptFreshnessMs,
+      availabilityEvidenceFreshnessMs: options.availabilityEvidenceFreshnessMs,
     };
     boundedInteger(options.maximumAudioBytes, 'maximumAudioBytes', 100 * 1024 * 1024);
     boundedInteger(options.maximumTranscriptBytes, 'maximumTranscriptBytes', 1024 * 1024);
@@ -398,6 +430,11 @@ export class GovernedVoiceGateway {
       10_000,
     );
     boundedInteger(options.transcriptFreshnessMs, 'transcriptFreshnessMs', 60 * 60 * 1_000);
+    boundedInteger(
+      options.availabilityEvidenceFreshnessMs,
+      'availabilityEvidenceFreshnessMs',
+      30 * 24 * 60 * 60 * 1_000,
+    );
     if (
       !options.maximumAudioBytes ||
       !options.maximumTranscriptBytes ||
@@ -409,6 +446,12 @@ export class GovernedVoiceGateway {
   registerAdapter(context: WorkspaceContext, untrusted: VoiceProviderMetadata): void {
     this.#assertAuthorized(context);
     const metadata = validateMetadata(untrusted);
+    const evidenceAt = parsedTime(metadata.availabilityVerifiedAt, 'availabilityVerifiedAt');
+    if (
+      Math.abs(this.#clock() - evidenceAt) > this.#options.availabilityEvidenceFreshnessMs ||
+      !this.#adapterEvidenceVerifier.verify(context, Object.freeze(structuredClone(metadata)))
+    )
+      throw new VoiceGatewayPolicyError('Adapter availability evidence is invalid or stale');
     if (this.#adapters.has(key(context.workspaceId, metadata.adapterId)))
       throw new VoiceGatewayPolicyError('Adapter already registered');
     this.#adapters.set(key(context.workspaceId, metadata.adapterId), metadata);
@@ -565,6 +608,11 @@ export class GovernedVoiceGateway {
     if (this.#usedTranscriptProofs.has(proofKey) || this.#usedSequences.has(sequenceKey))
       throw new VoiceGatewayPolicyError('Transcript replay rejected');
     const adapter = this.#requireAdapter(context, untrusted.adapterId, 'STT');
+    if (
+      untrusted.audioBytes > adapter.maximumInputBytes ||
+      Buffer.byteLength(untrusted.transcript, 'utf8') > adapter.maximumTextBytes
+    )
+      throw new VoiceGatewayPolicyError('Transcript exceeds adapter-specific limits');
     if (!this.#proofVerifier.verify(context, structuredClone(untrusted), adapter))
       throw new VoiceGatewayPolicyError('Final transcript proof is invalid');
 
