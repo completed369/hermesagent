@@ -265,7 +265,7 @@ jobs:
             exit 1
           fi
           config_path="$(jq -er '.[0].Config' "$manifest")"
-          if [[ ! "$config_path" =~ ^[0-9a-f]{64}\.json$ ]]; then
+          if [[ ! "$config_path" =~ ^([0-9a-f]{64}\.json|blobs/sha256/[0-9a-f]{64})$ ]]; then
             echo 'Sanitized validation failure: docker-config-identity' >&2
             exit 1
           fi
@@ -281,7 +281,8 @@ jobs:
             exit 1
           fi
           config_digest="$(sha256sum "$config_file" | awk '{print $1}')"
-          if [[ "$config_path" != "${config_digest}.json" ]]; then
+          if [[ "$config_path" != "${config_digest}.json" && \
+            "$config_path" != "blobs/sha256/${config_digest}" ]]; then
             echo 'Sanitized validation failure: docker-config-digest' >&2
             exit 1
           fi

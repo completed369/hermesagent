@@ -168,7 +168,9 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /\.ArtifactType == "container_image"/);
   assert.match(workflow, /\.Results \| type == "array"/);
   assert.match(workflow, /config_digest=.*sha256sum.*config_file/);
+  assert.match(workflow, /\[0-9a-f\]\{64\}\\\.json\|blobs\/sha256\/\[0-9a-f\]\{64\}/);
   assert.match(workflow, /config_path.*!=.*config_digest.*\.json/);
+  assert.match(workflow, /config_path.*!=.*blobs\/sha256\/.*config_digest/);
   assert.match(workflow, /expected_image_id="sha256:\$\{config_digest\}"/);
   assert.match(workflow, /\.Metadata\.ImageID == \$image_id/);
   assert.match(workflow, /--slurpfile config "\$config_file"/);
@@ -191,6 +193,15 @@ test('source and image evidence enforce the complete release-candidate security 
 test('Trivy layer identity cannot pass with an independently plausible digest list', () => {
   assert.match(workflow, /\.Metadata\.DiffIDs == \$config\[0\]\.rootfs\.diff_ids/);
   assert.doesNotMatch(workflow, /all\(\.Metadata\.DiffIDs\[\];[^\n]+\)\s*\n\s*' "\$report"/);
+});
+
+test('Docker config identity accepts only digest-bound legacy or OCI archive paths', () => {
+  const allowedConfigPath = /^(?:[0-9a-f]{64}\.json|blobs\/sha256\/[0-9a-f]{64})$/;
+  assert.match(`${'a'.repeat(64)}.json`, allowedConfigPath);
+  assert.match(`blobs/sha256/${'b'.repeat(64)}`, allowedConfigPath);
+  assert.doesNotMatch(`../${'c'.repeat(64)}.json`, allowedConfigPath);
+  assert.doesNotMatch(`blobs/sha256/${'d'.repeat(63)}x`, allowedConfigPath);
+  assert.doesNotMatch(`blobs/sha512/${'e'.repeat(64)}`, allowedConfigPath);
 });
 
 test('exact archives, reports, and SBOMs stay runner-local while sanitized conclusions are summarized', () => {
