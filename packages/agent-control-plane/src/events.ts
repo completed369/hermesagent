@@ -152,6 +152,8 @@ const PRIVATE_FACT_KEYS =
   /(?:chain.?of.?thought|private.?reasoning|prompt|transcript|password|secret|token|credential|api.?key)/iu;
 const PRIVATE_FACT_VALUE =
   /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|\bBearer\s+[A-Za-z0-9._~+/=-]{12,}|\b(?:sk|gh[opusr]|github_pat)_[A-Za-z0-9_-]{12,})/u;
+const PRIVATE_FACT_TEXT =
+  /(?:chain[-_. ]?of[-_. ]?thought|private[-_. ]?reasoning|password|credential|api[-_. ]?key|transcript|prompt)/iu;
 
 function boundedText(value: unknown, field: string, maximum = 2_048): asserts value is string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > maximum) {
@@ -181,7 +183,7 @@ function validateFacts(
     if (!kind) throw new OperationalEventPolicyError('Event fact is not allowed for this type');
     if (typeof value === 'string') {
       if (value.length > 2_048) throw new OperationalEventPolicyError('Event fact is too large');
-      if (PRIVATE_FACT_VALUE.test(value)) {
+      if (PRIVATE_FACT_VALUE.test(value) || PRIVATE_FACT_TEXT.test(value)) {
         throw new OperationalEventPolicyError('Secret-like event fact values are forbidden');
       }
       if ((kind === 'REFERENCE' || kind === 'CODE') && !SAFE_REFERENCE.test(value)) {
@@ -213,7 +215,7 @@ function validateFacts(
       if (typeof item !== 'string' || !SAFE_REFERENCE.test(item)) {
         throw new OperationalEventPolicyError('Event fact list must contain safe references');
       }
-      if (PRIVATE_FACT_VALUE.test(item)) {
+      if (PRIVATE_FACT_VALUE.test(item) || PRIVATE_FACT_TEXT.test(item)) {
         throw new OperationalEventPolicyError('Secret-like event fact values are forbidden');
       }
     }
@@ -225,41 +227,72 @@ function validateFacts(
 
 export class OperationalEventCapability {
   readonly #source: OperationalEvent['source'];
-  readonly #principalActorKinds: ReadonlyMap<EntityId, OperationalActorKind>;
+  readonly #principalActorKinds: ReadonlyMap<string, OperationalActorKind>;
 
   private constructor(
     source: OperationalEvent['source'],
-    principalActorKinds: Readonly<Record<EntityId, OperationalActorKind>>,
+    bindings: readonly OperationalEventPrincipalBinding[],
   ) {
     this.#source = source;
-    this.#principalActorKinds = new Map(Object.entries(principalActorKinds));
+    this.#principalActorKinds = new Map(
+      bindings.map((binding) => [
+        JSON.stringify([binding.workspaceId, binding.principalId]),
+        binding.actorKind,
+      ]),
+    );
   }
 
   static issue(
     source: OperationalEvent['source'],
-    principalActorKinds: Readonly<Record<EntityId, OperationalActorKind>>,
+    bindings: readonly OperationalEventPrincipalBinding[],
   ): OperationalEventCapability {
     if (!EVENT_SOURCES.has(source))
       throw new OperationalEventPolicyError('Unsupported capability source');
-    for (const [principalId, actorKind] of Object.entries(principalActorKinds)) {
-      boundedText(principalId, 'capability principalId');
-      if (!ACTOR_KINDS.has(actorKind)) {
+    if (!Array.isArray(bindings) || bindings.length === 0 || bindings.length > 64) {
+      throw new OperationalEventPolicyError('Capability bindings must be non-empty and bounded');
+    }
+    const keys = new Set<string>();
+    for (const binding of bindings) {
+      boundedText(binding.workspaceId, 'capability workspaceId');
+      boundedText(binding.principalId, 'capability principalId');
+      if (!ACTOR_KINDS.has(binding.actorKind)) {
         throw new OperationalEventPolicyError('Unsupported capability actor kind');
       }
+      const bindingKey = JSON.stringify([binding.workspaceId, binding.principalId]);
+      if (keys.has(bindingKey)) {
+        throw new OperationalEventPolicyError('Duplicate capability principal binding');
+      }
+      keys.add(bindingKey);
     }
-    return new OperationalEventCapability(source, principalActorKinds);
+    return new OperationalEventCapability(source, bindings);
   }
 
-  assertBinding(event: OperationalEvent): void {
+  actorKindFor(context: WorkspaceContext): OperationalActorKind {
+    const actorKind = this.#principalActorKinds.get(
+      JSON.stringify([context.workspaceId, context.principalId]),
+    );
+    if (!actorKind) {
+      throw new OperationalEventPolicyError('No trusted workspace principal binding exists');
+    }
+    return actorKind;
+  }
+
+  assertBinding(context: WorkspaceContext, event: OperationalEvent): void {
     if (event.source !== this.#source) {
       throw new OperationalEventPolicyError('Event source does not match its trusted capability');
     }
-    if (this.#principalActorKinds.get(event.actorId) !== event.actorKind) {
+    if (this.actorKindFor(context) !== event.actorKind) {
       throw new OperationalEventPolicyError(
         'Event actor kind does not match its trusted principal binding',
       );
     }
   }
+}
+
+export interface OperationalEventPrincipalBinding {
+  readonly workspaceId: EntityId;
+  readonly principalId: EntityId;
+  readonly actorKind: OperationalActorKind;
 }
 
 export function validateOperationalEvent(
@@ -270,7 +303,7 @@ export function validateOperationalEvent(
   if (!(capability instanceof OperationalEventCapability)) {
     throw new OperationalEventPolicyError('A trusted operational event capability is required');
   }
-  capability.assertBinding(event);
+  capability.assertBinding(context, event);
   if (context.workspaceId !== event.workspaceId) {
     throw new OperationalEventPolicyError('Cross-workspace event denied');
   }

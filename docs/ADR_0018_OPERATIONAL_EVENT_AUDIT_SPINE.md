@@ -37,9 +37,9 @@ The Control Plane projects authenticated external telemetry as field count and b
 payload content or field names. The AI COO and Dynamic Agent Factory publish only schema-approved,
 derived state-transition facts through an injected sink while retaining their existing read
 projections for compatibility. Every sink call requires an application-issued source capability
-that binds the authenticated principal to its actor kind; payload-supplied source or actor-kind
-claims cannot select a namespace. Sink injection does not claim that a production ACP process is
-configured.
+that binds a specific workspace and authenticated principal to its actor kind; payload-supplied
+workspace, source, or actor-kind claims cannot select another namespace. Sink injection does not
+claim that a production ACP process is configured.
 
 `AuditService.recordOperationalEvent` is the durable application persistence mapper. It validates
 the event again, preserves runtime/agent principals in an immutable textual actor reference, and

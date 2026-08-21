@@ -270,7 +270,9 @@ describe('GovernedAiCoo', () => {
       {
         ...dependencies,
         eventSink: events,
-        eventCapability: OperationalEventCapability.issue('AI_COO', { coo: 'AGENT' }),
+        eventCapability: OperationalEventCapability.issue('AI_COO', [
+          { workspaceId: 'workspace-a', principalId: 'coo', actorKind: 'AGENT' },
+        ]),
       },
     );
 

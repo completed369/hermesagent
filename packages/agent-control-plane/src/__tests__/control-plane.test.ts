@@ -575,11 +575,14 @@ describe('runs, events, and budgets', () => {
     const plane = new InMemoryControlPlane({
       clock: () => NOW,
       authorityPrincipals: [founder.principalId],
-      principalActorKinds: { [founder.principalId]: 'HUMAN' },
       eventSink: events,
-      eventCapability: OperationalEventCapability.issue('CONTROL_PLANE', {
-        [founder.principalId]: 'HUMAN',
-      }),
+      eventCapability: OperationalEventCapability.issue('CONTROL_PLANE', [
+        {
+          workspaceId: founder.workspaceId,
+          principalId: founder.principalId,
+          actorKind: 'HUMAN',
+        },
+      ]),
     });
     plane.appendEvent(founder, {
       id: 'event-objective',

@@ -6,7 +6,13 @@ import { AuditService } from './audit.service';
 import { OperationalEventCapability, type OperationalEvent } from '@ventureos/agent-control-plane';
 
 const context = { workspaceId: '11111111-1111-4111-8111-111111111111', principalId: 'runtime-1' };
-const capability = OperationalEventCapability.issue('CONTROL_PLANE', { 'runtime-1': 'RUNTIME' });
+const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+  {
+    workspaceId: context.workspaceId,
+    principalId: context.principalId,
+    actorKind: 'RUNTIME',
+  },
+]);
 
 const operationalEvent: OperationalEvent = {
   id: 'runtime-event-1',
@@ -80,7 +86,7 @@ describe('AuditService operational event persistence', () => {
         undefined,
         { auditEvent: { create } } as never,
       ),
-    ).rejects.toThrow(/Cross-workspace/);
+    ).rejects.toThrow(/workspace principal binding/);
     expect(create).not.toHaveBeenCalled();
   });
 

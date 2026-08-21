@@ -29,7 +29,6 @@ import type {
 } from './contracts';
 import type {
   ObservableFact,
-  OperationalActorKind,
   OperationalEventCapability,
   OperationalEventSink,
   OperationalEventType,
@@ -45,7 +44,6 @@ interface ControlPlaneOptions {
   eventIdFactory?: () => string;
   eventSink?: OperationalEventSink;
   eventCapability?: OperationalEventCapability;
-  principalActorKinds?: Readonly<Record<EntityId, OperationalActorKind>>;
   heartbeatFreshnessMs?: number;
   authorityPrincipals?: readonly EntityId[];
   plannerPrincipals?: readonly EntityId[];
@@ -216,7 +214,6 @@ export class InMemoryControlPlane {
   readonly #eventIdFactory: () => string;
   readonly #eventSink?: OperationalEventSink;
   readonly #eventCapability?: OperationalEventCapability;
-  readonly #principalActorKinds: ReadonlyMap<EntityId, OperationalActorKind>;
   readonly #heartbeatFreshnessMs: number;
   readonly #authorityPrincipals: ReadonlySet<EntityId>;
   readonly #plannerPrincipals: ReadonlySet<EntityId>;
@@ -256,7 +253,6 @@ export class InMemoryControlPlane {
         'Event sink and trusted capability must be configured together',
       );
     }
-    this.#principalActorKinds = new Map(Object.entries(options.principalActorKinds ?? {}));
     this.#heartbeatFreshnessMs = options.heartbeatFreshnessMs ?? 5 * 60 * 1_000;
     this.#authorityPrincipals = new Set(options.authorityPrincipals ?? []);
     this.#plannerPrincipals = new Set(options.plannerPrincipals ?? []);
@@ -1125,9 +1121,7 @@ export class InMemoryControlPlane {
       workspaceId: event.workspaceId,
       type: event.runId ? 'run.progress' : 'event.recorded',
       source: 'CONTROL_PLANE',
-      actorKind: event.runId
-        ? 'RUNTIME'
-        : (this.#principalActorKinds.get(event.actorId) ?? 'SYSTEM'),
+      actorKind: event.runId ? 'RUNTIME' : this.#eventCapability!.actorKindFor(context),
       actorId: event.actorId,
       subjectType: event.runId ? 'Run' : 'ControlPlaneEvent',
       subjectId: event.runId ?? event.id,
@@ -1221,7 +1215,7 @@ export class InMemoryControlPlane {
       workspaceId: context.workspaceId,
       type,
       source: 'CONTROL_PLANE',
-      actorKind: this.#principalActorKinds.get(context.principalId) ?? 'SYSTEM',
+      actorKind: this.#eventCapability!.actorKindFor(context),
       actorId: context.principalId,
       subjectType,
       subjectId,

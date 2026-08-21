@@ -76,10 +76,10 @@ function factory(eventSink?: OperationalEventSink) {
     ...(eventSink
       ? {
           eventSink,
-          eventCapability: OperationalEventCapability.issue('AGENT_FACTORY', {
-            founder: 'HUMAN',
-            coo: 'AGENT',
-          }),
+          eventCapability: OperationalEventCapability.issue('AGENT_FACTORY', [
+            { workspaceId: 'w1', principalId: 'founder', actorKind: 'HUMAN' },
+            { workspaceId: 'w1', principalId: 'coo', actorKind: 'AGENT' },
+          ]),
         }
       : {}),
   });

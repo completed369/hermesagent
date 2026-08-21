@@ -9,9 +9,9 @@ import {
 } from '../events';
 
 const context = { workspaceId: 'workspace-a', principalId: 'founder-a' };
-const capability = OperationalEventCapability.issue('AI_COO', {
-  [context.principalId]: 'HUMAN',
-});
+const capability = OperationalEventCapability.issue('AI_COO', [
+  { workspaceId: context.workspaceId, principalId: context.principalId, actorKind: 'HUMAN' },
+]);
 
 function event(overrides: Partial<OperationalEvent> = {}): OperationalEvent {
   return {
@@ -54,8 +54,16 @@ describe('operational event spine', () => {
       OperationalEventPolicyError,
     );
     expect(() => log.append(capability, context, event({ actorId: 'runtime-forged' }))).toThrow(
-      /trusted principal binding/,
+      /authenticated principal/,
     );
+  });
+
+  it('does not authorize the same principal in an unbound workspace', () => {
+    const log = new InMemoryOperationalEventLog();
+    const otherContext = { workspaceId: 'workspace-b', principalId: context.principalId };
+    expect(() =>
+      log.append(capability, otherContext, event({ workspaceId: otherContext.workspaceId })),
+    ).toThrow(/workspace principal binding/);
   });
 
   it('rejects duplicate IDs and source-scoped idempotency replays', () => {
@@ -119,7 +127,7 @@ describe('operational event spine', () => {
     );
     expect(() =>
       log.append(capability, context, event({ facts: { dependencyIds: ['x'.repeat(2_049)] } })),
-    ).toThrow(/safe references/);
+    ).toThrow(/Secret-like|safe references/);
     expect(() =>
       log.append(capability, context, event({ facts: { requiredAuthority: Number.MAX_VALUE } })),
     ).toThrow(/safe integers|not allowed/);
@@ -164,6 +172,9 @@ describe('operational event spine', () => {
     ).toThrow(/not allowed/);
     expect(() =>
       log.append(capability, context, event({ facts: { dependencyIds: ['password=hunter2'] } })),
-    ).toThrow(/safe references/);
+    ).toThrow(/Secret-like|safe references/);
+    expect(() =>
+      log.append(capability, context, event({ facts: { dependencyIds: ['chain-of-thought'] } })),
+    ).toThrow(/Secret-like/);
   });
 });
