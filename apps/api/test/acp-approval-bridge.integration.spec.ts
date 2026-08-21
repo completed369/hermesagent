@@ -110,6 +110,15 @@ describe('governed ACP approval bridge (integration)', () => {
     ]);
   }
 
+  function founderCapability(
+    principalId = founderId,
+    source: 'CONTROL_PLANE' | 'AI_COO' = 'CONTROL_PLANE',
+  ) {
+    return OperationalEventCapability.issue(source, [
+      { workspaceId, principalId, actorKind: 'HUMAN', authorityLevel: 4 },
+    ]);
+  }
+
   it('atomically records a scoped request and rejects replay drift and forged source authority', async () => {
     const input = requestInput(`request-${suffix}`);
     const created = await bridge.requestApproval(
@@ -174,25 +183,39 @@ describe('governed ACP approval bridge (integration)', () => {
     );
     await expect(
       bridge.decideApproval(
-        workspaceId,
+        founderCapability(nonFounderId),
+        { workspaceId, principalId: nonFounderId },
         request.id,
-        nonFounderId,
         'APPROVE',
         `non-founder-${suffix}`,
         binding(),
       ),
     ).rejects.toBeInstanceOf(AcpApprovalDeniedError);
     await expect(
-      bridge.decideApproval(workspaceId, request.id, founderId, 'APPROVE', `drift-${suffix}`, {
-        ...binding(),
-        policyHash: 'c'.repeat(64),
-      }),
+      bridge.decideApproval(
+        founderCapability(founderId, 'AI_COO'),
+        { workspaceId, principalId: founderId },
+        request.id,
+        'APPROVE',
+        `forged-founder-source-${suffix}`,
+        binding(),
+      ),
+    ).rejects.toThrow(/source/i);
+    await expect(
+      bridge.decideApproval(
+        founderCapability(),
+        { workspaceId, principalId: founderId },
+        request.id,
+        'APPROVE',
+        `drift-${suffix}`,
+        { ...binding(), policyHash: 'c'.repeat(64) },
+      ),
     ).rejects.toThrow(/policyHash/);
 
     const approved = await bridge.decideApproval(
-      workspaceId,
+      founderCapability(),
+      { workspaceId, principalId: founderId },
       request.id,
-      founderId,
       'APPROVE',
       `approve-${suffix}`,
       binding(),
@@ -200,9 +223,9 @@ describe('governed ACP approval bridge (integration)', () => {
     expect(approved.request.state).toBe('APPROVED');
     await expect(
       bridge.decideApproval(
-        workspaceId,
+        founderCapability(nonFounderId),
+        { workspaceId, principalId: nonFounderId },
         request.id,
-        nonFounderId,
         'APPROVE',
         `approve-${suffix}`,
         binding(),
@@ -211,15 +234,34 @@ describe('governed ACP approval bridge (integration)', () => {
     expect(
       (
         await bridge.decideApproval(
-          workspaceId,
+          founderCapability(),
+          { workspaceId, principalId: founderId },
           request.id,
-          founderId,
           'APPROVE',
           `approve-${suffix}`,
           binding(),
         )
       ).replayed,
     ).toBe(true);
+    await expect(
+      bridge.decideApproval(
+        founderCapability(),
+        { workspaceId, principalId: founderId },
+        request.id,
+        'APPROVE',
+        `approve-${suffix}`,
+      ),
+    ).rejects.toThrow(/Current binding/);
+    await expect(
+      bridge.decideApproval(
+        founderCapability(),
+        { workspaceId, principalId: founderId },
+        request.id,
+        'APPROVE',
+        `approve-${suffix}`,
+        { ...binding(), evidenceHash: 'd'.repeat(64) },
+      ),
+    ).rejects.toThrow(/evidenceHash/);
     const forgedReplayCapability = OperationalEventCapability.issue('AI_COO', [
       { workspaceId, principalId: issuer, actorKind: 'AGENT' },
     ]);
@@ -328,9 +370,74 @@ describe('governed ACP approval bridge (integration)', () => {
     );
     expect(claimReplay.replayed).toBe(true);
     expect(claimReplay.executed).toBe(false);
+    await expect(
+      bridge.claimExecutionPermit(
+        controlCapability(executor, 'RUNTIME'),
+        { workspaceId, principalId: executor },
+        issued.permit.id,
+        { ...binding(), policyVersion: 'policy-v2' },
+        persisted.claimIdempotencyKey!,
+      ),
+    ).rejects.toThrow(/policyVersion/);
     expect(
       (await prisma.acpApprovalRequest.findUniqueOrThrow({ where: { id: request.id } })).state,
     ).toBe('PERMIT_CLAIMED');
+  });
+
+  it('fails closed when approval expires while its state transition is blocked', async () => {
+    const expiresAt = new Date(Date.now() + 2_500);
+    const input: AcpApprovalRequestInput = {
+      ...binding(),
+      idempotencyKey: `expiry-race-${suffix}`,
+      expiresAt: expiresAt.toISOString(),
+    };
+    const { request } = await bridge.requestApproval(
+      cooCapability(),
+      { workspaceId, principalId: requester },
+      input,
+    );
+
+    let releaseLock!: () => void;
+    let markLocked!: () => void;
+    const release = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    const locked = new Promise<void>((resolve) => {
+      markLocked = resolve;
+    });
+    const blocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT "id"
+        FROM "acp_approval_requests"
+        WHERE "id" = ${request.id}::uuid
+        FOR UPDATE
+      `;
+      markLocked();
+      await release;
+    });
+    await locked;
+
+    const decision = bridge.decideApproval(
+      founderCapability(),
+      { workspaceId, principalId: founderId },
+      request.id,
+      'APPROVE',
+      `expiry-race-decision-${suffix}`,
+      binding(),
+    );
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, expiresAt.getTime() - Date.now() + 150)),
+    );
+    releaseLock();
+    await blocker;
+
+    await expect(decision).rejects.toThrow(/expired|transition|concurrent/i);
+    expect(
+      (await prisma.acpApprovalRequest.findUniqueOrThrow({ where: { id: request.id } })).state,
+    ).toBe('PENDING');
+    expect(
+      await prisma.acpApprovalDecision.count({ where: { approvalRequestId: request.id } }),
+    ).toBe(0);
   });
 
   it('revokes an issued permit and database guards reject binding tampering', async () => {
@@ -341,9 +448,9 @@ describe('governed ACP approval bridge (integration)', () => {
       input,
     );
     await bridge.decideApproval(
-      workspaceId,
+      founderCapability(),
+      { workspaceId, principalId: founderId },
       request.id,
-      founderId,
       'APPROVE',
       `revoke-approve-${suffix}`,
       binding(),
@@ -357,9 +464,9 @@ describe('governed ACP approval bridge (integration)', () => {
       `revoke-permit-${suffix}`,
     );
     const revoked = await bridge.decideApproval(
-      workspaceId,
+      founderCapability(),
+      { workspaceId, principalId: founderId },
       request.id,
-      founderId,
       'REVOKE',
       `revoke-decision-${suffix}`,
     );

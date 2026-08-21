@@ -26,7 +26,7 @@ const SHA_256 = /^[0-9a-f]{64}$/u;
 const SENSITIVE_TEXT =
   /(?:chain[-_. ]?of[-_. ]?thought|private[-_. ]?reasoning|password|credential|api[-_. ]?key|transcript|prompt|secret|token)/iu;
 const SECRET_VALUE =
-  /(?:\b(?:sk|gh[opusr]|github_pat|npm)_[A-Za-z0-9_-]{12,}|\bAKIA[0-9A-Z]{16}\b)/u;
+  /(?:\b(?:sk|gh[opusr]|github_pat|npm|glpat|xox[baprs]|hf)[-_][A-Za-z0-9_-]{12,}|\bAKIA[0-9A-Z]{16}\b|\bAIza[A-Za-z0-9_-]{20,}|\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{8,}\b|^[A-Za-z0-9._-]+:[A-Za-z0-9._-]+@[A-Za-z0-9.-]+$)/u;
 
 function safeReference(value: string, field: string): void {
   if (!SAFE_REFERENCE.test(value) || SENSITIVE_TEXT.test(value) || SECRET_VALUE.test(value)) {

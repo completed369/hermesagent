@@ -183,13 +183,15 @@ export class AcpApprovalBridgeService {
   }
 
   async decideApproval(
-    workspaceId: string,
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
     approvalRequestId: string,
-    approverUserId: string,
     decision: FounderDecision,
     idempotencyKey: string,
     currentBinding?: AcpApprovalBinding,
   ) {
+    const workspaceId = context.workspaceId;
+    const approverUserId = context.principalId;
     validateAcpApprovalReference(workspaceId, 'workspaceId');
     validateAcpApprovalReference(approvalRequestId, 'approvalRequestId');
     validateAcpApprovalReference(approverUserId, 'approverUserId');
@@ -197,97 +199,100 @@ export class AcpApprovalBridgeService {
     if (!['APPROVE', 'REJECT', 'REVOKE'].includes(decision)) {
       throw new AcpApprovalDeniedError('Unsupported approval decision');
     }
+    capability.assertSource('CONTROL_PLANE');
+    if (capability.actorKindFor(context) !== 'HUMAN') {
+      throw new AcpApprovalDeniedError('Only an authenticated human principal may decide');
+    }
 
-    return prisma.$transaction(async (tx) => {
-      const founder = await tx.user.findFirst({
-        where: {
-          id: approverUserId,
-          isFounder: true,
-          deletedAt: null,
-          memberships: {
-            some: {
-              workspaceId,
-              role: {
-                rolePermissions: { some: { permission: { key: 'approval:decide' } } },
-              },
-            },
-          },
-        },
-      });
-      if (!founder) {
-        throw new AcpApprovalDeniedError(
-          'A current workspace founder with approval:decide authority is required',
-        );
-      }
-      const replay = await tx.acpApprovalDecision.findUnique({
-        where: { workspaceId_idempotencyKey: { workspaceId, idempotencyKey } },
-        include: { approvalRequest: true },
-      });
-      if (replay) {
-        if (
-          replay.approvalRequestId !== approvalRequestId ||
-          replay.approverReference !== founder.id ||
-          replay.decision !== decision
-        ) {
-          throw new AcpApprovalConflictError('Decision idempotency key was reused');
+    return prisma.$transaction(
+      async (tx) => {
+        const founders = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT u."id"
+        FROM "users" u
+        JOIN "workspace_members" wm ON wm."userId" = u."id"
+        JOIN "roles" r ON r."id" = wm."roleId"
+        JOIN "role_permissions" rp ON rp."roleId" = r."id"
+        JOIN "permissions" p ON p."id" = rp."permissionId"
+        WHERE u."id" = ${approverUserId}::uuid
+          AND wm."workspaceId" = ${workspaceId}::uuid
+          AND u."isFounder" = TRUE
+          AND u."deletedAt" IS NULL
+          AND p."key" = 'approval:decide'
+        FOR SHARE OF u, wm, r, rp, p
+      `);
+        const founder = founders[0];
+        if (!founder) {
+          throw new AcpApprovalDeniedError(
+            'A current workspace founder with approval:decide authority is required',
+          );
         }
-        return { request: replay.approvalRequest, decision: replay, replayed: true };
-      }
-      const request = await tx.acpApprovalRequest.findFirst({
-        where: { id: approvalRequestId, workspaceId },
-      });
-      if (!request) throw new AcpApprovalNotFoundError('ACP approval request not found');
+        const replay = await tx.acpApprovalDecision.findUnique({
+          where: { workspaceId_idempotencyKey: { workspaceId, idempotencyKey } },
+          include: { approvalRequest: true },
+        });
+        if (replay) {
+          if (
+            replay.approvalRequestId !== approvalRequestId ||
+            replay.approverReference !== founder.id ||
+            replay.decision !== decision
+          ) {
+            throw new AcpApprovalConflictError('Decision idempotency key was reused');
+          }
+          if (decision === 'APPROVE') {
+            if (!currentBinding) throw new AcpApprovalDeniedError('Current binding is required');
+            assertExecutable(replay.approvalRequest, currentBinding, new Date());
+          }
+          return { request: replay.approvalRequest, decision: replay, replayed: true };
+        }
+        const request = await tx.acpApprovalRequest.findFirst({
+          where: { id: approvalRequestId, workspaceId },
+        });
+        if (!request) throw new AcpApprovalNotFoundError('ACP approval request not found');
 
-      const now = new Date();
-      let expectedStates: string[];
-      let nextState: string;
-      if (decision === 'APPROVE') {
-        if (!currentBinding) throw new AcpApprovalDeniedError('Current binding is required');
-        validateAcpApprovalBinding(currentBinding);
-        assertExecutable(request, currentBinding, now);
-        expectedStates = ['PENDING'];
-        nextState = 'APPROVED';
-      } else if (decision === 'REJECT') {
-        expectedStates = ['PENDING'];
-        nextState = 'REJECTED';
-      } else {
-        expectedStates = ['APPROVED', 'PERMIT_ISSUED'];
-        nextState = 'REVOKED';
-      }
+        const now = new Date();
+        let expectedStates: string[];
+        let nextState: string;
+        if (decision === 'APPROVE') {
+          if (!currentBinding) throw new AcpApprovalDeniedError('Current binding is required');
+          validateAcpApprovalBinding(currentBinding);
+          assertExecutable(request, currentBinding, now);
+          expectedStates = ['PENDING'];
+          nextState = 'APPROVED';
+        } else if (decision === 'REJECT') {
+          expectedStates = ['PENDING'];
+          nextState = 'REJECTED';
+        } else {
+          expectedStates = ['APPROVED', 'PERMIT_ISSUED'];
+          nextState = 'REVOKED';
+        }
 
-      const changed = await tx.acpApprovalRequest.updateMany({
-        where: { id: request.id, workspaceId, state: { in: expectedStates } },
-        data: { state: nextState },
-      });
-      if (changed.count !== 1) {
-        throw new AcpApprovalConflictError(`Approval cannot transition from ${request.state}`);
-      }
+        const changed =
+          decision === 'APPROVE'
+            ? await tx.$executeRaw(Prisma.sql`
+              UPDATE "acp_approval_requests"
+              SET "state" = 'APPROVED', "updatedAt" = CURRENT_TIMESTAMP
+              WHERE "id" = ${request.id}::uuid
+                AND "workspaceId" = ${workspaceId}::uuid
+                AND "state" = 'PENDING'
+                AND "expiresAt" > clock_timestamp()
+            `)
+            : (
+                await tx.acpApprovalRequest.updateMany({
+                  where: { id: request.id, workspaceId, state: { in: expectedStates } },
+                  data: { state: nextState },
+                })
+              ).count;
+        if (changed !== 1) {
+          throw new AcpApprovalConflictError(`Approval cannot transition from ${request.state}`);
+        }
 
-      const decisionId = randomUUID();
-      const decisionHash = hashObject({
-        id: decisionId,
-        workspaceId,
-        approvalRequestId,
-        decision,
-        approverReference: approverUserId,
-        approverAuthorityLevel: 4,
-        bindingHash: request.bindingHash,
-        artifactVersionId: request.artifactVersionId,
-        evidenceHash: request.evidenceHash,
-        policyVersion: request.policyVersion,
-        policyHash: request.policyHash,
-        idempotencyKey,
-        decidedAt: now.toISOString(),
-        expiresAt: request.expiresAt.toISOString(),
-      });
-      const decisionRecord = await tx.acpApprovalDecision.create({
-        data: {
+        const decisionId = randomUUID();
+        const decisionHash = hashObject({
           id: decisionId,
           workspaceId,
           approvalRequestId,
           decision,
-          approverId: founder.id,
-          approverReference: founder.id,
+          approverReference: approverUserId,
           approverAuthorityLevel: 4,
           bindingHash: request.bindingHash,
           artifactVersionId: request.artifactVersionId,
@@ -295,27 +300,49 @@ export class AcpApprovalBridgeService {
           policyVersion: request.policyVersion,
           policyHash: request.policyHash,
           idempotencyKey,
-          decidedAt: now,
-          expiresAt: request.expiresAt,
-          decisionHash,
-        },
-      });
-      const updated = await tx.acpApprovalRequest.findUniqueOrThrow({ where: { id: request.id } });
-      await this.auditService.record(
-        workspaceId,
-        {
-          actorId: founder.id,
-          action: 'ACP_APPROVAL_DECIDED',
-          entityType: 'AcpApprovalRequest',
-          entityId: request.id,
-          before: { state: request.state, bindingHash: request.bindingHash },
-          after: { state: updated.state, decision, bindingHash: request.bindingHash },
-          approvalReference: decisionId,
-        },
-        tx,
-      );
-      return { request: updated, decision: decisionRecord, replayed: false };
-    });
+          decidedAt: now.toISOString(),
+          expiresAt: request.expiresAt.toISOString(),
+        });
+        const decisionRecord = await tx.acpApprovalDecision.create({
+          data: {
+            id: decisionId,
+            workspaceId,
+            approvalRequestId,
+            decision,
+            approverId: founder.id,
+            approverReference: founder.id,
+            approverAuthorityLevel: 4,
+            bindingHash: request.bindingHash,
+            artifactVersionId: request.artifactVersionId,
+            evidenceHash: request.evidenceHash,
+            policyVersion: request.policyVersion,
+            policyHash: request.policyHash,
+            idempotencyKey,
+            decidedAt: now,
+            expiresAt: request.expiresAt,
+            decisionHash,
+          },
+        });
+        const updated = await tx.acpApprovalRequest.findUniqueOrThrow({
+          where: { id: request.id },
+        });
+        await this.auditService.record(
+          workspaceId,
+          {
+            actorId: founder.id,
+            action: 'ACP_APPROVAL_DECIDED',
+            entityType: 'AcpApprovalRequest',
+            entityId: request.id,
+            before: { state: request.state, bindingHash: request.bindingHash },
+            after: { state: updated.state, decision, bindingHash: request.bindingHash },
+            approvalReference: decisionId,
+          },
+          tx,
+        );
+        return { request: updated, decision: decisionRecord, replayed: false };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   async issueExecutionPermit(
@@ -404,11 +431,14 @@ export class AcpApprovalBridgeService {
           expiresAt: request.expiresAt,
         },
       });
-      const changed = await tx.acpApprovalRequest.updateMany({
-        where: { id: request.id, state: 'APPROVED' },
-        data: { state: 'PERMIT_ISSUED' },
-      });
-      if (changed.count !== 1) throw new AcpApprovalConflictError('Approval changed concurrently');
+      const changed = await tx.$executeRaw(Prisma.sql`
+        UPDATE "acp_approval_requests"
+        SET "state" = 'PERMIT_ISSUED', "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "id" = ${request.id}::uuid
+          AND "state" = 'APPROVED'
+          AND "expiresAt" > clock_timestamp()
+      `);
+      if (changed !== 1) throw new AcpApprovalConflictError('Approval changed or expired');
       await this.auditService.recordOperationalEvent(
         capability,
         context,
@@ -457,6 +487,10 @@ export class AcpApprovalBridgeService {
       throw new AcpApprovalDeniedError('Permit is bound to a different execution principal');
     }
     if (permit.claimedAt) {
+      assertAcpApprovalBindingMatch(requestBinding(permit.approvalRequest), currentBinding);
+      if (permit.bindingHash !== computeAcpApprovalBindingHash(currentBinding)) {
+        throw new AcpApprovalDeniedError('Claim receipt binding no longer matches current work');
+      }
       if (
         permit.claimIdempotencyKey === claimIdempotencyKey &&
         permit.claimedByReference === context.principalId
@@ -476,55 +510,65 @@ export class AcpApprovalBridgeService {
     }
 
     try {
-      return await prisma.$transaction(async (tx) => {
-        const claimHash = hashObject({
-          permitId,
-          workspaceId: context.workspaceId,
-          approvalRequestId: request.id,
-          bindingHash: permit.bindingHash,
-          claimedByReference: context.principalId,
-          claimIdempotencyKey,
-          claimedAt: now.toISOString(),
-        });
-        const changedPermit = await tx.acpExecutionPermit.updateMany({
-          where: { id: permitId, workspaceId: context.workspaceId, claimedAt: null },
-          data: {
-            claimedAt: now,
+      return await prisma.$transaction(
+        async (tx) => {
+          const claimHash = hashObject({
+            permitId,
+            workspaceId: context.workspaceId,
+            approvalRequestId: request.id,
+            bindingHash: permit.bindingHash,
             claimedByReference: context.principalId,
             claimIdempotencyKey,
-            claimHash,
-          },
-        });
-        const changedRequest = await tx.acpApprovalRequest.updateMany({
-          where: { id: request.id, state: 'PERMIT_ISSUED' },
-          data: { state: 'PERMIT_CLAIMED' },
-        });
-        if (changedPermit.count !== 1 || changedRequest.count !== 1) {
-          throw new AcpApprovalConflictError('Execution permit was claimed concurrently');
-        }
-        await this.auditService.recordOperationalEvent(
-          capability,
-          context,
-          {
-            id: randomUUID(),
-            workspaceId: context.workspaceId,
-            type: 'approval.permit.claimed',
-            source: 'CONTROL_PLANE',
-            actorKind,
-            actorId: context.principalId,
-            subjectType: 'AcpExecutionPermit',
-            subjectId: permitId,
-            occurredAt: now.toISOString(),
-            idempotencyKey: claimIdempotencyKey,
-            correlationId: request.runId,
-            facts: { taskId: request.taskId, runId: request.runId },
-          },
-          undefined,
-          tx,
-        );
-        const claimed = await tx.acpExecutionPermit.findUniqueOrThrow({ where: { id: permitId } });
-        return { permit: claimed, replayed: false, executed: false as const };
-      });
+            claimedAt: now.toISOString(),
+          });
+          const changedPermit = await tx.$executeRaw(Prisma.sql`
+          UPDATE "acp_execution_permits"
+          SET "claimedAt" = ${now},
+              "claimedByReference" = ${context.principalId},
+              "claimIdempotencyKey" = ${claimIdempotencyKey},
+              "claimHash" = ${claimHash}
+          WHERE "id" = ${permitId}::uuid
+            AND "workspaceId" = ${context.workspaceId}::uuid
+            AND "claimedAt" IS NULL
+            AND "expiresAt" > clock_timestamp()
+        `);
+          const changedRequest = await tx.$executeRaw(Prisma.sql`
+          UPDATE "acp_approval_requests"
+          SET "state" = 'PERMIT_CLAIMED', "updatedAt" = CURRENT_TIMESTAMP
+          WHERE "id" = ${request.id}::uuid
+            AND "state" = 'PERMIT_ISSUED'
+            AND "expiresAt" > clock_timestamp()
+        `);
+          if (changedPermit !== 1 || changedRequest !== 1) {
+            throw new AcpApprovalConflictError('Execution permit was claimed concurrently');
+          }
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'approval.permit.claimed',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpExecutionPermit',
+              subjectId: permitId,
+              occurredAt: now.toISOString(),
+              idempotencyKey: claimIdempotencyKey,
+              correlationId: request.runId,
+              facts: { taskId: request.taskId, runId: request.runId },
+            },
+            undefined,
+            tx,
+          );
+          const claimed = await tx.acpExecutionPermit.findUniqueOrThrow({
+            where: { id: permitId },
+          });
+          return { permit: claimed, replayed: false, executed: false as const };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
     } catch (error) {
       if (
         error instanceof AcpApprovalConflictError ||

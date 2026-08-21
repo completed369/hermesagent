@@ -70,6 +70,8 @@ describe('ACP approval binding', () => {
     ['idempotencyKey', 'prompt-transcript'],
     ['exactTarget', 'ghp_12345678901234567890'],
     ['idempotencyKey', 'AKIA1234567890ABCDEF'],
+    ['exactTarget', 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature123'],
+    ['objectiveId', 'glpat-1234567890abcdef'],
   ] as const)('rejects sensitive material in %s', (field, value) => {
     expect(() => validateAcpApprovalRequestInput({ ...binding, [field]: value }, NOW)).toThrow(
       /safe (?:non-sensitive reference|action code)/,

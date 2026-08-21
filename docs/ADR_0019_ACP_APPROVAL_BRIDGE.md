@@ -29,6 +29,15 @@ requires a trusted server-created operational-event capability. That capability
 is a composition-root boundary and must never be constructed from an AI COO
 card, voice transcript, request body, or runtime payload.
 
+Founder identity is derived from that trusted `CONTROL_PLANE` human capability
+and its workspace context, never from a caller-supplied user ID. The decision
+transaction runs at serializable isolation and locks the matching user,
+membership, role, role-permission, and permission rows so authority remains
+current through commit. Approval and permit state transitions also include
+database-clock expiry predicates. Idempotent approval and claim replays must
+revalidate the complete current binding; a prior success is not authority for
+drifted work.
+
 Request, decision, permit, state transition, and audit writes share database
 transactions. Database triggers make bindings and decisions immutable, constrain
 the state machine, and allow only one permit claim. Deletes remain possible for
