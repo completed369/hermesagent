@@ -2,8 +2,9 @@
 
 - **Status:** Accepted as interface-selection evidence; connections remain unverified
 - **Date:** 2026-08-21
-- **Evidence baseline:** `completed369/hermesagent` `main` at
+- **Evidence-collection baseline:** `completed369/hermesagent` `main` at
   `9c2bc086b28599adf1ac31dc72826c9c0370a9d4`
+- **Current PR base:** `10ab6f76abc8b1f05be2de806a34305cedcbe850`
 - **Refines:** ADR-0013 and ADR-0014 without rewriting their historical evidence
 
 ## Decision
@@ -12,8 +13,10 @@ VentureOS will place a small authenticated bridge around each runtime's most
 structured local interface:
 
 - **Codex:** `codex app-server` over stdio is preferred. `codex exec --json` is
-  the bounded non-interactive fallback. The Codex SDK and MCP server remain
-  optional surfaces.
+  a non-interactive fallback only behind the same isolated child-process,
+  task-allowlist, single-use-permit, and audit controls. It is never a general
+  raw-prompt or shell worker. The Codex SDK and MCP server remain optional
+  surfaces.
 - **Hermes:** `hermes acp` over stdio is preferred. Hermes MCP may support
   conversation interoperability, but is not the primary task-control transport.
 - **Pi:** `pi --mode rpc` over JSON Lines is preferred, running only inside the
@@ -51,8 +54,8 @@ No runtime is connected by this ADR. Codex, Hermes, and Pi remain
 The official Codex app-server protocol uses a bidirectional JSON-RPC-like
 protocol. Stdio JSONL is the stable default transport. A client initializes the
 connection, starts or resumes a thread, starts a turn, consumes streamed item
-and tool events, and receives turn completion. It also exposes adapter control
-operations.
+and tool events, and receives turn completion. `turn/interrupt` provides the
+concrete cancellation operation required by the initial adapter.
 
 `codex exec --json` emits JSONL lifecycle, item, error, and usage events for a
 simpler bounded worker. The TypeScript SDK can start and resume local threads.
@@ -93,10 +96,10 @@ permission flows. `hermes mcp serve` exposes conversation operations through
 MCP. `hermes serve` provides a localhost JSON-RPC/WebSocket backend by default,
 with authentication required for non-loopback binding.
 
-One-shot mode is rejected as the primary adapter because its documented
-behavior automatically bypasses interactive approvals. It may only be
-considered for pre-approved, sandboxed, non-consequential jobs whose VentureOS
-permit fully defines the allowed work.
+One-shot mode is not an approved VentureOS adapter surface because its
+documented behavior automatically bypasses interactive approvals. Any future
+proposal to use it requires a separate security review and ADR; this decision
+does not authorize an exception.
 
 The inspected source checkout was at
 `7b5ba2054721dde998ed47fd4a0f031955278e99`, with local modifications and remote
