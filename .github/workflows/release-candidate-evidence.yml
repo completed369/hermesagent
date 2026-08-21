@@ -264,6 +264,10 @@ jobs:
             exit 1
           fi
           config_path="$(jq -er '.[0].Config' "$manifest")"
+          if [[ ! "$config_path" =~ ^[0-9a-f]{64}\.json$ ]]; then
+            echo 'Sanitized validation failure: docker-config-identity' >&2
+            exit 1
+          fi
           if ! tar -xOf "$archive" "$config_path" \
             | jq -e --arg source "$SOURCE_SHA" '
                 .config.Labels["org.opencontainers.image.source"] == "https://github.com/completed369/hermesagent" and
@@ -272,12 +276,17 @@ jobs:
             echo 'Sanitized validation failure: immutable-source-label' >&2
             exit 1
           fi
-          if ! jq -e --arg archive "$archive" '
+          config_digest="$(tar -xOf "$archive" "$config_path" | sha256sum | awk '{print $1}')"
+          expected_image_id="sha256:${config_digest}"
+          if ! jq -e --arg archive "$archive" --arg image_id "$expected_image_id" '
             type == "object" and
             (.SchemaVersion | type == "integer") and
             .ArtifactName == $archive and
             .ArtifactType == "container_image" and
-            (.Results | type == "array" and length > 0)
+            (.Results | type == "array") and
+            .Metadata.ImageID == $image_id and
+            (.Metadata.DiffIDs | type == "array" and length > 0) and
+            all(.Metadata.DiffIDs[]; type == "string" and test("^sha256:[0-9a-f]{64}$"))
           ' "$report" >/dev/null; then
             echo 'Sanitized validation failure: vulnerability-report-identity' >&2
             exit 1
