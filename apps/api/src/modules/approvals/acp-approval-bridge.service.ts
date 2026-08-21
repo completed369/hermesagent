@@ -23,6 +23,17 @@ export class AcpApprovalNotFoundError extends AcpApprovalBridgeError {}
 
 type FounderDecision = 'APPROVE' | 'REJECT' | 'REVOKE';
 
+async function databaseNow(tx: Prisma.TransactionClient): Promise<Date> {
+  const rows = await tx.$queryRaw<Array<{ now: Date }>>(
+    Prisma.sql`SELECT clock_timestamp() AS "now"`,
+  );
+  const now = rows[0]?.now;
+  if (!(now instanceof Date)) {
+    throw new AcpApprovalDeniedError('Database clock is unavailable');
+  }
+  return now;
+}
+
 function requestBinding(request: AcpApprovalRequest): AcpApprovalBinding {
   return {
     workspaceId: request.workspaceId,
@@ -244,12 +255,19 @@ export class AcpApprovalBridgeService {
           }
           return { request: replay.approvalRequest, decision: replay, replayed: true };
         }
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id"
+          FROM "acp_approval_requests"
+          WHERE "id" = ${approvalRequestId}::uuid
+            AND "workspaceId" = ${workspaceId}::uuid
+          FOR UPDATE
+        `);
         const request = await tx.acpApprovalRequest.findFirst({
           where: { id: approvalRequestId, workspaceId },
         });
         if (!request) throw new AcpApprovalNotFoundError('ACP approval request not found');
 
-        const now = new Date();
+        const now = await databaseNow(tx);
         let expectedStates: string[];
         let nextState: string;
         if (decision === 'APPROVE') {
@@ -393,6 +411,13 @@ export class AcpApprovalBridgeService {
     }
 
     return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "acp_approval_requests"
+        WHERE "id" = ${approvalRequestId}::uuid
+          AND "workspaceId" = ${context.workspaceId}::uuid
+        FOR UPDATE
+      `);
       const request = await tx.acpApprovalRequest.findFirst({
         where: { id: approvalRequestId, workspaceId: context.workspaceId },
       });
@@ -400,7 +425,7 @@ export class AcpApprovalBridgeService {
       if (request.state !== 'APPROVED') {
         throw new AcpApprovalDeniedError(`Approval is not permit-ready: ${request.state}`);
       }
-      const now = new Date();
+      const now = await databaseNow(tx);
       assertExecutable(request, currentBinding, now);
       const approved = await tx.acpApprovalDecision.findFirst({
         where: { approvalRequestId, decision: 'APPROVE' },
@@ -503,8 +528,7 @@ export class AcpApprovalBridgeService {
     if (request.state !== 'PERMIT_ISSUED') {
       throw new AcpApprovalDeniedError(`Permit cannot be claimed: ${request.state}`);
     }
-    const now = new Date();
-    assertExecutable(request, currentBinding, now);
+    assertExecutable(request, currentBinding, new Date());
     if (permit.bindingHash !== computeAcpApprovalBindingHash(currentBinding)) {
       throw new AcpApprovalDeniedError('Permit binding no longer matches current work');
     }
@@ -512,11 +536,53 @@ export class AcpApprovalBridgeService {
     try {
       return await prisma.$transaction(
         async (tx) => {
+          // Every consuming path locks the request first, then the permit. The
+          // DB clock is sampled only after both locks are held so a wait cannot
+          // carry a pre-expiry authorization across its deadline.
+          await tx.$queryRaw(Prisma.sql`
+            SELECT "id"
+            FROM "acp_approval_requests"
+            WHERE "id" = ${request.id}::uuid
+              AND "workspaceId" = ${context.workspaceId}::uuid
+            FOR UPDATE
+          `);
+          await tx.$queryRaw(Prisma.sql`
+            SELECT "id"
+            FROM "acp_execution_permits"
+            WHERE "id" = ${permitId}::uuid
+              AND "workspaceId" = ${context.workspaceId}::uuid
+            FOR UPDATE
+          `);
+          const lockedPermit = await tx.acpExecutionPermit.findFirst({
+            where: { id: permitId, workspaceId: context.workspaceId },
+            include: { approvalRequest: true },
+          });
+          if (!lockedPermit) {
+            throw new AcpApprovalNotFoundError('ACP execution permit not found');
+          }
+          if (lockedPermit.claimedAt) {
+            throw new AcpApprovalConflictError('Execution permit was claimed concurrently');
+          }
+          if (lockedPermit.executionPrincipalReference !== context.principalId) {
+            throw new AcpApprovalDeniedError('Permit is bound to a different execution principal');
+          }
+          const lockedRequest = lockedPermit.approvalRequest;
+          if (lockedRequest.state !== 'PERMIT_ISSUED') {
+            throw new AcpApprovalDeniedError(`Permit cannot be claimed: ${lockedRequest.state}`);
+          }
+          const now = await databaseNow(tx);
+          assertExecutable(lockedRequest, currentBinding, now);
+          if (lockedPermit.expiresAt.getTime() <= now.getTime()) {
+            throw new AcpApprovalDeniedError('Execution permit expired before claim');
+          }
+          if (lockedPermit.bindingHash !== computeAcpApprovalBindingHash(currentBinding)) {
+            throw new AcpApprovalDeniedError('Permit binding no longer matches current work');
+          }
           const claimHash = hashObject({
             permitId,
             workspaceId: context.workspaceId,
-            approvalRequestId: request.id,
-            bindingHash: permit.bindingHash,
+            approvalRequestId: lockedRequest.id,
+            bindingHash: lockedPermit.bindingHash,
             claimedByReference: context.principalId,
             claimIdempotencyKey,
             claimedAt: now.toISOString(),
@@ -535,7 +601,7 @@ export class AcpApprovalBridgeService {
           const changedRequest = await tx.$executeRaw(Prisma.sql`
           UPDATE "acp_approval_requests"
           SET "state" = 'PERMIT_CLAIMED', "updatedAt" = CURRENT_TIMESTAMP
-          WHERE "id" = ${request.id}::uuid
+          WHERE "id" = ${lockedRequest.id}::uuid
             AND "state" = 'PERMIT_ISSUED'
             AND "expiresAt" > clock_timestamp()
         `);
@@ -556,8 +622,8 @@ export class AcpApprovalBridgeService {
               subjectId: permitId,
               occurredAt: now.toISOString(),
               idempotencyKey: claimIdempotencyKey,
-              correlationId: request.runId,
-              facts: { taskId: request.taskId, runId: request.runId },
+              correlationId: lockedRequest.runId,
+              facts: { taskId: lockedRequest.taskId, runId: lockedRequest.runId },
             },
             undefined,
             tx,

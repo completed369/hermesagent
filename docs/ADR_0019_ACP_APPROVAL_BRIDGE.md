@@ -34,7 +34,8 @@ and its workspace context, never from a caller-supplied user ID. The decision
 transaction runs at serializable isolation and locks the matching user,
 membership, role, role-permission, and permission rows so authority remains
 current through commit. Approval and permit state transitions also include
-database-clock expiry predicates. Idempotent approval and claim replays must
+an explicit request-first, permit-second lock order and sample the database
+clock only after those locks are acquired. Idempotent approval and claim replays must
 revalidate the complete current binding; a prior success is not authority for
 drifted work.
 

@@ -67,7 +67,9 @@
   authority records through commit. Requester authority is taken from a trusted
   principal capability (Level 0 cannot request). A trusted control-plane
   capability may issue and a specifically bound execution principal may claim
-  one permit; database-clock predicates prevent an expiry race. A claim consumes
+  one permit; consuming paths lock the request first (then the permit when
+  applicable) and check the database clock only after locks are held, preventing
+  a lock wait from carrying authority past expiry. A claim consumes
   authorization but performs no external action. Exact binding is revalidated
   even on idempotent approval and claim replays. Revocation, expiry, drift,
   source forgery, cross-workspace access, and replay conflict fail closed. AI COO
