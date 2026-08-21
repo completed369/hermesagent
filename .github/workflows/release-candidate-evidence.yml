@@ -253,6 +253,7 @@ jobs:
           report="/tmp/ventureos-${IMAGE_NAME}.trivy.json"
           sbom="/tmp/ventureos-${IMAGE_NAME}.spdx.json"
           manifest="/tmp/${IMAGE_NAME}.docker-manifest.json"
+          config_file="/tmp/${IMAGE_NAME}.docker-config.json"
 
           if ! tar -xOf "$archive" manifest.json > "$manifest"; then
             echo 'Sanitized validation failure: docker-manifest-unreadable' >&2
@@ -268,25 +269,35 @@ jobs:
             echo 'Sanitized validation failure: docker-config-identity' >&2
             exit 1
           fi
-          if ! tar -xOf "$archive" "$config_path" \
-            | jq -e --arg source "$SOURCE_SHA" '
-                .config.Labels["org.opencontainers.image.source"] == "https://github.com/completed369/hermesagent" and
-                .config.Labels["org.opencontainers.image.revision"] == $source
-              ' >/dev/null; then
+          if ! tar -xOf "$archive" "$config_path" > "$config_file"; then
+            echo 'Sanitized validation failure: docker-config-unreadable' >&2
+            exit 1
+          fi
+          if ! jq -e --arg source "$SOURCE_SHA" '
+            .config.Labels["org.opencontainers.image.source"] == "https://github.com/completed369/hermesagent" and
+            .config.Labels["org.opencontainers.image.revision"] == $source
+          ' "$config_file" >/dev/null; then
             echo 'Sanitized validation failure: immutable-source-label' >&2
             exit 1
           fi
-          config_digest="$(tar -xOf "$archive" "$config_path" | sha256sum | awk '{print $1}')"
+          config_digest="$(sha256sum "$config_file" | awk '{print $1}')"
+          if [[ "$config_path" != "${config_digest}.json" ]]; then
+            echo 'Sanitized validation failure: docker-config-digest' >&2
+            exit 1
+          fi
           expected_image_id="sha256:${config_digest}"
-          if ! jq -e --arg archive "$archive" --arg image_id "$expected_image_id" '
+          if ! jq -e --arg archive "$archive" --arg image_id "$expected_image_id" \
+            --slurpfile config "$config_file" '
             type == "object" and
             (.SchemaVersion | type == "integer") and
             .ArtifactName == $archive and
             .ArtifactType == "container_image" and
             (.Results | type == "array") and
+            ($config | length == 1) and
+            ($config[0].rootfs.diff_ids | type == "array" and length > 0) and
+            all($config[0].rootfs.diff_ids[]; type == "string" and test("^sha256:[0-9a-f]{64}$")) and
             .Metadata.ImageID == $image_id and
-            (.Metadata.DiffIDs | type == "array" and length > 0) and
-            all(.Metadata.DiffIDs[]; type == "string" and test("^sha256:[0-9a-f]{64}$"))
+            .Metadata.DiffIDs == $config[0].rootfs.diff_ids
           ' "$report" >/dev/null; then
             echo 'Sanitized validation failure: vulnerability-report-identity' >&2
             exit 1
