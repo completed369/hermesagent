@@ -99,6 +99,15 @@ describe('DynamicAgentFactory', () => {
     expect(out.agent).toMatchObject({ agentId: 'agent:r1', lifecycle: 'ACTIVE', nestingDepth: 0 });
     expect(out.decision.checks).toContain('authority');
   });
+  it('rejects hidden request fields and protects factory read models', () => {
+    const f = factory();
+    expect(() =>
+      f.instantiate(coo, { ...request(), chainOfThought: 'private' } as AgentInstantiationRequest),
+    ).toThrow(/unsupported fields/);
+    expect(() => f.listAgents({ workspaceId: 'w1', principalId: 'viewer' })).toThrow(/AI COO/);
+    expect(() => f.listDecisions({ workspaceId: 'w1', principalId: 'viewer' })).toThrow(/AI COO/);
+    expect(() => f.listEvents({ workspaceId: 'w1', principalId: 'viewer' })).toThrow(/AI COO/);
+  });
   it('denies unauthorized and cross-tenant requests', () => {
     const f = factory();
     expect(() => f.instantiate({ workspaceId: 'w1', principalId: 'runtime' }, request())).toThrow(
@@ -122,6 +131,29 @@ describe('DynamicAgentFactory', () => {
     f.instantiate(coo, request());
     expect(() => f.instantiate(coo, request())).toThrow(/consumed/);
     expect(() => f.instantiate(coo, request('x', { taskId: 'missing' }))).toThrow(/linkage/);
+  });
+  it('registers objective/task plans atomically and rejects linkage collisions', () => {
+    const f = new DynamicAgentFactory({ authorityPrincipals: ['founder'], limits });
+    f.registerObjective(ctx, 'existing');
+    f.registerTask(ctx, 'shared-task', 'existing');
+    expect(() =>
+      f.registerPlan(ctx, 'new-objective', [{ id: 'shared-task', objectiveId: 'new-objective' }]),
+    ).toThrow(/already exists/);
+    expect(() =>
+      f.registerPlan(ctx, 'new-objective', [{ id: 'new-task', objectiveId: 'new-objective' }]),
+    ).not.toThrow();
+    expect(() => f.registerObjective(ctx, 'new-objective')).toThrow(/already exists/);
+    expect(() => f.registerTask(ctx, 'new-task', 'new-objective')).toThrow(/already exists/);
+  });
+  it('allows the configured AI COO to register an atomic governed plan', () => {
+    const f = new DynamicAgentFactory({
+      authorityPrincipals: ['founder'],
+      aiCooPrincipals: ['coo'],
+      limits,
+    });
+    expect(() =>
+      f.registerPlan(coo, 'coo-objective', [{ id: 'coo-task', objectiveId: 'coo-objective' }]),
+    ).not.toThrow();
   });
   it('enforces child and nesting explosion limits', () => {
     const f = factory();

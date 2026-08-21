@@ -109,6 +109,12 @@ function dense(value: unknown, field: string, max = 64): asserts value is unknow
   if (!Array.isArray(value) || value.length > max || Object.keys(value).length !== value.length)
     throw new AgentFactoryPolicyError(`${field} must be a dense bounded array`);
 }
+function exactObjectKeys(value: object, expected: readonly string[], field: string): void {
+  const actual = Object.keys(value).sort();
+  const allowed = [...expected].sort();
+  if (actual.length !== allowed.length || actual.some((key, index) => key !== allowed[index]))
+    throw new AgentFactoryPolicyError(`${field} contains unsupported fields`);
+}
 const key = (workspaceId: string, id: string) => JSON.stringify([workspaceId, id]);
 
 export class DynamicAgentFactory {
@@ -159,7 +165,10 @@ export class DynamicAgentFactory {
   registerObjective(context: WorkspaceContext, id: EntityId): void {
     this.#assertAuthorizer(context);
     text(id, 'objectiveId');
-    this.#objectives.add(key(context.workspaceId, id));
+    const objectiveKey = key(context.workspaceId, id);
+    if (this.#objectives.has(objectiveKey))
+      throw new AgentFactoryPolicyError('Objective linkage already exists');
+    this.#objectives.add(objectiveKey);
   }
   registerTask(context: WorkspaceContext, id: EntityId, objectiveId: EntityId): void {
     this.#assertAuthorizer(context);
@@ -167,7 +176,37 @@ export class DynamicAgentFactory {
     text(objectiveId, 'objectiveId');
     if (!this.#objectives.has(key(context.workspaceId, objectiveId)))
       throw new AgentFactoryPolicyError('Task objective is not registered');
-    this.#tasks.set(key(context.workspaceId, id), objectiveId);
+    const taskKey = key(context.workspaceId, id);
+    if (this.#tasks.has(taskKey)) throw new AgentFactoryPolicyError('Task linkage already exists');
+    this.#tasks.set(taskKey, objectiveId);
+  }
+  registerPlan(
+    context: WorkspaceContext,
+    objectiveId: EntityId,
+    tasks: readonly { id: EntityId; objectiveId: EntityId }[],
+  ): void {
+    this.#assertRequester(context);
+    text(objectiveId, 'objectiveId');
+    dense(tasks, 'tasks', 1_000);
+    const objectiveKey = key(context.workspaceId, objectiveId);
+    if (this.#objectives.has(objectiveKey))
+      throw new AgentFactoryPolicyError('Objective linkage already exists');
+    const taskKeys = new Set<string>();
+    for (const task of tasks) {
+      if (!task || typeof task !== 'object' || Array.isArray(task))
+        throw new AgentFactoryPolicyError('Task linkage must be an object');
+      text(task.id, 'taskId');
+      text(task.objectiveId, 'objectiveId');
+      if (task.objectiveId !== objectiveId)
+        throw new AgentFactoryPolicyError('Task objective linkage is invalid');
+      const taskKey = key(context.workspaceId, task.id);
+      if (taskKeys.has(taskKey) || this.#tasks.has(taskKey))
+        throw new AgentFactoryPolicyError('Task linkage already exists');
+      taskKeys.add(taskKey);
+    }
+    // Commit only after every linkage has passed validation and collision checks.
+    this.#objectives.add(objectiveKey);
+    for (const task of tasks) this.#tasks.set(key(context.workspaceId, task.id), objectiveId);
   }
   putTemplate(context: WorkspaceContext, template: AgentTemplate): void {
     this.#assertAuthorizer(context);
@@ -372,16 +411,19 @@ export class DynamicAgentFactory {
     if (stored.lifecycle === 'DELETED') this.#agents.delete(key(context.workspaceId, agentId));
   }
   listAgents(context: WorkspaceContext): readonly FactoryAgent[] {
+    this.#assertReader(context);
     return [...this.#agents.values()]
       .filter((a) => a.workspaceId === context.workspaceId && a.lifecycle !== 'DELETED')
       .map((a) => structuredClone(a));
   }
   listDecisions(context: WorkspaceContext): readonly AgentFactoryDecision[] {
+    this.#assertReader(context);
     return this.#decisions
       .filter((d) => d.workspaceId === context.workspaceId)
       .map((d) => structuredClone(d));
   }
   listEvents(context: WorkspaceContext): readonly AgentFactoryEvent[] {
+    this.#assertReader(context);
     return this.#events
       .filter((e) => e.workspaceId === context.workspaceId)
       .map((e) => structuredClone(e));
@@ -397,6 +439,9 @@ export class DynamicAgentFactory {
     )
       throw new AgentFactoryPolicyError('Authorizer or AI COO required');
   }
+  #assertReader(context: WorkspaceContext) {
+    this.#assertRequester(context);
+  }
   #assertWorkspace(context: WorkspaceContext, workspaceId: string) {
     if (context.workspaceId !== workspaceId)
       throw new AgentFactoryPolicyError('Cross-workspace operation denied');
@@ -407,6 +452,29 @@ export class DynamicAgentFactory {
         throw new AgentFactoryPolicyError(`${label} exceeds template grant`);
   }
   #validateTemplate(t: AgentTemplate) {
+    exactObjectKeys(
+      t,
+      [
+        'capabilityIds',
+        'department',
+        'environmentScopes',
+        'id',
+        'maximumAuthority',
+        'maximumBudgetMinorUnits',
+        'maximumChildren',
+        'maximumComputeUnits',
+        'maximumRetries',
+        'maximumRuntimeMs',
+        'repositoryScopes',
+        'retention',
+        'role',
+        'toolGrants',
+        'version',
+        'workspaceId',
+        'dataScopes',
+      ],
+      'template',
+    );
     text(t.id, 'template.id');
     text(t.workspaceId, 'workspaceId');
     text(t.role, 'role');
@@ -437,6 +505,34 @@ export class DynamicAgentFactory {
     integer(t.maximumComputeUnits, 'compute', this.#limits.maxComputeUnits);
   }
   #validateRequest(r: AgentInstantiationRequest) {
+    exactObjectKeys(
+      r,
+      [
+        'acceptanceCriteria',
+        'authorityLevel',
+        'budgetMinorUnits',
+        'capabilityIds',
+        'childLimit',
+        'computeUnits',
+        'dataScopes',
+        'environmentScopes',
+        'id',
+        'maxRuntimeMs',
+        'objectiveId',
+        'parentAgentId',
+        'repositoryScopes',
+        'retention',
+        'retryLimit',
+        'stopCondition',
+        'taskId',
+        'templateId',
+        'templateVersion',
+        'toolGrants',
+        'verificationCriteria',
+        'workspaceId',
+      ].filter((key) => key !== 'parentAgentId' || Object.hasOwn(r, 'parentAgentId')),
+      'request',
+    );
     if (r.parentAgentId !== undefined) text(r.parentAgentId, 'parentAgentId');
     for (const [v, n] of [
       [r.id, 'id'],
