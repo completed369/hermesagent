@@ -4,6 +4,7 @@ import { Prisma, prisma } from '@ventureos/database';
 import { buildAuditEventRecord, type AuditEventInput } from '@ventureos/observability';
 import {
   validateOperationalEvent,
+  type OperationalEventCapability,
   type OperationalEvent,
   type WorkspaceContext,
 } from '@ventureos/agent-control-plane';
@@ -55,12 +56,13 @@ export class AuditService {
   }
 
   async recordOperationalEvent(
+    capability: OperationalEventCapability,
     context: WorkspaceContext,
     event: OperationalEvent,
     relationalActorId?: string,
     client: Pick<Prisma.TransactionClient, 'auditEvent'> = prisma,
   ): Promise<void> {
-    validateOperationalEvent(context, event);
+    validateOperationalEvent(capability, context, event);
     if (
       relationalActorId !== undefined &&
       (event.actorKind !== 'HUMAN' || relationalActorId !== event.actorId)

@@ -36,6 +36,13 @@ export interface AuditEventMetadata {
   occurredAt?: string;
 }
 
+function integrityContent(record: Omit<AuditEventRecord, 'integrityHash'>): unknown {
+  // actorId is a nullable relational pointer that may be cleared by governed
+  // user erasure. actorReference is the immutable provenance bound by v2.
+  const { actorId: _mutableActorRelation, ...immutableContent } = record;
+  return immutableContent;
+}
+
 /**
  * Builds the immutable content for an audit row. Version 2 binds operational
  * provenance and replay metadata into the integrity hash. This is an integrity
@@ -60,12 +67,12 @@ export function buildAuditEventRecord(
     occurredAt: metadata.occurredAt,
     integrityVersion: 2 as const,
   };
-  const integrityHash = hashObject(record);
+  const integrityHash = hashObject(integrityContent(record));
   return { ...record, integrityHash };
 }
 
 export function verifyAuditEventRecord(record: AuditEventRecord): boolean {
   if (record.integrityVersion !== 2) return false;
   const { integrityHash, ...content } = record;
-  return hashObject(content) === integrityHash;
+  return hashObject(integrityContent(content)) === integrityHash;
 }

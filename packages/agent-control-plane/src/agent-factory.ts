@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AuthorityLevel, EntityId, WorkspaceContext } from './contracts';
-import type { OperationalEvent, OperationalEventSink } from './events';
+import type { OperationalEvent, OperationalEventCapability, OperationalEventSink } from './events';
 
 export type AgentRetention = 'DELETE_ON_COMPLETION' | 'ARCHIVE';
 export type AgentLifecycle = 'ACTIVE' | 'COMPLETED' | 'FAILED' | 'ARCHIVED' | 'DELETED';
@@ -124,6 +124,7 @@ export class DynamicAgentFactory {
   readonly #limits: AgentFactoryLimits;
   readonly #clock: () => number;
   readonly #eventSink?: OperationalEventSink;
+  readonly #eventCapability?: OperationalEventCapability;
   readonly #templates = new Map<string, AgentTemplate>();
   readonly #agents = new Map<string, FactoryAgent>();
   readonly #consumedRequests = new Set<string>();
@@ -138,12 +139,19 @@ export class DynamicAgentFactory {
     limits: AgentFactoryLimits;
     clock?: () => number;
     eventSink?: OperationalEventSink;
+    eventCapability?: OperationalEventCapability;
   }) {
     this.#authorizers = new Set(options.authorityPrincipals);
     this.#cooPrincipals = new Set(options.aiCooPrincipals ?? []);
     this.#limits = structuredClone(options.limits);
     this.#clock = options.clock ?? Date.now;
     this.#eventSink = options.eventSink;
+    this.#eventCapability = options.eventCapability;
+    if (Boolean(this.#eventSink) !== Boolean(this.#eventCapability)) {
+      throw new AgentFactoryPolicyError(
+        'Event sink and trusted capability must be configured together',
+      );
+    }
     const requiredLimitKeys = [
       'maxAgents',
       'maxAgentsPerWorkspace',
@@ -410,7 +418,7 @@ export class DynamicAgentFactory {
       type: nextLifecycle === 'ARCHIVED' ? 'agent.archived' : 'agent.deleted',
       occurredAt: at,
     };
-    this.#eventSink?.appendBatch(context, [
+    this.#eventSink?.appendBatch(this.#eventCapability!, context, [
       this.#toOperationalEvent(context, outcomeEvent, stored.taskId),
       this.#toOperationalEvent(context, retentionEvent, stored.taskId),
     ]);
@@ -446,7 +454,11 @@ export class DynamicAgentFactory {
     event: AgentFactoryEvent,
     correlationId: EntityId,
   ): void {
-    this.#eventSink?.append(context, this.#toOperationalEvent(context, event, correlationId));
+    this.#eventSink?.append(
+      this.#eventCapability!,
+      context,
+      this.#toOperationalEvent(context, event, correlationId),
+    );
   }
   #toOperationalEvent(
     context: WorkspaceContext,
@@ -467,7 +479,7 @@ export class DynamicAgentFactory {
       correlationId,
       facts: {
         lifecycle: event.type,
-        ...(event.reason ? { reason: event.reason } : {}),
+        ...(event.reason ? { reasonPresent: true } : {}),
       },
     };
   }

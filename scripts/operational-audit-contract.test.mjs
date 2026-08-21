@@ -9,6 +9,7 @@ const migration = readFileSync(
   ),
   'utf8',
 );
+const auditBuilder = readFileSync(resolve('packages/observability/src/audit.ts'), 'utf8');
 
 test('operational audit replay keys retain workspace scope after relational erasure', () => {
   assert.match(
@@ -34,4 +35,11 @@ test('legacy audit checksums are preserved while current provenance is retained'
   assert.match(migration, /"workspaceReference" = "workspaceId"::text/);
   assert.match(migration, /"actorReference" = "actorId"::text/);
   assert.match(migration, /Existing checksums remain integrityVersion 1 and are not rewritten/);
+});
+
+test('v2 integrity excludes the erasable actor relation and binds immutable provenance', () => {
+  assert.match(auditBuilder, /actorId: _mutableActorRelation/);
+  assert.match(auditBuilder, /actorReference/);
+  assert.match(auditBuilder, /hashObject\(integrityContent\(record\)\)/);
+  assert.match(auditBuilder, /hashObject\(integrityContent\(content\)\)/);
 });

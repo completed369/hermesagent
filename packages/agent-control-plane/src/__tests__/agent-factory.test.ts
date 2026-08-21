@@ -3,6 +3,7 @@ import {
   DynamicAgentFactory,
   AgentFactoryPolicyError,
   InMemoryOperationalEventLog,
+  OperationalEventCapability,
   type AgentInstantiationRequest,
   type AgentTemplate,
   type OperationalEventSink,
@@ -72,7 +73,15 @@ function factory(eventSink?: OperationalEventSink) {
     aiCooPrincipals: ['coo'],
     limits,
     clock: () => 1,
-    eventSink,
+    ...(eventSink
+      ? {
+          eventSink,
+          eventCapability: OperationalEventCapability.issue('AGENT_FACTORY', {
+            founder: 'HUMAN',
+            coo: 'AGENT',
+          }),
+        }
+      : {}),
   });
   f.putTemplate(ctx, template);
   f.registerObjective(ctx, 'o1');
@@ -106,7 +115,7 @@ describe('DynamicAgentFactory', () => {
     const events = new InMemoryOperationalEventLog();
     const f = factory(events);
     const agent = f.instantiate(coo, request()).agent;
-    f.complete(ctx, agent.agentId, 'COMPLETED', 'criteria verified');
+    f.complete(ctx, agent.agentId, 'COMPLETED', 'password=hunter2');
 
     expect(
       events
@@ -114,10 +123,11 @@ describe('DynamicAgentFactory', () => {
         .map((event) => event.type)
         .sort(),
     ).toEqual(['agent.created', 'agent.lifecycle.changed', 'agent.lifecycle.changed']);
-    expect(events.list(coo).find((event) => event.facts.reason)?.facts).toEqual({
+    expect(events.list(coo).find((event) => event.facts.reasonPresent)?.facts).toEqual({
       lifecycle: 'agent.completed',
-      reason: 'criteria verified',
+      reasonPresent: true,
     });
+    expect(JSON.stringify(events.list(coo))).not.toContain('password=hunter2');
   });
   it('rejects hidden request fields and protects factory read models', () => {
     const f = factory();

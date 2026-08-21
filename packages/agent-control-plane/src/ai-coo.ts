@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
   AgentFactoryDecision,
   AgentInstantiationRequest,
@@ -10,7 +10,11 @@ import type {
   RuntimeRoutingDecision,
   RuntimeRoutingRequest,
 } from './runtime-broker';
-import type { OperationalEventSink, OperationalEventType } from './events';
+import type {
+  OperationalEventCapability,
+  OperationalEventSink,
+  OperationalEventType,
+} from './events';
 
 export type CooTaskStatus =
   'BLOCKED' | 'READY' | 'ASSIGNED' | 'AWAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'STOPPED';
@@ -326,6 +330,7 @@ export class GovernedAiCoo {
   readonly #factory: FactoryPort;
   readonly #evidenceVerifier: ArtifactEvidenceVerifier;
   readonly #eventSink?: OperationalEventSink;
+  readonly #eventCapability?: OperationalEventCapability;
   readonly #objectives = new Map<string, CooObjective>();
   readonly #projects = new Map<string, CooProject>();
   readonly #tasks = new Map<string, CooTaskState>();
@@ -342,6 +347,7 @@ export class GovernedAiCoo {
       factory: FactoryPort;
       evidenceVerifier: ArtifactEvidenceVerifier;
       eventSink?: OperationalEventSink;
+      eventCapability?: OperationalEventCapability;
     },
   ) {
     this.#planners = new Set(options.plannerPrincipals);
@@ -351,6 +357,10 @@ export class GovernedAiCoo {
     this.#factory = dependencies.factory;
     this.#evidenceVerifier = dependencies.evidenceVerifier;
     this.#eventSink = dependencies.eventSink;
+    this.#eventCapability = dependencies.eventCapability;
+    if (Boolean(this.#eventSink) !== Boolean(this.#eventCapability)) {
+      throw new AiCooPolicyError('Event sink and trusted capability must be configured together');
+    }
     this.#options = {
       maximumObjectiveCostMinorUnits: options.maximumObjectiveCostMinorUnits,
       maximumObjectiveComputeUnits: options.maximumObjectiveComputeUnits,
@@ -425,13 +435,15 @@ export class GovernedAiCoo {
       this.#tasks.set(recordKey(task.workspaceId, task.id), stored);
       this.#entityIds.add(recordKey(task.workspaceId, task.id));
     }
-    this.#emit(context, plan.objective.id, 'objective.created', { title: plan.objective.title });
+    this.#emit(context, plan.objective.id, 'objective.created', {
+      titleLength: [...plan.objective.title].length,
+    });
     for (const project of plan.projects)
       this.#emit(
         context,
         plan.objective.id,
         'project.created',
-        { title: project.title },
+        { titleLength: [...project.title].length },
         project.id,
       );
     for (const task of plan.tasks) {
@@ -439,7 +451,7 @@ export class GovernedAiCoo {
         context,
         task.objectiveId,
         'task.created',
-        { title: task.title },
+        { titleLength: [...task.title].length },
         task.projectId,
         task.id,
       );
@@ -747,7 +759,10 @@ export class GovernedAiCoo {
         : task.status === 'STOPPED'
           ? 'task.stopped'
           : 'task.failed',
-      { failureCode, attempt: task.attempts },
+      {
+        failureCodeDigest: createHash('sha256').update(failureCode).digest('hex'),
+        attempt: task.attempts,
+      },
       task.projectId,
       task.id,
     );
@@ -1246,7 +1261,7 @@ export class GovernedAiCoo {
     const occurredAt = new Date(this.#clock()).toISOString();
     const subjectType = taskId ? 'Task' : projectId ? 'Project' : 'Objective';
     const subjectId = taskId ?? projectId ?? objectiveId;
-    this.#eventSink?.append(context, {
+    this.#eventSink?.append(this.#eventCapability!, context, {
       id,
       workspaceId: context.workspaceId,
       type: type as OperationalEventType,

@@ -30,6 +30,7 @@ import type {
 import type {
   ObservableFact,
   OperationalActorKind,
+  OperationalEventCapability,
   OperationalEventSink,
   OperationalEventType,
 } from './events';
@@ -43,6 +44,7 @@ interface ControlPlaneOptions {
   clock?: () => number;
   eventIdFactory?: () => string;
   eventSink?: OperationalEventSink;
+  eventCapability?: OperationalEventCapability;
   principalActorKinds?: Readonly<Record<EntityId, OperationalActorKind>>;
   heartbeatFreshnessMs?: number;
   authorityPrincipals?: readonly EntityId[];
@@ -213,6 +215,7 @@ export class InMemoryControlPlane {
   readonly #clock: () => number;
   readonly #eventIdFactory: () => string;
   readonly #eventSink?: OperationalEventSink;
+  readonly #eventCapability?: OperationalEventCapability;
   readonly #principalActorKinds: ReadonlyMap<EntityId, OperationalActorKind>;
   readonly #heartbeatFreshnessMs: number;
   readonly #authorityPrincipals: ReadonlySet<EntityId>;
@@ -247,6 +250,12 @@ export class InMemoryControlPlane {
     this.#clock = options.clock ?? Date.now;
     this.#eventIdFactory = options.eventIdFactory ?? randomUUID;
     this.#eventSink = options.eventSink;
+    this.#eventCapability = options.eventCapability;
+    if (Boolean(this.#eventSink) !== Boolean(this.#eventCapability)) {
+      throw new ControlPlanePolicyError(
+        'Event sink and trusted capability must be configured together',
+      );
+    }
     this.#principalActorKinds = new Map(Object.entries(options.principalActorKinds ?? {}));
     this.#heartbeatFreshnessMs = options.heartbeatFreshnessMs ?? 5 * 60 * 1_000;
     this.#authorityPrincipals = new Set(options.authorityPrincipals ?? []);
@@ -1111,10 +1120,10 @@ export class InMemoryControlPlane {
       }
     }
     const payloadKeys = Object.keys(event.payload).sort();
-    this.#eventSink?.append(context, {
+    this.#eventSink?.append(this.#eventCapability!, context, {
       id: event.id,
       workspaceId: event.workspaceId,
-      type: event.type as OperationalEventType,
+      type: event.runId ? 'run.progress' : 'event.recorded',
       source: 'CONTROL_PLANE',
       actorKind: event.runId
         ? 'RUNTIME'
@@ -1126,7 +1135,7 @@ export class InMemoryControlPlane {
       idempotencyKey: event.idempotencyKey,
       ...(event.runId ? { correlationId: event.runId } : {}),
       facts: {
-        payloadKeys,
+        payloadFieldCount: payloadKeys.length,
         payloadBytes: Buffer.byteLength(JSON.stringify(event.payload), 'utf8'),
       },
     });
@@ -1207,7 +1216,7 @@ export class InMemoryControlPlane {
   ): void {
     if (!this.#eventSink) return;
     const id = this.#eventIdFactory();
-    this.#eventSink.append(context, {
+    this.#eventSink.append(this.#eventCapability!, context, {
       id,
       workspaceId: context.workspaceId,
       type,

@@ -7,6 +7,7 @@ import {
   DuplicateEventError,
   InMemoryControlPlane,
   InMemoryOperationalEventLog,
+  OperationalEventCapability,
   type ControlPlaneTask,
   type RuntimeAdapter,
   type RuntimeConnection,
@@ -576,11 +577,14 @@ describe('runs, events, and budgets', () => {
       authorityPrincipals: [founder.principalId],
       principalActorKinds: { [founder.principalId]: 'HUMAN' },
       eventSink: events,
+      eventCapability: OperationalEventCapability.issue('CONTROL_PLANE', {
+        [founder.principalId]: 'HUMAN',
+      }),
     });
     plane.appendEvent(founder, {
       id: 'event-objective',
       workspaceId: founder.workspaceId,
-      type: 'objective.created',
+      type: 'event.recorded',
       occurredAt: '2026-08-20T12:00:00.000Z',
       actorId: founder.principalId,
       idempotencyKey: 'objective:created',
@@ -589,10 +593,10 @@ describe('runs, events, and budgets', () => {
 
     expect(events.list(founder)[0]).toMatchObject({
       id: 'event-objective',
-      type: 'objective.created',
+      type: 'event.recorded',
       actorKind: 'HUMAN',
       source: 'CONTROL_PLANE',
-      facts: { payloadKeys: ['objectiveId', 'summary'] },
+      facts: { payloadFieldCount: 2 },
     });
     expect(JSON.stringify(events.list(founder))).not.toContain('observable result');
   });

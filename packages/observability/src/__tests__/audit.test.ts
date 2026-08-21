@@ -62,5 +62,6 @@ describe('buildAuditEventRecord', () => {
     expect(verifyAuditEventRecord(record)).toBe(true);
     expect(verifyAuditEventRecord({ ...record, sourceEventId: 'substituted' })).toBe(false);
     expect(verifyAuditEventRecord({ ...record, actorReference: 'forged' })).toBe(false);
+    expect(verifyAuditEventRecord({ ...record, actorId: undefined })).toBe(true);
   });
 });

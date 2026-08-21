@@ -24,16 +24,22 @@ The envelope:
 - has an allowlisted observable event type;
 - binds workspace, authenticated actor, actor kind, source, subject, occurrence time,
   idempotency key, and optional correlation ID;
-- accepts only bounded primitive facts and bounded string lists;
+- accepts only event-type-specific facts; identifiers/codes use a restrictive
+  character set, counters are non-negative safe integers, and arbitrary titles,
+  reasons, prompts, transcripts, and payload field names are replaced by derived
+  lengths, counts, booleans, or other non-sensitive metadata;
 - rejects custom prototypes, unsafe numbers, secret/private-reasoning field names, common
   credential material, oversized values, duplicate IDs, and idempotency replays;
 - sorts equal-time in-memory projections deterministically by event ID;
 - never contains prompts, transcripts, raw command input, credentials, or chain-of-thought.
 
-The Control Plane projects authenticated external telemetry as payload key names and byte count,
-not raw payload content. The AI COO and Dynamic Agent Factory can publish their existing sanitized
-state-transition facts through an injected sink while retaining their existing read projections
-for compatibility. Sink injection does not claim that a production ACP process is configured.
+The Control Plane projects authenticated external telemetry as field count and byte count, not raw
+payload content or field names. The AI COO and Dynamic Agent Factory publish only schema-approved,
+derived state-transition facts through an injected sink while retaining their existing read
+projections for compatibility. Every sink call requires an application-issued source capability
+that binds the authenticated principal to its actor kind; payload-supplied source or actor-kind
+claims cannot select a namespace. Sink injection does not claim that a production ACP process is
+configured.
 
 `AuditService.recordOperationalEvent` is the durable application persistence mapper. It validates
 the event again, preserves runtime/agent principals in an immutable textual actor reference, and
@@ -54,11 +60,12 @@ governed retention or erasure operation. This foundation does not claim an undel
 
 ## Integrity boundary
 
-`integrityHash` is a deterministic checksum over the complete versioned record, including
-operational provenance. It detects accidental mutation and supports verification when the stored
-checksum is independently trusted. It is not a digital signature, external transparency log,
-hash chain, or claim of cryptographic tamper-proofing against a database administrator who can
-rewrite both content and checksum.
+`integrityHash` is a deterministic checksum over immutable versioned content and operational
+provenance. The nullable relational `actorId` pointer is deliberately excluded because governed
+user erasure clears it; the immutable `actorReference` remains bound. It detects accidental
+mutation and supports verification when the stored checksum is independently trusted. It is not
+a digital signature, external transparency log, hash chain, or claim of cryptographic
+tamper-proofing against a database administrator who can rewrite both content and checksum.
 
 Database uniqueness is the durable replay boundary. The in-memory log is only the reference
 contract and test projection.
