@@ -37,6 +37,7 @@ const hasSafeExecutionContract = (candidate) => {
     !/docker\/login-action|\bdocker\s+login\b|\bdocker\s+push\b|docker\s+buildx[^\n]*--push|actions\/attest|\bcosign\b/.test(
       candidate,
     ) &&
+    !/actions\/upload-artifact/.test(candidate) &&
     !/ghcr\.io|secrets\./.test(candidate) &&
     /push: false/.test(candidate) &&
     !/push: true/.test(candidate)
@@ -72,6 +73,7 @@ test('workflow grants contents read only and has no privileged publication surfa
   assert.doesNotMatch(workflow, /^    permissions:/m);
   assert.doesNotMatch(workflow, /^permissions:\s*(?:write-all|read-all)/m);
   assert.doesNotMatch(workflow, /docker\/login-action/);
+  assert.doesNotMatch(workflow, /actions\/upload-artifact/);
   assert.doesNotMatch(workflow, /\bdocker\s+login\b/);
   assert.doesNotMatch(workflow, /\bdocker\s+push\b/);
   assert.doesNotMatch(workflow, /\bcosign\b|\bsign(?:ing)?\b.*--yes|actions\/attest/);
@@ -112,6 +114,7 @@ test('adversarial contract rejects automatic triggers and publication capabiliti
     `${workflow}\n# uses: docker/login-action@${'a'.repeat(40)}\n`,
     `${workflow}\n# docker login example.invalid\n`,
     `${workflow}\n# docker buildx build --push .\n`,
+    `${workflow}\n# uses: actions/upload-artifact@${'a'.repeat(40)}\n`,
   ];
   for (const candidate of mutations) {
     assert.equal(hasSafeExecutionContract(candidate), false);
@@ -170,7 +173,7 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /RepoTags/);
 });
 
-test('exact archives, source identity, checksums, scan evidence, KEV data, and SBOMs are retained', () => {
+test('exact archives, reports, and SBOMs stay runner-local while sanitized conclusions are summarized', () => {
   assert.match(workflow, /ventureos-\$\{\{ matrix\.image \}\}\.tar/);
   assert.match(workflow, /ventureos-\$\{\{ matrix\.image \}\}\.trivy\.json/);
   assert.match(workflow, /trivy-version\.json/);
@@ -179,17 +182,19 @@ test('exact archives, source identity, checksums, scan evidence, KEV data, and S
   assert.match(workflow, /ventureos-\$\{\{ matrix\.image \}\}\.spdx\.json/);
   assert.match(workflow, /source-sha\.txt/);
   assert.match(workflow, /sha256sum/);
-  assert.match(workflow, /if-no-files-found: error/);
-  assert.match(workflow, /retention-days: 90/);
-  assert.match(
-    workflow,
-    /Preserve exact scanned archive and evidence artifacts\n        if: success\(\)/,
-  );
-  assert.match(workflow, /Preserve sanitized image outcome\n        if: always\(\)/);
-  assert.doesNotMatch(
-    workflow,
-    /Preserve sanitized source outcome[\s\S]*?path:[\s\S]*?ventureos-source\.trivy\.json/,
-  );
+  assert.doesNotMatch(workflow, /actions\/upload-artifact/);
+  assert.doesNotMatch(workflow, /retention-days:|if-no-files-found:/);
+  assert.match(workflow, /Record sanitized source outcome\n        if: always\(\)/);
+  assert.match(workflow, /Record sanitized image outcome\n        if: always\(\)/);
+  assert.match(workflow, /GITHUB_STEP_SUMMARY/);
+  assert.match(workflow, /Retained artifact: `none`/);
+  assert.doesNotMatch(workflow, /cat .*trivy|cat .*spdx|cat .*known_exploited/i);
+  assert.doesNotMatch(workflow, /(?:cat|sed)[^\n]*(?:trivy|spdx|known_exploited)/i);
+  assert.match(workflow, /--output \/tmp\/source-policy\.trivy\.json/);
+  assert.match(workflow, /--output "\/tmp\/\$\{IMAGE_NAME\}\.policy\.trivy\.json"/);
+  assert.doesNotMatch(workflow, /sed[^\n]*kev-matches/);
+  assert.match(workflow, /Sanitized vulnerability counts/);
+  assert.match(workflow, /Sanitized evidence counts/);
 });
 
 test('workflow revalidates canonical main only after every image succeeds', () => {

@@ -89,9 +89,11 @@ jobs:
           trivy fs \
             --scanners secret,misconfig \
             --severity HIGH,CRITICAL \
+            --format json \
+            --output /tmp/source-policy.trivy.json \
             --exit-code 1 \
             .
-      - name: Create sanitized source outcome
+      - name: Record sanitized source outcome
         if: always()
         shell: bash
         env:
@@ -99,22 +101,12 @@ jobs:
           SOURCE_POLICY_OUTCOME: ${{ steps.source-policy.outcome }}
         run: |
           set -Eeuo pipefail
-          jq -n \
-            --arg sourceSha "$SOURCE_SHA" \
-            --arg policyOutcome "$SOURCE_POLICY_OUTCOME" \
-            '{schemaVersion:1,sourceSha:$sourceSha,policyOutcome:$policyOutcome}' \
-            > /tmp/source-outcome.json
-          sha256sum /tmp/source-outcome.json > /tmp/source-outcome.sha256
-      - name: Preserve sanitized source outcome
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: rc-source-outcome-${{ inputs.source_sha }}
-          path: |
-            /tmp/source-outcome.json
-            /tmp/source-outcome.sha256
-          if-no-files-found: error
-          retention-days: 90
+          {
+            printf '### Source security evidence\n\n'
+            printf -- '- Source SHA: `%s`\n' "$SOURCE_SHA"
+            printf -- '- Policy outcome: `%s`\n' "$SOURCE_POLICY_OUTCOME"
+            printf -- '- Retained artifact: `none`\n'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Enforce source policy result
         if: always()
         env:
@@ -228,8 +220,8 @@ jobs:
             "/tmp/ventureos-${IMAGE_NAME}.trivy.json" | sort -u > /tmp/findings.ids
           comm -12 /tmp/findings.ids /tmp/kev.ids > "/tmp/${IMAGE_NAME}.kev-matches.txt"
           if test -s "/tmp/${IMAGE_NAME}.kev-matches.txt"; then
-            echo 'CISA Known Exploited Vulnerabilities fail the release-candidate gate:' >&2
-            sed 's/^/  - /' "/tmp/${IMAGE_NAME}.kev-matches.txt" >&2
+            count="$(wc -l < "/tmp/${IMAGE_NAME}.kev-matches.txt" | tr -d ' ')"
+            printf 'CISA Known Exploited Vulnerabilities fail the release-candidate gate: count=%s\n' "$count" >&2
             exit 1
           fi
       - name: Gate HIGH and CRITICAL vulnerabilities, secrets, config, and EOL bases
@@ -247,6 +239,8 @@ jobs:
             --severity HIGH,CRITICAL \
             --ignore-unfixed=false \
             --exit-on-eol 1 \
+            --format json \
+            --output "/tmp/${IMAGE_NAME}.policy.trivy.json" \
             --exit-code 1
       - name: Validate archive, vulnerability evidence, and SPDX identity
         shell: bash
@@ -298,23 +292,7 @@ jobs:
           )
           for file in "${files[@]}"; do test -f "$file"; done
           sha256sum "${files[@]}" > "/tmp/${IMAGE_NAME}.sha256"
-      - name: Preserve exact scanned archive and evidence artifacts
-        if: success()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: rc-evidence-${{ matrix.image }}-${{ inputs.source_sha }}
-          path: |
-            /tmp/ventureos-${{ matrix.image }}.tar
-            /tmp/ventureos-${{ matrix.image }}.trivy.json
-            /tmp/${{ matrix.image }}.trivy-version.json
-            /tmp/${{ matrix.image }}.kev-matches.txt
-            /tmp/known_exploited_vulnerabilities.json
-            /tmp/ventureos-${{ matrix.image }}.spdx.json
-            /tmp/${{ matrix.image }}.source-sha.txt
-            /tmp/${{ matrix.image }}.sha256
-          if-no-files-found: error
-          retention-days: 90
-      - name: Create sanitized image outcome
+      - name: Record sanitized image outcome
         if: always()
         shell: bash
         env:
@@ -326,23 +304,60 @@ jobs:
           IMAGE_POLICY_OUTCOME: ${{ steps.image-policy.outcome }}
         run: |
           set -Eeuo pipefail
-          jq -n \
-            --arg image "$IMAGE_NAME" \
-            --arg sourceSha "$SOURCE_SHA" \
-            --arg vulnerabilityOutcome "$VULNERABILITY_OUTCOME" \
-            --arg sbomOutcome "$SBOM_OUTCOME" \
-            --arg kevOutcome "$KEV_OUTCOME" \
-            --arg imagePolicyOutcome "$IMAGE_POLICY_OUTCOME" \
-            '{schemaVersion:1,image:$image,sourceSha:$sourceSha,vulnerabilityOutcome:$vulnerabilityOutcome,sbomOutcome:$sbomOutcome,kevOutcome:$kevOutcome,imagePolicyOutcome:$imagePolicyOutcome}' \
-            > "/tmp/${IMAGE_NAME}.outcome.json"
-      - name: Preserve sanitized image outcome
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: rc-outcome-${{ matrix.image }}-${{ inputs.source_sha }}
-          path: /tmp/${{ matrix.image }}.outcome.json
-          if-no-files-found: error
-          retention-days: 90
+          scanner_version=unavailable
+          database_version=unavailable
+          database_updated=unavailable
+          vulnerability_total=unavailable
+          critical_count=unavailable
+          high_count=unavailable
+          medium_count=unavailable
+          low_count=unavailable
+          unknown_count=unavailable
+          sbom_packages=unavailable
+          kev_matches=unavailable
+          archive_checksum=unavailable
+          report_checksum=unavailable
+          sbom_checksum=unavailable
+
+          if test -f "/tmp/${IMAGE_NAME}.trivy-version.json"; then
+            scanner_version="$(jq -er '.Version' "/tmp/${IMAGE_NAME}.trivy-version.json")"
+            database_version="$(jq -er '.VulnerabilityDB.Version' "/tmp/${IMAGE_NAME}.trivy-version.json")"
+            database_updated="$(jq -er '.VulnerabilityDB.UpdatedAt' "/tmp/${IMAGE_NAME}.trivy-version.json")"
+          fi
+          if test -f "/tmp/ventureos-${IMAGE_NAME}.trivy.json"; then
+            vulnerability_total="$(jq -er '[.Results[]?.Vulnerabilities[]?] | length' "/tmp/ventureos-${IMAGE_NAME}.trivy.json")"
+            critical_count="$(jq -er '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "/tmp/ventureos-${IMAGE_NAME}.trivy.json")"
+            high_count="$(jq -er '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "/tmp/ventureos-${IMAGE_NAME}.trivy.json")"
+            medium_count="$(jq -er '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "/tmp/ventureos-${IMAGE_NAME}.trivy.json")"
+            low_count="$(jq -er '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' "/tmp/ventureos-${IMAGE_NAME}.trivy.json")"
+            unknown_count="$(jq -er '[.Results[]?.Vulnerabilities[]? | select((.Severity // "UNKNOWN") == "UNKNOWN")] | length' "/tmp/ventureos-${IMAGE_NAME}.trivy.json")"
+            report_checksum="$(sha256sum "/tmp/ventureos-${IMAGE_NAME}.trivy.json" | awk '{print $1}')"
+          fi
+          if test -f "/tmp/ventureos-${IMAGE_NAME}.spdx.json"; then
+            sbom_packages="$(jq -er '.packages | length' "/tmp/ventureos-${IMAGE_NAME}.spdx.json")"
+            sbom_checksum="$(sha256sum "/tmp/ventureos-${IMAGE_NAME}.spdx.json" | awk '{print $1}')"
+          fi
+          if test -f "/tmp/${IMAGE_NAME}.kev-matches.txt"; then
+            kev_matches="$(wc -l < "/tmp/${IMAGE_NAME}.kev-matches.txt" | tr -d ' ')"
+          fi
+          if test -f "/tmp/ventureos-${IMAGE_NAME}.tar"; then
+            archive_checksum="$(sha256sum "/tmp/ventureos-${IMAGE_NAME}.tar" | awk '{print $1}')"
+          fi
+
+          {
+            printf '### `%s` image evidence\n\n' "$IMAGE_NAME"
+            printf -- '- Source SHA: `%s`\n' "$SOURCE_SHA"
+            printf -- '- Vulnerability evidence: `%s`\n' "$VULNERABILITY_OUTCOME"
+            printf -- '- SPDX generation: `%s`\n' "$SBOM_OUTCOME"
+            printf -- '- KEV/freshness policy: `%s`\n' "$KEV_OUTCOME"
+            printf -- '- Vulnerability/secret/EOL policy: `%s`\n' "$IMAGE_POLICY_OUTCOME"
+            printf -- '- Scanner version: `%s`\n' "$scanner_version"
+            printf -- '- Vulnerability DB schema/update: `%s` / `%s`\n' "$database_version" "$database_updated"
+            printf -- '- Sanitized vulnerability counts — total: `%s`; critical: `%s`; high: `%s`; medium: `%s`; low: `%s`; unknown: `%s`\n' "$vulnerability_total" "$critical_count" "$high_count" "$medium_count" "$low_count" "$unknown_count"
+            printf -- '- Sanitized evidence counts — SPDX packages: `%s`; KEV matches: `%s`\n' "$sbom_packages" "$kev_matches"
+            printf -- '- Local checksums — archive: `%s`; vulnerability report: `%s`; SPDX: `%s`\n' "$archive_checksum" "$report_checksum" "$sbom_checksum"
+            printf -- '- Retained artifact: `none`\n'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   revalidate-source:
     name: Revalidate canonical main after all evidence
