@@ -81,6 +81,8 @@ jobs:
           output: /tmp/ventureos-source.trivy.json
           exit-code: '0'
       - name: Gate source secrets and HIGH or CRITICAL infrastructure findings
+        id: source-policy
+        continue-on-error: true
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -89,28 +91,35 @@ jobs:
             --severity HIGH,CRITICAL \
             --exit-code 1 \
             .
-      - name: Record source evidence checksums
+      - name: Create sanitized source outcome
         if: always()
         shell: bash
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_POLICY_OUTCOME: ${{ steps.source-policy.outcome }}
         run: |
           set -Eeuo pipefail
-          test -f /tmp/ventureos-source.trivy.json
-          printf '%s\n' "$SOURCE_SHA" > /tmp/source-sha.txt
-          sha256sum /tmp/ventureos-source.trivy.json /tmp/source-sha.txt \
-            > /tmp/source-evidence.sha256
-      - name: Preserve source scan evidence
+          jq -n \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg policyOutcome "$SOURCE_POLICY_OUTCOME" \
+            '{schemaVersion:1,sourceSha:$sourceSha,policyOutcome:$policyOutcome}' \
+            > /tmp/source-outcome.json
+          sha256sum /tmp/source-outcome.json > /tmp/source-outcome.sha256
+      - name: Preserve sanitized source outcome
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: rc-source-evidence-${{ inputs.source_sha }}
+          name: rc-source-outcome-${{ inputs.source_sha }}
           path: |
-            /tmp/ventureos-source.trivy.json
-            /tmp/source-sha.txt
-            /tmp/source-evidence.sha256
+            /tmp/source-outcome.json
+            /tmp/source-outcome.sha256
           if-no-files-found: error
           retention-days: 90
+      - name: Enforce source policy result
+        if: always()
+        env:
+          SOURCE_POLICY_OUTCOME: ${{ steps.source-policy.outcome }}
+        run: test "$SOURCE_POLICY_OUTCOME" = success
 
   build-scan:
     name: Build and scan ${{ matrix.image }} (local only)
@@ -162,6 +171,7 @@ jobs:
             org.opencontainers.image.source=https://github.com/completed369/hermesagent
             org.opencontainers.image.revision=${{ inputs.source_sha }}
       - name: Generate complete vulnerability JSON evidence
+        id: vulnerability-evidence
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
@@ -174,6 +184,7 @@ jobs:
           output: /tmp/ventureos-${{ matrix.image }}.trivy.json
           exit-code: '0'
       - name: Generate SPDX JSON SBOM
+        id: sbom-evidence
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
@@ -184,6 +195,7 @@ jobs:
           output: /tmp/ventureos-${{ matrix.image }}.spdx.json
           exit-code: '0'
       - name: Enforce fresh vulnerability database and CISA KEV policy
+        id: kev-policy
         shell: bash
         env:
           IMAGE_NAME: ${{ matrix.image }}
@@ -214,6 +226,7 @@ jobs:
             exit 1
           fi
       - name: Gate HIGH and CRITICAL vulnerabilities, secrets, config, and EOL bases
+        id: image-policy
         shell: bash
         env:
           IMAGE_NAME: ${{ matrix.image }}
@@ -228,8 +241,36 @@ jobs:
             --ignore-unfixed=false \
             --exit-on-eol 1 \
             --exit-code 1
+      - name: Validate archive, vulnerability evidence, and SPDX identity
+        shell: bash
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          archive="/tmp/ventureos-${IMAGE_NAME}.tar"
+          report="/tmp/ventureos-${IMAGE_NAME}.trivy.json"
+          sbom="/tmp/ventureos-${IMAGE_NAME}.spdx.json"
+          expected_tag="local/ventureos-${IMAGE_NAME}:${SOURCE_SHA}"
+
+          tar -xOf "$archive" manifest.json \
+            | jq -e --arg expected "$expected_tag" \
+              'length == 1 and (.[0].RepoTags | type == "array") and (.[0].RepoTags | index($expected) != null)' \
+              >/dev/null
+          jq -e '
+            type == "object" and
+            (.SchemaVersion | type == "integer") and
+            (.Results | type == "array")
+          ' "$report" >/dev/null
+          jq -e '
+            type == "object" and
+            (.spdxVersion | type == "string" and startswith("SPDX-")) and
+            .SPDXID == "SPDXRef-DOCUMENT" and
+            (.documentNamespace | type == "string" and length > 0) and
+            (.packages | type == "array" and length > 0)
+          ' "$sbom" >/dev/null
       - name: Record exact evidence checksums
-        if: always()
+        if: success()
         shell: bash
         env:
           IMAGE_NAME: ${{ matrix.image }}
@@ -249,7 +290,7 @@ jobs:
           for file in "${files[@]}"; do test -f "$file"; done
           sha256sum "${files[@]}" > "/tmp/${IMAGE_NAME}.sha256"
       - name: Preserve exact scanned archive and evidence artifacts
-        if: always()
+        if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rc-evidence-${{ matrix.image }}-${{ inputs.source_sha }}
@@ -264,3 +305,62 @@ jobs:
             /tmp/${{ matrix.image }}.sha256
           if-no-files-found: error
           retention-days: 90
+      - name: Create sanitized image outcome
+        if: always()
+        shell: bash
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VULNERABILITY_OUTCOME: ${{ steps.vulnerability-evidence.outcome }}
+          SBOM_OUTCOME: ${{ steps.sbom-evidence.outcome }}
+          KEV_OUTCOME: ${{ steps.kev-policy.outcome }}
+          IMAGE_POLICY_OUTCOME: ${{ steps.image-policy.outcome }}
+        run: |
+          set -Eeuo pipefail
+          jq -n \
+            --arg image "$IMAGE_NAME" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg vulnerabilityOutcome "$VULNERABILITY_OUTCOME" \
+            --arg sbomOutcome "$SBOM_OUTCOME" \
+            --arg kevOutcome "$KEV_OUTCOME" \
+            --arg imagePolicyOutcome "$IMAGE_POLICY_OUTCOME" \
+            '{schemaVersion:1,image:$image,sourceSha:$sourceSha,vulnerabilityOutcome:$vulnerabilityOutcome,sbomOutcome:$sbomOutcome,kevOutcome:$kevOutcome,imagePolicyOutcome:$imagePolicyOutcome}' \
+            > "/tmp/${IMAGE_NAME}.outcome.json"
+      - name: Preserve sanitized image outcome
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rc-outcome-${{ matrix.image }}-${{ inputs.source_sha }}
+          path: /tmp/${{ matrix.image }}.outcome.json
+          if-no-files-found: error
+          retention-days: 90
+
+  revalidate-source:
+    name: Revalidate canonical main after all evidence
+    needs: build-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Prove scanned source is still canonical main
+        shell: bash
+        env:
+          API_URL: ${{ github.api_url }}
+          DISPATCH_REF: ${{ github.ref }}
+          DISPATCH_SHA: ${{ github.sha }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          test "$REPOSITORY" = completed369/hermesagent
+          test "$DISPATCH_REF" = refs/heads/main
+          [[ "$INPUT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$INPUT_SOURCE_SHA" = "$DISPATCH_SHA"
+          curl --fail --silent --show-error --location --retry 3 \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --output /tmp/main-branch.json \
+            "$API_URL/repos/$REPOSITORY/branches/main"
+          test "$(jq -er '.name' /tmp/main-branch.json)" = main
+          test "$(jq -er '.commit.sha' /tmp/main-branch.json)" = "$INPUT_SOURCE_SHA"

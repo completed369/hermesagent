@@ -11,19 +11,28 @@ const workflow = readFileSync(
 
 const actionLines = workflow.split('\n').filter((line) => /^\s*-?\s*uses:/.test(line));
 
+const onBlock = workflow.slice(workflow.indexOf("'on':\n"), workflow.indexOf('\npermissions:'));
+const triggerKeys = [...onBlock.matchAll(/^  ([a-z_]+):/gm)].map((match) => match[1]);
+
 const hasSafeExecutionContract = (candidate) => {
   const permissions = [...candidate.matchAll(/^permissions:\n((?:^  .*\n?)*)/gm)];
   return (
     /^  workflow_dispatch:/m.test(candidate) &&
-    !/^  (push|pull_request|schedule|workflow_run):/m.test(candidate) &&
+    !/^  (push|pull_request|pull_request_target|schedule|workflow_run|workflow_call|repository_dispatch|merge_group|deployment|deployment_status|release|registry_package):/m.test(
+      candidate,
+    ) &&
     permissions.length === 1 &&
     permissions[0][1].trim() === 'contents: read' &&
+    !/^permissions:\s*(?:write-all|read-all)/m.test(candidate) &&
+    !/^    permissions:/m.test(candidate) &&
     !/^\s+packages:/m.test(candidate) &&
     !/^\s+deployments:/m.test(candidate) &&
     !/^\s+id-token:/m.test(candidate) &&
     !/^\s+attestations:/m.test(candidate) &&
     !/^\s+environment:/m.test(candidate) &&
-    !/docker\/login-action|\bdocker\s+push\b|actions\/attest|\bcosign\b/.test(candidate) &&
+    !/docker\/login-action|\bdocker\s+login\b|\bdocker\s+push\b|docker\s+buildx[^\n]*--push|actions\/attest|\bcosign\b/.test(
+      candidate,
+    ) &&
     !/ghcr\.io|secrets\./.test(candidate) &&
     /push: false/.test(candidate) &&
     !/push: true/.test(candidate)
@@ -32,7 +41,7 @@ const hasSafeExecutionContract = (candidate) => {
 
 test('release-candidate evidence is manual, canonical-main-only, and fail closed', () => {
   assert.match(workflow, /workflow_dispatch:/);
-  assert.doesNotMatch(workflow, /^  (push|pull_request|schedule|workflow_run):/m);
+  assert.deepEqual(triggerKeys, ['workflow_dispatch']);
   assert.match(workflow, /source_sha:/);
   assert.match(workflow, /required: true/);
   assert.match(workflow, /test "\$DISPATCH_REF" = refs\/heads\/main/);
@@ -55,18 +64,31 @@ test('workflow grants contents read only and has no privileged publication surfa
   assert.doesNotMatch(workflow, /^\s+id-token:/m);
   assert.doesNotMatch(workflow, /^\s+attestations:/m);
   assert.doesNotMatch(workflow, /^\s+environment:/m);
+  assert.doesNotMatch(workflow, /^    permissions:/m);
+  assert.doesNotMatch(workflow, /^permissions:\s*(?:write-all|read-all)/m);
   assert.doesNotMatch(workflow, /docker\/login-action/);
+  assert.doesNotMatch(workflow, /\bdocker\s+login\b/);
   assert.doesNotMatch(workflow, /\bdocker\s+push\b/);
   assert.doesNotMatch(workflow, /\bcosign\b|\bsign(?:ing)?\b.*--yes|actions\/attest/);
   assert.doesNotMatch(workflow, /ghcr\.io|GITHUB_TOKEN|secrets\./);
-  assert.doesNotMatch(workflow, /kubectl|wrangler|cloudflare|ssh-action|scp-action/i);
+  assert.doesNotMatch(
+    workflow,
+    /docker\s+buildx[^\n]*--push|kubectl|wrangler|cloudflare|ssh-action|scp-action|actions\/deploy|gh\s+release|gh\s+api[^\n]*(?:--method|-X)\s*(?:POST|PUT|PATCH|DELETE)/i,
+  );
   assert.equal(hasSafeExecutionContract(workflow), true);
 });
 
 test('adversarial contract rejects automatic triggers and publication capabilities', () => {
   const mutations = [
     workflow.replace('  workflow_dispatch:', '  push:\n    branches: [main]\n  workflow_dispatch:'),
+    workflow.replace('  workflow_dispatch:', '  workflow_call:\n  workflow_dispatch:'),
+    workflow.replace('  workflow_dispatch:', '  repository_dispatch:\n  workflow_dispatch:'),
     workflow.replace('  contents: read', '  contents: read\n  packages: write'),
+    workflow.replace('permissions:\n  contents: read', 'permissions: write-all'),
+    workflow.replace(
+      '    runs-on: ubuntu-24.04',
+      '    permissions:\n      contents: write\n    runs-on: ubuntu-24.04',
+    ),
     workflow.replace('  contents: read', '  contents: read\n  id-token: write'),
     workflow.replace('  contents: read', '  contents: read\n  deployments: write'),
     workflow.replace(
@@ -77,6 +99,8 @@ test('adversarial contract rejects automatic triggers and publication capabiliti
     `${workflow}\n# docker push ghcr.io/example/image:unsafe\n`,
     `${workflow}\n# uses: actions/attest@${'a'.repeat(40)}\n`,
     `${workflow}\n# uses: docker/login-action@${'a'.repeat(40)}\n`,
+    `${workflow}\n# docker login example.invalid\n`,
+    `${workflow}\n# docker buildx build --push .\n`,
   ];
   for (const candidate of mutations) {
     assert.equal(hasSafeExecutionContract(candidate), false);
@@ -120,6 +144,11 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /--severity HIGH,CRITICAL/);
   assert.match(workflow, /--exit-on-eol 1/);
   assert.match(workflow, /format: spdx-json/);
+  assert.match(workflow, /\.SchemaVersion \| type == "integer"/);
+  assert.match(workflow, /\.SPDXID == "SPDXRef-DOCUMENT"/);
+  assert.match(workflow, /\.packages \| type == "array" and length > 0/);
+  assert.match(workflow, /manifest\.json/);
+  assert.match(workflow, /RepoTags/);
 });
 
 test('exact archives, source identity, checksums, scan evidence, KEV data, and SBOMs are retained', () => {
@@ -133,4 +162,20 @@ test('exact archives, source identity, checksums, scan evidence, KEV data, and S
   assert.match(workflow, /sha256sum/);
   assert.match(workflow, /if-no-files-found: error/);
   assert.match(workflow, /retention-days: 90/);
+  assert.match(
+    workflow,
+    /Preserve exact scanned archive and evidence artifacts\n        if: success\(\)/,
+  );
+  assert.match(workflow, /Preserve sanitized image outcome\n        if: always\(\)/);
+  assert.doesNotMatch(
+    workflow,
+    /Preserve sanitized source outcome[\s\S]*?path:[\s\S]*?ventureos-source\.trivy\.json/,
+  );
+});
+
+test('workflow revalidates canonical main only after every image succeeds', () => {
+  assert.match(workflow, /revalidate-source:/);
+  assert.match(workflow, /needs: build-scan/);
+  assert.match(workflow, /Prove scanned source is still canonical main/);
+  assert.equal((workflow.match(/\.commit\.sha' \/tmp\/main-branch\.json/g) ?? []).length, 2);
 });
