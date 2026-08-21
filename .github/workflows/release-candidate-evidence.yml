@@ -252,26 +252,46 @@ jobs:
           archive="/tmp/ventureos-${IMAGE_NAME}.tar"
           report="/tmp/ventureos-${IMAGE_NAME}.trivy.json"
           sbom="/tmp/ventureos-${IMAGE_NAME}.spdx.json"
-          expected_tag="local/ventureos-${IMAGE_NAME}:${SOURCE_SHA}"
+          manifest="/tmp/${IMAGE_NAME}.docker-manifest.json"
 
-          tar -xOf "$archive" manifest.json \
-            | jq -e --arg expected "$expected_tag" \
-              'length == 1 and (.[0].RepoTags | type == "array") and (.[0].RepoTags | index($expected) != null)' \
-              >/dev/null
-          jq -e --arg archive "$archive" '
+          if ! tar -xOf "$archive" manifest.json > "$manifest"; then
+            echo 'Sanitized validation failure: docker-manifest-unreadable' >&2
+            exit 1
+          fi
+          if ! jq -e 'length == 1 and (.[0].Config | type == "string" and length > 0)' \
+            "$manifest" >/dev/null; then
+            echo 'Sanitized validation failure: docker-manifest-shape' >&2
+            exit 1
+          fi
+          config_path="$(jq -er '.[0].Config' "$manifest")"
+          if ! tar -xOf "$archive" "$config_path" \
+            | jq -e --arg source "$SOURCE_SHA" '
+                .config.Labels["org.opencontainers.image.source"] == "https://github.com/completed369/hermesagent" and
+                .config.Labels["org.opencontainers.image.revision"] == $source
+              ' >/dev/null; then
+            echo 'Sanitized validation failure: immutable-source-label' >&2
+            exit 1
+          fi
+          if ! jq -e --arg archive "$archive" '
             type == "object" and
             (.SchemaVersion | type == "integer") and
             .ArtifactName == $archive and
             .ArtifactType == "container_image" and
             (.Results | type == "array" and length > 0)
-          ' "$report" >/dev/null
-          jq -e '
+          ' "$report" >/dev/null; then
+            echo 'Sanitized validation failure: vulnerability-report-identity' >&2
+            exit 1
+          fi
+          if ! jq -e '
             type == "object" and
             (.spdxVersion | type == "string" and startswith("SPDX-")) and
             .SPDXID == "SPDXRef-DOCUMENT" and
             (.documentNamespace | type == "string" and length > 0) and
             (.packages | type == "array" and length > 0)
-          ' "$sbom" >/dev/null
+          ' "$sbom" >/dev/null; then
+            echo 'Sanitized validation failure: spdx-document-shape' >&2
+            exit 1
+          fi
       - name: Record exact evidence checksums
         if: success()
         shell: bash

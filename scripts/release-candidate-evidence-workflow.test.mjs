@@ -170,7 +170,13 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /\.SPDXID == "SPDXRef-DOCUMENT"/);
   assert.match(workflow, /\.packages \| type == "array" and length > 0/);
   assert.match(workflow, /manifest\.json/);
-  assert.match(workflow, /RepoTags/);
+  assert.match(workflow, /\.\[0\]\.Config/);
+  assert.match(workflow, /org\.opencontainers\.image\.source/);
+  assert.match(workflow, /org\.opencontainers\.image\.revision/);
+  assert.match(workflow, /immutable-source-label/);
+  assert.match(workflow, /vulnerability-report-identity/);
+  assert.match(workflow, /spdx-document-shape/);
+  assert.doesNotMatch(workflow, /RepoTags/);
 });
 
 test('exact archives, reports, and SBOMs stay runner-local while sanitized conclusions are summarized', () => {
