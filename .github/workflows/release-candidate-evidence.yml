@@ -287,20 +287,32 @@ jobs:
             exit 1
           fi
           expected_image_id="sha256:${config_digest}"
-          if ! jq -e --arg archive "$archive" --arg image_id "$expected_image_id" \
-            --slurpfile config "$config_file" '
+          if ! jq -e --arg archive "$archive" '
             type == "object" and
             (.SchemaVersion | type == "integer") and
             .ArtifactName == $archive and
             .ArtifactType == "container_image" and
-            (.Results | type == "array") and
+            ((has("Results") | not) or (.Results | type == "array"))
+          ' "$report" >/dev/null; then
+            echo 'Sanitized validation failure: vulnerability-report-envelope' >&2
+            exit 1
+          fi
+          if ! jq -e --slurpfile config "$config_file" '
             ($config | length == 1) and
             ($config[0].rootfs.diff_ids | type == "array" and length > 0) and
-            all($config[0].rootfs.diff_ids[]; type == "string" and test("^sha256:[0-9a-f]{64}$")) and
-            .Metadata.ImageID == $image_id and
-            .Metadata.DiffIDs == $config[0].rootfs.diff_ids
+            all($config[0].rootfs.diff_ids[]; type == "string" and test("^sha256:[0-9a-f]{64}$"))
           ' "$report" >/dev/null; then
-            echo 'Sanitized validation failure: vulnerability-report-identity' >&2
+            echo 'Sanitized validation failure: docker-rootfs-identity' >&2
+            exit 1
+          fi
+          if ! jq -e --arg image_id "$expected_image_id" \
+            '.Metadata.ImageID == $image_id' "$report" >/dev/null; then
+            echo 'Sanitized validation failure: vulnerability-report-image-id' >&2
+            exit 1
+          fi
+          if ! jq -e --slurpfile config "$config_file" \
+            '.Metadata.DiffIDs == $config[0].rootfs.diff_ids' "$report" >/dev/null; then
+            echo 'Sanitized validation failure: vulnerability-report-layer-identity' >&2
             exit 1
           fi
           if ! jq -e '
