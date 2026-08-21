@@ -256,7 +256,8 @@ const REDACTIONS: readonly RegExp[] = [
   /\bgh[op]_[A-Za-z0-9]{20,}\b/giu,
   /\bsk-[A-Za-z0-9_-]{20,}\b/giu,
   /-----BEGIN [^-]{0,40}PRIVATE KEY-----/giu,
-  /\b(?:bearer|authorization)\s*[:=]?\s*[A-Za-z0-9._~+/-]{12,}/giu,
+  /\b(?:bearer|authorization)\s*[:=]\s*[A-Za-z0-9._~+/-]{12,}/giu,
+  /\bbearer\s+[A-Za-z0-9._~+/-]{12,}/giu,
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu,
 ];
 
