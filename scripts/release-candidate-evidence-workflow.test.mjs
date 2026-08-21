@@ -30,6 +30,10 @@ const hasSafeExecutionContract = (candidate) => {
     !/^\s+id-token:/m.test(candidate) &&
     !/^\s+attestations:/m.test(candidate) &&
     !/^\s+environment:/m.test(candidate) &&
+    !/^\s+attests:/m.test(candidate) &&
+    /provenance: false/.test(candidate) &&
+    /sbom: false/.test(candidate) &&
+    !/provenance: true|sbom: true/.test(candidate) &&
     !/docker\/login-action|\bdocker\s+login\b|\bdocker\s+push\b|docker\s+buildx[^\n]*--push|actions\/attest|\bcosign\b/.test(
       candidate,
     ) &&
@@ -64,6 +68,7 @@ test('workflow grants contents read only and has no privileged publication surfa
   assert.doesNotMatch(workflow, /^\s+id-token:/m);
   assert.doesNotMatch(workflow, /^\s+attestations:/m);
   assert.doesNotMatch(workflow, /^\s+environment:/m);
+  assert.doesNotMatch(workflow, /^\s+attests:/m);
   assert.doesNotMatch(workflow, /^    permissions:/m);
   assert.doesNotMatch(workflow, /^permissions:\s*(?:write-all|read-all)/m);
   assert.doesNotMatch(workflow, /docker\/login-action/);
@@ -96,6 +101,12 @@ test('adversarial contract rejects automatic triggers and publication capabiliti
       '    environment: production\n    runs-on: ubuntu-24.04',
     ),
     workflow.replace('          push: false', '          push: true'),
+    workflow.replace('          provenance: false', '          provenance: true'),
+    workflow.replace('          sbom: false', '          sbom: true'),
+    workflow.replace(
+      '          sbom: false',
+      '          sbom: false\n          attests: type=provenance',
+    ),
     `${workflow}\n# docker push ghcr.io/example/image:unsafe\n`,
     `${workflow}\n# uses: actions/attest@${'a'.repeat(40)}\n`,
     `${workflow}\n# uses: docker/login-action@${'a'.repeat(40)}\n`,
@@ -125,6 +136,9 @@ test('all five linux/amd64 targets are built locally without publication', () =>
   }
   assert.match(workflow, /platforms: linux\/amd64/);
   assert.match(workflow, /push: false/);
+  assert.match(workflow, /provenance: false/);
+  assert.match(workflow, /sbom: false/);
+  assert.doesNotMatch(workflow, /^\s+attests:/m);
   assert.match(workflow, /outputs: type=docker,dest=\/tmp\/ventureos-/);
   assert.doesNotMatch(workflow, /push: true/);
   assert.doesNotMatch(workflow, /outputs:\s*type=registry/);
@@ -138,6 +152,8 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /VulnerabilityDB\.UpdatedAt/);
   assert.match(workflow, /test "\$age_seconds" -le 86400/);
   assert.match(workflow, /known_exploited_vulnerabilities\.json/);
+  assert.match(workflow, /\.vulnerabilities \| type == "array" and length > 0/);
+  assert.match(workflow, /\^CVE-\[0-9\]\{4\}-\[0-9\]\{4,\}\$/);
   assert.match(workflow, /comm -12/);
   assert.match(workflow, /--scanners vuln,secret/);
   assert.match(workflow, /--image-config-scanners secret/);
@@ -145,6 +161,9 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /--exit-on-eol 1/);
   assert.match(workflow, /format: spdx-json/);
   assert.match(workflow, /\.SchemaVersion \| type == "integer"/);
+  assert.match(workflow, /\.ArtifactName == \$archive/);
+  assert.match(workflow, /\.ArtifactType == "container_image"/);
+  assert.match(workflow, /\.Results \| type == "array" and length > 0/);
   assert.match(workflow, /\.SPDXID == "SPDXRef-DOCUMENT"/);
   assert.match(workflow, /\.packages \| type == "array" and length > 0/);
   assert.match(workflow, /manifest\.json/);
