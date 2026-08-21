@@ -6,6 +6,7 @@ import {
   CrossWorkspaceAccessError,
   DuplicateEventError,
   InMemoryControlPlane,
+  InMemoryOperationalEventLog,
   type ControlPlaneTask,
   type RuntimeAdapter,
   type RuntimeConnection,
@@ -568,6 +569,34 @@ describe('authenticated connection evidence', () => {
 });
 
 describe('runs, events, and budgets', () => {
+  it('projects authenticated runtime telemetry as bounded metadata, not raw payload content', () => {
+    const events = new InMemoryOperationalEventLog();
+    const plane = new InMemoryControlPlane({
+      clock: () => NOW,
+      authorityPrincipals: [founder.principalId],
+      principalActorKinds: { [founder.principalId]: 'HUMAN' },
+      eventSink: events,
+    });
+    plane.appendEvent(founder, {
+      id: 'event-objective',
+      workspaceId: founder.workspaceId,
+      type: 'objective.created',
+      occurredAt: '2026-08-20T12:00:00.000Z',
+      actorId: founder.principalId,
+      idempotencyKey: 'objective:created',
+      payload: { objectiveId: 'objective-1', summary: 'observable result' },
+    });
+
+    expect(events.list(founder)[0]).toMatchObject({
+      id: 'event-objective',
+      type: 'objective.created',
+      actorKind: 'HUMAN',
+      source: 'CONTROL_PLANE',
+      facts: { payloadKeys: ['objectiveId', 'summary'] },
+    });
+    expect(JSON.stringify(events.list(founder))).not.toContain('observable result');
+  });
+
   it('enforces one active run per task, concurrency, and legal run transitions', async () => {
     const plane = new InMemoryControlPlane({
       clock: () => NOW,

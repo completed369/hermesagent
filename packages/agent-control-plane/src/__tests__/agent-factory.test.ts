@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   DynamicAgentFactory,
   AgentFactoryPolicyError,
+  InMemoryOperationalEventLog,
   type AgentInstantiationRequest,
   type AgentTemplate,
+  type OperationalEventSink,
 } from '../index';
 const ctx = { workspaceId: 'w1', principalId: 'founder' },
   coo = { workspaceId: 'w1', principalId: 'coo' };
@@ -64,12 +66,13 @@ const request = (
   retention: 'ARCHIVE',
   ...over,
 });
-function factory() {
+function factory(eventSink?: OperationalEventSink) {
   const f = new DynamicAgentFactory({
     authorityPrincipals: ['founder'],
     aiCooPrincipals: ['coo'],
     limits,
     clock: () => 1,
+    eventSink,
   });
   f.putTemplate(ctx, template);
   f.registerObjective(ctx, 'o1');
@@ -98,6 +101,23 @@ describe('DynamicAgentFactory', () => {
     const out = factory().instantiate(coo, request());
     expect(out.agent).toMatchObject({ agentId: 'agent:r1', lifecycle: 'ACTIVE', nestingDepth: 0 });
     expect(out.decision.checks).toContain('authority');
+  });
+  it('projects lifecycle facts into the unified event spine without private agent data', () => {
+    const events = new InMemoryOperationalEventLog();
+    const f = factory(events);
+    const agent = f.instantiate(coo, request()).agent;
+    f.complete(ctx, agent.agentId, 'COMPLETED', 'criteria verified');
+
+    expect(
+      events
+        .list(coo)
+        .map((event) => event.type)
+        .sort(),
+    ).toEqual(['agent.created', 'agent.lifecycle.changed', 'agent.lifecycle.changed']);
+    expect(events.list(coo).find((event) => event.facts.reason)?.facts).toEqual({
+      lifecycle: 'agent.completed',
+      reason: 'criteria verified',
+    });
   });
   it('rejects hidden request fields and protects factory read models', () => {
     const f = factory();

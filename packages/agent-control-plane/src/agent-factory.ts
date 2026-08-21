@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AuthorityLevel, EntityId, WorkspaceContext } from './contracts';
+import type { OperationalEvent, OperationalEventSink } from './events';
 
 export type AgentRetention = 'DELETE_ON_COMPLETION' | 'ARCHIVE';
 export type AgentLifecycle = 'ACTIVE' | 'COMPLETED' | 'FAILED' | 'ARCHIVED' | 'DELETED';
@@ -122,6 +123,7 @@ export class DynamicAgentFactory {
   readonly #cooPrincipals: Set<EntityId>;
   readonly #limits: AgentFactoryLimits;
   readonly #clock: () => number;
+  readonly #eventSink?: OperationalEventSink;
   readonly #templates = new Map<string, AgentTemplate>();
   readonly #agents = new Map<string, FactoryAgent>();
   readonly #consumedRequests = new Set<string>();
@@ -135,11 +137,13 @@ export class DynamicAgentFactory {
     aiCooPrincipals?: readonly EntityId[];
     limits: AgentFactoryLimits;
     clock?: () => number;
+    eventSink?: OperationalEventSink;
   }) {
     this.#authorizers = new Set(options.authorityPrincipals);
     this.#cooPrincipals = new Set(options.aiCooPrincipals ?? []);
     this.#limits = structuredClone(options.limits);
     this.#clock = options.clock ?? Date.now;
+    this.#eventSink = options.eventSink;
     const requiredLimitKeys = [
       'maxAgents',
       'maxAgentsPerWorkspace',
@@ -354,23 +358,25 @@ export class DynamicAgentFactory {
         'retention',
       ],
     };
-    this.#agents.set(key(request.workspaceId, agentId), agent);
-    this.#consumedRequests.add(requestKey);
-    this.#decisions.push(decision);
-    this.#events.push({
+    const createdEvent: AgentFactoryEvent = {
       id: `event:${request.id}:created`,
       workspaceId: request.workspaceId,
       agentId,
       type: 'agent.created',
       occurredAt: createdAt,
-    });
+    };
+    this.#appendOperationalEvent(context, createdEvent, request.taskId);
+    this.#agents.set(key(request.workspaceId, agentId), agent);
+    this.#consumedRequests.add(requestKey);
+    this.#decisions.push(decision);
+    this.#events.push(createdEvent);
     return { agent: structuredClone(agent), decision: structuredClone(decision) };
   }
   complete(
     context: WorkspaceContext,
     agentId: EntityId,
     outcome: 'COMPLETED' | 'FAILED',
-    reason = outcome,
+    reason: string = outcome,
   ): void {
     this.#assertAuthorizer(context);
     if (outcome !== 'COMPLETED' && outcome !== 'FAILED')
@@ -388,26 +394,33 @@ export class DynamicAgentFactory {
       throw new AgentFactoryPolicyError('Cannot finalize agent with active children');
     text(reason, 'terminal reason');
     const at = new Date(this.#clock()).toISOString();
-    stored.terminalOutcome = outcome;
-    stored.terminalReason = reason;
-    stored.completedAt = at;
-    this.#events.push({
+    const nextLifecycle = stored.retention === 'ARCHIVE' ? 'ARCHIVED' : 'DELETED';
+    const outcomeEvent: AgentFactoryEvent = {
       id: `event:${agentId}:${outcome.toLowerCase()}`,
       workspaceId: context.workspaceId,
       agentId,
       type: outcome === 'COMPLETED' ? 'agent.completed' : 'agent.failed',
       occurredAt: at,
       reason,
-    });
-    stored.lifecycle = stored.retention === 'ARCHIVE' ? 'ARCHIVED' : 'DELETED';
-    stored.archivedAt = at;
-    this.#events.push({
-      id: `event:${agentId}:${stored.lifecycle.toLowerCase()}`,
+    };
+    const retentionEvent: AgentFactoryEvent = {
+      id: `event:${agentId}:${nextLifecycle.toLowerCase()}`,
       workspaceId: context.workspaceId,
       agentId,
-      type: stored.lifecycle === 'ARCHIVED' ? 'agent.archived' : 'agent.deleted',
+      type: nextLifecycle === 'ARCHIVED' ? 'agent.archived' : 'agent.deleted',
       occurredAt: at,
-    });
+    };
+    this.#eventSink?.appendBatch(context, [
+      this.#toOperationalEvent(context, outcomeEvent, stored.taskId),
+      this.#toOperationalEvent(context, retentionEvent, stored.taskId),
+    ]);
+    stored.terminalOutcome = outcome;
+    stored.terminalReason = reason;
+    stored.completedAt = at;
+    stored.lifecycle = nextLifecycle;
+    stored.archivedAt = at;
+    this.#events.push(outcomeEvent);
+    this.#events.push(retentionEvent);
     if (stored.lifecycle === 'DELETED') this.#agents.delete(key(context.workspaceId, agentId));
   }
   listAgents(context: WorkspaceContext): readonly FactoryAgent[] {
@@ -427,6 +440,36 @@ export class DynamicAgentFactory {
     return this.#events
       .filter((e) => e.workspaceId === context.workspaceId)
       .map((e) => structuredClone(e));
+  }
+  #appendOperationalEvent(
+    context: WorkspaceContext,
+    event: AgentFactoryEvent,
+    correlationId: EntityId,
+  ): void {
+    this.#eventSink?.append(context, this.#toOperationalEvent(context, event, correlationId));
+  }
+  #toOperationalEvent(
+    context: WorkspaceContext,
+    event: AgentFactoryEvent,
+    correlationId: EntityId,
+  ): OperationalEvent {
+    return {
+      id: event.id,
+      workspaceId: event.workspaceId,
+      type: event.type === 'agent.created' ? 'agent.created' : 'agent.lifecycle.changed',
+      source: 'AGENT_FACTORY',
+      actorKind: this.#cooPrincipals.has(context.principalId) ? 'AGENT' : 'HUMAN',
+      actorId: context.principalId,
+      subjectType: 'Agent',
+      subjectId: event.agentId,
+      occurredAt: event.occurredAt,
+      idempotencyKey: event.id,
+      correlationId,
+      facts: {
+        lifecycle: event.type,
+        ...(event.reason ? { reason: event.reason } : {}),
+      },
+    };
   }
   #assertAuthorizer(context: WorkspaceContext) {
     if (!this.#authorizers.has(context.principalId))

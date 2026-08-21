@@ -10,6 +10,7 @@ import type {
   RuntimeRoutingDecision,
   RuntimeRoutingRequest,
 } from './runtime-broker';
+import type { OperationalEventSink, OperationalEventType } from './events';
 
 export type CooTaskStatus =
   'BLOCKED' | 'READY' | 'ASSIGNED' | 'AWAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'STOPPED';
@@ -324,6 +325,7 @@ export class GovernedAiCoo {
   readonly #broker: BrokerPort;
   readonly #factory: FactoryPort;
   readonly #evidenceVerifier: ArtifactEvidenceVerifier;
+  readonly #eventSink?: OperationalEventSink;
   readonly #objectives = new Map<string, CooObjective>();
   readonly #projects = new Map<string, CooProject>();
   readonly #tasks = new Map<string, CooTaskState>();
@@ -339,6 +341,7 @@ export class GovernedAiCoo {
       broker: BrokerPort;
       factory: FactoryPort;
       evidenceVerifier: ArtifactEvidenceVerifier;
+      eventSink?: OperationalEventSink;
     },
   ) {
     this.#planners = new Set(options.plannerPrincipals);
@@ -347,6 +350,7 @@ export class GovernedAiCoo {
     this.#broker = dependencies.broker;
     this.#factory = dependencies.factory;
     this.#evidenceVerifier = dependencies.evidenceVerifier;
+    this.#eventSink = dependencies.eventSink;
     this.#options = {
       maximumObjectiveCostMinorUnits: options.maximumObjectiveCostMinorUnits,
       maximumObjectiveComputeUnits: options.maximumObjectiveComputeUnits,
@@ -1239,6 +1243,23 @@ export class GovernedAiCoo {
     const id = this.#idFactory();
     boundedText(id, 'event.id');
     if (this.#eventIds.has(id)) throw new AiCooPolicyError('Duplicate event ID');
+    const occurredAt = new Date(this.#clock()).toISOString();
+    const subjectType = taskId ? 'Task' : projectId ? 'Project' : 'Objective';
+    const subjectId = taskId ?? projectId ?? objectiveId;
+    this.#eventSink?.append(context, {
+      id,
+      workspaceId: context.workspaceId,
+      type: type as OperationalEventType,
+      source: 'AI_COO',
+      actorKind: 'AGENT',
+      actorId: context.principalId,
+      subjectType,
+      subjectId,
+      occurredAt,
+      idempotencyKey: id,
+      correlationId: objectiveId,
+      facts: clone(facts),
+    });
     this.#eventIds.add(id);
     this.#events.push({
       id,
@@ -1247,7 +1268,7 @@ export class GovernedAiCoo {
       projectId,
       taskId,
       type,
-      occurredAt: new Date(this.#clock()).toISOString(),
+      occurredAt,
       actorId: context.principalId,
       facts: clone(facts),
     });
