@@ -85,7 +85,7 @@ After the collaboration schema is stable, a follow-up PR should add:
 
 1. Prisma persistence and migrations with compound workspace keys and foreign-key isolation;
 2. authenticated, rate-limited, replay-protected API ingestion with bounded payloads;
-3. append-only audit integration and approval-policy integration;
+3. immutable-content audit integration and approval-policy integration;
 4. a generic bridge reference adapter before vendor-specific adapters;
 5. Codex/Hermes/Pi adapters only after their real supported interfaces are verified;
 6. SSE/WebSocket projections from authenticated stored events;

@@ -323,28 +323,40 @@ model AuthAbuseState {
 // Audit (append-only)
 // ---------------------------------------------------------------------------
 
-/// Append-only by application convention: the API layer must only ever
-/// create rows here, never update or delete. See docs/SECURITY.md.
+/// Application code inserts immutable event content. The database rejects
+/// content updates, while governed retention and identity/tenant erasure may
+/// delete rows or clear nullable relations. See ADR-0018 and docs/SECURITY.md.
 model AuditEvent {
-  id                String   @id @default(uuid()) @db.Uuid
-  workspaceId       String?  @db.Uuid
-  actorId           String?  @db.Uuid
-  action            String
-  entityType        String
-  entityId          String
-  before            Json?
-  after             Json?
-  correlationId     String?
-  workflowId        String?
-  policyResult      Json?
-  approvalReference String?
-  ipOrSessionId     String?
-  integrityHash     String
-  createdAt         DateTime @default(now())
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String?   @db.Uuid
+  actorId            String?   @db.Uuid
+  /// Immutable provenance retained even when the relational workspace is erased.
+  workspaceReference String?
+  /// Human, agent, runtime, or system principal reference. Never a credential.
+  actorReference     String?
+  source             String    @default("APPLICATION")
+  sourceEventId      String?
+  idempotencyKey     String?
+  action             String
+  entityType         String
+  entityId           String
+  before             Json?
+  after              Json?
+  correlationId      String?
+  workflowId         String?
+  policyResult       Json?
+  approvalReference  String?
+  ipOrSessionId      String?
+  integrityHash      String
+  integrityVersion   Int       @default(1)
+  occurredAt         DateTime?
+  createdAt          DateTime  @default(now())
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   actor     User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
+  @@unique([workspaceReference, source, sourceEventId])
+  @@unique([workspaceReference, source, idempotencyKey])
   @@index([workspaceId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_events")

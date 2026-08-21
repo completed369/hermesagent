@@ -13,7 +13,7 @@ REST, NestJS, global prefix `/api`. OpenAPI docs served at `/api/docs` via
 | GET    | /api/workspaces/current | session                | Workspace summary + integration status       |
 | GET    | /api/onboarding         | session                | Founder onboarding profile                   |
 | PUT    | /api/onboarding         | session                | Save onboarding profile                      |
-| GET    | /api/audit-events       | session + `audit:view` | Append-only audit trail                      |
+| GET    | /api/audit-events       | session + `audit:view` | Immutable-content audit trail                |
 | GET    | /api/security-events    | session + `audit:view` | Security event log                           |
 | GET    | /api/health/live        | none                   | Process-local liveness; no dependency access |
 | GET    | /api/health/ready       | none                   | Bounded DB, storage, and Temporal readiness  |

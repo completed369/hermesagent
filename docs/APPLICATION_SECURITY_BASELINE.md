@@ -237,8 +237,10 @@ production MinIO/Temporal connectivity was not exercised.
 3. API/web security headers are partial. Frame, MIME-sniffing, and referrer
    controls exist on the web, but no reviewed CSP/HSTS/Permissions-Policy
    baseline exists for a real deployment.
-4. Append-only application audit writing and integrity hashes exist, but DB-role
-   immutability and production retention/access policy are not configured.
+4. Insert-only application audit writing, versioned integrity checksums, and a
+   migration-level immutable-content update guard exist. The migration is not a
+   signature or undeletable ledger, and production DB-role, retention, and
+   access-policy enforcement are not verified.
 5. Repository-level GitHub secret scanning and push protection could not be
    confirmed locally. CI has least-privilege permissions and Dependabot, but no
    secret-scan/SAST gate is present in the inspected workflow.

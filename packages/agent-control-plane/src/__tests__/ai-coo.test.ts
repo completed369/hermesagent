@@ -9,6 +9,7 @@ import {
 } from '../ai-coo';
 import type { WorkspaceContext } from '../contracts';
 import type { RuntimeBroker, RuntimeRoutingRequest } from '../runtime-broker';
+import { InMemoryOperationalEventLog, OperationalEventCapability } from '../events';
 
 const context: WorkspaceContext = { workspaceId: 'workspace-a', principalId: 'coo' };
 
@@ -250,6 +251,41 @@ describe('GovernedAiCoo', () => {
     expect(
       instance.listTasks(context, 'objective-1').find(({ id }) => id === 'task-2')?.status,
     ).toBe('READY');
+  });
+
+  it('projects sanitized planning facts into the unified workspace event spine', () => {
+    const dependencies = ports();
+    const events = new InMemoryOperationalEventLog();
+    const instance = new GovernedAiCoo(
+      {
+        plannerPrincipals: ['coo'],
+        maximumObjectiveCostMinorUnits: 10_000,
+        maximumObjectiveComputeUnits: 10_000,
+        maximumTasksPerObjective: 1_000,
+        maximumProjectsPerObjective: 10,
+        maximumTaskDurationMs: 1_000_000,
+        maximumRetriesPerTask: 3,
+        clock: () => Date.parse('2026-08-21T00:00:00.000Z'),
+      },
+      {
+        ...dependencies,
+        eventSink: events,
+        eventCapability: OperationalEventCapability.issue('AI_COO', [
+          { workspaceId: 'workspace-a', principalId: 'coo', actorKind: 'AGENT' },
+        ]),
+      },
+    );
+
+    const sensitiveTitlePlan = plan([
+      task('level-4', [], { requiredAuthority: 4, exactTarget: 'production:release-1' }),
+    ]);
+    sensitiveTitlePlan.objective.title = 'password=hunter2';
+    instance.createPlan(context, sensitiveTitlePlan);
+    const projected = events.list(context);
+    expect(projected.map((event) => event.type)).toContain('approval.requested');
+    expect(projected.every((event) => event.source === 'AI_COO')).toBe(true);
+    expect(JSON.stringify(projected)).not.toMatch(/chainOfThought|privateReasoning|prompt/i);
+    expect(JSON.stringify(projected)).not.toContain('password=hunter2');
   });
 
   it.each([

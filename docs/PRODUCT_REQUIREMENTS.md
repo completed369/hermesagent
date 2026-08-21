@@ -15,7 +15,7 @@ status.
 | Command Centre (§23.3)                          | Implemented for Phase-1-available data; Phase 2+ widgets shown as greyed-out placeholders        |
 | API health endpoints                            | Implemented (`/health/live`, `/health/ready`, `/health/temporal`)                                |
 | Structured logging, request IDs                 | Implemented                                                                                      |
-| Audit-event service                             | Implemented (append-only, integrity-hashed)                                                      |
+| Audit-event service                             | Implemented foundation (immutable content, versioned checksum, replay keys; governed deletion)   |
 | Secure error handling                           | Implemented (`SafeExceptionFilter`)                                                              |
 | Rate limiting                                   | Implemented (`@nestjs/throttler`)                                                                |
 | Environment validation                          | Implemented (Zod schema, fails closed)                                                           |

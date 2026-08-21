@@ -162,6 +162,7 @@ test('the immutable migration chain matches the reviewed sequence', () => {
     '20260815123000_commercial_observation_provenance',
     '20260819190000_collaborative_workspace_invites',
     '20260820013000_workspace_scoped_sessions',
+    '20260821113000_operational_audit_spine',
   ]);
 });
 

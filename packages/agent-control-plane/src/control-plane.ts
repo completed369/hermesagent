@@ -27,6 +27,12 @@ import type {
   ValidatedRuntimeDispatch,
   WorkspaceContext,
 } from './contracts';
+import type {
+  ObservableFact,
+  OperationalEventCapability,
+  OperationalEventSink,
+  OperationalEventType,
+} from './events';
 
 export class ControlPlanePolicyError extends Error {}
 export class CrossWorkspaceAccessError extends ControlPlanePolicyError {}
@@ -35,6 +41,9 @@ export class CostLimitExceededError extends ControlPlanePolicyError {}
 
 interface ControlPlaneOptions {
   clock?: () => number;
+  eventIdFactory?: () => string;
+  eventSink?: OperationalEventSink;
+  eventCapability?: OperationalEventCapability;
   heartbeatFreshnessMs?: number;
   authorityPrincipals?: readonly EntityId[];
   plannerPrincipals?: readonly EntityId[];
@@ -202,6 +211,9 @@ function deepFreeze<T>(value: T): T {
 
 export class InMemoryControlPlane {
   readonly #clock: () => number;
+  readonly #eventIdFactory: () => string;
+  readonly #eventSink?: OperationalEventSink;
+  readonly #eventCapability?: OperationalEventCapability;
   readonly #heartbeatFreshnessMs: number;
   readonly #authorityPrincipals: ReadonlySet<EntityId>;
   readonly #plannerPrincipals: ReadonlySet<EntityId>;
@@ -233,6 +245,14 @@ export class InMemoryControlPlane {
 
   constructor(options: ControlPlaneOptions = {}) {
     this.#clock = options.clock ?? Date.now;
+    this.#eventIdFactory = options.eventIdFactory ?? randomUUID;
+    this.#eventSink = options.eventSink;
+    this.#eventCapability = options.eventCapability;
+    if (Boolean(this.#eventSink) !== Boolean(this.#eventCapability)) {
+      throw new ControlPlanePolicyError(
+        'Event sink and trusted capability must be configured together',
+      );
+    }
     this.#heartbeatFreshnessMs = options.heartbeatFreshnessMs ?? 5 * 60 * 1_000;
     this.#authorityPrincipals = new Set(options.authorityPrincipals ?? []);
     this.#plannerPrincipals = new Set(options.plannerPrincipals ?? []);
@@ -405,6 +425,19 @@ export class InMemoryControlPlane {
       else this.#connections.delete(connectionKey);
       throw error;
     }
+    try {
+      this.#emitOperationalEvent(
+        context,
+        'runtime.connection.updated',
+        'RuntimeConnection',
+        connection.id,
+        { status: connection.status, runtimeId: connection.runtimeId },
+      );
+    } catch (error) {
+      if (previous) this.#connections.set(connectionKey, previous);
+      else this.#connections.delete(connectionKey);
+      throw error;
+    }
   }
 
   recordHeartbeat(context: WorkspaceContext, heartbeat: Heartbeat): void {
@@ -437,6 +470,18 @@ export class InMemoryControlPlane {
       throw new ControlPlanePolicyError('Duplicate heartbeat ID');
     }
     parsedTime(heartbeat.observedAt, 'heartbeat.observedAt');
+    this.#emitOperationalEvent(
+      context,
+      'runtime.heartbeat.recorded',
+      'Heartbeat',
+      heartbeat.id,
+      {
+        connectionId: heartbeat.runtimeConnectionId,
+        sequence: heartbeat.sequence,
+        health: heartbeat.health,
+      },
+      heartbeat.runtimeConnectionId,
+    );
     this.#heartbeats.set(key(heartbeat.workspaceId, heartbeat.id), structuredClone(heartbeat));
   }
 
@@ -514,6 +559,11 @@ export class InMemoryControlPlane {
     if (this.#tasks.has(key(task.workspaceId, task.id))) {
       throw new ControlPlanePolicyError('Duplicate task ID');
     }
+    this.#emitOperationalEvent(context, 'task.created', 'Task', task.id, {
+      kind: task.kind,
+      status: task.status,
+      requiredAuthorityLevel: task.requiredAuthorityLevel,
+    });
     this.#tasks.set(key(task.workspaceId, task.id), structuredClone(task));
   }
 
@@ -542,6 +592,14 @@ export class InMemoryControlPlane {
     if (activeRun) {
       throw new ControlPlanePolicyError('An active task may transition only through its run');
     }
+    this.#emitOperationalEvent(
+      context,
+      'task.status.changed',
+      'Task',
+      task.id,
+      { previousStatus: task.status, nextStatus: next },
+      task.id,
+    );
     this.#transitionTaskRecord(task, next);
   }
 
@@ -603,6 +661,14 @@ export class InMemoryControlPlane {
     if (activeRuns >= Math.min(agent.maxConcurrentRuns, authority.maxConcurrentRuns)) {
       throw new ControlPlanePolicyError('Agent concurrency limit reached');
     }
+    this.#emitOperationalEvent(
+      context,
+      'run.created',
+      'Run',
+      run.id,
+      { taskId: run.taskId, agentId: run.agentId, status: run.status },
+      run.taskId,
+    );
     this.#runs.set(key(run.workspaceId, run.id), structuredClone(run));
   }
 
@@ -1008,6 +1074,18 @@ export class InMemoryControlPlane {
       startedAt: next === 'RUNNING' && !run.startedAt ? now : run.startedAt,
       completedAt: ['COMPLETED', 'FAILED', 'CANCELLED'].includes(next) ? now : run.completedAt,
     };
+    this.#emitOperationalEvent(
+      context,
+      next === 'COMPLETED'
+        ? 'run.completed'
+        : next === 'FAILED'
+          ? 'run.failed'
+          : 'run.status.changed',
+      'Run',
+      run.id,
+      { previousStatus: run.status, nextStatus: next, taskId: run.taskId },
+      run.taskId,
+    );
     this.#runs.set(key(run.workspaceId, run.id), updated);
     if (taskNext) this.#tasks.set(key(task.workspaceId, task.id), { ...task, status: taskNext });
   }
@@ -1037,6 +1115,24 @@ export class InMemoryControlPlane {
         throw new ControlPlanePolicyError('Run event actor does not own the runtime connection');
       }
     }
+    const payloadKeys = Object.keys(event.payload).sort();
+    this.#eventSink?.append(this.#eventCapability!, context, {
+      id: event.id,
+      workspaceId: event.workspaceId,
+      type: event.runId ? 'run.progress' : 'event.recorded',
+      source: 'CONTROL_PLANE',
+      actorKind: event.runId ? 'RUNTIME' : this.#eventCapability!.actorKindFor(context),
+      actorId: event.actorId,
+      subjectType: event.runId ? 'Run' : 'ControlPlaneEvent',
+      subjectId: event.runId ?? event.id,
+      occurredAt: event.occurredAt,
+      idempotencyKey: event.idempotencyKey,
+      ...(event.runId ? { correlationId: event.runId } : {}),
+      facts: {
+        payloadFieldCount: payloadKeys.length,
+        payloadBytes: Buffer.byteLength(JSON.stringify(event.payload), 'utf8'),
+      },
+    });
     this.#eventsById.set(eventIdKey, structuredClone(event));
     this.#eventIdempotency.set(idempotencyKey, event.id);
   }
@@ -1087,7 +1183,47 @@ export class InMemoryControlPlane {
     ) {
       throw new CostLimitExceededError('Usage would exceed the task compute limit');
     }
+    this.#emitOperationalEvent(
+      context,
+      'usage.recorded',
+      'UsageRecord',
+      usage.id,
+      {
+        taskId: usage.taskId,
+        runId: usage.runId,
+        ...(usage.computeUnits === undefined ? {} : { computeUnits: usage.computeUnits }),
+        ...(usage.costMinorUnits === undefined ? {} : { costMinorUnits: usage.costMinorUnits }),
+        ...(usage.currency === undefined ? {} : { currency: usage.currency }),
+      },
+      usage.runId,
+    );
     this.#usage.set(usageKey, structuredClone(usage));
+  }
+
+  #emitOperationalEvent(
+    context: WorkspaceContext,
+    type: OperationalEventType,
+    subjectType: string,
+    subjectId: EntityId,
+    facts: Readonly<Record<string, ObservableFact>>,
+    correlationId?: EntityId,
+  ): void {
+    if (!this.#eventSink) return;
+    const id = this.#eventIdFactory();
+    this.#eventSink.append(this.#eventCapability!, context, {
+      id,
+      workspaceId: context.workspaceId,
+      type,
+      source: 'CONTROL_PLANE',
+      actorKind: this.#eventCapability!.actorKindFor(context),
+      actorId: context.principalId,
+      subjectType,
+      subjectId,
+      occurredAt: new Date(this.#clock()).toISOString(),
+      idempotencyKey: id,
+      ...(correlationId ? { correlationId } : {}),
+      facts,
+    });
   }
 
   #assertAuthorizer(context: WorkspaceContext): void {

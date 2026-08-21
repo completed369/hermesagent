@@ -6,8 +6,8 @@
 `Permission`, `RolePermission`, `WorkspaceMember`, `FounderProfile`,
 `FounderOnboardingProfile`, `SecurityEvent`.
 
-**Audit**: `AuditEvent` (append-only by application convention; integrity
-hash computed from canonical JSON of the event content).
+**Audit**: `AuditEvent` (immutable event content; versioned integrity checksum,
+workspace/source replay keys, and governed retention/erasure semantics).
 
 **Workflow**: `WorkflowRun`, `WorkflowStep` (populated once Phase 3+
 workflows persist their state here in addition to Temporal's own history;
@@ -18,9 +18,10 @@ the source of truth for the connectivity check).
 the secret value itself).
 
 All primary keys are UUIDs. Soft deletion (`deletedAt`) is used on `User`
-and `Workspace`. `AuditEvent` has no delete/update path in the application
-layer at all (see `apps/api/src/modules/audit/audit.service.ts` — it is the
-only writer, and only ever calls `.create()`).
+and `Workspace`. Application event writers insert through reviewed audit
+helpers. The database rejects changes to immutable event content; relational
+identity/workspace links may clear during erasure, and explicit deletion is
+reserved for governed retention or erasure. See ADR-0018.
 
 ## Phase 2 entities (implemented, `packages/database/prisma/schema.prisma`)
 

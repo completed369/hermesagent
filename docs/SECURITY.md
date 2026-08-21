@@ -53,8 +53,9 @@
 - Tenant security-event reads exclude unscoped platform authentication
   telemetry. Experiment results bind workspace, route experiment, variant, and
   metric before insertion.
-- Append-only audit log with integrity hashing (tamper-evident, not
-  tamper-proof — see limitations).
+- Immutable audit-event content with versioned integrity checksums and
+  workspace/source replay keys. Governed retention or erasure may delete rows;
+  this is not an undeletable or administrator-resistant transparency log.
 - Approval decisions use a conditional single-winner state transition; the
   winning request update and immutable decision evidence are committed in one
   transaction. Concurrent or stale decisions fail closed.
