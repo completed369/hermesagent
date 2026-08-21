@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import type { AuthorityLevel, EntityId, WorkspaceContext } from './contracts';
 
@@ -60,6 +60,10 @@ export interface RealtimeSpeechAdapter {
 
 export interface VoiceAdapterEvidenceVerifier {
   verify(context: WorkspaceContext, metadata: Readonly<VoiceProviderMetadata>): boolean;
+}
+
+export interface VoiceTranscriptHasher {
+  hash(context: WorkspaceContext, redactedTranscript: string): string;
 }
 
 export interface BrowserVoiceCapabilities {
@@ -253,10 +257,6 @@ function parsedTime(value: string, field: string): number {
   return parsed;
 }
 
-function sha256(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
 const REDACTIONS: readonly RegExp[] = [
   /\bgh[op]_[A-Za-z0-9]{20,}\b/giu,
   /\bsk-[A-Za-z0-9_-]{20,}\b/giu,
@@ -267,20 +267,17 @@ const REDACTIONS: readonly RegExp[] = [
 ];
 
 const SENSITIVE_TRANSCRIPT_MARKERS = [
-  '-----begin private key-----',
-  '-----begin rsa private key-----',
-  '-----begin ec private key-----',
-  '-----begin openssh private key-----',
-  'password=',
-  'password:',
-  'api_key=',
-  'api-key=',
-  'apikey=',
-  'client_secret=',
-  'access_token=',
-  'refresh_token=',
-  'authorization:',
-  'bearer ',
+  'private key',
+  'password',
+  'api key',
+  'api_key',
+  'api-key',
+  'apikey',
+  'secret',
+  'credential',
+  'token',
+  'authorization',
+  'bearer',
   'ghp_',
   'gho_',
   'sk-',
@@ -389,6 +386,7 @@ export class GovernedVoiceGateway {
   readonly #idFactory: () => string;
   readonly #proofVerifier: TranscriptProofVerifier;
   readonly #adapterEvidenceVerifier: VoiceAdapterEvidenceVerifier;
+  readonly #transcriptHasher: VoiceTranscriptHasher;
   readonly #authority: VoiceAuthorityEvaluator;
   readonly #router: VoiceCommandRouter;
   readonly #adapters = new Map<string, VoiceProviderMetadata>();
@@ -402,6 +400,7 @@ export class GovernedVoiceGateway {
     dependencies: {
       proofVerifier: TranscriptProofVerifier;
       adapterEvidenceVerifier: VoiceAdapterEvidenceVerifier;
+      transcriptHasher: VoiceTranscriptHasher;
       authority: VoiceAuthorityEvaluator;
       router: VoiceCommandRouter;
     },
@@ -411,6 +410,7 @@ export class GovernedVoiceGateway {
     this.#idFactory = options.idFactory ?? randomUUID;
     this.#proofVerifier = dependencies.proofVerifier;
     this.#adapterEvidenceVerifier = dependencies.adapterEvidenceVerifier;
+    this.#transcriptHasher = dependencies.transcriptHasher;
     this.#authority = dependencies.authority;
     this.#router = dependencies.router;
     this.#options = {
@@ -494,10 +494,10 @@ export class GovernedVoiceGateway {
     const sessionKey = key(context.workspaceId, request.id);
     if (this.#sessions.has(sessionKey)) throw new VoiceGatewayPolicyError('Session already exists');
     const stt = this.#requireAdapter(context, request.sttAdapterId, 'STT');
-    this.#assertAdapterUsable(stt, request.browser);
+    this.#assertAdapterUsable(context, stt, request.browser);
     if (request.ttsAdapterId !== undefined) {
       const tts = this.#requireAdapter(context, request.ttsAdapterId, 'TTS');
-      this.#assertAdapterUsable(tts, request.browser);
+      this.#assertAdapterUsable(context, tts, request.browser);
     }
     if (!request.browser.microphonePermissionApi)
       throw new VoiceGatewayPolicyError('Microphone permission API is unavailable');
@@ -636,7 +636,7 @@ export class GovernedVoiceGateway {
       workspaceId: context.workspaceId,
       principalId: context.principalId,
       sessionId: session.id,
-      transcriptHash: sha256(untrusted.transcript),
+      transcriptHash: this.#hashTranscript(context, redactedTranscript),
       redactedTranscript,
       source: 'VOICE',
       maximumExecutableAuthority: 3,
@@ -691,8 +691,11 @@ export class GovernedVoiceGateway {
     const session = this.#requireSession(context, entry.sessionId);
     if (!session.ttsAdapterId) throw new VoiceGatewayPolicyError('No TTS adapter selected');
     const adapter = this.#requireAdapter(context, session.ttsAdapterId, 'TTS');
+    this.#assertEvidenceCurrent(context, adapter);
     if (!['AVAILABLE', 'BROWSER_LOCAL_AVAILABLE'].includes(adapter.status))
       throw new VoiceGatewayPolicyError('TTS adapter is unavailable');
+    if (Buffer.byteLength(entry.redactedResponse, 'utf8') > adapter.maximumTextBytes)
+      throw new VoiceGatewayPolicyError('Replay exceeds TTS adapter text limit');
     return {
       responseId: entry.id,
       ttsAdapterId: adapter.adapterId,
@@ -729,7 +732,12 @@ export class GovernedVoiceGateway {
     return adapter;
   }
 
-  #assertAdapterUsable(adapter: VoiceProviderMetadata, browser: BrowserVoiceCapabilities): void {
+  #assertAdapterUsable(
+    context: WorkspaceContext,
+    adapter: VoiceProviderMetadata,
+    browser: BrowserVoiceCapabilities,
+  ): void {
+    this.#assertEvidenceCurrent(context, adapter);
     if (!['AVAILABLE', 'BROWSER_LOCAL_AVAILABLE'].includes(adapter.status))
       throw new VoiceGatewayPolicyError('Voice adapter is unavailable');
     if (adapter.status === 'BROWSER_LOCAL_AVAILABLE') {
@@ -740,6 +748,21 @@ export class GovernedVoiceGateway {
       if (!supported || adapter.availability !== 'LOCAL_BROWSER')
         throw new VoiceGatewayPolicyError('Browser/local fallback is not available');
     }
+  }
+
+  #assertEvidenceCurrent(context: WorkspaceContext, adapter: VoiceProviderMetadata): void {
+    const evidenceAt = parsedTime(adapter.availabilityVerifiedAt, 'availabilityVerifiedAt');
+    if (
+      Math.abs(this.#clock() - evidenceAt) > this.#options.availabilityEvidenceFreshnessMs ||
+      !this.#adapterEvidenceVerifier.verify(context, Object.freeze(structuredClone(adapter)))
+    )
+      throw new VoiceGatewayPolicyError('Adapter availability evidence is invalid or stale');
+  }
+
+  #hashTranscript(context: WorkspaceContext, redactedTranscript: string): string {
+    const digest = this.#transcriptHasher.hash(context, redactedTranscript);
+    boundedText(digest, 'transcriptHash', 512);
+    return digest;
   }
 
   #requireSession(context: WorkspaceContext, sessionId: EntityId): VoiceSession {
@@ -839,7 +862,7 @@ export class GovernedVoiceGateway {
       principalId: context.principalId,
       sessionId: session.id,
       commandId: decision.commandId,
-      transcriptHash: sha256(envelope.transcript),
+      transcriptHash: this.#hashTranscript(context, redactedTranscript),
       ...(envelope.retention === 'REDACTED_SESSION' ? { redactedTranscript } : {}),
       redactedResponse,
       outcome: decision.outcome,

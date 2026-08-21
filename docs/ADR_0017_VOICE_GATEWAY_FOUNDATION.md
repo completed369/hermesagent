@@ -22,14 +22,16 @@ Only a final transcript envelope bound to the authenticated workspace, principal
 STT adapter, positive sequence, nonce, timestamp, byte count, and proof may route. A mandatory
 trusted verifier checks the envelope. Proofs and session sequences are one-use, transcripts must be
 fresh, and oversized audio declarations or UTF-8 transcripts fail before routing. Raw audio is
-never accepted or persisted by this model. Raw transcripts remain ephemeral inputs: history stores
-only a SHA-256 hash and, when explicitly selected, a dedicated redacted session copy. Secret-like
+never accepted or persisted by this model. Raw transcripts remain ephemeral inputs: an injected
+workspace-keyed transcript hasher receives only the sanitized transcript, and history stores its
+opaque digest plus, when explicitly selected, a dedicated redacted session copy. Secret-like
 credentials, authorization values, private-key markers, and email addresses are redacted from both
 transcript and response history. A transcript containing a high-risk credential marker (including
 private-key blocks, passwords, access tokens, authorization values, and common API-token prefixes)
-is replaced in full with a fixed sensitive-transcript marker before routing or history. This
-deliberately prefers over-redaction to partial secret retention. Raw or sensitive retention modes
-are unsupported.
+is replaced in full with a fixed sensitive-transcript marker before routing, hashing, or history.
+This deliberately prefers over-redaction to partial secret retention and prevents raw low-entropy
+secrets from becoming offline-guessable deterministic hashes. Raw or sensitive retention modes are
+unsupported.
 
 The routing request is a narrow, immutable contract for an injected AI COO port. It carries only
 workspace/principal/session correlation, a transcript hash, the redacted transcript, the `VOICE`

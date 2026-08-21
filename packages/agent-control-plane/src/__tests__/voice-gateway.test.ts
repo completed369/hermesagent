@@ -7,6 +7,7 @@ import {
   type TranscriptProofVerifier,
   type VoiceAuthorityEvaluator,
   type VoiceAdapterEvidenceVerifier,
+  type VoiceTranscriptHasher,
   type VoiceCommandRoutingRequest,
   type VoiceCommandRouter,
   type VoiceProviderMetadata,
@@ -64,6 +65,8 @@ function setup(
   })),
   proofVerifier: TranscriptProofVerifier['verify'] = vi.fn(() => true),
   adapterEvidenceVerifier: VoiceAdapterEvidenceVerifier['verify'] = vi.fn(() => true),
+  transcriptHasher: VoiceTranscriptHasher['hash'] = vi.fn(() => 'workspace-keyed-hmac'),
+  clock: () => number = () => now,
 ) {
   let id = 0;
   const gateway = new GovernedVoiceGateway(
@@ -75,7 +78,7 @@ function setup(
       maximumHistoryEntriesPerPrincipal: 2,
       transcriptFreshnessMs: 30_000,
       availabilityEvidenceFreshnessMs: 30_000,
-      clock: () => now,
+      clock,
       idFactory: () => `id-${++id}`,
     },
     {
@@ -83,6 +86,7 @@ function setup(
       authority: { evaluate: authority },
       proofVerifier: { verify: proofVerifier },
       adapterEvidenceVerifier: { verify: adapterEvidenceVerifier },
+      transcriptHasher: { hash: transcriptHasher },
     },
   );
   gateway.registerAdapter(context, metadata());
@@ -276,6 +280,10 @@ describe('GovernedVoiceGateway', () => {
 
   it.each([
     'password=hunter2-and-more',
+    'password = hunter2-and-more',
+    'password is hunter2-and-more',
+    'api key: opaquevalue123456',
+    'credential: opaquevalue123456',
     '-----BEGIN PRIVATE KEY-----\nSUPERSECRETKEYBODY\n-----END PRIVATE KEY-----',
     'Authorization: opaquecredentialvalue12345',
   ])('fails closed instead of retaining sensitive transcript content: %s', (raw) => {
@@ -288,6 +296,7 @@ describe('GovernedVoiceGateway', () => {
     );
     expect(JSON.stringify(gateway.listHistory(context))).not.toContain(raw);
     expect(JSON.stringify(gateway.listHistory(context))).not.toContain('SUPERSECRETKEYBODY');
+    expect(gateway.listHistory(context)[0]?.transcriptHash).toBe('workspace-keyed-hmac');
   });
 
   it('supports no-transcript retention, bounded history, stop and replay plans', () => {
@@ -403,6 +412,19 @@ describe('GovernedVoiceGateway', () => {
         }),
       ),
     ).toThrow(/adapter-specific/);
+  });
+
+  it('rechecks adapter evidence freshness when a session starts', () => {
+    let current = now;
+    const { gateway } = setup(undefined, undefined, undefined, undefined, undefined, () => current);
+    current += 30_001;
+    expect(() =>
+      gateway.createSession(context, {
+        id: 'stale-session',
+        sttAdapterId: 'browser-stt',
+        browser,
+      }),
+    ).toThrow(/evidence/);
   });
 
   it('rejects malformed authority and routing enum values from injected ports', () => {
