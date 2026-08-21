@@ -9,6 +9,11 @@
 **Audit**: `AuditEvent` (immutable event content; versioned integrity checksum,
 workspace/source replay keys, and governed retention/erasure semantics).
 
+**ACP authorization**: `AcpApprovalRequest` (exact workspace/task/run/action,
+target, evidence, and policy binding), `AcpApprovalDecision` (immutable Level-4
+decision evidence), and `AcpExecutionPermit` (single-use authorization claim;
+claiming is not external execution). See ADR-0019.
+
 **Workflow**: `WorkflowRun`, `WorkflowStep` (populated once Phase 3+
 workflows persist their state here in addition to Temporal's own history;
 Phase 1's `helloWorkflow` does not yet write these rows — Temporal itself is
@@ -22,6 +27,9 @@ and `Workspace`. Application event writers insert through reviewed audit
 helpers. The database rejects changes to immutable event content; relational
 identity/workspace links may clear during erasure, and explicit deletion is
 reserved for governed retention or erasure. See ADR-0018.
+ACP authorization bindings and decisions are database-guarded against mutation;
+requests follow a constrained state machine, while workspace cascade deletion
+and approver relation clearing preserve tenant/user erasure semantics.
 
 ## Phase 2 entities (implemented, `packages/database/prisma/schema.prisma`)
 

@@ -199,4 +199,27 @@ describe('operational event spine', () => {
       OperationalEventCapability.issue('AI_COO', [{ ...binding, actorKind: 'HUMAN' }]),
     ).toThrow(/safe non-sensitive reference/);
   });
+
+  it('exposes authority only when it was bound by the trusted composition root', () => {
+    expect(() => capability.authorityLevelFor(context)).toThrow(/authority binding/);
+    const levelThree = OperationalEventCapability.issue('AI_COO', [
+      {
+        workspaceId: context.workspaceId,
+        principalId: context.principalId,
+        actorKind: 'HUMAN',
+        authorityLevel: 3,
+      },
+    ]);
+    expect(levelThree.authorityLevelFor(context)).toBe(3);
+    expect(() =>
+      OperationalEventCapability.issue('AI_COO', [
+        {
+          workspaceId: context.workspaceId,
+          principalId: context.principalId,
+          actorKind: 'HUMAN',
+          authorityLevel: 5 as never,
+        },
+      ]),
+    ).toThrow(/authority level/);
+  });
 });
