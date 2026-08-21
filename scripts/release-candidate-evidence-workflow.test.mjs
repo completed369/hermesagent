@@ -166,7 +166,7 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /\.SchemaVersion \| type == "integer"/);
   assert.match(workflow, /\.ArtifactName == \$archive/);
   assert.match(workflow, /\.ArtifactType == "container_image"/);
-  assert.match(workflow, /\.Results \| type == "array"/);
+  assert.match(workflow, /\(has\("Results"\) \| not\) or \(\.Results \| type == "array"\)/);
   assert.match(workflow, /config_digest=.*sha256sum.*config_file/);
   assert.match(workflow, /\[0-9a-f\]\{64\}\\\.json\|blobs\/sha256\/\[0-9a-f\]\{64\}/);
   assert.match(workflow, /config_path.*!=.*config_digest.*\.json/);
@@ -185,7 +185,10 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /org\.opencontainers\.image\.source/);
   assert.match(workflow, /org\.opencontainers\.image\.revision/);
   assert.match(workflow, /immutable-source-label/);
-  assert.match(workflow, /vulnerability-report-identity/);
+  assert.match(workflow, /vulnerability-report-envelope/);
+  assert.match(workflow, /docker-rootfs-identity/);
+  assert.match(workflow, /vulnerability-report-image-id/);
+  assert.match(workflow, /vulnerability-report-layer-identity/);
   assert.match(workflow, /spdx-document-shape/);
   assert.doesNotMatch(workflow, /RepoTags/);
 });
@@ -193,6 +196,16 @@ test('source and image evidence enforce the complete release-candidate security 
 test('Trivy layer identity cannot pass with an independently plausible digest list', () => {
   assert.match(workflow, /\.Metadata\.DiffIDs == \$config\[0\]\.rootfs\.diff_ids/);
   assert.doesNotMatch(workflow, /all\(\.Metadata\.DiffIDs\[\];[^\n]+\)\s*\n\s*' "\$report"/);
+});
+
+test('Trivy zero-result omission is accepted while null and invalid Results are rejected', () => {
+  const hasValidResultsShape = (report) =>
+    !Object.hasOwn(report, 'Results') || Array.isArray(report.Results);
+  assert.equal(hasValidResultsShape({}), true);
+  assert.equal(hasValidResultsShape({ Results: [] }), true);
+  assert.equal(hasValidResultsShape({ Results: null }), false);
+  assert.equal(hasValidResultsShape({ Results: {} }), false);
+  assert.equal(hasValidResultsShape({ Results: 'omitted' }), false);
 });
 
 test('Docker config identity accepts only digest-bound legacy or OCI archive paths', () => {
