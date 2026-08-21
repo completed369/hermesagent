@@ -163,7 +163,10 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /--severity HIGH,CRITICAL/);
   assert.match(workflow, /--exit-on-eol 1/);
   assert.match(workflow, /format: spdx-json/);
-  assert.match(workflow, /\.SchemaVersion \| type == "integer"/);
+  assert.match(workflow, /\.SchemaVersion as \$schema_version/);
+  assert.match(workflow, /\$schema_version \| type == "number"/);
+  assert.match(workflow, /\$schema_version > 0/);
+  assert.match(workflow, /\$schema_version == \(\$schema_version \| floor\)/);
   assert.match(workflow, /\.ArtifactName == \$archive/);
   assert.match(workflow, /\.ArtifactType == "container_image"/);
   assert.match(workflow, /\(has\("Results"\) \| not\) or \(\.Results \| type == "array"\)/);
@@ -186,6 +189,7 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /org\.opencontainers\.image\.revision/);
   assert.match(workflow, /immutable-source-label/);
   assert.match(workflow, /vulnerability-report-envelope/);
+  assert.match(workflow, /vulnerability-report-schema-version/);
   assert.match(workflow, /docker-rootfs-identity/);
   assert.match(workflow, /vulnerability-report-image-id/);
   assert.match(workflow, /vulnerability-report-layer-identity/);
@@ -206,6 +210,18 @@ test('Trivy zero-result omission is accepted while null and invalid Results are 
   assert.equal(hasValidResultsShape({ Results: null }), false);
   assert.equal(hasValidResultsShape({ Results: {} }), false);
   assert.equal(hasValidResultsShape({ Results: 'omitted' }), false);
+});
+
+test('Trivy SchemaVersion must be a present positive JSON integer', () => {
+  const hasValidSchemaVersion = (report) =>
+    typeof report.SchemaVersion === 'number' &&
+    Number.isInteger(report.SchemaVersion) &&
+    report.SchemaVersion > 0;
+  assert.equal(hasValidSchemaVersion({ SchemaVersion: 2 }), true);
+  assert.equal(hasValidSchemaVersion({ SchemaVersion: 1.5 }), false);
+  assert.equal(hasValidSchemaVersion({ SchemaVersion: '2' }), false);
+  assert.equal(hasValidSchemaVersion({ SchemaVersion: null }), false);
+  assert.equal(hasValidSchemaVersion({}), false);
 });
 
 test('Docker config identity accepts only digest-bound legacy or OCI archive paths', () => {
