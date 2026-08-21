@@ -287,9 +287,20 @@ jobs:
             exit 1
           fi
           expected_image_id="sha256:${config_digest}"
+          if ! jq -e 'type == "object"' "$report" >/dev/null; then
+            echo 'Sanitized validation failure: vulnerability-report-envelope' >&2
+            exit 1
+          fi
+          if ! jq -e '
+            .SchemaVersion as $schema_version |
+            ($schema_version | type == "number") and
+            ($schema_version > 0) and
+            ($schema_version == ($schema_version | floor))
+          ' "$report" >/dev/null; then
+            echo 'Sanitized validation failure: vulnerability-report-schema-version' >&2
+            exit 1
+          fi
           if ! jq -e --arg archive "$archive" '
-            type == "object" and
-            (.SchemaVersion | type == "integer") and
             .ArtifactName == $archive and
             .ArtifactType == "container_image" and
             ((has("Results") | not) or (.Results | type == "array"))
