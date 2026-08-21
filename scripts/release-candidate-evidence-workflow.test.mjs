@@ -166,7 +166,16 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /\.SchemaVersion \| type == "integer"/);
   assert.match(workflow, /\.ArtifactName == \$archive/);
   assert.match(workflow, /\.ArtifactType == "container_image"/);
-  assert.match(workflow, /\.Results \| type == "array" and length > 0/);
+  assert.match(workflow, /\.Results \| type == "array"/);
+  assert.match(workflow, /config_digest=.*sha256sum.*config_file/);
+  assert.match(workflow, /config_path.*!=.*config_digest.*\.json/);
+  assert.match(workflow, /expected_image_id="sha256:\$\{config_digest\}"/);
+  assert.match(workflow, /\.Metadata\.ImageID == \$image_id/);
+  assert.match(workflow, /--slurpfile config "\$config_file"/);
+  assert.match(workflow, /\$config\[0\]\.rootfs\.diff_ids \| type == "array" and length > 0/);
+  assert.match(workflow, /all\(\$config\[0\]\.rootfs\.diff_ids\[\];/);
+  assert.match(workflow, /\.Metadata\.DiffIDs == \$config\[0\]\.rootfs\.diff_ids/);
+  assert.match(workflow, /\^sha256:\[0-9a-f\]\{64\}\$/);
   assert.match(workflow, /\.SPDXID == "SPDXRef-DOCUMENT"/);
   assert.match(workflow, /\.packages \| type == "array" and length > 0/);
   assert.match(workflow, /manifest\.json/);
@@ -177,6 +186,11 @@ test('source and image evidence enforce the complete release-candidate security 
   assert.match(workflow, /vulnerability-report-identity/);
   assert.match(workflow, /spdx-document-shape/);
   assert.doesNotMatch(workflow, /RepoTags/);
+});
+
+test('Trivy layer identity cannot pass with an independently plausible digest list', () => {
+  assert.match(workflow, /\.Metadata\.DiffIDs == \$config\[0\]\.rootfs\.diff_ids/);
+  assert.doesNotMatch(workflow, /all\(\.Metadata\.DiffIDs\[\];[^\n]+\)\s*\n\s*' "\$report"/);
 });
 
 test('exact archives, reports, and SBOMs stay runner-local while sanitized conclusions are summarized', () => {
