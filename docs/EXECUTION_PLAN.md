@@ -1,14 +1,15 @@
 # Execution Plan — Phase 0 to Phase 8
 
-> **CURRENT DELIVERY UPDATE — verified 2026-08-25.** The Phase 0–8 record below is
+> **CURRENT DELIVERY UPDATE — verified 2026-08-26.** The Phase 0–8 record below is
 > historical implementation evidence, not a production-readiness or deployment
 > claim. The current product baseline is `main`
-> `08e47d560fd03373b04b615bf2af5c193f8522c5`. Product PRs #59–#78 are merged,
+> `e65886dbfaf65ac24b5d53a1e2ac6ac4e5579ac4`. Product PRs #59–#80 are merged,
 > including the Agent Control Plane, Runtime Broker, Dynamic Agent Factory,
 > runtime-interface ADR, tenant-shell switch repair, AI COO, Voice Gateway,
 > unified event/audit spine, approval execution-permit bridge, durable
 > objective/project/task/run spine, durable protocol-neutral Agent Bridge
-> admission, and sanitized release-candidate evidence workflow/hardening.
+> admission, durable broker decision and capacity/budget reservation evidence,
+> and sanitized release-candidate evidence workflow/hardening.
 > Approval preparation now binds to real workspace-scoped
 > durable task/run rows. Exact-main CI passed the full
 > migration chain, application integration/E2E, and staging-security/load gate
@@ -26,7 +27,10 @@
 > observability, commercial proof, and legal/privacy readiness remain unfinished.
 > The merged bridge is a service-only authenticated admission boundary validated
 > against a deterministic test fixture; it has no transport, controller,
-> network, or process-launch path and stops runtime truth at `PARTIAL`. The next
+> network, or process-launch path and stops runtime truth at `PARTIAL`. Durable
+> broker reservations now serialize exact, short-lived capacity, cost, and
+> compute holds without launching a runtime or creating a provider/finance
+> charge. The next
 > runtime dependency is reviewed child-process transport and supervision before
 > any real Codex, Hermes, or Pi adapter is treated as usable.
 >
@@ -558,13 +562,15 @@ phase deliverables. Current status:
 1. Preserve Phases 1–8 as historical product-scope evidence. Phase 6 remains
    mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
    mock-only under ADR-010. Neither milestone is a release-readiness claim.
-2. Preserve the merged PR #50/#55 workspace and collaboration foundation.
-   Complete this documentation reconciliation, then finish the deploy-aware
-   operations sequence and the refreshed PR #59 exact-head/adversarial gates.
-3. Only after an exact merged release commit is selected: build and scan the five
-   immutable images. Image publication requires separate approval for that exact
-   SHA; private-staging deployment requires another separate approval. Neither
-   has occurred for the current `main` baseline.
+2. Preserve the merged workspace/collaboration and Agent Control Plane
+   foundations through PR #80. The next runtime dependency is reviewed,
+   protocol-neutral child-process transport and supervision across the existing
+   service-only bridge boundary. Real adapters follow only after authenticated
+   end-to-end evidence; Codex, Hermes, and Pi remain `NOT_CONFIGURED`.
+3. Keep running the sanitized five-image workflow against exact current `main`
+   as scan evidence only. Image publication requires separate approval for that
+   exact SHA; private-staging deployment requires another separate approval.
+   Neither has occurred for the current `main` baseline.
 4. Exercise Access, migrations, health, E2E, accessibility/responsive behavior,
    tenant isolation, audit evidence, backup/restore, and rollback in private
    staging with synthetic data and live providers disabled.
