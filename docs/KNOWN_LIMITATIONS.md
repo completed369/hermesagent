@@ -53,6 +53,13 @@
 > environment, network, or provider backend. Its deterministic positive source
 > is test-local and does not configure or connect a runtime.
 >
+> The OS-supervision admission policy is a pure path, digest, identity,
+> platform, trusted lexical-worktree, exact-argument-policy, and resource-limit
+> validator. It performs no
+> executable discovery or filesystem inspection and cannot close path-swap or
+> executable-replacement TOCTOU. Its validated output is inert; the production
+> launcher still always denies.
+>
 > A dated, non-authoritative operations snapshot verified on 2026-08-25 records
 > operations PR #24 as deployed to the Access-protected Founder Mission Control,
 > with its command-center and Site Steward checks green. The private operations

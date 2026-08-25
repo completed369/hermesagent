@@ -77,7 +77,9 @@ published and current `main` has not been deployed to private staging.
    preparation, protocol-neutral Agent Bridge admission, and durable broker
    reservation and scoped secret-lease foundations are MERGED and VERIFIED.
    The secret boundary remains deny-only and adds no credential backend or
-   connection path. Next add reviewed child-process transport and supervision
+   connection path. A
+   pure OS-supervision admission policy is in review; it adds no filesystem or
+   process path. Next add reviewed child-process transport and supervision
    across the bridge boundary before implementing real runtime adapters. Cost
    governance,
    evaluations, knowledge/playbooks, and adapter hardening continue afterward.

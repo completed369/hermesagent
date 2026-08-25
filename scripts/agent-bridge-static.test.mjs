@@ -10,6 +10,7 @@ const packageFiles = [
   'packages/agent-bridge/src/policy.ts',
   'packages/agent-bridge/src/protocol.ts',
   'packages/agent-bridge/src/secret-lease.ts',
+  'packages/agent-bridge/src/supervision-policy.ts',
 ];
 const serviceFiles = [
   ...packageFiles,
@@ -41,6 +42,32 @@ test('production secret resolution is deny-only and has no ambient credential so
   assert.doesNotMatch(source, /\bBRIDGE_SECRET_RESOLVER\b/u);
   assert.match(module, /new DenyBridgeSecretLeaseResolver\(\)/u);
   assert.match(module, /provide:\s*BRIDGE_SECRET_LEASE_RESOLVER/u);
+});
+
+test('OS supervision policy is inert and the production launcher remains deny-only', () => {
+  const supervision = readFileSync('packages/agent-bridge/src/supervision-policy.ts', 'utf8');
+  const policy = readFileSync('packages/agent-bridge/src/policy.ts', 'utf8');
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  assert.doesNotMatch(
+    supervision,
+    /from\s+['"]node:(?:child_process|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(supervision, /\bprocess\.(?:env|cwd|platform)\b/u);
+  assert.doesNotMatch(supervision, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.doesNotMatch(supervision, /\b(?:execute|launch)\s*\(/u);
+  assert.match(
+    supervision,
+    /export function validateSupervisorAdmission\(\s*manifestInput: unknown,\s*evidenceInput: unknown,\s*\): ValidatedSupervisorAdmission/u,
+  );
+  assert.match(supervision, /const nowMs = Date\.now\(\)/u);
+  assert.match(supervision, /authorizedWorktreeRoot/u);
+  assert.match(supervision, /authorizedManifestHash/u);
+  assert.match(supervision, /argumentPolicyReference/u);
+  assert.match(supervision, /sha256\(manifest\.argv\) !== evidence\.argvHash/u);
+  assert.doesNotMatch(index, /deterministic-supervision/u);
+  assert.match(policy, /class DenyRuntimeProcessLauncher implements RuntimeProcessLauncher/u);
+  assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
+  assert.match(policy, /Runtime process launching is not enabled/u);
 });
 
 test('deterministic fake is test-only and no real runtime can be marked connected', () => {

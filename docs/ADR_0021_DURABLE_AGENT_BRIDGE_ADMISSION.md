@@ -93,8 +93,9 @@ money, or alter DNS/Cloudflare.
 
 ## Consequences and next dependency
 
-The next safe increment can add a reviewed local transport supervisor around
-the deterministic fixture, then one opt-in runtime adapter at a time. A real
+ADR-0024 defines the next pure OS-supervision admission policy without adding a
+process path. A later reviewed local transport supervisor may then be built
+around the deterministic fixture, followed by one opt-in runtime adapter at a time. A real
 runtime status may change only after retained authenticated registration,
 filtered capability exchange, fresh heartbeat, task/status exchange, and
 event/result round-trip evidence passes independent review.

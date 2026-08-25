@@ -26,6 +26,20 @@ and the source and in-process consumer remain trusted boundaries. Production
 is deny-only: there is no credential, file, environment, network, provider, or
 process source in this slice. See ADR-0023.
 
+## OS supervision admission policy
+
+The pure ADR-0024 policy validates an exact cross-platform manifest against
+short-lived trusted supervisor admission evidence that binds the exact normalized
+manifest hash, approved adapter, executable, lexical worktree root, exact dense
+argv hash, and argument-policy
+reference. It rejects ambiguous paths, known shells/interpreters, sensitive
+arguments, shell and network authority, environment values, test-only
+provenance drift, lexical worktree escape, executable identity drift, and
+unbounded resources. It does
+not access a filesystem, resolve a path, launch a process, or close launch-time
+TOCTOU. The deterministic positive evidence is test-local and the production
+launcher remains deny-only.
+
 ## Implemented in Phase 1
 
 - Password hashing: scrypt with random per-password salt, constant-time
