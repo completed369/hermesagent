@@ -9,6 +9,7 @@ import {
   digestBridgePayload,
   encodeBridgeLine,
   signBridgeEnvelope,
+  assertBridgeSecretStrength,
   assertBridgeTransition,
   assertDispatchTransition,
   validateUsageDelta,
@@ -51,6 +52,12 @@ function frame(sequence = 1, payload: Readonly<Record<string, unknown>> = { heal
 }
 
 describe('bounded canonical Agent Bridge protocol', () => {
+  it('requires at least 256 bits of bridge secret material', () => {
+    expect(() => assertBridgeSecretStrength(new Uint8Array(0))).toThrow(BridgeProtocolError);
+    expect(() => assertBridgeSecretStrength(new Uint8Array(31))).toThrow(BridgeProtocolError);
+    expect(() => assertBridgeSecretStrength(new Uint8Array(32))).not.toThrow();
+  });
+
   it('round-trips a canonical authenticated frame and binds its principal/session direction', () => {
     const { envelope, keys, now } = frame();
     const decoded = decodeBridgeLine(encodeBridgeLine(envelope));

@@ -1220,10 +1220,11 @@ model AcpRunUsage {
   workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   dispatch  AcpBridgeDispatch @relation(fields: [workspaceId, dispatchId, runId, sessionId], references: [workspaceId, id, runId, sessionId], onDelete: Cascade)
   run       AcpRun            @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
-  receipt   AcpBridgeReceipt  @relation(fields: [workspaceId, receiptId], references: [workspaceId, id], onDelete: Cascade)
+  receipt   AcpBridgeReceipt  @relation(fields: [workspaceId, receiptId, sessionId, dispatchId, runId, sequence], references: [workspaceId, id, sessionId, dispatchId, runId, sequence], onDelete: Cascade)
 
   @@id([workspaceId, id])
   @@unique([workspaceId, receiptId])
+  @@unique([workspaceId, receiptId, sessionId, dispatchId, runId, sequence])
   @@unique([workspaceId, dispatchId, sequence])
   @@index([workspaceId, runId, recordedAt(sort: Desc)])
   @@map("acp_run_usages")

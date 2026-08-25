@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  assertBridgeSecretStrength,
   BRIDGE_BROKER_EVIDENCE_VERIFIER,
   BRIDGE_ARTIFACT_CONTENT_VERIFIER,
   BRIDGE_CAPABILITY_POLICY_VERIFIER,
@@ -107,6 +108,11 @@ export interface PrepareBridgeDispatchInput {
   readonly idempotencyKey: string;
 }
 
+interface BridgeUsageAuditTotals {
+  readonly taskCostUsedMinorUnits: number;
+  readonly taskComputeUsed: number;
+}
+
 /**
  * Service-only authenticated admission boundary. It accepts already-delivered
  * protocol frames; it has no controller, transport, network, or process path.
@@ -145,6 +151,13 @@ export class AcpBridgeAdmissionService
       );
     }
     const secret = await this.secrets.resolve(input.secretReference);
+    try {
+      assertBridgeSecretStrength(secret);
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError(
+        'Bridge secret material does not meet the minimum strength',
+      );
+    }
     const secretDigest = digestSecretReference(secret);
     return prisma.$transaction(
       async (tx) => {
@@ -493,7 +506,7 @@ export class AcpBridgeAdmissionService
         if (envelope.sequence !== session.expectedSequence)
           throw new AcpBridgeAdmissionConflictError('Bridge sequence replay or gap');
         const receipt = await this.createReceipt(tx, envelope);
-        await this.applyMessage(
+        const usageTotals = await this.applyMessage(
           tx,
           { ...session, connection: lockedConnection },
           envelope,
@@ -504,7 +517,7 @@ export class AcpBridgeAdmissionService
           where: { workspaceId_id: { workspaceId: context.workspaceId, id: session.id } },
           data: { expectedSequence: { increment: 1 } },
         });
-        const audit = this.auditForMessage(envelope, receipt.id, now);
+        const audit = this.auditForMessage(envelope, receipt.id, now, usageTotals);
         await this.auditService.recordOperationalEvent(
           capability,
           context,
@@ -741,6 +754,36 @@ export class AcpBridgeAdmissionService
           throw new AcpBridgeAdmissionDeniedError(
             'Only an accepted active dispatch can be cancelled',
           );
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${dispatch.runId} FOR UPDATE`,
+        );
+        let run = await tx.acpRun.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId: context.workspaceId, id: dispatch.runId } },
+          include: { task: true },
+        });
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${run.taskId} FOR UPDATE`,
+        );
+        run = await tx.acpRun.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId: context.workspaceId, id: dispatch.runId } },
+          include: { task: true },
+        });
+        if (
+          run.status !== 'RUNNING' ||
+          run.task.status !== 'RUNNING' ||
+          run.assignedAgentId !== dispatch.agentId ||
+          run.assignedRuntimeId !== dispatch.runtimeId ||
+          run.assignedConnectionId !== dispatch.connectionId ||
+          run.assignmentEvidenceId !== dispatch.assignmentEvidenceId ||
+          run.assignmentEvidenceHash !== dispatch.assignmentEvidenceHash ||
+          run.task.assignedAgentId !== dispatch.agentId ||
+          run.task.assignedRuntimeId !== dispatch.runtimeId ||
+          run.task.assignedConnectionId !== dispatch.connectionId
+        ) {
+          throw new AcpBridgeAdmissionDeniedError(
+            'Cancellation requires the exact active durable assignment',
+          );
+        }
         const now = await databaseNow(tx);
         const updated = await tx.acpBridgeDispatch.update({
           where: { workspaceId_id: { workspaceId: context.workspaceId, id: dispatchId } },
@@ -893,7 +936,7 @@ export class AcpBridgeAdmissionService
     envelope: BridgeEnvelope,
     receiptId: string,
     now: Date,
-  ): Promise<void> {
+  ): Promise<BridgeUsageAuditTotals | undefined> {
     const payload = envelope.payload;
     if (envelope.type === 'CAPABILITIES') {
       exactPayload(payload, ['capabilityCodes']);
@@ -1055,6 +1098,29 @@ export class AcpBridgeAdmissionService
     if (envelope.type === 'CANCELLED' && dispatch.state !== 'CANCEL_REQUESTED') {
       throw new AcpBridgeAdmissionDeniedError('Cancellation was not requested');
     }
+    if ([...acceptedWorkTypes, 'CANCELLED'].includes(envelope.type)) {
+      const run = await tx.acpRun.findUnique({
+        where: { workspaceId_id: { workspaceId: session.workspaceId, id: dispatch.runId } },
+        include: { task: true },
+      });
+      if (
+        !run ||
+        run.status !== 'RUNNING' ||
+        run.task.status !== 'RUNNING' ||
+        run.assignedAgentId !== dispatch.agentId ||
+        run.assignedRuntimeId !== dispatch.runtimeId ||
+        run.assignedConnectionId !== dispatch.connectionId ||
+        run.assignmentEvidenceId !== dispatch.assignmentEvidenceId ||
+        run.assignmentEvidenceHash !== dispatch.assignmentEvidenceHash ||
+        run.task.assignedAgentId !== dispatch.agentId ||
+        run.task.assignedRuntimeId !== dispatch.runtimeId ||
+        run.task.assignedConnectionId !== dispatch.connectionId
+      ) {
+        throw new AcpBridgeAdmissionDeniedError(
+          'Runtime evidence requires the exact active durable assignment',
+        );
+      }
+    }
     if (envelope.type === 'PROGRESS') {
       exactPayload(payload, ['dispatchId', 'progressCode']);
       reference(payload.progressCode, 'progressCode');
@@ -1153,7 +1219,10 @@ export class AcpBridgeAdmissionService
           evidenceHash: envelope.payloadDigest,
         },
       });
-      return;
+      return {
+        taskCostUsedMinorUnits: Number(cumulativeCost),
+        taskComputeUsed: Number(cumulativeCompute),
+      };
     }
     if (envelope.type === 'CANCELLED' || envelope.type === 'RESULT' || envelope.type === 'FAILED') {
       exactPayload(payload, ['dispatchId', 'resultCode']);
@@ -1193,6 +1262,7 @@ export class AcpBridgeAdmissionService
     envelope: BridgeEnvelope,
     receiptId: string,
     now: Date,
+    usageTotals?: BridgeUsageAuditTotals,
   ): Omit<OperationalEvent, 'id' | 'workspaceId' | 'source' | 'actorKind' | 'actorId'> {
     if (envelope.type === 'HEARTBEAT')
       return {
@@ -1232,7 +1302,9 @@ export class AcpBridgeAdmissionService
           kind: envelope.payload.kind as string,
         },
       };
-    if (envelope.type === 'USAGE')
+    if (envelope.type === 'USAGE') {
+      if (!usageTotals)
+        throw new AcpBridgeAdmissionDeniedError('Durable cumulative usage totals are required');
       return {
         type: 'usage.recorded' as const,
         subjectType: 'AcpRunUsage',
@@ -1246,10 +1318,11 @@ export class AcpBridgeAdmissionService
           computeUnits: envelope.payload.computeUnits as number,
           costMinorUnits: envelope.payload.costMinorUnits as number,
           currency: envelope.payload.currency as string,
-          taskCostUsedMinorUnits: envelope.payload.costMinorUnits as number,
-          taskComputeUsed: envelope.payload.computeUnits as number,
+          taskCostUsedMinorUnits: usageTotals.taskCostUsedMinorUnits,
+          taskComputeUsed: usageTotals.taskComputeUsed,
         },
       };
+    }
     return {
       type: 'run.progress' as const,
       subjectType: 'AcpBridgeReceipt',

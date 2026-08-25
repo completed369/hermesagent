@@ -17,12 +17,16 @@ export interface BridgeKeyContext {
   readonly runtimeNonce: string;
 }
 
+export function assertBridgeSecretStrength(secret: Uint8Array): void {
+  if (secret.byteLength < 32)
+    throw new BridgeProtocolError('Bridge secret must contain at least 256 bits');
+}
+
 export function deriveBridgeKeys(
   secret: Uint8Array,
   context: BridgeKeyContext,
 ): BridgeDirectionalKeys {
-  if (secret.byteLength < 32)
-    throw new BridgeProtocolError('Bridge secret must contain at least 256 bits');
+  assertBridgeSecretStrength(secret);
   const salt = createHash('sha256').update(canonicalJson(context)).digest();
   const derive = (direction: string) =>
     new Uint8Array(

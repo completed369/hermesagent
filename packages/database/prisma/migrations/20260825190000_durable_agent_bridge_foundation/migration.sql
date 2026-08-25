@@ -164,6 +164,7 @@ CREATE UNIQUE INDEX "acp_bridge_dispatches_workspaceId_runId_key" ON "acp_bridge
 CREATE UNIQUE INDEX "acp_bridge_dispatches_usage_correlation_key" ON "acp_bridge_dispatches"("workspaceId", "id", "runId", "sessionId");
 CREATE INDEX "acp_bridge_dispatches_workspaceId_connectionId_state_idx" ON "acp_bridge_dispatches"("workspaceId", "connectionId", "state");
 CREATE UNIQUE INDEX "acp_run_usages_workspaceId_receiptId_key" ON "acp_run_usages"("workspaceId", "receiptId");
+CREATE UNIQUE INDEX "acp_run_usages_receipt_correlation_key" ON "acp_run_usages"("workspaceId", "receiptId", "sessionId", "dispatchId", "runId", "sequence");
 CREATE UNIQUE INDEX "acp_run_usages_workspaceId_dispatchId_sequence_key" ON "acp_run_usages"("workspaceId", "dispatchId", "sequence");
 CREATE INDEX "acp_run_usages_workspaceId_runId_recordedAt_idx" ON "acp_run_usages"("workspaceId", "runId", "recordedAt" DESC);
 
@@ -221,6 +222,7 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER acp_bridge_receipts_immutable BEFORE UPDATE ON "acp_bridge_receipts" FOR EACH ROW EXECUTE FUNCTION ventureos_reject_bridge_receipt_update();
 
 CREATE OR REPLACE FUNCTION ventureos_validate_bridge_state_update() RETURNS trigger AS $$
+DECLARE durable_run_status TEXT; durable_task_status TEXT; durable_agent TEXT; durable_runtime TEXT; durable_connection TEXT; durable_evidence_id TEXT; durable_evidence_hash TEXT; task_agent TEXT; task_runtime TEXT; task_connection TEXT;
 BEGIN
   IF TG_TABLE_NAME = 'acp_runtimes' THEN
     IF ROW(NEW."workspaceId", NEW."id", NEW."adapterKind", NEW."principalReference", NEW."secretReference", NEW."secretDigest", NEW."capabilityPolicyHash", NEW."provisioningIdempotencyKey", NEW."createdAt") IS DISTINCT FROM ROW(OLD."workspaceId", OLD."id", OLD."adapterKind", OLD."principalReference", OLD."secretReference", OLD."secretDigest", OLD."capabilityPolicyHash", OLD."provisioningIdempotencyKey", OLD."createdAt") THEN RAISE EXCEPTION 'bridge runtime binding is immutable'; END IF;
@@ -233,6 +235,13 @@ BEGIN
   ELSIF TG_TABLE_NAME = 'acp_bridge_dispatches' THEN
     IF ROW(NEW."workspaceId", NEW."id", NEW."objectiveId", NEW."taskId", NEW."runId", NEW."runtimeId", NEW."connectionId", NEW."sessionId", NEW."agentId", NEW."authorityLevel", NEW."brokerEvidenceId", NEW."brokerEvidenceHash", NEW."assignmentEvidenceId", NEW."assignmentEvidenceHash", NEW."dispatchEnvelopeHash", NEW."idempotencyKey", NEW."createdAt") IS DISTINCT FROM ROW(OLD."workspaceId", OLD."id", OLD."objectiveId", OLD."taskId", OLD."runId", OLD."runtimeId", OLD."connectionId", OLD."sessionId", OLD."agentId", OLD."authorityLevel", OLD."brokerEvidenceId", OLD."brokerEvidenceHash", OLD."assignmentEvidenceId", OLD."assignmentEvidenceHash", OLD."dispatchEnvelopeHash", OLD."idempotencyKey", OLD."createdAt") THEN RAISE EXCEPTION 'bridge dispatch binding is immutable'; END IF;
     IF NEW."state" <> OLD."state" AND NOT ((OLD."state" = 'PREPARED' AND NEW."state" IN ('ACCEPTED', 'FAILED')) OR (OLD."state" = 'ACCEPTED' AND NEW."state" IN ('CANCEL_REQUESTED', 'COMPLETED', 'FAILED')) OR (OLD."state" = 'CANCEL_REQUESTED' AND NEW."state" = 'CANCELLED')) THEN RAISE EXCEPTION 'bridge dispatch state transition denied'; END IF;
+    IF NEW."state" <> OLD."state" AND OLD."state" IN ('ACCEPTED', 'CANCEL_REQUESTED') THEN
+      SELECT r."status", t."status", r."assignedAgentId", r."assignedRuntimeId", r."assignedConnectionId", r."assignmentEvidenceId", r."assignmentEvidenceHash", t."assignedAgentId", t."assignedRuntimeId", t."assignedConnectionId"
+      INTO durable_run_status, durable_task_status, durable_agent, durable_runtime, durable_connection, durable_evidence_id, durable_evidence_hash, task_agent, task_runtime, task_connection
+      FROM "acp_runs" r JOIN "acp_tasks" t ON t."workspaceId" = r."workspaceId" AND t."id" = r."taskId"
+      WHERE r."workspaceId" = NEW."workspaceId" AND r."id" = NEW."runId";
+      IF durable_run_status IS DISTINCT FROM 'RUNNING' OR durable_task_status IS DISTINCT FROM 'RUNNING' OR durable_agent IS DISTINCT FROM NEW."agentId" OR durable_runtime IS DISTINCT FROM NEW."runtimeId" OR durable_connection IS DISTINCT FROM NEW."connectionId" OR durable_evidence_id IS DISTINCT FROM NEW."assignmentEvidenceId" OR durable_evidence_hash IS DISTINCT FROM NEW."assignmentEvidenceHash" OR task_agent IS DISTINCT FROM NEW."agentId" OR task_runtime IS DISTINCT FROM NEW."runtimeId" OR task_connection IS DISTINCT FROM NEW."connectionId" THEN RAISE EXCEPTION 'bridge terminal transition requires exact active durable assignment'; END IF;
+    END IF;
   END IF;
   RETURN NEW;
 END;
@@ -242,10 +251,15 @@ CREATE TRIGGER acp_bridge_dispatches_state BEFORE UPDATE ON "acp_bridge_dispatch
 CREATE TRIGGER acp_runtimes_binding BEFORE UPDATE ON "acp_runtimes" FOR EACH ROW EXECUTE FUNCTION ventureos_validate_bridge_state_update();
 
 CREATE OR REPLACE FUNCTION ventureos_validate_bridge_usage() RETURNS trigger AS $$
-DECLARE prior_compute BIGINT; prior_cost BIGINT; prior_currency TEXT; receipt_message_type TEXT; dispatch_state TEXT;
+DECLARE prior_compute BIGINT; prior_cost BIGINT; prior_currency TEXT; receipt_message_type TEXT; dispatch_state TEXT; dispatch_agent TEXT; dispatch_runtime TEXT; dispatch_connection TEXT; dispatch_evidence_id TEXT; dispatch_evidence_hash TEXT; durable_run_status TEXT; durable_task_status TEXT; durable_agent TEXT; durable_runtime TEXT; durable_connection TEXT; durable_evidence_id TEXT; durable_evidence_hash TEXT;
 BEGIN
-  SELECT "state" INTO dispatch_state FROM "acp_bridge_dispatches" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."dispatchId" AND "runId" = NEW."runId" AND "sessionId" = NEW."sessionId" FOR UPDATE;
+  SELECT "state", "agentId", "runtimeId", "connectionId", "assignmentEvidenceId", "assignmentEvidenceHash" INTO dispatch_state, dispatch_agent, dispatch_runtime, dispatch_connection, dispatch_evidence_id, dispatch_evidence_hash FROM "acp_bridge_dispatches" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."dispatchId" AND "runId" = NEW."runId" AND "sessionId" = NEW."sessionId" FOR UPDATE;
   IF dispatch_state IS DISTINCT FROM 'ACCEPTED' THEN RAISE EXCEPTION 'bridge usage requires an accepted correlated dispatch'; END IF;
+  SELECT r."status", t."status", r."assignedAgentId", r."assignedRuntimeId", r."assignedConnectionId", r."assignmentEvidenceId", r."assignmentEvidenceHash"
+  INTO durable_run_status, durable_task_status, durable_agent, durable_runtime, durable_connection, durable_evidence_id, durable_evidence_hash
+  FROM "acp_runs" r JOIN "acp_tasks" t ON t."workspaceId" = r."workspaceId" AND t."id" = r."taskId"
+  WHERE r."workspaceId" = NEW."workspaceId" AND r."id" = NEW."runId";
+  IF durable_run_status IS DISTINCT FROM 'RUNNING' OR durable_task_status IS DISTINCT FROM 'RUNNING' OR durable_agent IS DISTINCT FROM dispatch_agent OR durable_runtime IS DISTINCT FROM dispatch_runtime OR durable_connection IS DISTINCT FROM dispatch_connection OR durable_evidence_id IS DISTINCT FROM dispatch_evidence_id OR durable_evidence_hash IS DISTINCT FROM dispatch_evidence_hash THEN RAISE EXCEPTION 'bridge usage requires exact active durable assignment'; END IF;
   SELECT "messageType" INTO receipt_message_type FROM "acp_bridge_receipts" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."receiptId" AND "sessionId" = NEW."sessionId" AND "dispatchId" = NEW."dispatchId" AND "runId" = NEW."runId" AND "sequence" = NEW."sequence";
   IF receipt_message_type IS DISTINCT FROM 'USAGE' THEN RAISE EXCEPTION 'bridge usage receipt correlation mismatch'; END IF;
   SELECT "cumulativeComputeUnits", "cumulativeCostMinorUnits", "currency"

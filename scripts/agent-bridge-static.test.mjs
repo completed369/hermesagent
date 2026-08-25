@@ -56,14 +56,38 @@ test('bridge receipts cannot persist raw payload, MAC, transcript, prompt, or se
 });
 
 test('usage correlation and monotonicity are serialized and database-bound', () => {
+  const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
   const migration = readFileSync(
     'packages/database/prisma/migrations/20260825190000_durable_agent_bridge_foundation/migration.sql',
     'utf8',
+  );
+  assert.match(
+    schema,
+    /receipt\s+AcpBridgeReceipt\s+@relation\(fields: \[workspaceId, receiptId, sessionId, dispatchId, runId, sequence\], references: \[workspaceId, id, sessionId, dispatchId, runId, sequence\], onDelete: Cascade\)/u,
   );
   assert.match(migration, /acp_run_usages_dispatch_correlation_fkey/u);
   assert.match(migration, /acp_run_usages_receipt_correlation_fkey/u);
   assert.match(
     migration,
     /FROM "acp_bridge_dispatches"[\s\S]*FOR UPDATE;[\s\S]*receipt_message_type IS DISTINCT FROM 'USAGE'/u,
+  );
+});
+
+test('assignment reservation and dispatch terminal state share durable lifecycle locks', () => {
+  const taskRunService = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-task-run.service.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260825190000_durable_agent_bridge_foundation/migration.sql',
+    'utf8',
+  );
+  assert.match(
+    taskRunService,
+    /acp_runs[\s\S]*FOR UPDATE[\s\S]*acp_tasks[\s\S]*FOR UPDATE[\s\S]*assignmentVerifier\.verify/u,
+  );
+  assert.match(
+    migration,
+    /OLD\."state" IN \('ACCEPTED', 'CANCEL_REQUESTED'\)[\s\S]*durable_run_status IS DISTINCT FROM 'RUNNING'[\s\S]*assignmentEvidenceHash/u,
   );
 });

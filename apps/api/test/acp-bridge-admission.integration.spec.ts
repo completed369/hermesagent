@@ -22,11 +22,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
   const sessionId = `fixture-session-${suffix}`;
   const secretReference = `vault-item-${suffix}`;
   const secret = Buffer.from('synthetic-bridge-secret-material-32bytes!');
+  const trustedSecrets = new Map<string, Uint8Array>([[secretReference, secret]]);
   const capabilityPolicyHash = 'a'.repeat(64);
   const trustedArtifactContent = new Map<string, string>();
   let workspaceId: string;
   let otherWorkspaceId: string;
   let capability: OperationalEventCapability;
+  let plannerCapability: OperationalEventCapability;
   let bridge: AcpBridgeAdmissionService;
   let taskRuns: AcpTaskRunService;
   let fake: DeterministicFakeRuntime;
@@ -51,12 +53,16 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     capability = OperationalEventCapability.issue('CONTROL_PLANE', [
       { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
     ]);
+    plannerCapability = OperationalEventCapability.issue('AI_COO', [
+      { workspaceId, principalId, actorKind: 'AGENT', authorityLevel: 1 },
+    ]);
     bridge = new AcpBridgeAdmissionService(
       new AuditService(),
       {
         async resolve(reference) {
-          if (reference !== secretReference) throw new Error('unknown synthetic secret reference');
-          return secret;
+          const resolved = trustedSecrets.get(reference);
+          if (!resolved) throw new Error('unknown synthetic secret reference');
+          return resolved;
         },
       },
       {
@@ -175,13 +181,67 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         },
       ],
     };
-    const created = await taskRuns.createPlan(capability, { workspaceId, principalId }, plan);
+    const created = await taskRuns.createPlan(
+      plannerCapability,
+      { workspaceId, principalId },
+      plan,
+    );
     taskId = created.objective.tasks[0]!.id;
     runId = created.objective.tasks[0]!.runs[0]!.id;
     level4TaskId = created.objective.tasks[1]!.id;
     level4RunId = created.objective.tasks[1]!.runs[0]!.id;
     cancelTaskId = created.objective.tasks[2]!.id;
     cancelRunId = created.objective.tasks[2]!.runs[0]!.id;
+
+    for (const [label, bytes] of [
+      ['zero', 0],
+      ['thirty-one', 31],
+    ] as const) {
+      const weakSecretReference = `vault-item-${label}-${suffix}`;
+      const weakRuntimeId = `weak-runtime-${label}-${suffix}`;
+      trustedSecrets.set(weakSecretReference, new Uint8Array(bytes));
+      await expect(
+        bridge.provisionRuntime(
+          capability,
+          { workspaceId, principalId },
+          {
+            runtimeId: weakRuntimeId,
+            connectionId: `weak-connection-${label}-${suffix}`,
+            adapterKind: 'DETERMINISTIC_FAKE',
+            environment: 'TEST_ONLY',
+            principalReference: `weak-principal-${label}-${suffix}`,
+            secretReference: weakSecretReference,
+            capabilityPolicyHash,
+            idempotencyKey: `weak-provision-${label}-${suffix}`,
+          },
+        ),
+      ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+      expect(
+        await prisma.acpRuntime.findUnique({
+          where: { workspaceId_id: { workspaceId, id: weakRuntimeId } },
+        }),
+      ).toBeNull();
+    }
+    const exactSecretReference = `vault-item-exact-${suffix}`;
+    trustedSecrets.set(exactSecretReference, new Uint8Array(32).fill(9));
+    expect(
+      (
+        await bridge.provisionRuntime(
+          capability,
+          { workspaceId, principalId },
+          {
+            runtimeId: `exact-runtime-${suffix}`,
+            connectionId: `exact-connection-${suffix}`,
+            adapterKind: 'DETERMINISTIC_FAKE',
+            environment: 'TEST_ONLY',
+            principalReference: `exact-principal-${suffix}`,
+            secretReference: exactSecretReference,
+            capabilityPolicyHash,
+            idempotencyKey: `exact-provision-${suffix}`,
+          },
+        )
+      ).runtime.secretDigest,
+    ).toMatch(/^[a-f0-9]{64}$/u);
 
     const provisioned = await bridge.provisionRuntime(
       capability,
@@ -357,13 +417,84 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       connectionId,
     };
     expect(await bridge.verify(workspaceId, assignment)).toBe(true);
-    const assigned = await taskRuns.reserveAssignment(
-      capability,
-      { workspaceId, principalId },
-      assignment,
-      1,
-      `reserve-${suffix}`,
+    await expect(
+      prisma.acpBridgeDispatch.update({
+        where: { workspaceId_id: { workspaceId, id: dispatchId } },
+        data: { state: 'COMPLETED', terminalAt: new Date() },
+      }),
+    ).rejects.toThrow();
+    const auditBeforeReservation = await prisma.auditEvent.count({
+      where: { workspaceReference: workspaceId },
+    });
+    for (const [type, payload] of rejectedBeforeAcceptance) {
+      await expect(
+        bridge.acceptRuntimeMessage(
+          capability,
+          { workspaceId, principalId },
+          fake.emitAt(5, type, payload),
+        ),
+      ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    }
+    expect(
+      await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId, sequence: 5 } }),
+    ).toBe(0);
+    expect(await prisma.acpRunUsage.count({ where: { workspaceId, runId } })).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      auditBeforeReservation,
     );
+    expect(
+      (
+        await prisma.acpBridgeDispatch.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId, id: dispatchId } },
+        })
+      ).state,
+    ).toBe('ACCEPTED');
+
+    const assignmentRace = await Promise.allSettled([
+      taskRuns.reserveAssignment(
+        capability,
+        { workspaceId, principalId },
+        assignment,
+        1,
+        `reserve-${suffix}`,
+      ),
+      bridge.acceptRuntimeMessage(
+        capability,
+        { workspaceId, principalId },
+        fake.emitAt(5, 'RESULT', { dispatchId, resultCode: 'RACE_BEFORE_ASSIGNMENT' }),
+      ),
+    ]);
+    const reservationOutcome = assignmentRace[0]!;
+    expect(reservationOutcome.status).toBe('fulfilled');
+    expect(assignmentRace[1]!.status).toBe('rejected');
+    if (reservationOutcome.status !== 'fulfilled') throw reservationOutcome.reason;
+    const assigned = reservationOutcome.value;
+    const auditBeforeStart = await prisma.auditEvent.count({
+      where: { workspaceReference: workspaceId },
+    });
+    for (const [type, payload] of rejectedBeforeAcceptance) {
+      await expect(
+        bridge.acceptRuntimeMessage(
+          capability,
+          { workspaceId, principalId },
+          fake.emitAt(5, type, payload),
+        ),
+      ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    }
+    expect(
+      await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId, sequence: 5 } }),
+    ).toBe(0);
+    expect(await prisma.acpRunUsage.count({ where: { workspaceId, runId } })).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      auditBeforeStart,
+    );
+    expect(
+      (
+        await prisma.acpBridgeDispatch.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId, id: dispatchId } },
+        })
+      ).state,
+    ).toBe('ACCEPTED');
     await taskRuns.startRun(
       capability,
       { workspaceId, principalId },
@@ -453,6 +584,38 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         where: { workspaceId, sessionId, sequence: 8 },
       }),
     ).toBe(0);
+    await bridge.acceptRuntimeMessage(
+      capability,
+      { workspaceId, principalId },
+      fake.emit('USAGE', {
+        dispatchId,
+        taskId,
+        runId,
+        computeUnits: 2,
+        costMinorUnits: 2,
+        currency: 'EUR',
+      }),
+    );
+    const cumulativeUsage = await prisma.acpRunUsage.findFirstOrThrow({
+      where: { workspaceId, dispatchId },
+      orderBy: { sequence: 'desc' },
+    });
+    const cumulativeAudit = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        workspaceReference: workspaceId,
+        source: 'CONTROL_PLANE',
+        subjectType: 'AcpRunUsage',
+        subjectId: cumulativeUsage.id,
+      },
+    });
+    expect(cumulativeUsage.cumulativeComputeUnits).toBe(12n);
+    expect(cumulativeUsage.cumulativeCostMinorUnits).toBe(7n);
+    expect(cumulativeAudit.facts).toMatchObject({
+      computeUnits: 2,
+      costMinorUnits: 2,
+      taskComputeUsed: 12,
+      taskCostUsedMinorUnits: 7,
+    });
 
     const concurrentUsageReceiptIds = [
       `concurrent-usage-a-${suffix}`,
@@ -488,8 +651,8 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             sequence: 1_000 + index,
             computeUnits: 1,
             costMinorUnits: 1,
-            cumulativeComputeUnits: 11,
-            cumulativeCostMinorUnits: 6,
+            cumulativeComputeUnits: 13,
+            cumulativeCostMinorUnits: 8,
             currency: 'EUR',
             evidenceHash: `${index + 5}`.repeat(64),
           },
@@ -501,7 +664,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     await prisma.acpBridgeReceipt.deleteMany({
       where: { workspaceId, id: { in: concurrentUsageReceiptIds } },
     });
-    expect(await prisma.acpRunUsage.count({ where: { workspaceId, dispatchId } })).toBe(1);
+    expect(await prisma.acpRunUsage.count({ where: { workspaceId, dispatchId } })).toBe(2);
 
     await bridge.acceptRuntimeMessage(
       capability,
@@ -549,6 +712,28 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         evidenceId: cancelPrepared.dispatch.assignmentEvidenceId,
         assignmentEvidenceHash: cancelPrepared.dispatch.assignmentEvidenceHash,
       }),
+    );
+    const cancelAssigned = await taskRuns.reserveAssignment(
+      capability,
+      { workspaceId, principalId },
+      {
+        evidenceId: cancelPrepared.dispatch.assignmentEvidenceId,
+        evidenceHash: cancelPrepared.dispatch.assignmentEvidenceHash,
+        taskId: cancelTaskId,
+        runId: cancelRunId,
+        agentId: `fixture-agent-${suffix}`,
+        runtimeId,
+        connectionId,
+      },
+      1,
+      `cancel-reserve-${suffix}`,
+    );
+    await taskRuns.startRun(
+      capability,
+      { workspaceId, principalId },
+      cancelRunId,
+      cancelAssigned.run.version,
+      `cancel-start-${suffix}`,
     );
     const cancellation = await bridge.requestCancellation(
       capability,
@@ -626,7 +811,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       ).state,
     ).toBe('CANCELLED');
 
-    expect(await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId } })).toBe(10);
+    expect(await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId } })).toBe(11);
     expect(
       (
         await prisma.acpBridgeDispatch.findUniqueOrThrow({
