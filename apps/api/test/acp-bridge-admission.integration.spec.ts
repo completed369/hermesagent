@@ -605,8 +605,8 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       where: {
         workspaceReference: workspaceId,
         source: 'CONTROL_PLANE',
-        subjectType: 'AcpRunUsage',
-        subjectId: cumulativeUsage.id,
+        entityType: 'AcpRunUsage',
+        entityId: cumulativeUsage.id,
       },
     });
     expect(cumulativeUsage.cumulativeComputeUnits).toBe(12n);
