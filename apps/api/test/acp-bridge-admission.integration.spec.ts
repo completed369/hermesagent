@@ -827,8 +827,8 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           workspaceReference: workspaceId,
           source: 'CONTROL_PLANE',
           idempotencyKey: `bridge-receipt:${usage.receiptId}`,
-          subjectType: 'AcpRunUsage',
-          subjectId: usage.id,
+          entityType: 'AcpRunUsage',
+          entityId: usage.id,
         },
       }),
     ).not.toBeNull();
