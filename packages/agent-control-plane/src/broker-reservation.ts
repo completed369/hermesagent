@@ -242,7 +242,7 @@ export function buildBrokerReservationBinding(input: {
     estimatedCostMinorUnits: selected.estimatedCostMinorUnits,
     reservedComputeUnits: input.request.requiredComputeUnits,
     maxConcurrentRuns: selected.maxConcurrentRuns,
-    testOnly: input.snapshot.testOnly,
+    testOnly: input.snapshot.testOnly || input.agentEvidence.testOnly,
   };
 }
 

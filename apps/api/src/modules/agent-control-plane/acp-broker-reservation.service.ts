@@ -232,6 +232,15 @@ export class AcpBrokerReservationService implements BridgeBrokerEvidenceVerifier
               return { reservation: lockedReplay, replayed: true };
             }
             const activeRunNow = await databaseNow(tx);
+            await tx.acpBrokerReservation.updateMany({
+              where: {
+                workspaceId: context.workspaceId,
+                runId: input.runId,
+                state: 'RESERVED',
+                expiresAt: { lte: activeRunNow },
+              },
+              data: { state: 'EXPIRED', releasedAt: activeRunNow },
+            });
             const activeRunReservation = await tx.acpBrokerReservation.findFirst({
               where: {
                 workspaceId: context.workspaceId,
@@ -298,6 +307,30 @@ export class AcpBrokerReservationService implements BridgeBrokerEvidenceVerifier
               throw new AcpBrokerReservationDeniedError(
                 'Selected runtime connection is not durable',
               );
+            const finalAgentEvidence = await this.agentReader.read(
+              context.workspaceId,
+              run.id,
+              input.agentId,
+            );
+            validateTrustedBrokerAgentEvidence(
+              context.workspaceId,
+              run.id,
+              input.agentId,
+              finalAgentEvidence,
+            );
+            if (
+              finalAgentEvidence.evidenceId !== agentEvidence.evidenceId ||
+              finalAgentEvidence.evidenceHash !== agentEvidence.evidenceHash ||
+              finalAgentEvidence.testOnly !== agentEvidence.testOnly
+            )
+              throw new AcpBrokerReservationDeniedError(
+                'Trusted agent evidence changed during reservation',
+              );
+            if (
+              finalAgentEvidence.testOnly &&
+              !(await this.testOnlyGate.allowsDeterministicFixture(context.workspaceId))
+            )
+              throw new AcpBrokerReservationDeniedError('Final test-only agent evidence denied');
             const snapshot = await this.candidateReader.read(context.workspaceId);
             validateTrustedBrokerCandidateSnapshot(context.workspaceId, snapshot);
             if (
@@ -362,7 +395,7 @@ export class AcpBrokerReservationService implements BridgeBrokerEvidenceVerifier
               taskId: run.taskId,
               runId: run.id,
               agentId: input.agentId,
-              agentEvidence,
+              agentEvidence: finalAgentEvidence,
               expectedRunVersion: input.expectedRunVersion,
               taskPolicyHash: run.policyHash,
               taskPolicyVersion: run.policyVersion,

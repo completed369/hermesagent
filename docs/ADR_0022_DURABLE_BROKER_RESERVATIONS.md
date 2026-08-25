@@ -36,12 +36,19 @@ reader and a distinct trusted agent reader supply server-owned evidence, the exi
 decision, and the service re-reads and reroutes after locking the selected
 connection. Production composition deliberately returns no candidates. Only an
 explicit isolated test gate can provide positive synthetic candidate evidence.
+Both trusted evidence sources are re-read after durable locks. The effective
+isolation flag is conservative: if either agent or candidate evidence is
+test-only, the reservation is test-only and the database will reject a claim
+outside a `TEST_ONLY` connection.
 
 Reservation creation is `SERIALIZABLE`. It locks run, task, and connection in a
 fixed order, expires stale unclaimed holds, and includes both `RESERVED`
 (unexpired) and `CLAIMED` rows when enforcing capacity and reserved cost/compute.
 This bookkeeping is a hold, not a `CostLedgerEntry`, payment, invoice, provider
 charge, or evidence of spend.
+Stale unclaimed holds are expired run-wide under the run lock before the
+active-run uniqueness check, so a run can be safely rerouted to a different
+connection after its prior hold expires.
 
 Broker reservation and bridge dispatch admission share the global lock order
 run, task, connection, then session/reservation where needed. Idempotency is

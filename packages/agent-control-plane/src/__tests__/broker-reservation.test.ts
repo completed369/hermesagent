@@ -181,6 +181,14 @@ describe('durable broker reservation policy', () => {
     }
   });
 
+  it('keeps a reservation test-only when either trusted evidence source is synthetic', () => {
+    const binding = buildBrokerReservationBinding({
+      ...bindingInput(),
+      snapshot: { ...snapshot(), testOnly: false },
+    });
+    expect(binding.testOnly).toBe(true);
+  });
+
   it.each([
     ['runtimeId', 'password-reference'],
     ['connectionId', 'chain-of-thought'],
