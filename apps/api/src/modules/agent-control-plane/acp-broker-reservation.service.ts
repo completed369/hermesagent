@@ -266,7 +266,6 @@ export class AcpBrokerReservationService implements BridgeBrokerEvidenceVerifier
             evaluations: {
               create: decision.evaluations.map((evaluation, ordinal) => ({
                 id: randomUUID(),
-                workspaceId: context.workspaceId,
                 runtimeId: evaluation.runtimeId,
                 connectionId: evaluation.connectionId,
                 eligible: evaluation.eligible,
@@ -315,8 +314,28 @@ export class AcpBrokerReservationService implements BridgeBrokerEvidenceVerifier
       where: { workspaceId_id: { workspaceId: evidence.workspaceId, id: evidence.evidenceId } },
     });
     if (!reservation) return false;
+    const recomputedHash = computeBrokerReservationEvidenceHash({
+      workspaceId: reservation.workspaceId,
+      objectiveId: reservation.objectiveId,
+      taskId: reservation.taskId,
+      runId: reservation.runId,
+      agentId: reservation.agentId,
+      runtimeId: reservation.runtimeId,
+      connectionId: reservation.connectionId,
+      requestHash: reservation.requestHash,
+      candidateEvidenceId: reservation.candidateEvidenceId,
+      candidateEvidenceHash: reservation.candidateEvidenceHash,
+      taskPolicyHash: reservation.taskPolicyHash,
+      taskPolicyVersion: reservation.taskPolicyVersion,
+      selectedScoreBps: reservation.selectedScoreBps,
+      estimatedCostMinorUnits: number(reservation.estimatedCostMinorUnits),
+      reservedComputeUnits: number(reservation.reservedComputeUnits),
+      maxConcurrentRuns: reservation.maxConcurrentRuns,
+      testOnly: reservation.testOnly,
+    });
     return (
       reservation.evidenceHash === evidence.evidenceHash &&
+      reservation.evidenceHash === recomputedHash &&
       reservation.taskId === evidence.taskId &&
       reservation.runId === evidence.runId &&
       reservation.agentId === evidence.agentId &&
