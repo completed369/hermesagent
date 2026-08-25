@@ -6,6 +6,7 @@ import {
   sha256Canonical,
   validateTrustedBrokerCandidateSnapshot,
   type TrustedBrokerCandidateSnapshot,
+  type TrustedBrokerAgentEvidence,
 } from '../broker-reservation';
 import type { RuntimeRoutingCandidate, RuntimeRoutingDecision } from '../runtime-broker';
 
@@ -63,6 +64,36 @@ const snapshot = (): TrustedBrokerCandidateSnapshot => ({
   candidates: [candidate],
 });
 
+const agentEvidence = (): TrustedBrokerAgentEvidence => ({
+  evidenceId: 'agent-evidence-one',
+  evidenceHash: sha256Canonical({
+    schemaVersion: 1,
+    workspaceId: 'workspace-one',
+    runId: 'run-one',
+    agentId: 'agent-one',
+    testOnly: true,
+  }),
+  workspaceId: 'workspace-one',
+  runId: 'run-one',
+  agentId: 'agent-one',
+  testOnly: true,
+});
+
+const bindingInput = () => ({
+  workspaceId: 'workspace-one',
+  objectiveId: 'objective-one',
+  taskId: 'task-one',
+  runId: 'run-one',
+  agentId: 'agent-one',
+  agentEvidence: agentEvidence(),
+  expectedRunVersion: 1,
+  taskPolicyHash: 'a'.repeat(64),
+  taskPolicyVersion: 'policy-v1',
+  request,
+  snapshot: snapshot(),
+  decision,
+});
+
 const request = {
   id: 'broker:run-one',
   workspaceId: 'workspace-one',
@@ -90,18 +121,7 @@ const decision: RuntimeRoutingDecision = {
 
 describe('durable broker reservation policy', () => {
   it('creates a deterministic exact binding and evidence digest', () => {
-    const binding = buildBrokerReservationBinding({
-      workspaceId: 'workspace-one',
-      objectiveId: 'objective-one',
-      taskId: 'task-one',
-      runId: 'run-one',
-      agentId: 'agent-one',
-      taskPolicyHash: 'a'.repeat(64),
-      taskPolicyVersion: 'policy-v1',
-      request,
-      snapshot: snapshot(),
-      decision,
-    });
+    const binding = buildBrokerReservationBinding(bindingInput());
     expect(binding).toMatchObject({
       runtimeId: 'runtime-one',
       connectionId: 'connection-one',
@@ -135,36 +155,19 @@ describe('durable broker reservation policy', () => {
   ])('rejects sensitive data smuggled through identifiers: %s', (agentId) => {
     expect(() =>
       buildBrokerReservationBinding({
-        workspaceId: 'workspace-one',
-        objectiveId: 'objective-one',
-        taskId: 'task-one',
-        runId: 'run-one',
+        ...bindingInput(),
         agentId,
-        taskPolicyHash: 'a'.repeat(64),
-        taskPolicyVersion: 'policy-v1',
-        request,
-        snapshot: snapshot(),
-        decision,
       }),
     ).toThrow(BrokerReservationPolicyError);
   });
 
   it('binds every selection and policy dimension into the hash', () => {
-    const binding = buildBrokerReservationBinding({
-      workspaceId: 'workspace-one',
-      objectiveId: 'objective-one',
-      taskId: 'task-one',
-      runId: 'run-one',
-      agentId: 'agent-one',
-      taskPolicyHash: 'a'.repeat(64),
-      taskPolicyVersion: 'policy-v1',
-      request,
-      snapshot: snapshot(),
-      decision,
-    });
+    const binding = buildBrokerReservationBinding(bindingInput());
     for (const [field, value] of [
       ['runId', 'run-two'],
       ['agentId', 'agent-two'],
+      ['agentEvidenceHash', 'd'.repeat(64)],
+      ['expectedRunVersion', 2],
       ['runtimeId', 'runtime-two'],
       ['connectionId', 'connection-two'],
       ['taskPolicyHash', 'b'.repeat(64)],
@@ -176,5 +179,22 @@ describe('durable broker reservation policy', () => {
         computeBrokerReservationEvidenceHash(binding),
       );
     }
+  });
+
+  it.each([
+    ['runtimeId', 'password-reference'],
+    ['connectionId', 'chain-of-thought'],
+    ['runtimeId', 'glpat-abcdefghijklmnopqrstuvwxyz'],
+    ['connectionId', 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturevalue'],
+  ] as const)('rejects sensitive candidate %s references', (field, value) => {
+    const unsafeCandidate = { ...candidate, [field]: value };
+    expect(() =>
+      validateTrustedBrokerCandidateSnapshot('workspace-one', {
+        evidenceId: 'candidate-snapshot-one',
+        evidenceHash: sha256Canonical([unsafeCandidate]),
+        testOnly: true,
+        candidates: [unsafeCandidate],
+      }),
+    ).toThrow(BrokerReservationPolicyError);
   });
 });

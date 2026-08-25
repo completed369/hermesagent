@@ -36,12 +36,34 @@ export interface TrustedBrokerCandidateReader {
 
 export const TRUSTED_BROKER_CANDIDATE_READER = Symbol('TRUSTED_BROKER_CANDIDATE_READER');
 
+export interface TrustedBrokerAgentEvidence {
+  readonly evidenceId: EntityId;
+  readonly evidenceHash: string;
+  readonly workspaceId: EntityId;
+  readonly runId: EntityId;
+  readonly agentId: EntityId;
+  readonly testOnly: boolean;
+}
+
+export interface TrustedBrokerAgentReader {
+  /** Server-owned instantiated-agent evidence; production remains fail closed. */
+  read(
+    workspaceId: EntityId,
+    runId: EntityId,
+    requestedAgentId: EntityId,
+  ): Promise<TrustedBrokerAgentEvidence>;
+}
+
+export const TRUSTED_BROKER_AGENT_READER = Symbol('TRUSTED_BROKER_AGENT_READER');
+
 export interface BrokerReservationBinding {
   readonly workspaceId: EntityId;
   readonly objectiveId: EntityId;
   readonly taskId: EntityId;
   readonly runId: EntityId;
   readonly agentId: EntityId;
+  readonly agentEvidenceId: EntityId;
+  readonly agentEvidenceHash: string;
   readonly runtimeId: EntityId;
   readonly connectionId: EntityId;
   readonly requestHash: string;
@@ -49,6 +71,7 @@ export interface BrokerReservationBinding {
   readonly candidateEvidenceHash: string;
   readonly taskPolicyHash: string;
   readonly taskPolicyVersion: string;
+  readonly expectedRunVersion: number;
   readonly selectedScoreBps: number;
   readonly estimatedCostMinorUnits: number;
   readonly reservedComputeUnits: number;
@@ -106,8 +129,44 @@ export function validateTrustedBrokerCandidateSnapshot(
     throw new BrokerReservationPolicyError('Candidate snapshot exceeds the governed bound');
   if (snapshot.candidates.some((candidate) => candidate.workspaceId !== workspaceId))
     throw new BrokerReservationPolicyError('Candidate snapshot crosses workspace');
+  for (const candidate of snapshot.candidates) {
+    reference(candidate.runtimeId, 'candidate.runtimeId');
+    reference(candidate.connectionId, 'candidate.connectionId');
+  }
   if (sha256Canonical(snapshot.candidates) !== snapshot.evidenceHash)
     throw new BrokerReservationPolicyError('Candidate snapshot digest mismatch');
+}
+
+export function validateTrustedBrokerAgentEvidence(
+  workspaceId: string,
+  runId: string,
+  agentId: string,
+  evidence: TrustedBrokerAgentEvidence,
+): void {
+  for (const [field, value] of Object.entries({
+    workspaceId,
+    runId,
+    agentId,
+    agentEvidenceId: evidence.evidenceId,
+  }))
+    reference(value, field);
+  digest(evidence.evidenceHash, 'agentEvidenceHash');
+  if (typeof evidence.testOnly !== 'boolean')
+    throw new BrokerReservationPolicyError('agent evidence testOnly must be boolean');
+  if (
+    evidence.workspaceId !== workspaceId ||
+    evidence.runId !== runId ||
+    evidence.agentId !== agentId ||
+    evidence.evidenceHash !==
+      sha256Canonical({
+        schemaVersion: 1,
+        workspaceId,
+        runId,
+        agentId,
+        testOnly: evidence.testOnly,
+      })
+  )
+    throw new BrokerReservationPolicyError('Agent evidence binding mismatch');
 }
 
 export function buildBrokerReservationBinding(input: {
@@ -116,6 +175,8 @@ export function buildBrokerReservationBinding(input: {
   readonly taskId: string;
   readonly runId: string;
   readonly agentId: string;
+  readonly agentEvidence: TrustedBrokerAgentEvidence;
+  readonly expectedRunVersion: number;
   readonly taskPolicyHash: string;
   readonly taskPolicyVersion: string;
   readonly request: RuntimeRoutingRequest;
@@ -129,9 +190,19 @@ export function buildBrokerReservationBinding(input: {
     runId: input.runId,
     agentId: input.agentId,
     taskPolicyVersion: input.taskPolicyVersion,
+    agentEvidenceId: input.agentEvidence.evidenceId,
   }))
     reference(value, field);
   digest(input.taskPolicyHash, 'taskPolicyHash');
+  validateTrustedBrokerAgentEvidence(
+    input.workspaceId,
+    input.runId,
+    input.agentId,
+    input.agentEvidence,
+  );
+  integer(input.expectedRunVersion, 'expectedRunVersion');
+  if (input.expectedRunVersion < 1)
+    throw new BrokerReservationPolicyError('expectedRunVersion must be positive');
   if (
     input.request.workspaceId !== input.workspaceId ||
     input.decision.workspaceId !== input.workspaceId ||
@@ -157,6 +228,8 @@ export function buildBrokerReservationBinding(input: {
     taskId: input.taskId,
     runId: input.runId,
     agentId: input.agentId,
+    agentEvidenceId: input.agentEvidence.evidenceId,
+    agentEvidenceHash: input.agentEvidence.evidenceHash,
     runtimeId: selected.runtimeId,
     connectionId: selected.connectionId,
     requestHash: sha256Canonical(input.request),
@@ -164,6 +237,7 @@ export function buildBrokerReservationBinding(input: {
     candidateEvidenceHash: input.snapshot.evidenceHash,
     taskPolicyHash: input.taskPolicyHash,
     taskPolicyVersion: input.taskPolicyVersion,
+    expectedRunVersion: input.expectedRunVersion,
     selectedScoreBps: input.decision.selectedScoreBps,
     estimatedCostMinorUnits: selected.estimatedCostMinorUnits,
     reservedComputeUnits: input.request.requiredComputeUnits,

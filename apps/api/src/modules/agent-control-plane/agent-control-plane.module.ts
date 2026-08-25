@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import {
   ASSIGNMENT_EVIDENCE_VERIFIER,
   DURABLE_ARTIFACT_EVIDENCE_VERIFIER,
+  TRUSTED_BROKER_AGENT_READER,
   TRUSTED_BROKER_CANDIDATE_READER,
   sha256Canonical,
   type TrustedBrokerCandidateReader,
+  type TrustedBrokerAgentReader,
 } from '@ventureos/agent-control-plane';
 import {
   BRIDGE_BROKER_EVIDENCE_VERIFIER,
@@ -37,6 +39,11 @@ const denyCandidates: TrustedBrokerCandidateReader = {
     };
   },
 };
+const denyAgents: TrustedBrokerAgentReader = {
+  async read() {
+    throw new Error('Trusted broker agent evidence is not configured');
+  },
+};
 const denyCapabilityPolicy: BridgeCapabilityPolicyVerifier = {
   async verify() {
     return false;
@@ -65,6 +72,7 @@ const denyTestOnlyGate: BridgeTestOnlyGate = {
     AcpBrokerReservationService,
     { provide: BRIDGE_SECRET_RESOLVER, useValue: denySecrets },
     { provide: TRUSTED_BROKER_CANDIDATE_READER, useValue: denyCandidates },
+    { provide: TRUSTED_BROKER_AGENT_READER, useValue: denyAgents },
     { provide: BRIDGE_BROKER_EVIDENCE_VERIFIER, useExisting: AcpBrokerReservationService },
     { provide: BRIDGE_CAPABILITY_POLICY_VERIFIER, useValue: denyCapabilityPolicy },
     { provide: BRIDGE_ARTIFACT_CONTENT_VERIFIER, useValue: denyArtifactContent },

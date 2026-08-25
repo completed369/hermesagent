@@ -1042,6 +1042,7 @@ model AcpRun {
   @@id([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
   @@unique([workspaceId, assignmentIdempotencyKey])
+  @@unique([workspaceId, id, objectiveId, taskId], map: "acp_runs_broker_binding_key")
   @@index([workspaceId, objectiveId, status])
   @@index([workspaceId, taskId, status])
   @@map("acp_runs")
@@ -1098,6 +1099,7 @@ model AcpRuntimeConnection {
 
   @@id([workspaceId, id])
   @@unique([workspaceId, runtimeId, environment])
+  @@unique([workspaceId, id, runtimeId], map: "acp_runtime_connections_broker_binding_key")
   @@index([workspaceId, runtimeId, status])
   @@map("acp_runtime_connections")
 }
@@ -1245,6 +1247,8 @@ model AcpBrokerReservation {
   taskId                  String
   runId                   String
   agentId                 String
+  agentEvidenceId         String
+  agentEvidenceHash       String
   runtimeId               String
   connectionId            String
   requestHash             String
@@ -1252,6 +1256,7 @@ model AcpBrokerReservation {
   candidateEvidenceHash   String
   taskPolicyHash          String
   taskPolicyVersion       String
+  expectedRunVersion      Int
   selectedScoreBps        Int
   estimatedCostMinorUnits BigInt
   reservedComputeUnits    BigInt
@@ -1268,8 +1273,8 @@ model AcpBrokerReservation {
 
   workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   task        AcpTask               @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
-  run         AcpRun                @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
-  connection  AcpRuntimeConnection  @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  run         AcpRun                @relation(fields: [workspaceId, runId, objectiveId, taskId], references: [workspaceId, id, objectiveId, taskId], onDelete: Cascade, map: "acp_broker_reservations_run_fkey")
+  connection  AcpRuntimeConnection  @relation(fields: [workspaceId, connectionId, runtimeId], references: [workspaceId, id, runtimeId], onDelete: Cascade, map: "acp_broker_reservations_connection_fkey")
   evaluations AcpBrokerEvaluation[]
   dispatches  AcpBridgeDispatch[]
 
