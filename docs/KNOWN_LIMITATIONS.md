@@ -44,6 +44,11 @@
 > end-to-end evidence; repository installation or local process availability is
 > not connection evidence.
 >
+> Secret material remains unavailable in production. The scoped bridge lease
+> interface is deny-only in the production composition root and has no file,
+> environment, network, or provider backend. Its deterministic positive source
+> is test-local and does not configure or connect a runtime.
+>
 > A dated, non-authoritative operations snapshot verified on 2026-08-25 records
 > operations PR #24 as deployed to the Access-protected Founder Mission Control,
 > with its command-center and Site Steward checks green. The private operations

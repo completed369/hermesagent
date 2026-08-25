@@ -10,6 +10,10 @@ import {
   type TrustedBrokerAgentReader,
 } from '@ventureos/agent-control-plane';
 import { Prisma, prisma } from '@ventureos/database';
+import {
+  ScopedBridgeSecretLeaseResolver,
+  type BridgeSecretLeaseRequest,
+} from '@ventureos/agent-bridge';
 import { DeterministicFakeRuntime } from '../../../packages/agent-bridge/src/__tests__/fixtures/deterministic-fake';
 import { AuditService } from '../src/modules/audit/audit.service';
 import {
@@ -48,6 +52,24 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
   let cancelRunId: string;
   let primaryAssignmentEvidenceId: string;
   let candidateSnapshot: TrustedBrokerCandidateSnapshot;
+  const secretLeaseRequests: BridgeSecretLeaseRequest[] = [];
+
+  function testSecretLease(
+    resolve: (request: Readonly<BridgeSecretLeaseRequest>) => Promise<Uint8Array> = async (
+      request,
+    ) => {
+      const resolved = trustedSecrets.get(request.secretReference);
+      if (!resolved) throw new Error('synthetic source unavailable');
+      return resolved;
+    },
+  ) {
+    return new ScopedBridgeSecretLeaseResolver({
+      async resolve(request) {
+        secretLeaseRequests.push({ ...request });
+        return resolve(request);
+      },
+    });
+  }
 
   function refreshCandidateSnapshot(overrides: Partial<RuntimeRoutingCandidate> = {}): void {
     const candidate: RuntimeRoutingCandidate = {
@@ -156,13 +178,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     );
     bridge = new AcpBridgeAdmissionService(
       new AuditService(),
-      {
-        async resolve(reference) {
-          const resolved = trustedSecrets.get(reference);
-          if (!resolved) throw new Error('unknown synthetic secret reference');
-          return resolved;
-        },
-      },
+      testSecretLease(),
       brokerReservations,
       {
         async verify(_workspace, _runtime, policyHash, codes) {
@@ -428,6 +444,39 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         })
       ).status,
     ).toBe('NOT_CONFIGURED');
+    expect(secretLeaseRequests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          workspaceId,
+          runtimeId,
+          connectionId,
+          secretReference,
+          authGeneration: 1,
+          purpose: 'PROVISION',
+        }),
+        expect.objectContaining({
+          workspaceId,
+          runtimeId,
+          connectionId,
+          secretReference,
+          authGeneration: 1,
+          purpose: 'AUTHENTICATE',
+          expectedDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        }),
+        expect.objectContaining({
+          workspaceId,
+          runtimeId,
+          connectionId,
+          secretReference,
+          authGeneration: 1,
+          purpose: 'VERIFY_FRAME',
+          expectedDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        }),
+      ]),
+    );
+    expect(
+      secretLeaseRequests.find((request) => request.purpose === 'PROVISION'),
+    ).not.toHaveProperty('expectedDigest');
 
     dispatchId = `dispatch-${suffix}`;
     refreshCandidateSnapshot();
@@ -1641,11 +1690,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
     const deniedFixtureBridge = new AcpBridgeAdmissionService(
       new AuditService(),
-      {
-        async resolve() {
-          return secret;
-        },
-      },
+      testSecretLease(async () => secret),
       {
         async verify() {
           return false;
@@ -1824,11 +1869,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     ]);
     const eraseBridge = new AcpBridgeAdmissionService(
       new AuditService(),
-      {
-        async resolve() {
-          return secret;
-        },
-      },
+      testSecretLease(async () => secret),
       {
         async verify() {
           return false;
@@ -1891,11 +1932,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     } as AuditService;
     const rollbackBridge = new AcpBridgeAdmissionService(
       failingAudit,
-      {
-        async resolve() {
-          return secret;
-        },
-      },
+      testSecretLease(async () => secret),
       {
         async verify() {
           return false;

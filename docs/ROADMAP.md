@@ -69,10 +69,11 @@ published and current `main` has not been deployed to private staging.
    this file does not circularly pin its own commit.
 2. **Agent Control Plane continuation:** the durable task/run, approval-
    preparation, protocol-neutral Agent Bridge admission, and durable broker
-   reservation foundations are MERGED and VERIFIED. Next add reviewed
-   child-process transport and
-   supervision across the bridge boundary before implementing real runtime
-   adapters. Cost governance,
+   reservation foundations are MERGED and VERIFIED. A scoped, deny-by-default
+   secret-lease boundary is in review; it adds no credential backend or
+   connection path. Next add reviewed child-process transport and supervision
+   across the bridge boundary before implementing real runtime adapters. Cost
+   governance,
    evaluations, knowledge/playbooks, and adapter hardening continue afterward.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is

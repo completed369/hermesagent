@@ -1,8 +1,3 @@
-export interface BridgeSecretResolver {
-  /** Trusted server-side secret store. Returned bytes must never be logged or persisted. */
-  resolve(secretReference: string): Promise<Uint8Array>;
-}
-
 export interface TrustedBridgeBrokerEvidence {
   readonly evidenceId: string;
   readonly evidenceHash: string;
@@ -48,7 +43,6 @@ export interface BridgeTestOnlyGate {
   allowsDeterministicFixture(workspaceId: string): Promise<boolean>;
 }
 
-export const BRIDGE_SECRET_RESOLVER = Symbol('BRIDGE_SECRET_RESOLVER');
 export const BRIDGE_BROKER_EVIDENCE_VERIFIER = Symbol('BRIDGE_BROKER_EVIDENCE_VERIFIER');
 export const BRIDGE_CAPABILITY_POLICY_VERIFIER = Symbol('BRIDGE_CAPABILITY_POLICY_VERIFIER');
 export const BRIDGE_ARTIFACT_CONTENT_VERIFIER = Symbol('BRIDGE_ARTIFACT_CONTENT_VERIFIER');
