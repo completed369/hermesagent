@@ -77,6 +77,10 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    notifications/incidents, usage/cost, and versioned models/prompts/tools/
    policies. Runtime identity, replay resistance, scoped credentials, revocation,
    concurrency, nesting, retry, time, tool, and budget limits are release gates.
+   The repository now includes a service-only durable objective/project/task/
+   dependency/run/artifact spine with exact Level-4 approval preparation and
+   fail-closed evidence ports; GitHub remains authoritative for its merge/check
+   state. This is coordination evidence, not runtime connectivity or execution.
 2. **Runtime Broker and adapters — IN PROGRESS:** the capability- and
    policy-aware Runtime Broker foundation is MERGED. A constrained Agent Bridge
    and authenticated runtime adapters remain to be completed. Codex, Hermes, and

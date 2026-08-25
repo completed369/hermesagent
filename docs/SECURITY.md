@@ -1,5 +1,21 @@
 # Security
 
+## Durable ACP task/run boundary
+
+Durable ACP plan creation accepts only a trusted AI COO operational-event
+capability. Assignment, start, artifact, failure, and completion mutations accept
+only a trusted control-plane capability; runtime principals are denied. Separate
+trusted evidence-verifier ports fail closed by default. Workspace identifiers
+participate in all task/run graph keys and database relations, while immutable
+policy hashes, optimistic versions, transition guards, cycle guards, and
+transactional audit writes constrain drift and concurrent replay.
+
+Level-4 prepared runs remain unassigned. The approval bridge locks and verifies
+the current durable binding in the same transaction that creates the approval
+request. Neither AI COO cards nor voice input provide authority, and this slice
+contains no runtime dispatch or external execution path. Hashes are integrity
+and drift evidence, not a claim of tamper-proof storage.
+
 ## Implemented in Phase 1
 
 - Password hashing: scrypt with random per-password salt, constant-time
