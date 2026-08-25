@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   OperationalEventCapability,
+  sha256Canonical,
   type DurableObjectivePlanInput,
+  type RuntimeRoutingCandidate,
+  type TrustedBrokerCandidateSnapshot,
 } from '@ventureos/agent-control-plane';
 import { Prisma, prisma } from '@ventureos/database';
 import { DeterministicFakeRuntime } from '../../../packages/agent-bridge/src/__tests__/fixtures/deterministic-fake';
@@ -12,6 +15,7 @@ import {
   AcpBridgeAdmissionConflictError,
   AcpBridgeAdmissionService,
 } from '../src/modules/agent-control-plane/acp-bridge-admission.service';
+import { AcpBrokerReservationService } from '../src/modules/agent-control-plane/acp-broker-reservation.service';
 import { AcpTaskRunService } from '../src/modules/agent-control-plane/acp-task-run.service';
 
 describe('durable Agent Bridge admission foundation (PostgreSQL integration)', () => {
@@ -30,6 +34,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
   let capability: OperationalEventCapability;
   let plannerCapability: OperationalEventCapability;
   let bridge: AcpBridgeAdmissionService;
+  let brokerReservations: AcpBrokerReservationService;
   let taskRuns: AcpTaskRunService;
   let fake: DeterministicFakeRuntime;
   let taskId: string;
@@ -40,6 +45,63 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
   let cancelTaskId: string;
   let cancelRunId: string;
   let primaryAssignmentEvidenceId: string;
+  let candidateSnapshot: TrustedBrokerCandidateSnapshot;
+
+  function refreshCandidateSnapshot(overrides: Partial<RuntimeRoutingCandidate> = {}): void {
+    const candidate: RuntimeRoutingCandidate = {
+      runtimeId,
+      connectionId,
+      workspaceId,
+      connectionStatus: 'CONNECTED',
+      authenticatedPrincipalId: `fixture-principal-${suffix}`,
+      trustEvidence: {
+        registration: {
+          verified: true,
+          runtimeId,
+          connectionId,
+          principalId: `fixture-principal-${suffix}`,
+        },
+        capabilityExchange: {
+          verified: true,
+          runtimeId,
+          connectionId,
+          principalId: `fixture-principal-${suffix}`,
+        },
+        heartbeat: {
+          verified: true,
+          runtimeId,
+          connectionId,
+          principalId: `fixture-principal-${suffix}`,
+          observedAt: new Date().toISOString(),
+        },
+        taskRoundTrip: {
+          verified: true,
+          runtimeId,
+          connectionId,
+          principalId: `fixture-principal-${suffix}`,
+        },
+      },
+      capabilityIds: ['quality.verify'],
+      toolGrants: [],
+      maximumDataSensitivity: 'INTERNAL',
+      securityTier: 2,
+      reliabilityScoreBps: 9_000,
+      qualityScoreBps: 9_000,
+      expectedLatencyMs: 50,
+      estimatedCostMinorUnits: 1,
+      activeRuns: 0,
+      maxConcurrentRuns: 10,
+      remainingBudgetMinorUnits: 10_000,
+      remainingComputeUnits: 10_000,
+      ...overrides,
+    };
+    candidateSnapshot = {
+      evidenceId: `fixture-candidates-${suffix}`,
+      evidenceHash: sha256Canonical([candidate]),
+      testOnly: true,
+      candidates: [candidate],
+    };
+  }
 
   beforeAll(async () => {
     const [workspace, other] = await Promise.all([
@@ -56,6 +118,20 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     plannerCapability = OperationalEventCapability.issue('AI_COO', [
       { workspaceId, principalId, actorKind: 'AGENT', authorityLevel: 1 },
     ]);
+    refreshCandidateSnapshot();
+    brokerReservations = new AcpBrokerReservationService(
+      new AuditService(),
+      {
+        async read() {
+          return candidateSnapshot;
+        },
+      },
+      {
+        async allowsDeterministicFixture(requestWorkspaceId) {
+          return requestWorkspaceId === workspaceId;
+        },
+      },
+    );
     bridge = new AcpBridgeAdmissionService(
       new AuditService(),
       {
@@ -65,11 +141,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           return resolved;
         },
       },
-      {
-        async verify(evidence) {
-          return evidence.evidenceHash === 'b'.repeat(64);
-        },
-      },
+      brokerReservations,
       {
         async verify(_workspace, _runtime, policyHash, codes) {
           return (
@@ -336,6 +408,18 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     ).toBe('NOT_CONFIGURED');
 
     dispatchId = `dispatch-${suffix}`;
+    refreshCandidateSnapshot();
+    const routed = await brokerReservations.reserveForPreparedRun(
+      capability,
+      { workspaceId, principalId },
+      {
+        reservationId: `broker-${suffix}`,
+        runId,
+        agentId: `fixture-agent-${suffix}`,
+        expectedRunVersion: 1,
+        idempotencyKey: `broker-${suffix}`,
+      },
+    );
     const prepared = await bridge.prepareDispatch(
       capability,
       { workspaceId, principalId },
@@ -345,16 +429,24 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         sessionId,
         idempotencyKey: `dispatch-idempotency-${suffix}`,
         brokerEvidence: {
-          evidenceId: `broker-${suffix}`,
-          evidenceHash: 'b'.repeat(64),
+          evidenceId: routed.reservation.id,
+          evidenceHash: routed.reservation.evidenceHash,
           workspaceId,
           taskId,
           runId,
+          agentId: `fixture-agent-${suffix}`,
           runtimeId,
           connectionId,
         },
       },
     );
+    expect(
+      (
+        await prisma.acpBrokerReservation.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId, id: routed.reservation.id } },
+        })
+      ).state,
+    ).toBe('CLAIMED');
     const assignmentEvidenceId = prepared.dispatch.assignmentEvidenceId;
     primaryAssignmentEvidenceId = assignmentEvidenceId;
     const auditBeforePreparedRejections = await prisma.auditEvent.count({
@@ -672,6 +764,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       { workspaceId, principalId },
       fake.emit('RESULT', { dispatchId, resultCode: 'SUCCESS' }),
     );
+    expect(
+      (
+        await prisma.acpBrokerReservation.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId, id: routed.reservation.id } },
+        })
+      ).state,
+    ).toBe('RELEASED');
     const running = await prisma.acpRun.findUniqueOrThrow({
       where: { workspaceId_id: { workspaceId, id: runId } },
     });
@@ -684,6 +783,18 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     );
 
     const cancelDispatchId = `cancel-dispatch-${suffix}`;
+    refreshCandidateSnapshot();
+    const cancelRouted = await brokerReservations.reserveForPreparedRun(
+      capability,
+      { workspaceId, principalId },
+      {
+        reservationId: `cancel-broker-${suffix}`,
+        runId: cancelRunId,
+        agentId: `fixture-agent-${suffix}`,
+        expectedRunVersion: 1,
+        idempotencyKey: `cancel-broker-${suffix}`,
+      },
+    );
     const cancelPrepared = await bridge.prepareDispatch(
       capability,
       { workspaceId, principalId },
@@ -693,11 +804,12 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         sessionId,
         idempotencyKey: `cancel-dispatch-idempotency-${suffix}`,
         brokerEvidence: {
-          evidenceId: `cancel-broker-${suffix}`,
-          evidenceHash: 'b'.repeat(64),
+          evidenceId: cancelRouted.reservation.id,
+          evidenceHash: cancelRouted.reservation.evidenceHash,
           workspaceId,
           taskId: cancelTaskId,
           runId: cancelRunId,
+          agentId: `fixture-agent-${suffix}`,
           runtimeId,
           connectionId,
         },
@@ -811,6 +923,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         })
       ).state,
     ).toBe('CANCELLED');
+    expect(
+      (
+        await prisma.acpBrokerReservation.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId, id: cancelRouted.reservation.id } },
+        })
+      ).state,
+    ).toBe('RELEASED');
 
     expect(await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId } })).toBe(11);
     expect(
@@ -838,6 +957,202 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     expect(runtime.secretReference).toBe(secretReference);
     expect(runtime.secretDigest).toMatch(/^[a-f0-9]{64}$/u);
     expect(JSON.stringify(runtime)).not.toContain(secret.toString('utf8'));
+  });
+
+  it('serializes capacity reservations so two ready runs cannot claim one slot', async () => {
+    const planId = `capacity-${suffix}`;
+    const plan = await taskRuns.createPlan(
+      plannerCapability,
+      { workspaceId, principalId },
+      {
+        workspaceId,
+        idempotencyKey: `${planId}:plan`,
+        policyVersion: 'capacity-v1',
+        objective: {
+          id: `${planId}:objective`,
+          title: 'Bound runtime capacity',
+          desiredOutcome: 'Only one reservation survives',
+          maximumAuthority: 3,
+          costLimit: { currency: 'EUR', maximumMinorUnits: 300, maximumComputeUnits: 300 },
+          acceptanceCriteria: ['capacity'],
+          verificationCriteria: ['serialized'],
+          stopConditions: ['deny'],
+        },
+        projects: [{ id: `${planId}:project`, title: 'Capacity' }],
+        tasks: ['one', 'two', 'rollback'].map((label) => ({
+          id: `${planId}:task:${label}`,
+          projectId: `${planId}:project`,
+          title: `Capacity ${label}`,
+          kind: 'quality.verify' as const,
+          dependencyIds: [],
+          requiredAuthority: 3 as const,
+          costLimit: { currency: 'EUR', maximumMinorUnits: 100, maximumComputeUnits: 100 },
+          estimatedDurationMs: 1_000,
+          acceptanceCriteria: ['capacity'],
+          verificationCriteria: ['serialized'],
+          stopConditions: ['deny'],
+          retryPolicy: {
+            maximumAttempts: 1,
+            retryableFailureCodes: ['TRANSIENT'],
+            stopAfterFailureCodes: ['DENIED'],
+          },
+          agentPolicy: { templateId: 'capacity-agent', scopes: ['quality.verify'] },
+          routingPolicy: { capabilityId: 'quality.verify', maximumLatencyMs: 1_000 },
+        })),
+      },
+    );
+    const runs = plan.objective.tasks.map((task) => task.runs[0]!);
+    const routingRuns = runs.slice(0, 2);
+    refreshCandidateSnapshot({ maxConcurrentRuns: 1 });
+    const settled = await Promise.allSettled(
+      routingRuns.map((run, index) =>
+        brokerReservations.reserveForPreparedRun(
+          capability,
+          { workspaceId, principalId },
+          {
+            reservationId: `${planId}:reservation:${index}`,
+            runId: run.id,
+            agentId: `${planId}:agent:${index}`,
+            expectedRunVersion: run.version,
+            idempotencyKey: `${planId}:reservation:${index}`,
+          },
+        ),
+      ),
+    );
+    expect(settled.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(settled.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(
+      await prisma.acpBrokerReservation.count({
+        where: { workspaceId, id: { startsWith: `${planId}:reservation:` }, state: 'RESERVED' },
+      }),
+    ).toBe(1);
+    const fulfilledIndex = settled.findIndex((result) => result.status === 'fulfilled');
+    await expect(
+      brokerReservations.reserveForPreparedRun(
+        capability,
+        { workspaceId, principalId },
+        {
+          reservationId: `${planId}:reservation:${fulfilledIndex}`,
+          runId: routingRuns[fulfilledIndex]!.id,
+          agentId: `${planId}:drifted-agent`,
+          expectedRunVersion: routingRuns[fulfilledIndex]!.version,
+          idempotencyKey: `${planId}:reservation:${fulfilledIndex}`,
+        },
+      ),
+    ).rejects.toThrow(/replay drifted/);
+
+    const rejectedIndex = settled.findIndex((result) => result.status === 'rejected');
+    const rejectedRun = routingRuns[rejectedIndex]!;
+    const rejectedTask = await prisma.acpTask.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: rejectedRun.taskId } },
+    });
+    const expiringId = `${planId}:expiring`;
+    await prisma.acpBrokerReservation.create({
+      data: {
+        id: expiringId,
+        workspaceId,
+        objectiveId: rejectedRun.objectiveId,
+        taskId: rejectedRun.taskId,
+        runId: rejectedRun.id,
+        agentId: `${planId}:expiring-agent`,
+        runtimeId,
+        connectionId,
+        requestHash: '1'.repeat(64),
+        candidateEvidenceId: `${planId}:expiring-candidates`,
+        candidateEvidenceHash: '2'.repeat(64),
+        taskPolicyHash: rejectedTask.policyHash,
+        taskPolicyVersion: rejectedTask.policyVersion,
+        selectedScoreBps: 9_000,
+        estimatedCostMinorUnits: 1n,
+        reservedComputeUnits: 1n,
+        maxConcurrentRuns: 10,
+        evidenceHash: '3'.repeat(64),
+        testOnly: true,
+        idempotencyKey: expiringId,
+        expiresAt: new Date(Date.now() + 1_200),
+      },
+    });
+    let releaseLock!: () => void;
+    let locked!: () => void;
+    const lockedPromise = new Promise<void>((resolve) => (locked = resolve));
+    const releasePromise = new Promise<void>((resolve) => (releaseLock = resolve));
+    const lockTransaction = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_broker_reservations" WHERE "workspaceId"=${workspaceId}::uuid AND "id"=${expiringId} FOR UPDATE`,
+      );
+      locked();
+      await releasePromise;
+    });
+    await lockedPromise;
+    const crossedExpiry = bridge.prepareDispatch(
+      capability,
+      { workspaceId, principalId },
+      {
+        dispatchId: `${planId}:expired-dispatch`,
+        agentId: `${planId}:expiring-agent`,
+        sessionId,
+        idempotencyKey: `${planId}:expired-dispatch`,
+        brokerEvidence: {
+          evidenceId: expiringId,
+          evidenceHash: '3'.repeat(64),
+          workspaceId,
+          taskId: rejectedRun.taskId,
+          runId: rejectedRun.id,
+          agentId: `${planId}:expiring-agent`,
+          runtimeId,
+          connectionId,
+        },
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1_400));
+    releaseLock();
+    await lockTransaction;
+    await expect(crossedExpiry).rejects.toThrow(/broker reservation expired/iu);
+    expect(
+      await prisma.acpBridgeDispatch.count({
+        where: { workspaceId, id: `${planId}:expired-dispatch` },
+      }),
+    ).toBe(0);
+
+    refreshCandidateSnapshot({ maxConcurrentRuns: 10 });
+    const rollbackRun = runs[2]!;
+    const rollbackService = new AcpBrokerReservationService(
+      {
+        async recordOperationalEvent() {
+          throw new Error('synthetic broker audit failure');
+        },
+      } as unknown as AuditService,
+      {
+        async read() {
+          return candidateSnapshot;
+        },
+      },
+      {
+        async allowsDeterministicFixture() {
+          return true;
+        },
+      },
+    );
+    await expect(
+      rollbackService.reserveForPreparedRun(
+        capability,
+        { workspaceId, principalId },
+        {
+          reservationId: `${planId}:rollback-reservation`,
+          runId: rollbackRun.id,
+          agentId: `${planId}:rollback-agent`,
+          expectedRunVersion: rollbackRun.version,
+          idempotencyKey: `${planId}:rollback-reservation`,
+        },
+      ),
+    ).rejects.toThrow('synthetic broker audit failure');
+    expect(
+      await prisma.acpBrokerReservation.findUnique({
+        where: {
+          workspaceId_id: { workspaceId, id: `${planId}:rollback-reservation` },
+        },
+      }),
+    ).toBeNull();
   });
 
   it('rejects replay, post-terminal facts, cross-workspace evidence, and immutable receipt mutation', async () => {
@@ -1032,6 +1347,20 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     expect(
       await prisma.acpRuntime.count({ where: { workspaceId, id: { startsWith: 'codex' } } }),
     ).toBe(0);
+    refreshCandidateSnapshot();
+    await expect(
+      brokerReservations.reserveForPreparedRun(
+        capability,
+        { workspaceId, principalId },
+        {
+          reservationId: `level4-reservation-${suffix}`,
+          runId: level4RunId,
+          agentId: `fixture-agent-${suffix}`,
+          expectedRunVersion: 1,
+          idempotencyKey: `level4-reservation-${suffix}`,
+        },
+      ),
+    ).rejects.toThrow(/Level 0-3/);
     await expect(
       bridge.prepareDispatch(
         capability,
@@ -1047,6 +1376,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             workspaceId,
             taskId: level4TaskId,
             runId: level4RunId,
+            agentId: `fixture-agent-${suffix}`,
             runtimeId,
             connectionId,
           },

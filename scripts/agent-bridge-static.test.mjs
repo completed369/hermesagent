@@ -13,6 +13,7 @@ const packageFiles = [
 const serviceFiles = [
   ...packageFiles,
   'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+  'apps/api/src/modules/agent-control-plane/acp-broker-reservation.service.ts',
   'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
 ];
 
@@ -42,6 +43,28 @@ test('deterministic fake is test-only and no real runtime can be marked connecte
   );
   assert.match(module, /denyTestOnlyGate[\s\S]*return false/u);
   assert.match(module, /denyArtifactContent[\s\S]*return false/u);
+  assert.match(module, /denyCandidates[\s\S]*candidates: \[\]/u);
+});
+
+test('broker reservation and dispatch use the same exact migration-backed binding', () => {
+  const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260825230000_durable_broker_reservations/migration.sql',
+    'utf8',
+  );
+  assert.match(
+    schema,
+    /brokerReservation\s+AcpBrokerReservation\s+@relation\(fields: \[workspaceId, brokerEvidenceId, brokerEvidenceHash, taskId, runId, agentId, runtimeId, connectionId\], references: \[workspaceId, id, evidenceHash, taskId, runId, agentId, runtimeId, connectionId\], onDelete: Cascade\)/u,
+  );
+  assert.match(migration, /acp_bridge_dispatches_broker_reservation_fkey/u);
+  assert.match(
+    migration,
+    /FOR UPDATE OF r;[\s\S]*reservation_expires <= clock_timestamp\(\)[\s\S]*"state"='CLAIMED'/u,
+  );
+  assert.match(
+    migration,
+    /NEW\."state" IN \('COMPLETED','FAILED','CANCELLED'\)[\s\S]*"state"='RELEASED'/u,
+  );
 });
 
 test('bridge receipts cannot persist raw payload, MAC, transcript, prompt, or secret material', () => {

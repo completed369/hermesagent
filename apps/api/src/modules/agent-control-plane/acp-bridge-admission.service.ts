@@ -555,6 +555,7 @@ export class AcpBridgeAdmissionService
       field === 'evidenceHash' ? digest(value, field) : reference(value, field);
     if (
       input.brokerEvidence.workspaceId !== context.workspaceId ||
+      input.brokerEvidence.agentId !== input.agentId ||
       !(await this.brokerEvidence.verify(input.brokerEvidence))
     ) {
       throw new AcpBridgeAdmissionDeniedError('Trusted broker evidence was not verified');
@@ -576,6 +577,7 @@ export class AcpBridgeAdmissionService
             existing.agentId !== input.agentId ||
             existing.runId !== input.brokerEvidence.runId ||
             existing.taskId !== input.brokerEvidence.taskId ||
+            existing.agentId !== input.brokerEvidence.agentId ||
             existing.runtimeId !== input.brokerEvidence.runtimeId ||
             existing.connectionId !== input.brokerEvidence.connectionId ||
             existing.brokerEvidenceId !== input.brokerEvidence.evidenceId ||
@@ -640,6 +642,7 @@ export class AcpBridgeAdmissionService
           throw new AcpBridgeAdmissionDeniedError('Only ready Level 0-3 runs may be admitted');
         if (
           input.brokerEvidence.taskId !== run.taskId ||
+          input.brokerEvidence.agentId !== input.agentId ||
           input.brokerEvidence.runtimeId !== session.runtimeId ||
           input.brokerEvidence.connectionId !== session.connectionId
         )
@@ -1036,6 +1039,7 @@ export class AcpBridgeAdmissionService
             workspaceId: dispatch.workspaceId,
             taskId: dispatch.taskId,
             runId: dispatch.runId,
+            agentId: dispatch.agentId,
             runtimeId: dispatch.runtimeId,
             connectionId: dispatch.connectionId,
           }
