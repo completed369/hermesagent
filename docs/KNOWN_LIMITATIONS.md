@@ -2,14 +2,16 @@
 
 > **Current release note (verified 2026-08-25):** VentureOS is not
 > production-ready or production-deployed. The current product `main` baseline
-> is `1cdf560dcd9bb8e824fa3bf2b82846ff4c3f1675`. Product PRs #59–#74 are
+> is `bc97001a275ac75e7d5a057a6f32f7190bd4e26a`. Product PRs #59–#76 are
 > merged, including the provider-neutral Agent Control Plane, Runtime Broker,
 > Dynamic Agent Factory, verified runtime-interface ADR, tenant-shell switch
 > repair, governed AI COO and Voice Gateway foundations, unified event/audit
-> spine, approval execution-permit bridge, and the non-publishing release-
-> candidate evidence workflow and its security hardening. These are repository
-> capabilities, not proof that an external runtime, provider, image, or
-> environment is active.
+> spine, approval execution-permit bridge, durable objective/project/task/run
+> spine, and the non-publishing release-candidate evidence workflow and its
+> security hardening. Approval preparation now resolves exact workspace-scoped
+> durable task and run rows instead of accepting caller-asserted work. These are
+> repository capabilities, not proof that an external runtime, provider, image,
+> or environment is active.
 >
 > Exact-main GitHub CI passed Prisma generation/validation, the full migration
 > chain, seed, formatting, lint, typecheck, unit, integration,
@@ -27,6 +29,12 @@
 > heartbeat, task/status exchange, and an event/result round trip. The Voice
 > Gateway is a governed provider-neutral foundation, not an activated speech
 > provider or a verified live voice service.
+>
+> The next runtime dependency is a protocol-neutral, authenticated child-
+> process bridge proven first against a deterministic fake fixture. Real Codex,
+> Hermes, and Pi adapters follow only after that boundary is independently
+> verified; repository installation or local process availability is not
+> connection evidence.
 >
 > A dated, non-authoritative operations snapshot verified on 2026-08-25 records
 > operations PR #24 as deployed to the Access-protected Founder Mission Control,
