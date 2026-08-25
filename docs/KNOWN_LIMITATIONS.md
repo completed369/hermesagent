@@ -1,32 +1,49 @@
 # Known Limitations
 
-> **Current release note (2026-08-20):** VentureOS is not production-ready or
-> production-deployed. The current `main` baseline is
-> `e3017aeb881bf47cd911550f19256646b0ba8bbb`; PRs #50 and #55 are merged in
-> addition to PRs #53, #54, #57, and #52. The collaboration exact-head matrix
-> passed its application, migration, browser, accessibility, tenant-isolation,
-> staging-security/load, CodeQL, Prisma/runtime, and five-image gates. Post-merge
-> `main` build/test, application E2E, migration, staging-security/load, and
-> CodeQL jobs are green, with zero open CodeQL alerts. No current-main
-> application image has been published and no private-staging application
-> deployment has been dispatched.
+> **Current release note (verified 2026-08-25):** VentureOS is not
+> production-ready or production-deployed. The current product `main` baseline
+> is `1cdf560dcd9bb8e824fa3bf2b82846ff4c3f1675`. Product PRs #59–#74 are
+> merged, including the provider-neutral Agent Control Plane, Runtime Broker,
+> Dynamic Agent Factory, verified runtime-interface ADR, tenant-shell switch
+> repair, governed AI COO and Voice Gateway foundations, unified event/audit
+> spine, approval execution-permit bridge, and the non-publishing release-
+> candidate evidence workflow and its security hardening. These are repository
+> capabilities, not proof that an external runtime, provider, image, or
+> environment is active.
 >
-> The Agent Control Plane foundation remains draft PR #59. It has been refreshed
-> onto current `main` and is in adversarial repair and exact-head gate review;
-> GitHub is authoritative for its mutable head and checks. No external runtime is
-> verified connected; Codex, Hermes, and Pi remain NOT CONFIGURED for
-> product-status purposes until the full authenticated registration, capability,
-> heartbeat, task/status, event, and result exchange is demonstrated.
+> Exact-main GitHub CI passed Prisma generation/validation, the full migration
+> chain, seed, formatting, lint, typecheck, unit, integration,
+> production build, Chromium E2E, and the disposable staging-security/load gate
+> explicitly without deployment. Exact-main CodeQL passed, with zero open
+> CodeQL alerts when checked on 2026-08-25. The sanitized five-image release-
+> candidate workflow also passed its local build, security, identity, and final
+> source-revalidation gates with zero uploaded artifacts and zero deployments.
+> No image for current `main` has been published and current `main` has not been
+> deployed to private staging.
 >
-> Backup/restore rehearsal, live-provider validation, legal/privacy operations,
-> real billing and email delivery, malware scanning, production observability,
-> AI Workforce, Runtime Broker, AI COO, Mission Control telemetry, and Voice
-> remain incomplete, disabled, or planned. `ventureos.site` is public;
-> `staging.ventureos.site`, `api-staging.ventureos.site`, and
-> `progress.ventureos.site` remain Access-protected. See `ROADMAP.md` for
-> dependency order and never treat draft
-> code, a workflow template, or a passing image scan as publication or
-> deployment evidence.
+> Codex, Hermes, and Pi remain **NOT_CONFIGURED** for product-status purposes.
+> The merged interfaces and routing foundations do not establish connectivity;
+> CONNECTED still requires authenticated registration, capability exchange,
+> heartbeat, task/status exchange, and an event/result round trip. The Voice
+> Gateway is a governed provider-neutral foundation, not an activated speech
+> provider or a verified live voice service.
+>
+> A dated, non-authoritative operations snapshot verified on 2026-08-25 records
+> operations PR #24 as deployed to the Access-protected Founder Mission Control,
+> with its command-center and Site Steward checks green. The private operations
+> evidence and live Access boundary remain authoritative; this product document
+> must not be used to pin future operations state. `ventureos.site` remains
+> public, while `staging.ventureos.site`,
+> `api-staging.ventureos.site`, and `progress.ventureos.site` remain protected.
+>
+> Backup/restore and current-main rollback rehearsal, live-provider validation,
+> legal/privacy operations, real billing and email delivery, malware scanning,
+> production observability, authenticated runtime connections, and commercial
+> proof remain incomplete or unevidenced. Never treat merged source, a workflow
+> template, a sanitized scan, or a protected command-center deployment as
+> application image publication, current-main staging deployment, production,
+> pilot, customer, revenue, or cash evidence. See `ROADMAP.md` for dependency
+> order.
 
 > **Status note (2026-08-01):** this file began as a Phase 1 sandbox inventory
 > and still contains historical phase/sandbox statements. For current executed

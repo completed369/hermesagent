@@ -1,35 +1,35 @@
 # Execution Plan — Phase 0 to Phase 8
 
-> **CURRENT DELIVERY UPDATE — 2026-08-20.** The Phase 0–8 record below is
+> **CURRENT DELIVERY UPDATE — verified 2026-08-25.** The Phase 0–8 record below is
 > historical implementation evidence, not a production-readiness or deployment
 > claim. The current product baseline is `main`
-> `e3017aeb881bf47cd911550f19256646b0ba8bbb`. PRs #50 and #55 have joined
-> PRs #53, #54, #57, and #52 on `main`. The PR #55 merge preserved the modern
-> private-staging workspace shell and added workspace-scoped collaboration,
-> invitations, active-workspace sessions, role enforcement, and tenant
-> isolation. Its exact-head matrix passed formatting, lint, typecheck, unit,
-> integration, migration, build, E2E, accessibility, staging-security/load,
-> CodeQL, Prisma/runtime, and five-image checks. Post-merge `main` build/test,
-> application E2E, migration, staging-security/load, and CodeQL jobs are green,
-> with zero open CodeQL alerts. No application image for this baseline has been
-> published and no private-staging application deployment was dispatched.
+> `1cdf560dcd9bb8e824fa3bf2b82846ff4c3f1675`. Product PRs #59–#74 are merged,
+> including the Agent Control Plane, Runtime Broker, Dynamic Agent Factory,
+> runtime-interface ADR, tenant-shell switch repair, AI COO, Voice Gateway,
+> unified event/audit spine, approval execution-permit bridge, and sanitized
+> release-candidate evidence workflow/hardening. Exact-main CI passed the full
+> migration chain, application integration/E2E, and staging-security/load gate
+> without deployment. CodeQL passed, with zero open alerts when checked on
+> 2026-08-25. The sanitized five-image workflow passed with no artifact upload
+> and no deployment. No image for current `main` has been published and current
+> `main` has not been deployed to private staging.
 >
-> The next product candidate is draft PR #59, a provider-neutral Agent Control
-> Plane contract foundation. It has been refreshed onto this `main` and is in
-> adversarial repair and exact-head gate review; GitHub is authoritative for its
-> mutable head and checks. It is not evidence that Codex, Hermes, Pi, or any other runtime is
-> connected: authenticated registration, capability exchange, heartbeat,
-> task/status exchange, and an event/result round trip have not yet been
-> evidenced. Runtime Broker, Dynamic Agent Factory, AI COO, Mission Control,
-> Voice, and autonomous-company work remain roadmap work unless supported by
-> later repository and deployment evidence.
+> These merged foundations are not evidence that Codex, Hermes, Pi, or any
+> external runtime is connected. All three remain **NOT_CONFIGURED** until
+> authenticated registration, capability exchange, heartbeat, task/status
+> exchange, and an event/result round trip are evidenced. The Voice Gateway is
+> not an activated speech provider or verified live voice service. Current-main
+> backup/restore and rollback rehearsal, live providers, production
+> observability, commercial proof, and legal/privacy readiness remain unfinished.
 >
 > Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
 > `ventureos.site` is the public entry point; `staging.ventureos.site`,
 > `api-staging.ventureos.site`, and `progress.ventureos.site` are
-> Access-protected. GitHub remains the source of
-> exact commit and CI evidence; the progress site must mirror that evidence and
-> clearly label validated-but-unmerged work.
+> protected. A dated operations snapshot verified 2026-08-25 records operations
+> PR #24 as deployed to the Access-protected Founder Mission Control. Private
+> operations evidence and the live Access boundary are authoritative for newer
+> state; this product plan is not an operations pin. GitHub remains the source of
+> exact product commit and CI evidence.
 
 This is the single source of truth for "what is actually done" versus "what
 is still to build," across the entire master spec (all numbered phases 0–8, section

@@ -7,6 +7,32 @@ validation evidence, staging-gate configuration, private-staging templates, and
 external operational state. It does not claim that any deployment was performed
 during this documentation-only reconciliation.
 
+### Verified product snapshot (2026-08-25)
+
+- Product `main` is `1cdf560dcd9bb8e824fa3bf2b82846ff4c3f1675`.
+- Exact-main CI passed migrations, integration, production build, Chromium E2E,
+  and the disposable staging-security/load gate. The gate is explicitly no-
+  deploy validation.
+- Exact-main CodeQL passed; zero CodeQL alerts were open when checked on
+  2026-08-25.
+- The sanitized release-candidate workflow built and scanned five runner-local
+  image archives, validated local SBOM and source identity, uploaded zero
+  artifacts, and created zero deployments.
+- No image for current product `main` has been published. Current product
+  `main` has not been deployed to private staging. Historical publication and
+  private-staging evidence belongs to an older product baseline, not current
+  `main`.
+
+### Dated operations snapshot (non-authoritative)
+
+As checked on 2026-08-25, operations PR #24 had deployed the Access-protected
+Founder Mission Control, and its deployment, command-center, and Site Steward
+checks were green. That deployment is the protected progress site, not the
+product application, API staging, image registry, or production. Private
+operations evidence and the live Cloudflare Access boundary are authoritative
+for current state; this dated snapshot must not be treated as a mutable cross-
+repository pin.
+
 ## Deployment-state taxonomy
 
 Use these terms precisely:
