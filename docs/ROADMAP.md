@@ -62,6 +62,11 @@ published and current `main` has not been deployed to private staging.
   digest; authentication and frame verification bind to the durable digest.
   Production remains deny-only and the slice adds no credential backend,
   transport, process launcher, provider, or runtime connectivity.
+- Product PR #84: a verified pure OS-supervision admission policy that binds an
+  exact normalized manifest to short-lived trusted adapter, executable,
+  lexical-worktree, argument-policy, and resource evidence. Its output is inert,
+  filesystem and launch-time TOCTOU remain open, and the production launcher
+  continues to deny every process request.
 - Product PRs #66, #67, #69, #70, #71, #73, and #74: a dispatch-only,
   non-publishing release-candidate evidence workflow with runner-local five-
   image builds/scans, sanitized conclusions, exact source/archive/report/SBOM
@@ -77,10 +82,10 @@ published and current `main` has not been deployed to private staging.
    preparation, protocol-neutral Agent Bridge admission, and durable broker
    reservation and scoped secret-lease foundations are MERGED and VERIFIED.
    The secret boundary remains deny-only and adds no credential backend or
-   connection path. A
-   pure OS-supervision admission policy is in review; it adds no filesystem or
-   process path. Next add reviewed child-process transport and supervision
-   across the bridge boundary before implementing real runtime adapters. Cost
+   connection path. The pure OS-supervision admission policy is also MERGED and
+   VERIFIED; it adds no filesystem or process path. Next add a reviewed trusted
+   executable/admission-evidence reader and deny-by-default supervisor
+   composition before any process creation or runtime adapter. Cost
    governance,
    evaluations, knowledge/playbooks, and adapter hardening continue afterward.
    Merged contracts are not runtime-connectivity evidence.
@@ -117,7 +122,8 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    exact durable capacity/cost/compute reservations, and scoped deny-only
    secret leases are MERGED and VERIFIED. The bridge is service-only, stops at
    `PARTIAL`, and has a deny-only launcher plus an unexported deterministic test
-   fixture. Transport, child-process supervision, and authenticated runtime
+   fixture. A trusted executable/admission-evidence reader, deny-by-default
+   supervisor composition, actual process transport, and authenticated runtime
    adapters remain to be completed. Codex, Hermes, and Pi remain
    **NOT_CONFIGURED** until each demonstrates authenticated
    registration, capability exchange, heartbeat, task/status exchange, and an

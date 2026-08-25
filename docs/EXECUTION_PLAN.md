@@ -3,13 +3,14 @@
 > **CURRENT DELIVERY UPDATE — verified 2026-08-26.** The Phase 0–8 record below is
 > historical implementation evidence, not a production-readiness or deployment
 > claim. The current product baseline is `main`
-> `4e9a5d82eed81746ee6ce205c08747459cfcd2c2`. Product PRs #59–#82 are merged,
+> `b5aa3e54ac1de1cfc75f5c466309850a9a4ecf37`. Product PRs #59–#84 are merged,
 > including the Agent Control Plane, Runtime Broker, Dynamic Agent Factory,
 > runtime-interface ADR, tenant-shell switch repair, AI COO, Voice Gateway,
 > unified event/audit spine, approval execution-permit bridge, durable
 > objective/project/task/run spine, durable protocol-neutral Agent Bridge
 > admission, durable broker decision and capacity/budget reservation evidence,
-> a scoped deny-only bridge secret-lease boundary, and sanitized release-
+> a scoped deny-only bridge secret-lease boundary, a pure inert OS-supervision
+> admission policy, and sanitized release-
 > candidate evidence workflow/hardening.
 > Approval preparation now binds to real workspace-scoped
 > durable task/run rows. Exact-main CI passed the full
@@ -32,8 +33,10 @@
 > broker reservations now serialize exact, short-lived capacity, cost, and
 > compute holds without launching a runtime or creating a provider/finance
 > charge. The next
-> runtime dependency is reviewed child-process transport and supervision before
-> any real Codex, Hermes, or Pi adapter is treated as usable.
+> runtime dependency is a reviewed trusted executable/admission-evidence reader
+> and deny-by-default supervisor composition. Process creation and transport
+> remain separate later changes before any real Codex, Hermes, or Pi adapter is
+> treated as usable.
 >
 > Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
 > `ventureos.site` is the public entry point; `staging.ventureos.site`,
@@ -564,9 +567,10 @@ phase deliverables. Current status:
    mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
    mock-only under ADR-010. Neither milestone is a release-readiness claim.
 2. Preserve the merged workspace/collaboration and Agent Control Plane
-   foundations through PR #82. The next runtime dependency is reviewed,
-   protocol-neutral child-process transport and supervision across the existing
-   service-only bridge boundary. Real adapters follow only after authenticated
+   foundations through PR #84. The next runtime dependency is a reviewed
+   trusted executable/admission-evidence reader and deny-by-default supervisor
+   composition across the existing service-only bridge boundary. Actual process
+   creation and real adapters follow only after authenticated
    end-to-end evidence; Codex, Hermes, and Pi remain `NOT_CONFIGURED`.
 3. Keep running the sanitized five-image workflow against exact current `main`
    as scan evidence only. Image publication requires separate approval for that

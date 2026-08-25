@@ -2,7 +2,7 @@
 
 > **Current release note (verified 2026-08-26):** VentureOS is not
 > production-ready or production-deployed. The current product `main` baseline
-> is `4e9a5d82eed81746ee6ce205c08747459cfcd2c2`. Product PRs #59–#82 are
+> is `b5aa3e54ac1de1cfc75f5c466309850a9a4ecf37`. Product PRs #59–#84 are
 > merged, including the provider-neutral Agent Control Plane, Runtime Broker,
 > Dynamic Agent Factory, verified runtime-interface ADR, tenant-shell switch
 > repair, governed AI COO and Voice Gateway foundations, unified event/audit
@@ -43,8 +43,9 @@
 > workspace, task, run, runtime, and connection while serializing short-lived
 > capacity, cost, and compute holds. Those holds are routing evidence, not a
 > runtime launch, provider charge, or connectivity proof. The next runtime
-> dependency is reviewed child-process transport and supervision across that
-> boundary. Real Codex, Hermes, and Pi adapters follow only after authenticated
+> dependency is a reviewed trusted executable/admission-evidence reader and
+> deny-by-default supervisor composition. Actual process creation and transport
+> remain separate later changes. Real Codex, Hermes, and Pi adapters follow only after authenticated
 > end-to-end evidence; repository installation or local process availability is
 > not connection evidence.
 >
