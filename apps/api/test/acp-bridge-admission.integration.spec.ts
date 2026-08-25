@@ -186,12 +186,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       { workspaceId, principalId },
       plan,
     );
-    taskId = created.objective.tasks[0]!.id;
-    runId = created.objective.tasks[0]!.runs[0]!.id;
-    level4TaskId = created.objective.tasks[1]!.id;
-    level4RunId = created.objective.tasks[1]!.runs[0]!.id;
-    cancelTaskId = created.objective.tasks[2]!.id;
-    cancelRunId = created.objective.tasks[2]!.runs[0]!.id;
+    const createdTasks = new Map(created.objective.tasks.map((task) => [task.id, task]));
+    taskId = `bridge-task-${suffix}`;
+    runId = createdTasks.get(taskId)!.runs[0]!.id;
+    level4TaskId = `bridge-level4-${suffix}`;
+    level4RunId = createdTasks.get(level4TaskId)!.runs[0]!.id;
+    cancelTaskId = `bridge-cancel-${suffix}`;
+    cancelRunId = createdTasks.get(cancelTaskId)!.runs[0]!.id;
 
     for (const [label, bytes] of [
       ['zero', 0],
