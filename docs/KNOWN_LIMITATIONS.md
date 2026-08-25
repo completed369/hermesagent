@@ -1,13 +1,14 @@
 # Known Limitations
 
-> **Current release note (verified 2026-08-25):** VentureOS is not
+> **Current release note (verified 2026-08-26):** VentureOS is not
 > production-ready or production-deployed. The current product `main` baseline
-> is `08e47d560fd03373b04b615bf2af5c193f8522c5`. Product PRs #59–#78 are
+> is `e65886dbfaf65ac24b5d53a1e2ac6ac4e5579ac4`. Product PRs #59–#80 are
 > merged, including the provider-neutral Agent Control Plane, Runtime Broker,
 > Dynamic Agent Factory, verified runtime-interface ADR, tenant-shell switch
 > repair, governed AI COO and Voice Gateway foundations, unified event/audit
 > spine, approval execution-permit bridge, durable objective/project/task/run
-> spine, durable protocol-neutral Agent Bridge admission, and the non-publishing
+> spine, durable protocol-neutral Agent Bridge admission, durable broker
+> decision and capacity/budget reservation evidence, and the non-publishing
 > release-candidate evidence workflow and its security hardening. Approval
 > preparation now resolves exact workspace-scoped
 > durable task and run rows instead of accepting caller-asserted work. These are
@@ -18,7 +19,7 @@
 > chain, seed, formatting, lint, typecheck, unit, integration,
 > production build, Chromium E2E, and the disposable staging-security/load gate
 > explicitly without deployment. Exact-main CodeQL passed, with zero open
-> CodeQL alerts when checked on 2026-08-25. The sanitized five-image release-
+> CodeQL alerts when checked on 2026-08-26. The sanitized five-image release-
 > candidate workflow also passed its local build, security, identity, and final
 > source-revalidation gates with zero uploaded artifacts and zero deployments.
 > No image for current `main` has been published and current `main` has not been
@@ -33,7 +34,11 @@
 >
 > The merged bridge is a service-only authenticated admission boundary proven
 > with a deterministic test fixture; it has no transport, controller, network,
-> or process-launch path and stops runtime truth at `PARTIAL`. The next runtime
+> or process-launch path and stops runtime truth at `PARTIAL`. Durable broker
+> reservations now bind trusted agent and candidate evidence to the exact
+> workspace, task, run, runtime, and connection while serializing short-lived
+> capacity, cost, and compute holds. Those holds are routing evidence, not a
+> runtime launch, provider charge, or connectivity proof. The next runtime
 > dependency is reviewed child-process transport and supervision across that
 > boundary. Real Codex, Hermes, and Pi adapters follow only after authenticated
 > end-to-end evidence; repository installation or local process availability is

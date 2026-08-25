@@ -1,17 +1,17 @@
 # Roadmap
 
-## Current delivery roadmap (verified 2026-08-25)
+## Current delivery roadmap (verified 2026-08-26)
 
 The Phase 0–8 checklist below is a historical record of implemented product
 scope. It is **not** a production-readiness or deployment claim. The current
 product baseline is `main` commit
-`08e47d560fd03373b04b615bf2af5c193f8522c5`. Exact-main CI and CodeQL are
+`e65886dbfaf65ac24b5d53a1e2ac6ac4e5579ac4`. Exact-main CI and CodeQL are
 green. The most recent sanitized five-image release-candidate evidence is also
 green, while GitHub remains authoritative for any newer exact-main dispatch. CI
 includes the full migration chain, application integration/E2E, and a disposable
 staging-security/load gate that performs no deployment. The release-candidate
 workflow uploaded no artifacts and created no deployment. Zero CodeQL alerts
-were open when checked on 2026-08-25. No current-main application image has been
+were open when checked on 2026-08-26. No current-main application image has been
 published and current `main` has not been deployed to private staging.
 
 ### Completed
@@ -50,6 +50,12 @@ published and current `main` has not been deployed to private staging.
   artifact verification ports, and deterministic test-only fixture coverage.
   It adds no transport, controller, network, process launcher, or runtime
   connectivity claim and stops runtime truth at `PARTIAL`.
+- Product PR #80: verified durable broker decisions and short-lived capacity,
+  cost, and compute reservations bound to exact workspace, task, run, trusted
+  agent evidence, runtime, connection, policy, and candidate evidence. Database
+  constraints and lifecycle guards serialize holds, expiry, claim, and release;
+  this is routing evidence, not execution, connectivity, provider spend, or a
+  finance ledger charge.
 - Product PRs #66, #67, #69, #70, #71, #73, and #74: a dispatch-only,
   non-publishing release-candidate evidence workflow with runner-local five-
   image builds/scans, sanitized conclusions, exact source/archive/report/SBOM
@@ -62,8 +68,9 @@ published and current `main` has not been deployed to private staging.
    GitHub is authoritative for this documentation PR's mutable head and checks;
    this file does not circularly pin its own commit.
 2. **Agent Control Plane continuation:** the durable task/run, approval-
-   preparation, and protocol-neutral Agent Bridge admission foundations are
-   MERGED and VERIFIED. Next add reviewed child-process transport and
+   preparation, protocol-neutral Agent Bridge admission, and durable broker
+   reservation foundations are MERGED and VERIFIED. Next add reviewed
+   child-process transport and
    supervision across the bridge boundary before implementing real runtime
    adapters. Cost governance,
    evaluations, knowledge/playbooks, and adapter hardening continue afterward.
@@ -97,8 +104,9 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    preparation bound to real durable task/run rows and fail-closed evidence
    ports. This is coordination evidence, not runtime connectivity or execution.
 2. **Runtime Broker and adapters — IN PROGRESS:** the capability- and
-   policy-aware Runtime Broker and constrained Agent Bridge durable admission
-   foundations are MERGED and VERIFIED. The bridge is service-only, stops at
+   policy-aware Runtime Broker, constrained Agent Bridge durable admission, and
+   exact durable capacity/cost/compute reservation foundations are MERGED and
+   VERIFIED. The bridge is service-only, stops at
    `PARTIAL`, and has a deny-only launcher plus an unexported deterministic test
    fixture. Transport, child-process supervision, and authenticated runtime
    adapters remain to be completed. Codex, Hermes, and Pi remain
