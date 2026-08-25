@@ -1,11 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  assertBridgeSecretStrength,
   BRIDGE_BROKER_EVIDENCE_VERIFIER,
   BRIDGE_ARTIFACT_CONTENT_VERIFIER,
   BRIDGE_CAPABILITY_POLICY_VERIFIER,
-  BRIDGE_SECRET_RESOLVER,
+  BRIDGE_SECRET_LEASE_RESOLVER,
   BRIDGE_TEST_ONLY_GATE,
   BRIDGE_PROTOCOL_VERSION,
   canonicalJson,
@@ -14,11 +13,13 @@ import {
   validateBridgeEnvelope,
   validateUsageDelta,
   verifyBridgeEnvelope,
+  BridgeSecretLeaseError,
   type BridgeArtifactContentVerifier,
   type BridgeBrokerEvidenceVerifier,
   type BridgeCapabilityPolicyVerifier,
   type BridgeEnvelope,
-  type BridgeSecretResolver,
+  type BridgeSecretLeaseRequest,
+  type BridgeSecretLeaseResolver,
   type BridgeTestOnlyGate,
   type TrustedBridgeBrokerEvidence,
 } from '@ventureos/agent-bridge';
@@ -123,7 +124,8 @@ export class AcpBridgeAdmissionService
 {
   constructor(
     @Inject(AUDIT_SERVICE) private readonly auditService: AuditService,
-    @Inject(BRIDGE_SECRET_RESOLVER) private readonly secrets: BridgeSecretResolver,
+    @Inject(BRIDGE_SECRET_LEASE_RESOLVER)
+    private readonly secrets: BridgeSecretLeaseResolver,
     @Inject(BRIDGE_BROKER_EVIDENCE_VERIFIER)
     private readonly brokerEvidence: BridgeBrokerEvidenceVerifier,
     @Inject(BRIDGE_CAPABILITY_POLICY_VERIFIER)
@@ -150,15 +152,17 @@ export class AcpBridgeAdmissionService
         'Real named runtimes require a separately reviewed connection change',
       );
     }
-    const secret = await this.secrets.resolve(input.secretReference);
-    try {
-      assertBridgeSecretStrength(secret);
-    } catch {
-      throw new AcpBridgeAdmissionDeniedError(
-        'Bridge secret material does not meet the minimum strength',
-      );
-    }
-    const secretDigest = digestSecretReference(secret);
+    const secretDigest = await this.withSecretLease(
+      {
+        workspaceId: context.workspaceId,
+        runtimeId: input.runtimeId,
+        connectionId: input.connectionId,
+        secretReference: input.secretReference,
+        authGeneration: 1,
+        purpose: 'PROVISION',
+      },
+      (secret) => digestSecretReference(secret),
+    );
     return prisma.$transaction(
       async (tx) => {
         const [existingByRuntime, existingByKey] = await Promise.all([
@@ -362,12 +366,6 @@ export class AcpBridgeAdmissionService
         if (parentNonce !== session.parentNonce) {
           throw new AcpBridgeAdmissionDeniedError('Challenge nonce mismatch');
         }
-        const secret = await this.secrets.resolve(lockedConnection.runtime.secretReference);
-        if (digestSecretReference(secret) !== lockedConnection.runtime.secretDigest) {
-          throw new AcpBridgeAdmissionDeniedError(
-            'Resolved bridge secret does not match provisioning',
-          );
-        }
         const keyContext = {
           workspaceId: session.workspaceId,
           runtimeId: session.runtimeId,
@@ -377,8 +375,30 @@ export class AcpBridgeAdmissionService
           parentNonce: session.parentNonce,
           runtimeNonce,
         };
-        const keys = deriveBridgeKeys(secret, keyContext);
-        verifyBridgeEnvelope(envelope, keys.runtimeToParent, keyContext, now);
+        const keyDigest = await this.withSecretLease(
+          {
+            workspaceId: session.workspaceId,
+            runtimeId: session.runtimeId,
+            connectionId: session.connectionId,
+            secretReference: lockedConnection.runtime.secretReference,
+            expectedDigest: lockedConnection.runtime.secretDigest,
+            authGeneration: lockedConnection.authGeneration,
+            purpose: 'AUTHENTICATE',
+          },
+          (secret) => {
+            const keys = deriveBridgeKeys(secret, keyContext);
+            try {
+              verifyBridgeEnvelope(envelope, keys.runtimeToParent, keyContext, now);
+              return createHash('sha256')
+                .update(keys.parentToRuntime)
+                .update(keys.runtimeToParent)
+                .digest('hex');
+            } finally {
+              keys.parentToRuntime.fill(0);
+              keys.runtimeToParent.fill(0);
+            }
+          },
+        );
         if (envelope.sequence !== 1)
           throw new AcpBridgeAdmissionConflictError('Authentication sequence mismatch');
         const receipt = await this.createReceipt(tx, envelope);
@@ -387,10 +407,7 @@ export class AcpBridgeAdmissionService
           data: {
             state: 'AUTHENTICATED',
             runtimeNonce,
-            keyDigest: sha256({
-              parentToRuntime: Buffer.from(keys.parentToRuntime).toString('hex'),
-              runtimeToParent: Buffer.from(keys.runtimeToParent).toString('hex'),
-            }),
+            keyDigest,
             expectedSequence: 2,
             authenticatedAt: now,
           },
@@ -485,9 +502,6 @@ export class AcpBridgeAdmissionService
             'Authenticated unexpired bridge session required',
           );
         }
-        const secret = await this.secrets.resolve(lockedConnection.runtime.secretReference);
-        if (digestSecretReference(secret) !== lockedConnection.runtime.secretDigest)
-          throw new AcpBridgeAdmissionDeniedError('Bridge secret drift');
         const keyContext = {
           workspaceId: session.workspaceId,
           runtimeId: session.runtimeId,
@@ -497,11 +511,25 @@ export class AcpBridgeAdmissionService
           parentNonce: session.parentNonce,
           runtimeNonce: session.runtimeNonce,
         };
-        verifyBridgeEnvelope(
-          envelope,
-          deriveBridgeKeys(secret, keyContext).runtimeToParent,
-          keyContext,
-          now,
+        await this.withSecretLease(
+          {
+            workspaceId: session.workspaceId,
+            runtimeId: session.runtimeId,
+            connectionId: session.connectionId,
+            secretReference: lockedConnection.runtime.secretReference,
+            expectedDigest: lockedConnection.runtime.secretDigest,
+            authGeneration: lockedConnection.authGeneration,
+            purpose: 'VERIFY_FRAME',
+          },
+          (secret) => {
+            const keys = deriveBridgeKeys(secret, keyContext);
+            try {
+              verifyBridgeEnvelope(envelope, keys.runtimeToParent, keyContext, now);
+            } finally {
+              keys.parentToRuntime.fill(0);
+              keys.runtimeToParent.fill(0);
+            }
+          },
         );
         if (envelope.sequence !== session.expectedSequence)
           throw new AcpBridgeAdmissionConflictError('Bridge sequence replay or gap');
@@ -1268,6 +1296,19 @@ export class AcpBridgeAdmissionService
       throw new AcpBridgeAdmissionDeniedError(
         'Deterministic fixture admission is restricted to an explicit test-only harness',
       );
+    }
+  }
+
+  private async withSecretLease<T>(
+    request: Readonly<BridgeSecretLeaseRequest>,
+    consumer: (secret: Uint8Array) => Promise<T> | T,
+  ): Promise<T> {
+    try {
+      return await this.secrets.withSecret(request, consumer);
+    } catch (error) {
+      if (error instanceof BridgeSecretLeaseError)
+        throw new AcpBridgeAdmissionDeniedError(error.message);
+      throw error;
     }
   }
 

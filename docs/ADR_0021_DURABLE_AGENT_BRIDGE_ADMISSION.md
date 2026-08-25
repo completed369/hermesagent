@@ -21,7 +21,8 @@ Add a bounded, service-only admission foundation:
   message authentication, canonical UTC timestamps with a five-minute maximum
   lifetime, sensitive-text rejection, pre-allocation bounded buffering, usage
   policy, and a production launcher that always denies.
-- Secret bytes are supplied only through an injected server-side resolver.
+- Secret bytes are supplied only through the scoped lease boundary in
+  ADR-0023. The production composition root remains deny-only.
   The database stores a secret reference and digests; it never stores the
   secret, derived keys, raw MACs, protocol payloads, prompts, transcripts, or
   private reasoning.

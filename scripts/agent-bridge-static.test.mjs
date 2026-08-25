@@ -9,6 +9,7 @@ const packageFiles = [
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
   'packages/agent-bridge/src/protocol.ts',
+  'packages/agent-bridge/src/secret-lease.ts',
 ];
 const serviceFiles = [
   ...packageFiles,
@@ -25,6 +26,21 @@ test('Agent Bridge foundation contains no transport, network, or process executi
   );
   assert.doesNotMatch(source, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
   assert.doesNotMatch(source, /@Controller\s*\(/u);
+});
+
+test('production secret resolution is deny-only and has no ambient credential source', () => {
+  const source = serviceFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  assert.doesNotMatch(source, /from\s+['"]node:(?:fs|os)['"]/u);
+  assert.doesNotMatch(source, /\bprocess\.env\b|\bdotenv\b/u);
+  assert.doesNotMatch(index, /deterministic.*secret|fake.*secret/iu);
+  assert.doesNotMatch(source, /\bBRIDGE_SECRET_RESOLVER\b/u);
+  assert.match(module, /new DenyBridgeSecretLeaseResolver\(\)/u);
+  assert.match(module, /provide:\s*BRIDGE_SECRET_LEASE_RESOLVER/u);
 });
 
 test('deterministic fake is test-only and no real runtime can be marked connected', () => {

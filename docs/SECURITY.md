@@ -16,6 +16,16 @@ request. Neither AI COO cards nor voice input provide authority, and this slice
 contains no runtime dispatch or external execution path. Hashes are integrity
 and drift evidence, not a claim of tamper-proof storage.
 
+## Agent Bridge secret lease boundary
+
+Bridge secret use is scoped to the exact workspace, runtime, connection,
+authentication generation, durable digest, and purpose. Each use resolves a
+fresh owned copy, validates a 32–4096 byte bound, and zeros owned secret and
+derived-key copies in `finally`. JavaScript cannot guarantee physical erasure,
+and the source and in-process consumer remain trusted boundaries. Production
+is deny-only: there is no credential, file, environment, network, provider, or
+process source in this slice. See ADR-0023.
+
 ## Implemented in Phase 1
 
 - Password hashing: scrypt with random per-password salt, constant-time
