@@ -1026,7 +1026,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           title: 'Bound runtime capacity',
           desiredOutcome: 'Only one reservation survives',
           maximumAuthority: 3,
-          costLimit: { currency: 'EUR', maximumMinorUnits: 300, maximumComputeUnits: 300 },
+          costLimit: { currency: 'EUR', maximumMinorUnits: 500, maximumComputeUnits: 500 },
           acceptanceCriteria: ['capacity'],
           verificationCriteria: ['serialized'],
           stopConditions: ['deny'],
