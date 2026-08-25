@@ -1,19 +1,17 @@
 # Roadmap
 
-## Current delivery roadmap (2026-08-20)
+## Current delivery roadmap (verified 2026-08-25)
 
 The Phase 0–8 checklist below is a historical record of implemented product
 scope. It is **not** a production-readiness or deployment claim. The current
 product baseline is `main` commit
-`e3017aeb881bf47cd911550f19256646b0ba8bbb`. PRs #50 and #55 are merged in
-addition to PRs #53, #54, #57, and #52. The exact PR #55 collaboration head
-passed formatting, lint, typecheck, unit, integration, migrations, production
-build, browser/E2E, accessibility, collaboration, tenant isolation,
-staging-security/load, CodeQL, Prisma/runtime, and all five final-image gates.
-Post-merge `main` build/test, application E2E, migration,
-staging-security/load, and CodeQL jobs are green, with zero open CodeQL alerts.
-No application image for this baseline has been published and no
-private-staging application deployment has been dispatched.
+`1cdf560dcd9bb8e824fa3bf2b82846ff4c3f1675`. Exact-main CI, CodeQL, and the
+sanitized five-image release-candidate workflow are green. CI includes the full
+migration chain, application integration/E2E, and a disposable staging-
+security/load gate that performs no deployment. The release-candidate workflow
+uploaded no artifacts and created no deployment. Zero CodeQL alerts were open
+when checked on 2026-08-25. No current-main application image has been published
+and current `main` has not been deployed to private staging.
 
 ### Completed
 
@@ -33,30 +31,36 @@ private-staging application deployment has been dispatched.
   separately from product deployment.
 - Fail-closed publication and private-staging workflow templates. Their
   presence remains capability evidence, not deployment evidence.
+- Product PRs #59–#65: provider-neutral Agent Control Plane, Runtime Broker,
+  Dynamic Agent Factory, verified Codex/Hermes/Pi interface evidence,
+  tenant-shell workspace-switch repair, governed AI COO, and governed Voice
+  Gateway foundations.
+- Product PR #68: a tenant-scoped unified operational event and audit spine.
+- Product PR #72: governed approval execution permits that bridge approval
+  decisions to bounded execution authority.
+- Product PRs #66, #67, #69, #70, #71, #73, and #74: a dispatch-only,
+  non-publishing release-candidate evidence workflow with runner-local five-
+  image builds/scans, sanitized conclusions, exact source/archive/report/SBOM
+  identity checks, canonical-main revalidation, and no artifact upload.
 
 ### In progress
 
-1. **Roadmap reconciliation:** this PR updates the three current-delivery
-   documents onto the collaboration baseline. GitHub is authoritative for its
-   changing PR head and checks; this document must not circularly pin its own
-   mutable commit.
-2. **Agent Control Plane foundation:** product PR #59 is an open draft refreshed
-   onto current `main` and in adversarial repair and exact-head gate review as
-   observed on 2026-08-20. GitHub is authoritative for its mutable head and
-   checks. It establishes provider-neutral contracts only; it does not prove
-   any runtime connection.
-3. **Public journey:** operations-repository PR #21 is an open, validation-green
-   draft as observed on 2026-08-20. The operations repository remains
-   authoritative for its mutable head and checks. It collects no personal data
-   and makes no pricing, customer, legal, provider, or revenue claim. Because
-   merging may update `ventureos.site`, its final exact head retains the
-   deploy-aware founder boundary.
-4. **Founder command center:** operations-repository PR #20 is an open,
-   validation-green draft as observed on 2026-08-20. The operations repository
-   remains authoritative for its mutable head and checks. It must be refreshed
-   after the public-site sequence. Merging it triggers the protected
-   progress-site workflow, so its final exact head retains the deploy-aware
-   founder boundary.
+1. **Documentation reconciliation:** keep public product documentation aligned
+   with current repository, CI, security, deployment, and commercial evidence.
+   GitHub is authoritative for this documentation PR's mutable head and checks;
+   this file does not circularly pin its own commit.
+2. **Agent Control Plane continuation:** extend the merged foundations into a
+   usable task/run/approval/control plane, cost governance, evaluations,
+   knowledge/playbooks, and real runtime adapters. Merged contracts are not
+   runtime-connectivity evidence.
+3. **Mission Control continuation:** the protected Founder Mission Control is
+   deployed from the operations repository and displays verified company state.
+   Continue authenticated telemetry, task graph, approvals, security,
+   infrastructure, commercial, finance, and board views without exposing
+   confidential fields or weakening Cloudflare Access.
+4. **Commercial validation:** select and qualify one real beachhead pilot from
+   evidence. Synthetic readiness is not a pilot, customer, revenue, conversion,
+   or product-market-fit claim.
 
 ### Evidence-driven company OS workstreams
 
@@ -65,36 +69,42 @@ PUBLISHED → DEPLOYED → VERIFIED`, with `PILOT`, `PRODUCTION`, `BLOCKED`, and
 `RETIRED` only where the corresponding evidence exists. Never collapse merged,
 published, deployed, verified, pilot, customer, invoice, or cash states.
 
-1. **Agent Control Plane — IN PROGRESS:** land the provider-neutral foundation,
-   then implement tenant-scoped agents, runtimes, capabilities, authority,
+1. **Agent Control Plane — IN PROGRESS:** the provider-neutral foundation,
+   unified event/audit spine, and approval execution permits are MERGED. Continue
+   tenant-scoped agents, runtimes, capabilities, authority,
    objectives/tasks/dependencies, runs/checkpoints, events, artifacts,
    approvals, heartbeats, failures/retries/handoffs, locks, schedules,
    notifications/incidents, usage/cost, and versioned models/prompts/tools/
    policies. Runtime identity, replay resistance, scoped credentials, revocation,
    concurrency, nesting, retry, time, tool, and budget limits are release gates.
-2. **Runtime Broker and adapters — PLANNED:** implement a capability- and
-   policy-aware adapter contract plus a constrained Agent Bridge. Codex, Hermes,
-   and Pi remain **NOT CONFIGURED** until each demonstrates authenticated
+2. **Runtime Broker and adapters — IN PROGRESS:** the capability- and
+   policy-aware Runtime Broker foundation is MERGED. A constrained Agent Bridge
+   and authenticated runtime adapters remain to be completed. Codex, Hermes, and
+   Pi remain **NOT_CONFIGURED** until each demonstrates authenticated
    registration, capability exchange, heartbeat, task/status exchange, and an
    event/result round trip. Do not infer connectivity from installed software,
    repositories, or prior conversations.
-3. **Dynamic Agent Factory and AI COO — PLANNED:** create bounded temporary
-   specialists only when specialization adds value; use isolated worktrees,
+3. **Dynamic Agent Factory and AI COO — IN PROGRESS:** governed foundations for
+   both are MERGED. Continue bounded temporary specialists only when
+   specialization adds value; use isolated worktrees,
    branches, ownership, locks, acceptance criteria, stop conditions, retention,
    authority, and budgets. AI COO decomposes founder objectives and coordinates
    human and AI assignees but cannot bypass CI, security, policy, or Level-4
    boundaries.
-4. **Mission Control and AI Workforce — PLANNED:** evolve the protected progress
-   site into an evidence-backed view of company health, objectives/tasks/runs,
+4. **Mission Control and AI Workforce — IN PROGRESS:** the protected Founder
+   Mission Control is deployed from the operations repository. Continue evolving
+   it into an evidence-backed view of company health, objectives/tasks/runs,
    real agent telemetry, approvals, incidents, releases, infrastructure,
    security, customers, commercial evidence, finance, costs, board decisions,
    and risks. Do not fake live events or publish arbitrary percentages.
-5. **Voice — PLANNED:** deliver push-to-talk, provider-neutral STT, transcript,
-   shared AI COO/policy routing, response, provider-neutral TTS, stop/replay,
-   history, and live-evidence briefings before streaming or hands-free modes.
+5. **Voice — IN PROGRESS:** the governed provider-neutral Voice Gateway
+   foundation is MERGED. Push-to-talk, activated STT/TTS adapters, end-to-end
+   voice interaction, history, and live-evidence briefings are not yet verified.
    Voice never bypasses secure Level-4 confirmation, and no paid provider may be
    activated without founder authorization.
-6. **Memory, playbooks, evaluation, and outcome graph — PLANNED:** preserve
+6. **Memory, playbooks, evaluation, and outcome graph — IN PROGRESS:** the
+   unified event/audit spine provides an initial observable-fact substrate.
+   Continue to preserve
    provenance, freshness, contradictions, decisions, observable actions,
    artifacts, experiments, outcomes, evaluations, agent scorecards, and
    versioned playbooks with tenant/workspace/permission scope, retention,
@@ -105,38 +115,44 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    measured value, paid conversion, and repeatability. Do not invent customers,
    revenue, pipeline, pricing, partners, costs, or product-market fit.
 
-### Verified website state (2026-08-20)
+### Dated website and operations snapshot (verified 2026-08-25)
 
-- `ventureos.site` returned HTTP 200 and is the public entry point. Public
-  claims must remain limited to implemented or clearly labelled directional
-  capabilities.
+- `ventureos.site` is the public entry point. Public claims must remain limited
+  to implemented or clearly labelled directional capabilities.
 - `staging.ventureos.site`, `api-staging.ventureos.site`, and
-  `progress.ventureos.site` redirected to Cloudflare Access and remain
-  protected. This verifies the access boundary, not a new application deploy.
-- PRs #50 and #55 being merged does not update any of those deployed surfaces.
-  Website content and confidential reporting must be synchronized only through
-  their authorized workflows and must retain public/private field boundaries.
+  `progress.ventureos.site` remain protected surfaces. This access-boundary
+  statement is not a current-main product deployment claim.
+- Operations PR #24 deployed the protected Founder Mission Control from the
+  private operations repository. Its deployment, command-center, and Site
+  Steward checks were green at the dated verification point. This is a non-
+  authoritative historical snapshot: private operations evidence and the live
+  Access boundary are authoritative for newer state.
+- The Mission Control deployment did not publish product images or deploy the
+  product application, API staging, or current-main private staging. Website
+  content and confidential reporting must be synchronized only through their
+  authorized workflows and must retain public/private field boundaries.
 
 ### Release, staging, and pilot sequence
 
-1. Merge this docs-only roadmap reconciliation after its exact-head CI,
-   staging-security, CodeQL, and independent diff review pass. Routine safe
-   documentation merges are authorized, but they must not dispatch deployment.
-2. Preserve the deploy-aware boundary for operations PR #21; if authorized,
-   merge it and verify the public site. Then refresh PR #20, rerun its full
-   validator/browser/accessibility/mobile/overflow/URL suite, and preserve its
-   separate protected-site deployment boundary.
-3. Refresh Agent Control Plane PR #59 onto resulting product `main`, rerun its
-   full exact-head matrix and adversarial review, and merge only if the final
-   diff is clean and no Level-4 action is included.
-4. Select one exact merged release-candidate commit, build and scan all five immutable
-   application images, and retain digest/SBOM/provenance evidence. Publishing
-   those images requires a separate exact-SHA authorization.
+1. Merge this docs-only reconciliation only after exact-head CI,
+   staging-security, CodeQL, and independent truth/diff review pass. Routine safe
+   documentation merges are authorized, but this change must not dispatch a
+   deployment or publication.
+2. Continue Agent Control Plane, Runtime Broker, Dynamic Agent Factory, AI COO,
+   Mission Control, Voice, and runtime-adapter work through independently
+   reviewed, non-deploying PRs with tenant/authority/budget boundaries intact.
+3. Keep the protected Mission Control synchronized through its separate
+   operations repository. Any operations merge that updates a website retains
+   its deploy-aware Founder boundary; never infer a new deployment from product
+   repository changes.
+4. Treat the green sanitized release-candidate workflow as current-main scan
+   evidence only. Publishing the five images requires separate exact-SHA
+   authorization and must produce trusted immutable digest evidence.
 5. Deploy only the authorized digests to Access-protected private staging after
    a separate deployment authorization. Validate migrations, health, E2E,
    responsive/accessibility behavior, tenant isolation, audit evidence,
    backup/restore, and rollback using synthetic data and disabled live providers.
-6. Run an internal synthetic-data rehearsal. An invited pilot follows only after
+6. Run a current-main internal synthetic-data rehearsal. An invited pilot follows only after
    privacy/terms/data-handling, access, support, incident, and rollback ownership
    are approved. Record observed pilot evidence; do not infer pricing, revenue,
    conversion, or product-market fit from mock data or draft code.

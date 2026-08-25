@@ -8,10 +8,19 @@ context. Current repository configuration must be read from `.github/workflows/c
 and the later baseline records, especially `docs/TECHNICAL_RELEASE_BASELINE.md`,
 `docs/APPLICATION_SECURITY_BASELINE.md`, and `docs/STAGING_SECURITY_GATE.md`.
 
-This reconciliation did not inspect GitHub administrator settings. Repository
-settings such as secret scanning, push protection, branch protection, rulesets,
-CodeQL/code scanning, and Dependabot alert settings require repository
-configuration or administrator verification before they can be claimed enabled.
+The read-only GitHub audit on 2026-08-25 verified product `main` at
+`1cdf560dcd9bb8e824fa3bf2b82846ff4c3f1675`, protected with required
+`build-and-test` and `staging-security-gate` checks enforced for administrators.
+Exact-main CI and CodeQL passed. The same audit observed zero open CodeQL,
+Dependabot, and secret-scanning alerts. Those are dated API observations, not a
+permanent guarantee that every organization, repository, ruleset, package, or
+future commit setting remains unchanged.
+
+The latest observed Dependabot update workflow was not green on a historical
+update branch even though the current alert count is zero. Restore a green
+recurring dependency-update path; do not infer current vulnerability from that
+automation failure, and do not infer healthy automation solely from the zero-
+alert snapshot.
 
 ## CI architecture in repository configuration
 
