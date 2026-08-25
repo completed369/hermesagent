@@ -2,8 +2,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   BRIDGE_BROKER_EVIDENCE_VERIFIER,
+  BRIDGE_ARTIFACT_CONTENT_VERIFIER,
   BRIDGE_CAPABILITY_POLICY_VERIFIER,
   BRIDGE_SECRET_RESOLVER,
+  BRIDGE_TEST_ONLY_GATE,
   BRIDGE_PROTOCOL_VERSION,
   canonicalJson,
   deriveBridgeKeys,
@@ -11,10 +13,12 @@ import {
   validateBridgeEnvelope,
   validateUsageDelta,
   verifyBridgeEnvelope,
+  type BridgeArtifactContentVerifier,
   type BridgeBrokerEvidenceVerifier,
   type BridgeCapabilityPolicyVerifier,
   type BridgeEnvelope,
   type BridgeSecretResolver,
+  type BridgeTestOnlyGate,
   type TrustedBridgeBrokerEvidence,
 } from '@ventureos/agent-bridge';
 import {
@@ -118,6 +122,9 @@ export class AcpBridgeAdmissionService
     private readonly brokerEvidence: BridgeBrokerEvidenceVerifier,
     @Inject(BRIDGE_CAPABILITY_POLICY_VERIFIER)
     private readonly capabilityPolicy: BridgeCapabilityPolicyVerifier,
+    @Inject(BRIDGE_ARTIFACT_CONTENT_VERIFIER)
+    private readonly artifactContent: BridgeArtifactContentVerifier,
+    @Inject(BRIDGE_TEST_ONLY_GATE) private readonly testOnlyGate: BridgeTestOnlyGate,
   ) {}
 
   async provisionRuntime(
@@ -130,6 +137,7 @@ export class AcpBridgeAdmissionService
       if (field !== 'capabilityPolicyHash') reference(value, field);
     }
     digest(input.capabilityPolicyHash, 'capabilityPolicyHash');
+    await this.assertAdapterIsolation(context.workspaceId, input.adapterKind, input.environment);
     const forbiddenRealRuntime = /^(?:codex|hermes|pi)(?:[._:-]|$)/iu;
     if (forbiddenRealRuntime.test(input.runtimeId)) {
       throw new AcpBridgeAdmissionDeniedError(
@@ -140,27 +148,43 @@ export class AcpBridgeAdmissionService
     const secretDigest = digestSecretReference(secret);
     return prisma.$transaction(
       async (tx) => {
-        const existing = await tx.acpRuntimeConnection.findUnique({
-          where: {
-            workspaceId_runtimeId_environment: {
-              workspaceId: context.workspaceId,
-              runtimeId: input.runtimeId,
-              environment: input.environment,
+        const [existingByRuntime, existingByKey] = await Promise.all([
+          tx.acpRuntime.findUnique({
+            where: {
+              workspaceId_id: { workspaceId: context.workspaceId, id: input.runtimeId },
             },
-          },
-          include: { runtime: true },
-        });
-        if (existing) {
+            include: { connections: true },
+          }),
+          tx.acpRuntime.findUnique({
+            where: {
+              workspaceId_provisioningIdempotencyKey: {
+                workspaceId: context.workspaceId,
+                provisioningIdempotencyKey: input.idempotencyKey,
+              },
+            },
+            include: { connections: true },
+          }),
+        ]);
+        const existingRuntime = existingByRuntime ?? existingByKey;
+        if (existingRuntime) {
+          const existingConnection = existingRuntime.connections.find(
+            (connection) => connection.id === input.connectionId,
+          );
           if (
-            existing.id !== input.connectionId ||
-            existing.runtime.principalReference !== input.principalReference ||
-            existing.runtime.secretReference !== input.secretReference ||
-            existing.runtime.secretDigest !== secretDigest ||
-            existing.runtime.capabilityPolicyHash !== input.capabilityPolicyHash
+            existingRuntime.id !== input.runtimeId ||
+            existingRuntime.adapterKind !== input.adapterKind ||
+            existingRuntime.provisioningIdempotencyKey !== input.idempotencyKey ||
+            existingRuntime.principalReference !== input.principalReference ||
+            existingRuntime.secretReference !== input.secretReference ||
+            existingRuntime.secretDigest !== secretDigest ||
+            existingRuntime.capabilityPolicyHash !== input.capabilityPolicyHash ||
+            !existingConnection ||
+            existingConnection.runtimeId !== input.runtimeId ||
+            existingConnection.environment !== input.environment
           ) {
             throw new AcpBridgeAdmissionConflictError('Runtime provisioning replay drifted');
           }
-          return { runtime: existing.runtime, connection: existing, replayed: true };
+          return { runtime: existingRuntime, connection: existingConnection, replayed: true };
         }
         const runtime = await tx.acpRuntime.create({
           data: {
@@ -171,6 +195,7 @@ export class AcpBridgeAdmissionService
             secretReference: input.secretReference,
             secretDigest,
             capabilityPolicyHash: input.capabilityPolicyHash,
+            provisioningIdempotencyKey: input.idempotencyKey,
           },
         });
         const connection = await tx.acpRuntimeConnection.create({
@@ -229,6 +254,11 @@ export class AcpBridgeAdmissionService
         include: { runtime: true },
       });
       if (!connection) throw new AcpBridgeAdmissionNotFoundError('Runtime connection not found');
+      await this.assertAdapterIsolation(
+        context.workspaceId,
+        connection.runtime.adapterKind,
+        connection.environment,
+      );
       const now = await databaseNow(tx);
       if (expiresAt <= now || expiresAt.getTime() > now.getTime() + 5 * 60_000) {
         throw new AcpBridgeAdmissionDeniedError(
@@ -304,6 +334,11 @@ export class AcpBridgeAdmissionService
           include: { runtime: true },
         });
         const now = await databaseNow(tx);
+        await this.assertAdapterIsolation(
+          context.workspaceId,
+          lockedConnection.runtime.adapterKind,
+          lockedConnection.environment,
+        );
         if (
           session.expiresAt <= now ||
           session.state !== 'CHALLENGED' ||
@@ -422,6 +457,11 @@ export class AcpBridgeAdmissionService
           }
         }
         const now = await databaseNow(tx);
+        await this.assertAdapterIsolation(
+          context.workspaceId,
+          lockedConnection.runtime.adapterKind,
+          lockedConnection.environment,
+        );
         if (
           !session.runtimeNonce ||
           !session.authenticatedAt ||
@@ -545,6 +585,7 @@ export class AcpBridgeAdmissionService
         );
         const connection = await tx.acpRuntimeConnection.findUniqueOrThrow({
           where: { workspaceId_id: { workspaceId: context.workspaceId, id: session.connectionId } },
+          include: { runtime: true },
         });
         await tx.$queryRaw(
           Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.brokerEvidence.runId} FOR UPDATE`,
@@ -565,6 +606,11 @@ export class AcpBridgeAdmissionService
           include: { task: true },
         });
         const now = await databaseNow(tx);
+        await this.assertAdapterIsolation(
+          context.workspaceId,
+          connection.runtime.adapterKind,
+          connection.environment,
+        );
         if (!(await this.brokerEvidence.verify(input.brokerEvidence))) {
           throw new AcpBridgeAdmissionDeniedError('Broker evidence changed before dispatch claim');
         }
@@ -742,9 +788,18 @@ export class AcpBridgeAdmissionService
           runtimeId: evidence.runtimeId,
           connectionId: evidence.connectionId,
         },
-        include: { run: true },
+        include: { run: true, connection: { include: { runtime: true } } },
       });
       if (!dispatch) return false;
+      try {
+        await this.assertAdapterIsolation(
+          workspaceId,
+          dispatch.connection.runtime.adapterKind,
+          dispatch.connection.environment,
+        );
+      } catch {
+        return false;
+      }
       if (dispatch.state === 'ACCEPTED' && dispatch.run.status === 'PREPARED') return true;
       return (
         dispatch.run.assignmentEvidenceId === evidence.evidenceId &&
@@ -768,8 +823,26 @@ export class AcpBridgeAdmissionService
         uriReference: evidence.uriReference,
         contentHash: evidence.contentHash,
       },
+      include: { session: { include: { connection: { include: { runtime: true } } } } },
     });
-    return Boolean(receipt);
+    if (!receipt) return false;
+    try {
+      await this.assertAdapterIsolation(
+        workspaceId,
+        receipt.session.connection.runtime.adapterKind,
+        receipt.session.connection.environment,
+      );
+    } catch {
+      return false;
+    }
+    return this.artifactContent.verify({
+      workspaceId,
+      taskId: evidence.taskId,
+      runId: evidence.runId,
+      artifactId: evidence.artifactId,
+      uriReference: evidence.uriReference,
+      contentHash: evidence.contentHash,
+    });
   }
 
   private async createReceipt(tx: Prisma.TransactionClient, envelope: BridgeEnvelope) {
@@ -971,12 +1044,17 @@ export class AcpBridgeAdmissionService
     const dispatch = await tx.acpBridgeDispatch.findUnique({
       where: { workspaceId_id: { workspaceId: session.workspaceId, id: dispatchId } },
     });
-    if (
-      !dispatch ||
-      dispatch.sessionId !== session.id ||
-      ['CANCELLED', 'COMPLETED', 'FAILED'].includes(dispatch.state)
-    )
-      throw new AcpBridgeAdmissionDeniedError('Active bound dispatch required');
+    if (!dispatch || dispatch.sessionId !== session.id)
+      throw new AcpBridgeAdmissionDeniedError('Bound dispatch required');
+    const acceptedWorkTypes = ['PROGRESS', 'ARTIFACT', 'USAGE', 'RESULT', 'FAILED'];
+    if (acceptedWorkTypes.includes(envelope.type) && dispatch.state !== 'ACCEPTED') {
+      throw new AcpBridgeAdmissionDeniedError(
+        'Accepted dispatch required for runtime work evidence',
+      );
+    }
+    if (envelope.type === 'CANCELLED' && dispatch.state !== 'CANCEL_REQUESTED') {
+      throw new AcpBridgeAdmissionDeniedError('Cancellation was not requested');
+    }
     if (envelope.type === 'PROGRESS') {
       exactPayload(payload, ['dispatchId', 'progressCode']);
       reference(payload.progressCode, 'progressCode');
@@ -1009,6 +1087,20 @@ export class AcpBridgeAdmissionService
       digest(payload.evidenceHash, 'evidenceHash');
       if (payload.runId !== dispatch.runId || payload.taskId !== dispatch.taskId)
         throw new AcpBridgeAdmissionDeniedError('Artifact correlation mismatch');
+      if (
+        !(await this.artifactContent.verify({
+          workspaceId: session.workspaceId,
+          taskId: payload.taskId,
+          runId: payload.runId,
+          artifactId: payload.artifactId as string,
+          uriReference: payload.uriReference as string,
+          contentHash: payload.contentHash,
+        }))
+      ) {
+        throw new AcpBridgeAdmissionDeniedError(
+          'Trusted artifact content evidence was not verified',
+        );
+      }
       return;
     }
     if (envelope.type === 'USAGE') {
@@ -1046,10 +1138,11 @@ export class AcpBridgeAdmissionService
         throw new AcpBridgeAdmissionDeniedError('Usage exceeds task budget or currency');
       await tx.acpRunUsage.create({
         data: {
-          id: randomUUID(),
+          id: receiptId,
           workspaceId: session.workspaceId,
           dispatchId,
           runId: dispatch.runId,
+          sessionId: session.id,
           receiptId,
           sequence: envelope.sequence,
           computeUnits: compute,
@@ -1071,8 +1164,6 @@ export class AcpBridgeAdmissionService
           : envelope.type === 'RESULT'
             ? 'COMPLETED'
             : 'FAILED';
-      if (envelope.type === 'CANCELLED' && dispatch.state !== 'CANCEL_REQUESTED')
-        throw new AcpBridgeAdmissionDeniedError('Cancellation was not requested');
       await tx.acpBridgeDispatch.update({
         where: { workspaceId_id: { workspaceId: session.workspaceId, id: dispatch.id } },
         data: { state: next, terminalAt: now },
@@ -1080,6 +1171,22 @@ export class AcpBridgeAdmissionService
       return;
     }
     throw new AcpBridgeAdmissionDeniedError('Unsupported bridge message');
+  }
+
+  private async assertAdapterIsolation(
+    workspaceId: string,
+    adapterKind: string,
+    environment: string,
+  ): Promise<void> {
+    if (adapterKind !== 'DETERMINISTIC_FAKE') return;
+    if (
+      environment !== 'TEST_ONLY' ||
+      !(await this.testOnlyGate.allowsDeterministicFixture(workspaceId))
+    ) {
+      throw new AcpBridgeAdmissionDeniedError(
+        'Deterministic fixture admission is restricted to an explicit test-only harness',
+      );
+    }
   }
 
   private auditForMessage(

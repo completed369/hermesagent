@@ -35,6 +35,13 @@ test('deterministic fake is test-only and no real runtime can be marked connecte
   assert.doesNotMatch(index, /deterministic-fake/u);
   assert.doesNotMatch(migration, /'CONNECTED'/u);
   assert.match(migration, /"status" = 'NOT_CONFIGURED'/u);
+  assert.match(migration, /DETERMINISTIC_FAKE[\s\S]*TEST_ONLY/u);
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  assert.match(module, /denyTestOnlyGate[\s\S]*return false/u);
+  assert.match(module, /denyArtifactContent[\s\S]*return false/u);
 });
 
 test('bridge receipts cannot persist raw payload, MAC, transcript, prompt, or secret material', () => {
@@ -46,4 +53,17 @@ test('bridge receipts cannot persist raw payload, MAC, transcript, prompt, or se
   assert.doesNotMatch(receipt, /\b(?:payload|mac|prompt|transcript|secret|credential)\s+String/iu);
   assert.match(receipt, /payloadDigest\s+String/u);
   assert.match(receipt, /envelopeDigest\s+String/u);
+});
+
+test('usage correlation and monotonicity are serialized and database-bound', () => {
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260825190000_durable_agent_bridge_foundation/migration.sql',
+    'utf8',
+  );
+  assert.match(migration, /acp_run_usages_dispatch_correlation_fkey/u);
+  assert.match(migration, /acp_run_usages_receipt_correlation_fkey/u);
+  assert.match(
+    migration,
+    /FROM "acp_bridge_dispatches"[\s\S]*FOR UPDATE;[\s\S]*receipt_message_type IS DISTINCT FROM 'USAGE'/u,
+  );
 });

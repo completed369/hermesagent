@@ -119,9 +119,18 @@ export function validateBridgeEnvelope(value: unknown): asserts value is BridgeE
     throw new BridgeProtocolError('Unknown message type');
   }
   for (const field of ['issuedAt', 'expiresAt'] as const) {
-    if (typeof value[field] !== 'string' || !Number.isFinite(Date.parse(value[field] as string))) {
-      throw new BridgeProtocolError(`${field} must be an ISO date`);
+    const timestamp = value[field];
+    if (typeof timestamp !== 'string')
+      throw new BridgeProtocolError(`${field} must be a canonical UTC timestamp`);
+    const parsed = new Date(timestamp);
+    if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== timestamp) {
+      throw new BridgeProtocolError(`${field} must be a canonical UTC timestamp`);
     }
+  }
+  const issuedAt = Date.parse(value.issuedAt as string);
+  const expiresAt = Date.parse(value.expiresAt as string);
+  if (expiresAt <= issuedAt || expiresAt - issuedAt > 5 * 60_000) {
+    throw new BridgeProtocolError('Frame expiry must follow issuance by at most five minutes');
   }
   if (typeof value.payloadDigest !== 'string' || !SHA256.test(value.payloadDigest)) {
     throw new BridgeProtocolError('Invalid payload digest');
@@ -167,11 +176,11 @@ export class BoundedBridgeLineBuffer {
   private buffered = Buffer.alloc(0);
 
   push(chunk: Uint8Array): BridgeEnvelope[] {
-    this.buffered = Buffer.concat([this.buffered, Buffer.from(chunk)]);
-    if (this.buffered.byteLength > MAX_BRIDGE_BUFFER_BYTES) {
+    if (chunk.byteLength > MAX_BRIDGE_BUFFER_BYTES - this.buffered.byteLength) {
       this.buffered = Buffer.alloc(0);
       throw new BridgeProtocolError('Bridge buffer exceeded its bound');
     }
+    this.buffered = Buffer.concat([this.buffered, Buffer.from(chunk)]);
     const messages: BridgeEnvelope[] = [];
     while (true) {
       const newline = this.buffered.indexOf(10);

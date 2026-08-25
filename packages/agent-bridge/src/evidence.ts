@@ -28,6 +28,27 @@ export interface BridgeCapabilityPolicyVerifier {
   ): Promise<boolean>;
 }
 
+export interface BridgeArtifactContentEvidence {
+  readonly workspaceId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly artifactId: string;
+  readonly uriReference: string;
+  readonly contentHash: string;
+}
+
+export interface BridgeArtifactContentVerifier {
+  /** Re-read trusted artifact bytes and verify their digest; runtime assertions are insufficient. */
+  verify(evidence: BridgeArtifactContentEvidence): Promise<boolean>;
+}
+
+export interface BridgeTestOnlyGate {
+  /** Test harness authority. Production composition must always fail closed. */
+  allowsDeterministicFixture(workspaceId: string): Promise<boolean>;
+}
+
 export const BRIDGE_SECRET_RESOLVER = Symbol('BRIDGE_SECRET_RESOLVER');
 export const BRIDGE_BROKER_EVIDENCE_VERIFIER = Symbol('BRIDGE_BROKER_EVIDENCE_VERIFIER');
 export const BRIDGE_CAPABILITY_POLICY_VERIFIER = Symbol('BRIDGE_CAPABILITY_POLICY_VERIFIER');
+export const BRIDGE_ARTIFACT_CONTENT_VERIFIER = Symbol('BRIDGE_ARTIFACT_CONTENT_VERIFIER');
+export const BRIDGE_TEST_ONLY_GATE = Symbol('BRIDGE_TEST_ONLY_GATE');

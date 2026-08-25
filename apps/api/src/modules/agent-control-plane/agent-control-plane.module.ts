@@ -5,11 +5,15 @@ import {
 } from '@ventureos/agent-control-plane';
 import {
   BRIDGE_BROKER_EVIDENCE_VERIFIER,
+  BRIDGE_ARTIFACT_CONTENT_VERIFIER,
   BRIDGE_CAPABILITY_POLICY_VERIFIER,
   BRIDGE_SECRET_RESOLVER,
+  BRIDGE_TEST_ONLY_GATE,
+  type BridgeArtifactContentVerifier,
   type BridgeBrokerEvidenceVerifier,
   type BridgeCapabilityPolicyVerifier,
   type BridgeSecretResolver,
+  type BridgeTestOnlyGate,
 } from '@ventureos/agent-bridge';
 import { AuditModule } from '../audit/audit.module';
 import { AcpBridgeAdmissionService } from './acp-bridge-admission.service';
@@ -30,6 +34,16 @@ const denyCapabilityPolicy: BridgeCapabilityPolicyVerifier = {
     return false;
   },
 };
+const denyArtifactContent: BridgeArtifactContentVerifier = {
+  async verify() {
+    return false;
+  },
+};
+const denyTestOnlyGate: BridgeTestOnlyGate = {
+  async allowsDeterministicFixture() {
+    return false;
+  },
+};
 
 /**
  * Service-only composition root. Evidence ports intentionally fail closed
@@ -43,6 +57,8 @@ const denyCapabilityPolicy: BridgeCapabilityPolicyVerifier = {
     { provide: BRIDGE_SECRET_RESOLVER, useValue: denySecrets },
     { provide: BRIDGE_BROKER_EVIDENCE_VERIFIER, useValue: denyBrokerEvidence },
     { provide: BRIDGE_CAPABILITY_POLICY_VERIFIER, useValue: denyCapabilityPolicy },
+    { provide: BRIDGE_ARTIFACT_CONTENT_VERIFIER, useValue: denyArtifactContent },
+    { provide: BRIDGE_TEST_ONLY_GATE, useValue: denyTestOnlyGate },
     { provide: ASSIGNMENT_EVIDENCE_VERIFIER, useExisting: AcpBridgeAdmissionService },
     { provide: DURABLE_ARTIFACT_EVIDENCE_VERIFIER, useExisting: AcpBridgeAdmissionService },
   ],

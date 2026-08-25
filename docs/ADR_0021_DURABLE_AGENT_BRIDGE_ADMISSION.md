@@ -18,8 +18,9 @@ Add a bounded, service-only admission foundation:
 
 - `@ventureos/agent-bridge` defines exact canonical JSON Lines envelopes,
   protocol state machines, HKDF-SHA256 directional key derivation, HMAC-SHA256
-  message authentication, expiry checks, sensitive-text rejection, bounded
-  buffering, usage policy, and a production launcher that always denies.
+  message authentication, canonical UTC timestamps with a five-minute maximum
+  lifetime, sensitive-text rejection, pre-allocation bounded buffering, usage
+  policy, and a production launcher that always denies.
 - Secret bytes are supplied only through an injected server-side resolver.
   The database stores a secret reference and digests; it never stores the
   secret, derived keys, raw MACs, protocol payloads, prompts, transcripts, or
@@ -27,7 +28,8 @@ Add a bounded, service-only admission foundation:
 - Workspace-scoped runtime, connection, session, normalized receipt, dispatch,
   and usage records create a durable replay boundary. Composite foreign keys,
   unique sequence/message/evidence keys, state constraints, immutable receipts,
-  correlation triggers, and monotonic usage checks enforce core invariants.
+  correlation triggers, dispatch-row serialization, and monotonic usage checks
+  enforce core invariants.
 - A trusted CONTROL_PLANE composition-root capability is required for every
   service operation. Runtime payloads cannot mint source, principal, workspace,
   broker, assignment, or artifact authority.
@@ -35,11 +37,16 @@ Add a bounded, service-only admission foundation:
   preparation requires re-read trusted broker evidence, a fresh PARTIAL
   session heartbeat, a ready durable run, and authority level 0–3. Level 4 is
   rejected; claimed approval permits are not consumed by this slice.
-- Accepted dispatch and artifact receipts implement the existing trusted
-  assignment/artifact evidence ports by re-reading exact durable rows. Receipt,
-  domain mutation, usage, and audit evidence share database transactions.
+- Accepted dispatch receipts implement trusted assignment evidence by re-reading
+  exact durable rows. Artifact evidence additionally requires an injected
+  server-owned verifier to re-read the artifact bytes and verify their content
+  hash both at admission and later use; a runtime-authored receipt is never
+  sufficient. Receipt, domain mutation, usage, and audit evidence share database
+  transactions.
 - A deterministic fake runtime exists only below the test fixture path and is
-  absent from package exports. Its evidence is synthetic test evidence, not a
+  absent from package exports. Service admission requires both a `TEST_ONLY`
+  connection and an injected test-harness gate that fails closed in the
+  production composition root. Its evidence is synthetic test evidence, not a
   runtime connection claim.
 
 The connection state deliberately stops at `PARTIAL`. `CONNECTED` is not an

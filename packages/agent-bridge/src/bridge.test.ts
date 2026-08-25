@@ -81,6 +81,15 @@ describe('bounded canonical Agent Bridge protocol', () => {
     expect(() => decodeBridgeLine(Buffer.from([0xff, 0x0a]))).toThrow(BridgeProtocolError);
     expect(() => decodeBridgeLine(Buffer.alloc(65_537, 32))).toThrow(BridgeProtocolError);
     expect(() =>
+      encodeBridgeLine({ ...envelope, issuedAt: 'August 25, 2026 12:00:00 UTC' }),
+    ).toThrow(/canonical UTC/u);
+    expect(() => encodeBridgeLine({ ...envelope, expiresAt: '2026-08-25T11:59:59.000Z' })).toThrow(
+      /expiry/u,
+    );
+    expect(() => encodeBridgeLine({ ...envelope, expiresAt: '2026-08-25T12:05:00.001Z' })).toThrow(
+      /five minutes/u,
+    );
+    expect(() =>
       verifyBridgeEnvelope(
         envelope,
         keys.runtimeToParent,
@@ -113,9 +122,9 @@ describe('bounded canonical Agent Bridge protocol', () => {
     const buffer = new BoundedBridgeLineBuffer();
     expect(buffer.push(encoded.subarray(0, 20))).toEqual([]);
     expect(buffer.push(encoded.subarray(20))).toEqual([envelope]);
-    expect(() => new BoundedBridgeLineBuffer().push(Buffer.alloc(131_073))).toThrow(
-      BridgeProtocolError,
-    );
+    const rejected = new BoundedBridgeLineBuffer();
+    expect(() => rejected.push(Buffer.alloc(131_073))).toThrow(BridgeProtocolError);
+    expect(rejected.push(encoded)).toEqual([envelope]);
   });
 
   it('keeps the production launcher deny-only', async () => {
@@ -132,6 +141,9 @@ describe('bounded canonical Agent Bridge protocol', () => {
     expect(() => assertBridgeTransition('CHALLENGED', 'AUTHENTICATED')).not.toThrow();
     expect(() => assertBridgeTransition('CHALLENGED', 'PARTIAL')).toThrow(BridgeProtocolError);
     expect(() => assertDispatchTransition('ACCEPTED', 'CANCEL_REQUESTED')).not.toThrow();
+    expect(() => assertDispatchTransition('CANCEL_REQUESTED', 'FAILED')).toThrow(
+      BridgeProtocolError,
+    );
     expect(() => assertDispatchTransition('COMPLETED', 'ACCEPTED')).toThrow(BridgeProtocolError);
     expect(() =>
       validateUsageDelta({ computeUnits: 0, costMinorUnits: 0, currency: 'EUR' }),
