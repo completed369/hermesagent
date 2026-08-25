@@ -3,13 +3,14 @@
 > **CURRENT DELIVERY UPDATE — verified 2026-08-26.** The Phase 0–8 record below is
 > historical implementation evidence, not a production-readiness or deployment
 > claim. The current product baseline is `main`
-> `e65886dbfaf65ac24b5d53a1e2ac6ac4e5579ac4`. Product PRs #59–#80 are merged,
+> `4e9a5d82eed81746ee6ce205c08747459cfcd2c2`. Product PRs #59–#82 are merged,
 > including the Agent Control Plane, Runtime Broker, Dynamic Agent Factory,
 > runtime-interface ADR, tenant-shell switch repair, AI COO, Voice Gateway,
 > unified event/audit spine, approval execution-permit bridge, durable
 > objective/project/task/run spine, durable protocol-neutral Agent Bridge
 > admission, durable broker decision and capacity/budget reservation evidence,
-> and sanitized release-candidate evidence workflow/hardening.
+> a scoped deny-only bridge secret-lease boundary, and sanitized release-
+> candidate evidence workflow/hardening.
 > Approval preparation now binds to real workspace-scoped
 > durable task/run rows. Exact-main CI passed the full
 > migration chain, application integration/E2E, and staging-security/load gate
@@ -563,7 +564,7 @@ phase deliverables. Current status:
    mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
    mock-only under ADR-010. Neither milestone is a release-readiness claim.
 2. Preserve the merged workspace/collaboration and Agent Control Plane
-   foundations through PR #80. The next runtime dependency is reviewed,
+   foundations through PR #82. The next runtime dependency is reviewed,
    protocol-neutral child-process transport and supervision across the existing
    service-only bridge boundary. Real adapters follow only after authenticated
    end-to-end evidence; Codex, Hermes, and Pi remain `NOT_CONFIGURED`.

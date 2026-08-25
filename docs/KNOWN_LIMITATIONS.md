@@ -2,14 +2,18 @@
 
 > **Current release note (verified 2026-08-26):** VentureOS is not
 > production-ready or production-deployed. The current product `main` baseline
-> is `e65886dbfaf65ac24b5d53a1e2ac6ac4e5579ac4`. Product PRs #59–#80 are
+> is `4e9a5d82eed81746ee6ce205c08747459cfcd2c2`. Product PRs #59–#82 are
 > merged, including the provider-neutral Agent Control Plane, Runtime Broker,
 > Dynamic Agent Factory, verified runtime-interface ADR, tenant-shell switch
 > repair, governed AI COO and Voice Gateway foundations, unified event/audit
 > spine, approval execution-permit bridge, durable objective/project/task/run
 > spine, durable protocol-neutral Agent Bridge admission, durable broker
 > decision and capacity/budget reservation evidence, and the non-publishing
-> release-candidate evidence workflow and its security hardening. Approval
+> release-candidate evidence workflow and its security hardening. The merged
+> scoped bridge secret-lease boundary binds every request to its workspace,
+> runtime, connection, authentication generation, and purpose. Provisioning
+> derives the initial digest; authentication and frame verification bind to the
+> durable digest. Production remains deny-only. Approval
 > preparation now resolves exact workspace-scoped
 > durable task and run rows instead of accepting caller-asserted work. These are
 > repository capabilities, not proof that an external runtime, provider, image,
