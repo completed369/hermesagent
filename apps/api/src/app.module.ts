@@ -22,6 +22,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { SafeExceptionFilter } from './common/filters/safe-exception.filter';
 import { CsrfOriginGuard } from './common/guards/csrf-origin.guard';
+import { AgentControlPlaneModule } from './modules/agent-control-plane/agent-control-plane.module';
 
 const env = loadEnv();
 
@@ -44,6 +45,7 @@ const env = loadEnv();
     FinanceModule,
     BillingModule,
     VenturesModule,
+    AgentControlPlaneModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

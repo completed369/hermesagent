@@ -125,6 +125,12 @@ model Workspace {
   acpApprovalRequests      AcpApprovalRequest[]
   acpApprovalDecisions     AcpApprovalDecision[]
   acpExecutionPermits      AcpExecutionPermit[]
+  acpObjectives            AcpObjective[]
+  acpProjects              AcpProject[]
+  acpTasks                 AcpTask[]
+  acpTaskDependencies      AcpTaskDependency[]
+  acpRuns                  AcpRun[]
+  acpArtifacts             AcpArtifact[]
 
   @@map("workspaces")
 }
@@ -870,6 +876,189 @@ model ApprovalDecision {
 
   @@index([approvalRequestId])
   @@map("approval_decisions")
+}
+
+/// Durable, workspace-scoped AI COO objective. Policy hashes are integrity
+/// evidence over canonical policy snapshots, not cryptographic tamper proofing.
+model AcpObjective {
+  id                    String
+  workspaceId           String   @db.Uuid
+  title                 String
+  desiredOutcome        String
+  maximumAuthority      Int
+  currency              String
+  maximumCostMinorUnits BigInt
+  maximumComputeUnits   BigInt
+  acceptanceCriteria    String[]
+  verificationCriteria  String[]
+  stopConditions        String[]
+  policyVersion         String
+  policyHash            String
+  idempotencyKey        String
+  status                String   @default("ACTIVE")
+  version               Int      @default(1)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projects  AcpProject[]
+  tasks     AcpTask[]
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status, createdAt(sort: Desc)])
+  @@map("acp_objectives")
+}
+
+model AcpProject {
+  id          String
+  workspaceId String   @db.Uuid
+  objectiveId String
+  title       String
+  status      String   @default("ACTIVE")
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  objective AcpObjective @relation(fields: [workspaceId, objectiveId], references: [workspaceId, id], onDelete: Cascade)
+  tasks     AcpTask[]
+
+  @@id([workspaceId, id])
+  @@index([workspaceId, objectiveId])
+  @@map("acp_projects")
+}
+
+model AcpTask {
+  id                      String
+  workspaceId             String    @db.Uuid
+  objectiveId             String
+  projectId               String
+  title                   String
+  kind                    String
+  status                  String
+  requiredAuthority       Int
+  currency                String
+  maximumCostMinorUnits   BigInt
+  maximumComputeUnits     BigInt
+  estimatedDurationMs     BigInt
+  acceptanceCriteria      String[]
+  verificationCriteria    String[]
+  stopConditions          String[]
+  maximumAttempts         Int
+  retryableFailureCodes   String[]
+  stopAfterFailureCodes   String[]
+  agentPolicy             Json
+  routingPolicy           Json
+  exactTarget             String?
+  approvalActionCode      String?
+  approvalArtifactVersion String?
+  approvalEvidenceHash    String?
+  policyVersion           String
+  policyHash              String
+  assignedAgentId         String?
+  assignedRuntimeId       String?
+  assignedConnectionId    String?
+  attempt                 Int       @default(0)
+  version                 Int       @default(1)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  completedAt             DateTime?
+
+  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  objective    AcpObjective        @relation(fields: [workspaceId, objectiveId], references: [workspaceId, id], onDelete: Cascade)
+  project      AcpProject          @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade)
+  dependencies AcpTaskDependency[] @relation("AcpTaskDependencies")
+  dependents   AcpTaskDependency[] @relation("AcpTaskDependents")
+  runs         AcpRun[]
+  artifacts    AcpArtifact[]
+
+  @@id([workspaceId, id])
+  @@index([workspaceId, objectiveId, status])
+  @@index([workspaceId, projectId, status])
+  @@map("acp_tasks")
+}
+
+model AcpTaskDependency {
+  workspaceId     String @db.Uuid
+  taskId          String
+  dependsOnTaskId String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      AcpTask   @relation("AcpTaskDependencies", fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  dependsOn AcpTask   @relation("AcpTaskDependents", fields: [workspaceId, dependsOnTaskId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([workspaceId, taskId, dependsOnTaskId])
+  @@index([workspaceId, dependsOnTaskId])
+  @@map("acp_task_dependencies")
+}
+
+/// PREPARED and AWAITING_APPROVAL runs contain no runtime dispatch authority.
+/// Runtime/agent assignment fields are nullable until trusted evidence is
+/// accepted by the service boundary.
+model AcpRun {
+  id                       String
+  workspaceId              String    @db.Uuid
+  objectiveId              String
+  taskId                   String
+  status                   String
+  requiredAuthority        Int
+  policyVersion            String
+  policyHash               String
+  actionCode               String?
+  exactTarget              String?
+  artifactVersionId        String?
+  evidenceHash             String?
+  assignedAgentId          String?
+  assignedRuntimeId        String?
+  assignedConnectionId     String?
+  assignmentEvidenceId     String?
+  assignmentEvidenceHash   String?
+  assignmentIdempotencyKey String?
+  attempt                  Int
+  version                  Int       @default(1)
+  idempotencyKey           String
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  startedAt                DateTime?
+  completedAt              DateTime?
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      AcpTask       @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  artifacts AcpArtifact[]
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, idempotencyKey])
+  @@unique([workspaceId, assignmentIdempotencyKey])
+  @@index([workspaceId, objectiveId, status])
+  @@index([workspaceId, taskId, status])
+  @@map("acp_runs")
+}
+
+model AcpArtifact {
+  id               String
+  workspaceId      String   @db.Uuid
+  objectiveId      String
+  taskId           String
+  runId            String
+  criterion        String
+  kind             String
+  uriReference     String
+  contentHash      String
+  sourceEvidenceId String
+  evidenceHash     String
+  idempotencyKey   String
+  createdAt        DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      AcpTask   @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  run       AcpRun    @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, idempotencyKey])
+  @@unique([workspaceId, runId, criterion])
+  @@index([workspaceId, runId, createdAt(sort: Desc)])
+  @@map("acp_artifacts")
 }
 
 /// Exact, workspace-scoped Level-4 authorization request for an ACP task/run.

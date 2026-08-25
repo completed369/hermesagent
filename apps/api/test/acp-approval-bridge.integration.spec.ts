@@ -12,6 +12,7 @@ import {
   AcpApprovalConflictError,
   AcpApprovalDeniedError,
 } from '../src/modules/approvals/acp-approval-bridge.service';
+import { AcpTaskRunService } from '../src/modules/agent-control-plane/acp-task-run.service';
 
 describe('governed ACP approval bridge (integration)', () => {
   const suffix = randomUUID();
@@ -20,7 +21,12 @@ describe('governed ACP approval bridge (integration)', () => {
   const executor = `runtime-${suffix}`;
   const wrongExecutor = `runtime-wrong-${suffix}`;
   const audit = new AuditService();
-  const bridge = new AcpApprovalBridgeService(audit);
+  const taskRunResolver = {
+    async getPreparedApprovalBinding() {
+      return binding();
+    },
+  } as unknown as AcpTaskRunService;
+  const bridge = new AcpApprovalBridgeService(audit, taskRunResolver);
   let workspaceId: string;
   let founderId: string;
   let nonFounderId: string;

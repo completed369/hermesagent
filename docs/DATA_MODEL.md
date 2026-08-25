@@ -14,6 +14,14 @@ target, evidence, and policy binding), `AcpApprovalDecision` (immutable Level-4
 decision evidence), and `AcpExecutionPermit` (single-use authorization claim;
 claiming is not external execution). See ADR-0019.
 
+**Durable ACP work graph**: `AcpObjective` -> `AcpProject` -> `AcpTask` ->
+`AcpRun` -> `AcpArtifact`, with `AcpTaskDependency` for same-workspace,
+same-objective dependency edges. Composite workspace keys and migration-managed
+guards prevent cross-tenant joins and binding drift. Level-4 runs are persisted
+unassigned in `AWAITING_APPROVAL`; routine runs are `PREPARED`. This schema is a
+non-executing coordination/evidence spine, not proof that any runtime is
+connected. See ADR-0020.
+
 **Workflow**: `WorkflowRun`, `WorkflowStep` (populated once Phase 3+
 workflows persist their state here in addition to Temporal's own history;
 Phase 1's `helloWorkflow` does not yet write these rows — Temporal itself is

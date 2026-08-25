@@ -15,6 +15,7 @@ import { isApprovalValidForExecution } from '@ventureos/contracts';
 import { Prisma, prisma, type AcpApprovalRequest } from '@ventureos/database';
 import { hashObject } from '@ventureos/security';
 import { AuditService } from '../audit/audit.service';
+import { AcpTaskRunService } from '../agent-control-plane/acp-task-run.service';
 
 export class AcpApprovalBridgeError extends Error {}
 export class AcpApprovalConflictError extends AcpApprovalBridgeError {}
@@ -96,7 +97,10 @@ function sameRequest(
  */
 @Injectable()
 export class AcpApprovalBridgeService {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(
+    private readonly auditService: AuditService,
+    private readonly taskRunService: AcpTaskRunService,
+  ) {}
 
   async requestApproval(
     capability: OperationalEventCapability,
@@ -117,7 +121,6 @@ export class AcpApprovalBridgeService {
     if (actorKind !== 'HUMAN' && actorKind !== 'AGENT') {
       throw new AcpApprovalDeniedError('Only a bound human or agent may request approval');
     }
-
     const existing = await prisma.acpApprovalRequest.findUnique({
       where: {
         workspaceId_idempotencyKey: {
@@ -133,9 +136,34 @@ export class AcpApprovalBridgeService {
       return { request: existing, replayed: true };
     }
 
+    const durableBinding = await this.taskRunService.getPreparedApprovalBinding(
+      context,
+      input.runId,
+    );
+    try {
+      assertAcpApprovalBindingMatch(durableBinding, input);
+    } catch {
+      throw new AcpApprovalDeniedError(
+        'Approval request does not match current durable prepared work',
+      );
+    }
+
     const id = randomUUID();
     try {
       const request = await prisma.$transaction(async (tx) => {
+        const lockedDurableBinding = await this.taskRunService.getPreparedApprovalBinding(
+          context,
+          input.runId,
+          tx,
+          true,
+        );
+        try {
+          assertAcpApprovalBindingMatch(lockedDurableBinding, input);
+        } catch {
+          throw new AcpApprovalDeniedError(
+            'Approval request does not match current durable prepared work',
+          );
+        }
         const created = await tx.acpApprovalRequest.create({
           data: {
             id,

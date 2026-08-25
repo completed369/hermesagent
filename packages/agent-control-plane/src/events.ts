@@ -21,6 +21,7 @@ export type OperationalEventType =
   | 'run.progress'
   | 'run.completed'
   | 'run.failed'
+  | 'artifact.created'
   | 'approval.requested'
   | 'approval.permit.issued'
   | 'approval.permit.claimed'
@@ -81,6 +82,7 @@ const EVENT_TYPES = new Set<OperationalEventType>([
   'run.progress',
   'run.completed',
   'run.failed',
+  'artifact.created',
   'approval.requested',
   'approval.permit.issued',
   'approval.permit.claimed',
@@ -132,6 +134,7 @@ const FACT_POLICIES: Readonly<Record<OperationalEventType, Readonly<Record<strin
   'run.progress': { payloadFieldCount: 'INTEGER', payloadBytes: 'INTEGER' },
   'run.completed': { previousStatus: 'CODE', nextStatus: 'CODE', taskId: 'REFERENCE' },
   'run.failed': { previousStatus: 'CODE', nextStatus: 'CODE', taskId: 'REFERENCE' },
+  'artifact.created': { taskId: 'REFERENCE', runId: 'REFERENCE', kind: 'CODE' },
   'approval.requested': {
     dependencyIds: 'REFERENCE_LIST',
     taskId: 'REFERENCE',
