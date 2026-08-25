@@ -2,18 +2,30 @@ import { Module } from '@nestjs/common';
 import {
   ASSIGNMENT_EVIDENCE_VERIFIER,
   DURABLE_ARTIFACT_EVIDENCE_VERIFIER,
-  type AssignmentEvidenceVerifier,
-  type DurableArtifactEvidenceVerifier,
 } from '@ventureos/agent-control-plane';
+import {
+  BRIDGE_BROKER_EVIDENCE_VERIFIER,
+  BRIDGE_CAPABILITY_POLICY_VERIFIER,
+  BRIDGE_SECRET_RESOLVER,
+  type BridgeBrokerEvidenceVerifier,
+  type BridgeCapabilityPolicyVerifier,
+  type BridgeSecretResolver,
+} from '@ventureos/agent-bridge';
 import { AuditModule } from '../audit/audit.module';
+import { AcpBridgeAdmissionService } from './acp-bridge-admission.service';
 import { AcpTaskRunService } from './acp-task-run.service';
 
-const denyAssignmentEvidence: AssignmentEvidenceVerifier = {
+const denySecrets: BridgeSecretResolver = {
+  async resolve() {
+    throw new Error('Bridge secret resolution is not configured');
+  },
+};
+const denyBrokerEvidence: BridgeBrokerEvidenceVerifier = {
   async verify() {
     return false;
   },
 };
-const denyArtifactEvidence: DurableArtifactEvidenceVerifier = {
+const denyCapabilityPolicy: BridgeCapabilityPolicyVerifier = {
   async verify() {
     return false;
   },
@@ -27,9 +39,13 @@ const denyArtifactEvidence: DurableArtifactEvidenceVerifier = {
   imports: [AuditModule],
   providers: [
     AcpTaskRunService,
-    { provide: ASSIGNMENT_EVIDENCE_VERIFIER, useValue: denyAssignmentEvidence },
-    { provide: DURABLE_ARTIFACT_EVIDENCE_VERIFIER, useValue: denyArtifactEvidence },
+    AcpBridgeAdmissionService,
+    { provide: BRIDGE_SECRET_RESOLVER, useValue: denySecrets },
+    { provide: BRIDGE_BROKER_EVIDENCE_VERIFIER, useValue: denyBrokerEvidence },
+    { provide: BRIDGE_CAPABILITY_POLICY_VERIFIER, useValue: denyCapabilityPolicy },
+    { provide: ASSIGNMENT_EVIDENCE_VERIFIER, useExisting: AcpBridgeAdmissionService },
+    { provide: DURABLE_ARTIFACT_EVIDENCE_VERIFIER, useExisting: AcpBridgeAdmissionService },
   ],
-  exports: [AcpTaskRunService],
+  exports: [AcpTaskRunService, AcpBridgeAdmissionService],
 })
 export class AgentControlPlaneModule {}
