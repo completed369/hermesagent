@@ -2,13 +2,14 @@
 
 > **Current release note (verified 2026-08-25):** VentureOS is not
 > production-ready or production-deployed. The current product `main` baseline
-> is `bc97001a275ac75e7d5a057a6f32f7190bd4e26a`. Product PRs #59–#76 are
+> is `08e47d560fd03373b04b615bf2af5c193f8522c5`. Product PRs #59–#78 are
 > merged, including the provider-neutral Agent Control Plane, Runtime Broker,
 > Dynamic Agent Factory, verified runtime-interface ADR, tenant-shell switch
 > repair, governed AI COO and Voice Gateway foundations, unified event/audit
 > spine, approval execution-permit bridge, durable objective/project/task/run
-> spine, and the non-publishing release-candidate evidence workflow and its
-> security hardening. Approval preparation now resolves exact workspace-scoped
+> spine, durable protocol-neutral Agent Bridge admission, and the non-publishing
+> release-candidate evidence workflow and its security hardening. Approval
+> preparation now resolves exact workspace-scoped
 > durable task and run rows instead of accepting caller-asserted work. These are
 > repository capabilities, not proof that an external runtime, provider, image,
 > or environment is active.
@@ -30,11 +31,13 @@
 > Gateway is a governed provider-neutral foundation, not an activated speech
 > provider or a verified live voice service.
 >
-> The next runtime dependency is a protocol-neutral, authenticated child-
-> process bridge proven first against a deterministic fake fixture. Real Codex,
-> Hermes, and Pi adapters follow only after that boundary is independently
-> verified; repository installation or local process availability is not
-> connection evidence.
+> The merged bridge is a service-only authenticated admission boundary proven
+> with a deterministic test fixture; it has no transport, controller, network,
+> or process-launch path and stops runtime truth at `PARTIAL`. The next runtime
+> dependency is reviewed child-process transport and supervision across that
+> boundary. Real Codex, Hermes, and Pi adapters follow only after authenticated
+> end-to-end evidence; repository installation or local process availability is
+> not connection evidence.
 >
 > A dated, non-authoritative operations snapshot verified on 2026-08-25 records
 > operations PR #24 as deployed to the Access-protected Founder Mission Control,

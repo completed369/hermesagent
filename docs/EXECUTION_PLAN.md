@@ -3,12 +3,13 @@
 > **CURRENT DELIVERY UPDATE — verified 2026-08-25.** The Phase 0–8 record below is
 > historical implementation evidence, not a production-readiness or deployment
 > claim. The current product baseline is `main`
-> `bc97001a275ac75e7d5a057a6f32f7190bd4e26a`. Product PRs #59–#76 are merged,
+> `08e47d560fd03373b04b615bf2af5c193f8522c5`. Product PRs #59–#78 are merged,
 > including the Agent Control Plane, Runtime Broker, Dynamic Agent Factory,
 > runtime-interface ADR, tenant-shell switch repair, AI COO, Voice Gateway,
 > unified event/audit spine, approval execution-permit bridge, durable
-> objective/project/task/run spine, and sanitized release-candidate evidence
-> workflow/hardening. Approval preparation now binds to real workspace-scoped
+> objective/project/task/run spine, durable protocol-neutral Agent Bridge
+> admission, and sanitized release-candidate evidence workflow/hardening.
+> Approval preparation now binds to real workspace-scoped
 > durable task/run rows. Exact-main CI passed the full
 > migration chain, application integration/E2E, and staging-security/load gate
 > without deployment. CodeQL passed, with zero open alerts when checked on
@@ -23,9 +24,11 @@
 > not an activated speech provider or verified live voice service. Current-main
 > backup/restore and rollback rehearsal, live providers, production
 > observability, commercial proof, and legal/privacy readiness remain unfinished.
-> The next runtime dependency is a protocol-neutral authenticated child-process
-> bridge validated against a deterministic fake fixture before any real Codex,
-> Hermes, or Pi adapter is treated as usable.
+> The merged bridge is a service-only authenticated admission boundary validated
+> against a deterministic test fixture; it has no transport, controller,
+> network, or process-launch path and stops runtime truth at `PARTIAL`. The next
+> runtime dependency is reviewed child-process transport and supervision before
+> any real Codex, Hermes, or Pi adapter is treated as usable.
 >
 > Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
 > `ventureos.site` is the public entry point; `staging.ventureos.site`,

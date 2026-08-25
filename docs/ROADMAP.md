@@ -5,7 +5,7 @@
 The Phase 0–8 checklist below is a historical record of implemented product
 scope. It is **not** a production-readiness or deployment claim. The current
 product baseline is `main` commit
-`bc97001a275ac75e7d5a057a6f32f7190bd4e26a`. Exact-main CI and CodeQL are
+`08e47d560fd03373b04b615bf2af5c193f8522c5`. Exact-main CI and CodeQL are
 green. The most recent sanitized five-image release-candidate evidence is also
 green, while GitHub remains authoritative for any newer exact-main dispatch. CI
 includes the full migration chain, application integration/E2E, and a disposable
@@ -43,6 +43,13 @@ published and current `main` has not been deployed to private staging.
   dependency/run/artifact spine with composite workspace boundaries, atomic
   audit writes, optimistic concurrency, bounded retries, fail-closed evidence
   ports, and Level-4 approval preparation bound to real durable task/run rows.
+- Product PR #78: a verified, service-only durable protocol-neutral Agent
+  Bridge admission boundary with bounded canonical framing, directional
+  authentication, replay protection, exact workspace/principal/session/runtime
+  binding, durable dispatch/receipt/usage evidence, fail-closed policy and
+  artifact verification ports, and deterministic test-only fixture coverage.
+  It adds no transport, controller, network, process launcher, or runtime
+  connectivity claim and stops runtime truth at `PARTIAL`.
 - Product PRs #66, #67, #69, #70, #71, #73, and #74: a dispatch-only,
   non-publishing release-candidate evidence workflow with runner-local five-
   image builds/scans, sanitized conclusions, exact source/archive/report/SBOM
@@ -54,10 +61,11 @@ published and current `main` has not been deployed to private staging.
    with current repository, CI, security, deployment, and commercial evidence.
    GitHub is authoritative for this documentation PR's mutable head and checks;
    this file does not circularly pin its own commit.
-2. **Agent Control Plane continuation:** the durable task/run and approval-
-   preparation spine is MERGED and VERIFIED. Next build a protocol-neutral,
-   authenticated child-process bridge and prove it against a deterministic fake
-   fixture before implementing real runtime adapters. Cost governance,
+2. **Agent Control Plane continuation:** the durable task/run, approval-
+   preparation, and protocol-neutral Agent Bridge admission foundations are
+   MERGED and VERIFIED. Next add reviewed child-process transport and
+   supervision across the bridge boundary before implementing real runtime
+   adapters. Cost governance,
    evaluations, knowledge/playbooks, and adapter hardening continue afterward.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
@@ -89,8 +97,8 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    preparation bound to real durable task/run rows and fail-closed evidence
    ports. This is coordination evidence, not runtime connectivity or execution.
 2. **Runtime Broker and adapters — IN PROGRESS:** the capability- and
-   policy-aware Runtime Broker foundation is MERGED. A constrained Agent Bridge
-   durable admission foundation is under review: it is service-only, stops at
+   policy-aware Runtime Broker and constrained Agent Bridge durable admission
+   foundations are MERGED and VERIFIED. The bridge is service-only, stops at
    `PARTIAL`, and has a deny-only launcher plus an unexported deterministic test
    fixture. Transport, child-process supervision, and authenticated runtime
    adapters remain to be completed. Codex, Hermes, and Pi remain
