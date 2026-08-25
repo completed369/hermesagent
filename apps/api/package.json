@@ -32,6 +32,7 @@
     "@ventureos/workflows": "workspace:*",
     "@ventureos/agent-runtime": "workspace:*",
     "@ventureos/agent-control-plane": "workspace:*",
+    "@ventureos/agent-bridge": "workspace:*",
     "@ventureos/policy-engine": "workspace:*",
     "@ventureos/product-studio": "workspace:*",
     "@ventureos/research-connectors": "workspace:*",

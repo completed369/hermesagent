@@ -165,6 +165,7 @@ test('the immutable migration chain matches the reviewed sequence', () => {
     '20260821113000_operational_audit_spine',
     '20260821130000_acp_approval_bridge',
     '20260825120000_acp_task_run_spine',
+    '20260825190000_durable_agent_bridge_foundation',
   ]);
 });
 

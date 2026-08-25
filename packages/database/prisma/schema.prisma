@@ -131,6 +131,12 @@ model Workspace {
   acpTaskDependencies      AcpTaskDependency[]
   acpRuns                  AcpRun[]
   acpArtifacts             AcpArtifact[]
+  acpRuntimes              AcpRuntime[]
+  acpRuntimeConnections    AcpRuntimeConnection[]
+  acpBridgeSessions        AcpBridgeSession[]
+  acpBridgeReceipts        AcpBridgeReceipt[]
+  acpBridgeDispatches      AcpBridgeDispatch[]
+  acpRunUsages             AcpRunUsage[]
 
   @@map("workspaces")
 }
@@ -1023,9 +1029,11 @@ model AcpRun {
   startedAt                DateTime?
   completedAt              DateTime?
 
-  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task      AcpTask       @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
-  artifacts AcpArtifact[]
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task             AcpTask             @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  artifacts        AcpArtifact[]
+  bridgeDispatches AcpBridgeDispatch[]
+  usages           AcpRunUsage[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
@@ -1033,6 +1041,193 @@ model AcpRun {
   @@index([workspaceId, objectiveId, status])
   @@index([workspaceId, taskId, status])
   @@map("acp_runs")
+}
+
+/// Provider-neutral runtime admission record. Status defaults to NOT_CONFIGURED;
+/// this foundation never promotes Codex, Hermes, Pi, or another real runtime.
+model AcpRuntime {
+  id                         String
+  workspaceId                String   @db.Uuid
+  adapterKind                String
+  status                     String   @default("NOT_CONFIGURED")
+  principalReference         String
+  secretReference            String
+  secretDigest               String
+  capabilityPolicyHash       String
+  provisioningIdempotencyKey String
+  version                    Int      @default(1)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connections AcpRuntimeConnection[]
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, principalReference])
+  @@unique([workspaceId, secretReference])
+  @@unique([workspaceId, provisioningIdempotencyKey])
+  @@index([workspaceId, status])
+  @@map("acp_runtimes")
+}
+
+model AcpRuntimeConnection {
+  id                    String
+  workspaceId           String    @db.Uuid
+  runtimeId             String
+  environment           String
+  status                String    @default("NOT_CONFIGURED")
+  authGeneration        Int       @default(1)
+  capabilityCodes       String[]  @default([])
+  capabilityDigest      String?
+  lastHeartbeatAt       DateTime?
+  lastHeartbeatHealth   String?
+  lastHeartbeatSequence Int?
+  version               Int       @default(1)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  workspace  Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runtime    AcpRuntime          @relation(fields: [workspaceId, runtimeId], references: [workspaceId, id], onDelete: Cascade)
+  sessions   AcpBridgeSession[]
+  dispatches AcpBridgeDispatch[]
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, runtimeId, environment])
+  @@index([workspaceId, runtimeId, status])
+  @@map("acp_runtime_connections")
+}
+
+model AcpBridgeSession {
+  id                 String
+  workspaceId        String    @db.Uuid
+  runtimeId          String
+  connectionId       String
+  principalReference String
+  protocolVersion    String
+  state              String    @default("CHALLENGED")
+  parentNonce        String
+  runtimeNonce       String?
+  keyDigest          String?
+  expectedSequence   Int       @default(1)
+  authenticatedAt    DateTime?
+  expiresAt          DateTime
+  closedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection AcpRuntimeConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  receipts   AcpBridgeReceipt[]
+  dispatches AcpBridgeDispatch[]
+
+  @@id([workspaceId, id])
+  @@index([workspaceId, connectionId, state])
+  @@index([expiresAt])
+  @@map("acp_bridge_sessions")
+}
+
+/// Immutable normalized receipt. It stores digests and bounded references,
+/// never raw protocol payloads, prompts, transcripts, MACs, or credentials.
+model AcpBridgeReceipt {
+  id             String
+  workspaceId    String   @db.Uuid
+  runtimeId      String
+  connectionId   String
+  sessionId      String
+  sequence       Int
+  messageId      String
+  messageType    String
+  payloadDigest  String
+  envelopeDigest String
+  taskId         String?
+  runId          String?
+  dispatchId     String?
+  evidenceId     String?
+  evidenceHash   String?
+  artifactId     String?
+  criterion      String?
+  artifactKind   String?
+  uriReference   String?
+  contentHash    String?
+  receivedAt     DateTime @default(now())
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  session   AcpBridgeSession @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+  usage     AcpRunUsage?
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, sessionId, sequence])
+  @@unique([workspaceId, sessionId, messageId])
+  @@unique([workspaceId, evidenceId])
+  @@unique([workspaceId, id, sessionId, dispatchId, runId, sequence])
+  @@index([workspaceId, runId, messageType])
+  @@map("acp_bridge_receipts")
+}
+
+model AcpBridgeDispatch {
+  id                     String
+  workspaceId            String    @db.Uuid
+  objectiveId            String
+  taskId                 String
+  runId                  String
+  runtimeId              String
+  connectionId           String
+  sessionId              String
+  agentId                String
+  authorityLevel         Int
+  state                  String    @default("PREPARED")
+  brokerEvidenceId       String
+  brokerEvidenceHash     String
+  assignmentEvidenceHash String
+  assignmentEvidenceId   String
+  dispatchEnvelopeHash   String
+  idempotencyKey         String
+  acceptedAt             DateTime?
+  terminalAt             DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  run        AcpRun               @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  connection AcpRuntimeConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  session    AcpBridgeSession     @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+  usages     AcpRunUsage[]
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, idempotencyKey])
+  @@unique([workspaceId, runId])
+  @@unique([workspaceId, id, runId, sessionId])
+  @@index([workspaceId, connectionId, state])
+  @@map("acp_bridge_dispatches")
+}
+
+model AcpRunUsage {
+  id                       String
+  workspaceId              String   @db.Uuid
+  dispatchId               String
+  runId                    String
+  sessionId                String
+  receiptId                String
+  sequence                 Int
+  computeUnits             BigInt
+  costMinorUnits           BigInt
+  cumulativeComputeUnits   BigInt
+  cumulativeCostMinorUnits BigInt
+  currency                 String
+  evidenceHash             String
+  recordedAt               DateTime @default(now())
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dispatch  AcpBridgeDispatch @relation(fields: [workspaceId, dispatchId, runId, sessionId], references: [workspaceId, id, runId, sessionId], onDelete: Cascade)
+  run       AcpRun            @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  receipt   AcpBridgeReceipt  @relation(fields: [workspaceId, receiptId, sessionId, dispatchId, runId, sequence], references: [workspaceId, id, sessionId, dispatchId, runId, sequence], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, receiptId])
+  @@unique([workspaceId, receiptId, sessionId, dispatchId, runId, sequence])
+  @@unique([workspaceId, dispatchId, sequence])
+  @@index([workspaceId, runId, recordedAt(sort: Desc)])
+  @@map("acp_run_usages")
 }
 
 model AcpArtifact {

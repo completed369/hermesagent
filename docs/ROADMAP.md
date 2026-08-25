@@ -89,10 +89,12 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    preparation bound to real durable task/run rows and fail-closed evidence
    ports. This is coordination evidence, not runtime connectivity or execution.
 2. **Runtime Broker and adapters — IN PROGRESS:** the capability- and
-   policy-aware Runtime Broker foundation is MERGED. The next dependency is a
-   protocol-neutral authenticated child-process bridge verified first with a
-   deterministic fake fixture; real runtime adapters follow that proof. Codex,
-   Hermes, and Pi remain **NOT_CONFIGURED** until each demonstrates authenticated
+   policy-aware Runtime Broker foundation is MERGED. A constrained Agent Bridge
+   durable admission foundation is under review: it is service-only, stops at
+   `PARTIAL`, and has a deny-only launcher plus an unexported deterministic test
+   fixture. Transport, child-process supervision, and authenticated runtime
+   adapters remain to be completed. Codex, Hermes, and Pi remain
+   **NOT_CONFIGURED** until each demonstrates authenticated
    registration, capability exchange, heartbeat, task/status exchange, and an
    event/result round trip. Do not infer connectivity from installed software,
    repositories, or prior conversations.

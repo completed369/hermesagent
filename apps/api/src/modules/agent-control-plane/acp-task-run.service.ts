@@ -367,16 +367,27 @@ export class AcpTaskRunService {
     const actorKind = assertTrustedControlPlane(capability, context);
     validateTrustedAssignmentEvidence(evidence);
     validateAcpApprovalReference(idempotencyKey, 'idempotencyKey');
-    if (!(await this.assignmentVerifier.verify(context.workspaceId, evidence))) {
-      throw new AcpTaskRunDeniedError('Trusted assignment evidence was not verified');
-    }
     return prisma.$transaction(
       async (tx) => {
-        const run = await tx.acpRun.findUnique({
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${evidence.runId} FOR UPDATE`,
+        );
+        let run = await tx.acpRun.findUnique({
           where: { workspaceId_id: { workspaceId: context.workspaceId, id: evidence.runId } },
           include: { task: true },
         });
         if (!run) throw new AcpTaskRunNotFoundError('ACP run not found');
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${run.taskId} FOR UPDATE`,
+        );
+        run = await tx.acpRun.findUnique({
+          where: { workspaceId_id: { workspaceId: context.workspaceId, id: evidence.runId } },
+          include: { task: true },
+        });
+        if (!run) throw new AcpTaskRunNotFoundError('ACP run not found');
+        if (!(await this.assignmentVerifier.verify(context.workspaceId, evidence))) {
+          throw new AcpTaskRunDeniedError('Trusted assignment evidence was not verified');
+        }
         if (run.taskId !== evidence.taskId)
           throw new AcpTaskRunDeniedError('Assignment evidence targets a different task');
         if (run.requiredAuthority === 4)
