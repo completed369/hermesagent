@@ -75,9 +75,7 @@ describe('bounded canonical Agent Bridge protocol', () => {
     expect(() => decodeBridgeLine(Buffer.from(` ${json}\n`))).toThrow(BridgeProtocolError);
     expect(() =>
       decodeBridgeLine(
-        Buffer.from(
-          json.replace('{', '{"mac":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",') + '\n',
-        ),
+        Buffer.from(`{"mac":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",${json.slice(1)}\n`),
       ),
     ).toThrow(BridgeProtocolError);
     expect(() => decodeBridgeLine(Buffer.from([0xff, 0x0a]))).toThrow(BridgeProtocolError);
