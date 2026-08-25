@@ -137,6 +137,8 @@ model Workspace {
   acpBridgeReceipts        AcpBridgeReceipt[]
   acpBridgeDispatches      AcpBridgeDispatch[]
   acpRunUsages             AcpRunUsage[]
+  acpBrokerReservations    AcpBrokerReservation[]
+  acpBrokerEvaluations     AcpBrokerEvaluation[]
 
   @@map("workspaces")
 }
@@ -971,13 +973,14 @@ model AcpTask {
   updatedAt               DateTime  @updatedAt
   completedAt             DateTime?
 
-  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  objective    AcpObjective        @relation(fields: [workspaceId, objectiveId], references: [workspaceId, id], onDelete: Cascade)
-  project      AcpProject          @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade)
-  dependencies AcpTaskDependency[] @relation("AcpTaskDependencies")
-  dependents   AcpTaskDependency[] @relation("AcpTaskDependents")
-  runs         AcpRun[]
-  artifacts    AcpArtifact[]
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  objective          AcpObjective           @relation(fields: [workspaceId, objectiveId], references: [workspaceId, id], onDelete: Cascade)
+  project            AcpProject             @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: Cascade)
+  dependencies       AcpTaskDependency[]    @relation("AcpTaskDependencies")
+  dependents         AcpTaskDependency[]    @relation("AcpTaskDependents")
+  runs               AcpRun[]
+  artifacts          AcpArtifact[]
+  brokerReservations AcpBrokerReservation[]
 
   @@id([workspaceId, id])
   @@index([workspaceId, objectiveId, status])
@@ -1029,15 +1032,17 @@ model AcpRun {
   startedAt                DateTime?
   completedAt              DateTime?
 
-  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task             AcpTask             @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
-  artifacts        AcpArtifact[]
-  bridgeDispatches AcpBridgeDispatch[]
-  usages           AcpRunUsage[]
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task               AcpTask                @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  artifacts          AcpArtifact[]
+  bridgeDispatches   AcpBridgeDispatch[]
+  usages             AcpRunUsage[]
+  brokerReservations AcpBrokerReservation[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
   @@unique([workspaceId, assignmentIdempotencyKey])
+  @@unique([workspaceId, id, objectiveId, taskId], map: "acp_runs_broker_binding_key")
   @@index([workspaceId, objectiveId, status])
   @@index([workspaceId, taskId, status])
   @@map("acp_runs")
@@ -1086,13 +1091,15 @@ model AcpRuntimeConnection {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  workspace  Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  runtime    AcpRuntime          @relation(fields: [workspaceId, runtimeId], references: [workspaceId, id], onDelete: Cascade)
-  sessions   AcpBridgeSession[]
-  dispatches AcpBridgeDispatch[]
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runtime            AcpRuntime             @relation(fields: [workspaceId, runtimeId], references: [workspaceId, id], onDelete: Cascade)
+  sessions           AcpBridgeSession[]
+  dispatches         AcpBridgeDispatch[]
+  brokerReservations AcpBrokerReservation[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, runtimeId, environment])
+  @@unique([workspaceId, id, runtimeId], map: "acp_runtime_connections_broker_binding_key")
   @@index([workspaceId, runtimeId, status])
   @@map("acp_runtime_connections")
 }
@@ -1187,11 +1194,12 @@ model AcpBridgeDispatch {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  run        AcpRun               @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
-  connection AcpRuntimeConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
-  session    AcpBridgeSession     @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
-  usages     AcpRunUsage[]
+  workspace         Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  run               AcpRun               @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  connection        AcpRuntimeConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  session           AcpBridgeSession     @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+  brokerReservation AcpBrokerReservation @relation(fields: [workspaceId, brokerEvidenceId, brokerEvidenceHash, taskId, runId, agentId, runtimeId, connectionId], references: [workspaceId, id, evidenceHash, taskId, runId, agentId, runtimeId, connectionId], onDelete: Cascade)
+  usages            AcpRunUsage[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
@@ -1228,6 +1236,83 @@ model AcpRunUsage {
   @@unique([workspaceId, dispatchId, sequence])
   @@index([workspaceId, runId, recordedAt(sort: Desc)])
   @@map("acp_run_usages")
+}
+
+/// Immutable broker decision and capacity/budget hold. This is routing evidence,
+/// not execution authority, a financial charge, or runtime connectivity proof.
+model AcpBrokerReservation {
+  id                      String
+  workspaceId             String    @db.Uuid
+  objectiveId             String
+  taskId                  String
+  runId                   String
+  agentId                 String
+  agentEvidenceId         String
+  agentEvidenceHash       String
+  runtimeId               String
+  connectionId            String
+  requestHash             String
+  candidateEvidenceId     String
+  candidateEvidenceHash   String
+  taskPolicyHash          String
+  taskPolicyVersion       String
+  expectedRunVersion      Int
+  selectedScoreBps        Int
+  estimatedCostMinorUnits BigInt
+  reservedComputeUnits    BigInt
+  maxConcurrentRuns       Int
+  evidenceHash            String
+  state                   String    @default("RESERVED")
+  testOnly                Boolean   @default(false)
+  idempotencyKey          String
+  expiresAt               DateTime
+  claimedDispatchId       String?
+  claimedAt               DateTime?
+  releasedAt              DateTime?
+  createdAt               DateTime  @default(now())
+
+  workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task        AcpTask               @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  run         AcpRun                @relation(fields: [workspaceId, runId, objectiveId, taskId], references: [workspaceId, id, objectiveId, taskId], onDelete: Cascade, map: "acp_broker_reservations_run_fkey")
+  connection  AcpRuntimeConnection  @relation(fields: [workspaceId, connectionId, runtimeId], references: [workspaceId, id, runtimeId], onDelete: Cascade, map: "acp_broker_reservations_connection_fkey")
+  evaluations AcpBrokerEvaluation[]
+  dispatches  AcpBridgeDispatch[]
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, idempotencyKey])
+  @@unique([workspaceId, claimedDispatchId])
+  @@unique([workspaceId, id, evidenceHash, taskId, runId, agentId, runtimeId, connectionId])
+  @@index([workspaceId, connectionId, state, expiresAt])
+  @@map("acp_broker_reservations")
+}
+
+/// Normalized bounded evaluation evidence. Rejection reasons are controlled
+/// codes; arbitrary prompts, explanations, transcripts, or credentials are not stored.
+model AcpBrokerEvaluation {
+  id               String
+  workspaceId      String   @db.Uuid
+  reservationId    String
+  runtimeId        String
+  connectionId     String
+  eligible         Boolean
+  rejectionReasons String[] @default([])
+  scoreBps         Int?
+  qualityBps       Int?
+  reliabilityBps   Int?
+  securityBps      Int?
+  latencyBps       Int?
+  costBps          Int?
+  workloadBps      Int?
+  ordinal          Int
+  createdAt        DateTime @default(now())
+
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  reservation AcpBrokerReservation @relation(fields: [workspaceId, reservationId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, reservationId, runtimeId, connectionId])
+  @@unique([workspaceId, reservationId, ordinal])
+  @@map("acp_broker_evaluations")
 }
 
 model AcpArtifact {

@@ -555,6 +555,7 @@ export class AcpBridgeAdmissionService
       field === 'evidenceHash' ? digest(value, field) : reference(value, field);
     if (
       input.brokerEvidence.workspaceId !== context.workspaceId ||
+      input.brokerEvidence.agentId !== input.agentId ||
       !(await this.brokerEvidence.verify(input.brokerEvidence))
     ) {
       throw new AcpBridgeAdmissionDeniedError('Trusted broker evidence was not verified');
@@ -576,6 +577,7 @@ export class AcpBridgeAdmissionService
             existing.agentId !== input.agentId ||
             existing.runId !== input.brokerEvidence.runId ||
             existing.taskId !== input.brokerEvidence.taskId ||
+            existing.agentId !== input.brokerEvidence.agentId ||
             existing.runtimeId !== input.brokerEvidence.runtimeId ||
             existing.connectionId !== input.brokerEvidence.connectionId ||
             existing.brokerEvidenceId !== input.brokerEvidence.evidenceId ||
@@ -586,20 +588,6 @@ export class AcpBridgeAdmissionService
           }
           return { dispatch: existing, replayed: true };
         }
-        await tx.$queryRaw(
-          Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.sessionId} FOR UPDATE`,
-        );
-        const session = await tx.acpBridgeSession.findUnique({
-          where: { workspaceId_id: { workspaceId: context.workspaceId, id: input.sessionId } },
-        });
-        if (!session) throw new AcpBridgeAdmissionNotFoundError('Bound session not found');
-        await tx.$queryRaw(
-          Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${session.connectionId} FOR UPDATE`,
-        );
-        const connection = await tx.acpRuntimeConnection.findUniqueOrThrow({
-          where: { workspaceId_id: { workspaceId: context.workspaceId, id: session.connectionId } },
-          include: { runtime: true },
-        });
         await tx.$queryRaw(
           Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.brokerEvidence.runId} FOR UPDATE`,
         );
@@ -618,6 +606,27 @@ export class AcpBridgeAdmissionService
           },
           include: { task: true },
         });
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.brokerEvidence.connectionId} FOR UPDATE`,
+        );
+        const connection = await tx.acpRuntimeConnection.findUnique({
+          where: {
+            workspaceId_id: {
+              workspaceId: context.workspaceId,
+              id: input.brokerEvidence.connectionId,
+            },
+          },
+          include: { runtime: true },
+        });
+        if (!connection)
+          throw new AcpBridgeAdmissionNotFoundError('Bound runtime connection not found');
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.sessionId} FOR UPDATE`,
+        );
+        const session = await tx.acpBridgeSession.findUnique({
+          where: { workspaceId_id: { workspaceId: context.workspaceId, id: input.sessionId } },
+        });
+        if (!session) throw new AcpBridgeAdmissionNotFoundError('Bound session not found');
         const now = await databaseNow(tx);
         await this.assertAdapterIsolation(
           context.workspaceId,
@@ -640,8 +649,11 @@ export class AcpBridgeAdmissionService
           throw new AcpBridgeAdmissionDeniedError('Only ready Level 0-3 runs may be admitted');
         if (
           input.brokerEvidence.taskId !== run.taskId ||
+          input.brokerEvidence.agentId !== input.agentId ||
           input.brokerEvidence.runtimeId !== session.runtimeId ||
-          input.brokerEvidence.connectionId !== session.connectionId
+          input.brokerEvidence.connectionId !== session.connectionId ||
+          connection.runtimeId !== session.runtimeId ||
+          connection.id !== session.connectionId
         )
           throw new AcpBridgeAdmissionDeniedError('Broker evidence binding mismatch');
         const assignmentEvidenceId = `assignment:${input.dispatchId}`;
@@ -1036,6 +1048,7 @@ export class AcpBridgeAdmissionService
             workspaceId: dispatch.workspaceId,
             taskId: dispatch.taskId,
             runId: dispatch.runId,
+            agentId: dispatch.agentId,
             runtimeId: dispatch.runtimeId,
             connectionId: dispatch.connectionId,
           }

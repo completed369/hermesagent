@@ -9,6 +9,7 @@ export interface TrustedBridgeBrokerEvidence {
   readonly workspaceId: string;
   readonly taskId: string;
   readonly runId: string;
+  readonly agentId: string;
   readonly runtimeId: string;
   readonly connectionId: string;
 }
