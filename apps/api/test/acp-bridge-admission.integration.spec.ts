@@ -611,7 +611,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     });
     expect(cumulativeUsage.cumulativeComputeUnits).toBe(12n);
     expect(cumulativeUsage.cumulativeCostMinorUnits).toBe(7n);
-    expect(cumulativeAudit.facts).toMatchObject({
+    expect(cumulativeAudit.after).toMatchObject({
       computeUnits: 2,
       costMinorUnits: 2,
       taskComputeUsed: 12,
