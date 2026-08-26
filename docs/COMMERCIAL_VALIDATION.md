@@ -1,5 +1,34 @@
 # Commercial Validation Gates
 
+## Issue #31 / #42 preparation snapshot — 2026-08-26
+
+Status: **PREPARED / BLOCKED**. The source-controlled pet-sitting operations candidate's selected
+input fields are compatible with the evaluated subset of the Etsy development-pack source, and the
+deterministic opportunity formula produces `76.95`. The subset covers marketplace/product type,
+restricted-category and declared-IP inputs, plus title length; it does not evaluate the full listing,
+image, file, pricing, publication, account or live policy state. This is an offline readiness result,
+not a Gate 1 or Gate 2 pass.
+
+The offline preflight validates the strict current input schema, evaluated source-input subset
+compatibility, deterministic opportunity scoring and evidence-expiry horizon. Its output is
+sanitized and cannot
+persist an opportunity, dispatch work, contact a prospect, activate a provider or decide an
+approval. Authoritative policy-pack active/review state, workspace title uniqueness, server-derived
+evidence/profit scores, board review and persisted Founder approval remain unresolved. The current
+application release is neither published nor deployed to private product staging, so execution of
+the commercial pilot remains behind the existing Founder/deployment boundary.
+
+`docs/COMMERCIAL_PILOT_LOG.md` therefore remains **NOT STARTED**. Issue #31 preparation does not
+create a customer or design partner, and Issue #42 preparation does not execute either commercial
+gate.
+
+After the repository dependencies are installed, the fixed offline check is available as
+`pnpm --filter @ventureos/api run stage6:pilot-preflight`. The command generates the local Prisma
+client and builds its workspace dependencies before running; it does not connect to a database. It
+accepts no alternate path or customer input and emits only the sanitized decision packet.
+The runner rejects any change to the reviewed fixture digest and takes its evaluation time from the
+process clock; only the pure test seam accepts an injected date.
+
 Per master spec section 30. The six gate definitions and thresholds below are authoritative. The underlying opportunity, board, approval, product, listing, finance and experiment mechanisms now exist; Stage 6 must exercise them against one real pilot venture rather than treating seeded/demo data as commercial evidence.
 
 | Gate                      | Key thresholds                                                                                                                              | Current readiness                                                                                                                                                                               |

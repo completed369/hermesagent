@@ -2,6 +2,13 @@
 
 Status: **NOT STARTED**
 
+Preparation status (2026-08-26): **PREPARED / BLOCKED**. The Issue #31 candidate input completed a
+strict offline source preflight for schema compatibility, evaluated source-input subset compatibility,
+deterministic opportunity scoring (`76.95`) and evidence-expiry horizon. This did not write any
+VentureOS record, run Gate 1 or Gate 2, contact anyone, use customer data, dispatch work, activate a
+provider or decide a Founder approval. Issue #42 remains unexecuted. All authoritative IDs and gate
+results below remain `TBD` / `NOT RUN` until the governed application path is deliberately run.
+
 This log is the Stage-6 evidence record for one real VentureOS pilot venture. Do not mark a gate PASS unless the evidence below exists in authoritative VentureOS state and satisfies `docs/COMMERCIAL_VALIDATION.md`. Seed/demo data, chat statements and agent memory are not substitutes for real pilot evidence or persisted founder approvals.
 
 ## Pilot identity
