@@ -74,6 +74,10 @@ test('recognized usage is transactionally paired with ledger and immutable evide
     /SELECT \* INTO workspace_policy[\s\S]*?FOR UPDATE;[\s\S]*?SELECT \* INTO task_policy[\s\S]*?FOR UPDATE;[\s\S]*?ledger_clock := clock_timestamp\(\);[\s\S]*?ledger_clock >= workspace_policy\."periodStart"[\s\S]*?ledger_clock < task_policy\."periodEnd"/u,
   );
   assert.match(migration, /cost budget policy expired before ledger commit/u);
+  assert.match(
+    migration,
+    /workspace budget policy correlation mismatch[\s\S]*?task budget policy correlation mismatch[\s\S]*?cost budget policy expired before ledger commit/u,
+  );
   assert.match(migration, /usage_row\."cumulativeCostMinorUnits" > task_limit/u);
   assert.match(migration, /usage_row\."cumulativeComputeUnits" > task_compute_limit/u);
   assert.match(
