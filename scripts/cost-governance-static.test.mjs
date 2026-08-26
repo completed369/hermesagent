@@ -65,6 +65,8 @@ test('recognized usage is transactionally paired with ledger and immutable evide
   assert.match(migration, /receipt_received_at IS DISTINCT FROM usage_row\."recordedAt"/u);
   assert.match(migration, /ventureos_bind_usage_clock/u);
   assert.match(migration, /NEW\."recordedAt" := receipt_received_at/u);
+  assert.equal((migration.match(/NEW\."recordedAt" := receipt_received_at/gu) ?? []).length, 1);
+  assert.match(migration, /receipt_received_at IS DISTINCT FROM NEW\."recordedAt"/u);
   assert.match(migration, /usage requires an exact database-clock receipt/u);
   assert.match(migration, /usage receipt database clock correlation mismatch/u);
   assert.match(
