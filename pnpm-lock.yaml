@@ -108,6 +108,9 @@ importers:
       '@ventureos/research-connectors':
         specifier: workspace:*
         version: link:../../packages/research-connectors
+      '@ventureos/scoring-engine':
+        specifier: workspace:*
+        version: link:../../packages/scoring-engine
       '@ventureos/security':
         specifier: workspace:*
         version: link:../../packages/security

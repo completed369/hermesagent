@@ -3,26 +3,14 @@ import { z } from 'zod';
 import { prisma } from '@ventureos/database';
 import { AuditService } from '../modules/audit/audit.service';
 import { BoardService } from '../modules/board/board.service';
-import {
-  createOpportunitySchema,
-  opportunityComplianceAssessmentSchema,
-} from '../modules/opportunities/opportunities.dto';
 import { OpportunitiesService } from '../modules/opportunities/opportunities.service';
+import { stage6PilotInputSchema, type Stage6PilotInput } from './stage6-pilot-input';
 
 const CANONICAL_WORKSPACE_SLUG = 'ventureos-default';
 const CANONICAL_SEED_TITLE = 'Social Media Content Planning Kit';
 const REQUIRED_SCORE = 70;
 const BOARD_WAIT_TIMEOUT_MS = 180_000;
 const POLL_INTERVAL_MS = 1_000;
-
-const operatorInputSchema = z
-  .object({
-    pilot: createOpportunitySchema,
-    compliance: opportunityComplianceAssessmentSchema.omit({ evidenceClaimIds: true }).strict(),
-  })
-  .strict();
-
-type OperatorInput = z.infer<typeof operatorInputSchema>;
 
 type ScoreType = 'OPPORTUNITY' | 'PROFIT_CONFIDENCE' | 'EVIDENCE_QUALITY';
 
@@ -243,7 +231,7 @@ async function waitForBoardAndApproval(params: {
   );
 }
 
-export async function runStage6PreapprovalOperator(input: OperatorInput) {
+export async function runStage6PreapprovalOperator(input: Stage6PilotInput) {
   const { workspaceId, founderUserId } = await resolveCanonicalFounderContext();
   await assertFreshTitle(workspaceId, input.pilot.title);
 
@@ -317,7 +305,7 @@ async function main(): Promise<void> {
   try {
     const raw = await readStdin();
     const parsedJson: unknown = JSON.parse(raw);
-    const input = operatorInputSchema.parse(parsedJson);
+    const input = stage6PilotInputSchema.parse(parsedJson);
     const result = await runStage6PreapprovalOperator(input);
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
