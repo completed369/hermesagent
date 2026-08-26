@@ -147,6 +147,30 @@ secret scanning, push protection, branch protection/rulesets, CodeQL/code
 scanning, and dependency-review enforcement require administrator verification
 or explicit workflow/configuration evidence before being claimed enabled.
 
+## Workflow supply-chain policy
+
+Every external GitHub Action used by a governed workflow is pinned to an exact
+40-character commit SHA. A version comment may document the reviewed upstream
+release, but a mutable tag is never the executable reference. Container actions
+must likewise use an immutable SHA-256 image digest. Repository-local actions
+remain reviewed source in the exact checked-out commit.
+
+Pull-request-triggered workflows must not grant `contents: write`, use
+`permissions: write-all`, or execute `git push`. The CI and Pi Harness read-only
+validation checkouts do not persist the workflow token.
+`scripts/workflow-supply-chain-policy.test.mjs` enforces the write and immutable
+reference invariants across every checked-in workflow and contains adversarial
+fixtures for mutable action tags, `pull_request_target`, inline write
+permissions, and branch pushes.
+
+The one-time Prisma JavaScript-engine remediation is already part of repository
+source: the generator uses `engineType = "client"`, the PostgreSQL driver adapter
+and client versions are pinned, the client constructs `PrismaPg`, and the frozen
+lockfile contains the adapter. The obsolete branch-bootstrap and pull-request
+lockfile workflows were removed after that remediation landed; routine CI now
+validates the checked-in schema, client generation, frozen lockfile, migrations,
+and application suites without mutating a branch.
+
 ## Publication and private-staging workflows
 
 The repository also contains manually dispatched, founder-gated workflows for
