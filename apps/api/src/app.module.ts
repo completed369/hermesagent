@@ -23,6 +23,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { SafeExceptionFilter } from './common/filters/safe-exception.filter';
 import { CsrfOriginGuard } from './common/guards/csrf-origin.guard';
 import { AgentControlPlaneModule } from './modules/agent-control-plane/agent-control-plane.module';
+import { WorkflowCentreModule } from './modules/workflow-centre/workflow-centre.module';
 
 const env = loadEnv();
 
@@ -46,6 +47,7 @@ const env = loadEnv();
     BillingModule,
     VenturesModule,
     AgentControlPlaneModule,
+    WorkflowCentreModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

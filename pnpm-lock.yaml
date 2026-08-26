@@ -209,6 +209,9 @@ importers:
       '@types/react-dom':
         specifier: ^18.3.0
         version: 18.3.7(@types/react@18.3.31)
+      axe-core:
+        specifier: ^4.12.1
+        version: 4.12.1
       eslint-config-next:
         specifier: ^15.5.21
         version: 15.5.22(eslint@8.57.1)(typescript@5.9.3)

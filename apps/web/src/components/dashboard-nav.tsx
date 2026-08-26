@@ -79,7 +79,12 @@ export const NAV_ITEMS: NavigationItem[] = [
     available: true,
     requiredPermissions: ['finance:view'],
   },
-  { href: '#', label: 'Workflow Centre', available: false, statusLabel: 'Planned' },
+  {
+    href: '/dashboard/workflows',
+    label: 'Workflow Centre',
+    available: true,
+    requiredPermissions: ['workflow:view'],
+  },
 ];
 
 export function DashboardNav({ permissions }: { permissions: string[] }) {

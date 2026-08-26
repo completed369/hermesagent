@@ -102,6 +102,12 @@ published and current `main` has not been deployed to private staging.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
+   The product repository now includes a bounded authenticated read-only
+   Workflow Centre source at `/dashboard/workflows`. It combines safe legacy
+   workflow metadata with persisted Agent Control Plane objective, task, run,
+   runtime, connection, and pending Level-4 summaries without exposing approval
+   authority, private evidence, secrets, transcripts, artifacts, or cost. This
+   source capability is not live telemetry or deployment evidence.
    Continue authenticated telemetry, task graph, approvals, security,
    infrastructure, commercial, finance, and board views without exposing
    confidential fields or weakening Cloudflare Access.
@@ -152,7 +158,9 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    it into an evidence-backed view of company health, objectives/tasks/runs,
    real agent telemetry, approvals, incidents, releases, infrastructure,
    security, customers, commercial evidence, finance, costs, board decisions,
-   and risks. Do not fake live events or publish arbitrary percentages.
+   and risks. The bounded product Workflow Centre is the first authenticated
+   read-only task/workforce view; streaming telemetry and operator controls remain
+   separate future work. Do not fake live events or publish arbitrary percentages.
 5. **Voice — IN PROGRESS:** the governed provider-neutral Voice Gateway
    foundation is MERGED. Push-to-talk, activated STT/TTS adapters, end-to-end
    voice interaction, history, and live-evidence briefings are not yet verified.

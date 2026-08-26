@@ -75,6 +75,14 @@ spend. Production budget policy administration remains a later governed path.
 > images. This is not production Job Object, cgroup, namespace, executable-
 > identity, crash-cleanup, or runtime-connectivity evidence.
 >
+> The authenticated product Workflow Centre is a bounded read-only snapshot.
+> It derives the workspace from the session, requires `workflow:view`, and
+> returns only allowlisted legacy workflow and Agent Control Plane status
+> metadata. It intentionally excludes command authority, approval targets,
+> evidence and policy hashes, secrets, principal references, artifacts,
+> transcripts, and cost. It is not streaming telemetry, a runtime connection,
+> the protected Founder Mission Control, publication, or deployment evidence.
+>
 > A dated, non-authoritative operations snapshot verified on 2026-08-25 records
 > operations PR #24 as deployed to the Access-protected Founder Mission Control,
 > with its command-center and Site Steward checks green. The private operations
