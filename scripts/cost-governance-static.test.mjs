@@ -37,6 +37,15 @@ test('recognized usage is transactionally paired with ledger and immutable evide
   assert.match(migration, /usage_row\."cumulativeComputeUnits" > task_compute_limit/u);
   assert.match(
     migration,
+    /SUM\("costMinorUnits"\)[\s\S]*?SUM\("computeUnits"\)[\s\S]*?"taskId" = NEW\."taskId"/u,
+  );
+  assert.match(migration, /prior_task_lifetime_cost \+ NEW\."costMinorUnits" > task_limit/u);
+  assert.match(
+    migration,
+    /prior_task_lifetime_compute \+ NEW\."computeUnits" > task_compute_limit/u,
+  );
+  assert.match(
+    migration,
     /SELECT "currency", "maximumCostMinorUnits", "maximumComputeUnits", "policyVersion"[\s\S]*?FOR UPDATE;[\s\S]*?SELECT \* INTO workspace_policy[\s\S]*?FOR UPDATE;[\s\S]*?SELECT \* INTO task_policy[\s\S]*?FOR UPDATE;/u,
   );
   assert.match(

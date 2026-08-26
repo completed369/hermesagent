@@ -1295,6 +1295,7 @@ export class AcpBridgeAdmissionService
         computeUnits: compute,
         taskPolicyVersion: task.policyVersion,
         taskLimitMinorUnits: task.maximumCostMinorUnits,
+        taskComputeLimit: task.maximumComputeUnits,
         recordedAt: spendRecordedAt,
       });
       return {

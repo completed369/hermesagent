@@ -29,6 +29,7 @@ export interface RecordGovernedUsageInput {
   readonly computeUnits: bigint;
   readonly taskPolicyVersion: string;
   readonly taskLimitMinorUnits: bigint;
+  readonly taskComputeLimit: bigint;
   readonly recordedAt: Date;
 }
 
@@ -130,7 +131,7 @@ export class AcpCostGovernanceService {
     )
       throw new AcpCostGovernanceDeniedError('Budget policy binding mismatch');
 
-    const [workspaceAggregate, taskAggregate] = await Promise.all([
+    const [workspaceAggregate, taskAggregate, taskLifetimeAggregate] = await Promise.all([
       tx.acpCostLedgerEntry.aggregate({
         where: {
           workspaceId,
@@ -148,9 +149,20 @@ export class AcpCostGovernanceService {
         },
         _sum: { costMinorUnits: true },
       }),
+      tx.acpCostLedgerEntry.aggregate({
+        where: { workspaceId, taskId: input.taskId },
+        _sum: { costMinorUnits: true, computeUnits: true },
+      }),
     ]);
     const currentWorkspaceSpend = workspaceAggregate._sum.costMinorUnits ?? 0n;
     const currentTaskSpend = taskAggregate._sum.costMinorUnits ?? 0n;
+    const taskLifetimeCost = taskLifetimeAggregate._sum.costMinorUnits ?? 0n;
+    const taskLifetimeCompute = taskLifetimeAggregate._sum.computeUnits ?? 0n;
+    if (
+      taskLifetimeCost + input.costMinorUnits > input.taskLimitMinorUnits ||
+      taskLifetimeCompute + input.computeUnits > input.taskComputeLimit
+    )
+      throw new AcpCostGovernanceDeniedError('Usage exceeds durable task lifetime budget');
     try {
       assertBudgetAllows(
         currentWorkspaceSpend,

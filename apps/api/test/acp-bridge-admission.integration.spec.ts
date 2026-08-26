@@ -977,6 +977,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             computeUnits: 1n,
             taskPolicyVersion: 'bridge-test-v1',
             taskLimitMinorUnits: 100n,
+            taskComputeLimit: 100n,
             recordedAt,
           });
         },
@@ -1021,6 +1022,8 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       selectedWorkspacePolicy = workspaceCostPolicy,
       selectedTaskPolicy = taskCostPolicy,
       priorPeriodSpend = 9n,
+      selectedRunId = runId,
+      selectedDispatchId = dispatchId,
     ) =>
       prisma.$transaction(async (tx) => {
         const id = `forged-${label}-${suffix}`;
@@ -1038,16 +1041,16 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             payloadDigest: digest,
             envelopeDigest: 'e'.repeat(64),
             taskId,
-            runId,
-            dispatchId,
+            runId: selectedRunId,
+            dispatchId: selectedDispatchId,
           },
         });
         await tx.acpRunUsage.create({
           data: {
             id,
             workspaceId,
-            dispatchId,
-            runId,
+            dispatchId: selectedDispatchId,
+            runId: selectedRunId,
             sessionId,
             receiptId: id,
             sequence,
@@ -1066,9 +1069,9 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             workspaceId,
             usageId: id,
             receiptId: id,
-            dispatchId,
+            dispatchId: selectedDispatchId,
             sessionId,
-            runId,
+            runId: selectedRunId,
             taskId,
             runtimeId,
             connectionId,
@@ -1149,20 +1152,112 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         where: { workspaceId_id: { workspaceId, id: futureTaskPolicyInput.policyId } },
       }),
     ]);
+    const primaryRun = await prisma.acpRun.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: runId } },
+    });
+    const retryRunId = `retry-run-${suffix}`;
+    const retryDispatchId = `retry-dispatch-${suffix}`;
+    const retryReservationId = `retry-reservation-${suffix}`;
+    const retryAgentId = primaryRun.assignedAgentId!;
+    const retryEvidenceId = `retry-assignment-${suffix}`;
+    const retryEvidenceHash = '1'.repeat(64);
+    const retryReservationHash = '2'.repeat(64);
+    await prisma.acpRun.create({
+      data: {
+        id: retryRunId,
+        workspaceId,
+        objectiveId: primaryRun.objectiveId,
+        taskId,
+        status: 'RUNNING',
+        requiredAuthority: primaryRun.requiredAuthority,
+        policyVersion: primaryRun.policyVersion,
+        policyHash: primaryRun.policyHash,
+        actionCode: primaryRun.actionCode,
+        exactTarget: primaryRun.exactTarget,
+        artifactVersionId: primaryRun.artifactVersionId,
+        evidenceHash: primaryRun.evidenceHash,
+        assignedAgentId: retryAgentId,
+        assignedRuntimeId: runtimeId,
+        assignedConnectionId: connectionId,
+        assignmentEvidenceId: retryEvidenceId,
+        assignmentEvidenceHash: retryEvidenceHash,
+        assignmentIdempotencyKey: `retry-assignment-${suffix}`,
+        attempt: primaryRun.attempt + 1,
+        version: 1,
+        idempotencyKey: `retry-run-${suffix}`,
+        startedAt: new Date(),
+      },
+    });
+    await prisma.acpBrokerReservation.create({
+      data: {
+        id: retryReservationId,
+        workspaceId,
+        objectiveId: primaryRun.objectiveId,
+        taskId,
+        runId: retryRunId,
+        agentId: retryAgentId,
+        agentEvidenceId: `retry-agent-evidence-${suffix}`,
+        agentEvidenceHash: '3'.repeat(64),
+        runtimeId,
+        connectionId,
+        requestHash: '4'.repeat(64),
+        candidateEvidenceId: `retry-candidates-${suffix}`,
+        candidateEvidenceHash: '5'.repeat(64),
+        taskPolicyHash: primaryRun.policyHash,
+        taskPolicyVersion: primaryRun.policyVersion,
+        expectedRunVersion: 1,
+        selectedScoreBps: 9_000,
+        estimatedCostMinorUnits: 92n,
+        reservedComputeUnits: 92n,
+        maxConcurrentRuns: 10,
+        evidenceHash: retryReservationHash,
+        state: 'RESERVED',
+        testOnly: true,
+        idempotencyKey: `retry-reservation-${suffix}`,
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await prisma.acpBridgeDispatch.create({
+      data: {
+        id: retryDispatchId,
+        workspaceId,
+        objectiveId: primaryRun.objectiveId,
+        taskId,
+        runId: retryRunId,
+        runtimeId,
+        connectionId,
+        sessionId,
+        agentId: retryAgentId,
+        authorityLevel: primaryRun.requiredAuthority,
+        state: 'PREPARED',
+        brokerEvidenceId: retryReservationId,
+        brokerEvidenceHash: retryReservationHash,
+        assignmentEvidenceId: retryEvidenceId,
+        assignmentEvidenceHash: retryEvidenceHash,
+        dispatchEnvelopeHash: '6'.repeat(64),
+        idempotencyKey: `retry-dispatch-${suffix}`,
+      },
+    });
+    await prisma.acpBridgeDispatch.update({
+      where: { workspaceId_id: { workspaceId, id: retryDispatchId } },
+      data: { state: 'ACCEPTED', acceptedAt: new Date() },
+    });
     const futureUsageTime = new Date(futurePeriodStart.getTime() + 1);
     await expect(
       forgedUsageLedger(
         'lifetime-budget',
         1_101,
         92n,
-        101n,
         92n,
-        101n,
+        92n,
+        92n,
         futureUsageTime,
         futureUsageTime,
         futureWorkspacePolicy,
         futureTaskPolicy,
         0n,
+        retryRunId,
+        retryDispatchId,
       ),
     ).rejects.toThrow(/task durable budget correlation mismatch/iu);
     const boundaryUsageTime = new Date(workspaceCostPolicy.periodEnd.getTime() - 1);
@@ -1260,6 +1355,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           computeUnits: 1n,
           taskPolicyVersion: 'bridge-test-v1',
           taskLimitMinorUnits: 100n,
+          taskComputeLimit: 100n,
           recordedAt: new Date(),
         }),
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },

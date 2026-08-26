@@ -22,9 +22,10 @@ permits its cascade.
 
 Usage and ledger rows share one freshly sampled database timestamp. The database
 requires exact timestamp equality, applies the budget period to that instant,
-and backstops cumulative usage against the durable task's lifetime cost and
-compute ceilings even when a new budget period begins. The canonical lock order
-is durable task, workspace policy, then task policy.
+and sums ledger deltas across every period and run to enforce the durable task's
+lifetime cost and compute ceilings. A retry or replacement run therefore cannot
+reset task spend. The canonical lock order is durable task, workspace policy,
+then task policy.
 
 The checksum is deterministic integrity evidence, not a signature and not a
 claim of cryptographic tamper-proof storage. Tenant deletion cascades the usage,
