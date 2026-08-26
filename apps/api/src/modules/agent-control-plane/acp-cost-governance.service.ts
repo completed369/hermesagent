@@ -30,7 +30,6 @@ export interface RecordGovernedUsageInput {
   readonly taskPolicyVersion: string;
   readonly taskLimitMinorUnits: bigint;
   readonly taskComputeLimit: bigint;
-  readonly recordedAt: Date;
 }
 
 export interface GovernedUsageTotals {
@@ -90,18 +89,35 @@ export class AcpCostGovernanceService {
     )
       throw new AcpCostGovernanceDeniedError('Cost ledger actor binding mismatch');
     const workspaceId = context.workspaceId;
+    const [receiptClock] = await tx.$queryRaw<Array<{ receivedAtIso: string }>>(
+      Prisma.sql`SELECT to_char(r."receivedAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "receivedAtIso"
+      FROM "acp_bridge_receipts" r
+      WHERE r."workspaceId" = ${workspaceId}::uuid
+        AND r."id" = ${input.receiptId}
+        AND r."messageType" = 'USAGE'
+        AND r."sessionId" = ${input.sessionId}
+        AND r."dispatchId" = ${input.dispatchId}
+        AND r."runId" = ${input.runId}
+        AND r."taskId" = ${input.taskId}
+        AND r."runtimeId" = ${input.runtimeId}
+        AND r."connectionId" = ${input.connectionId}
+        AND r."sequence" = ${input.sequence}`,
+    );
+    if (!receiptClock)
+      throw new AcpCostGovernanceDeniedError('Exact usage receipt clock is required');
+    const recordedAt = new Date(receiptClock.receivedAtIso);
     await tx.$queryRaw(
       Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${input.taskId} FOR UPDATE`,
     );
     await tx.$queryRaw(
-      Prisma.sql`SELECT "id" FROM "acp_cost_budget_policies" WHERE "workspaceId" = ${workspaceId}::uuid AND "currency" = ${input.currency} AND "periodStart" <= ${input.recordedAt} AND "periodEnd" > ${input.recordedAt} ORDER BY CASE "scope" WHEN 'WORKSPACE' THEN 0 ELSE 1 END, "taskId" NULLS FIRST, "id" FOR UPDATE`,
+      Prisma.sql`SELECT "id" FROM "acp_cost_budget_policies" WHERE "workspaceId" = ${workspaceId}::uuid AND "currency" = ${input.currency} AND "periodStart" <= ${recordedAt} AND "periodEnd" > ${recordedAt} ORDER BY CASE "scope" WHEN 'WORKSPACE' THEN 0 ELSE 1 END, "taskId" NULLS FIRST, "id" FOR UPDATE`,
     );
     const policies = await tx.acpCostBudgetPolicy.findMany({
       where: {
         workspaceId,
         currency: input.currency,
-        periodStart: { lte: input.recordedAt },
-        periodEnd: { gt: input.recordedAt },
+        periodStart: { lte: recordedAt },
+        periodEnd: { gt: recordedAt },
         OR: [
           { scope: 'WORKSPACE', taskId: null },
           { scope: 'TASK', taskId: input.taskId },
@@ -202,7 +218,7 @@ export class AcpCostGovernanceService {
       taskLimitMinorUnits: taskPolicy.limitMinorUnits,
       periodStart: workspacePolicy.periodStart.toISOString(),
       periodEnd: workspacePolicy.periodEnd.toISOString(),
-      recordedAt: input.recordedAt.toISOString(),
+      recordedAt: recordedAt.toISOString(),
     });
     const inserted = await tx.$executeRaw(
       Prisma.sql`INSERT INTO "acp_cost_ledger_entries" (
@@ -234,6 +250,48 @@ export class AcpCostGovernanceService {
     );
     if (inserted !== 1)
       throw new AcpCostGovernanceDeniedError('Exact usage receipt clock is required');
+    const persistedLedger = await tx.acpCostLedgerEntry.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: ledgerEntryId } },
+    });
+    if (
+      persistedLedger.usageId !== input.usageId ||
+      persistedLedger.receiptId !== input.receiptId ||
+      persistedLedger.dispatchId !== input.dispatchId ||
+      persistedLedger.sessionId !== input.sessionId ||
+      persistedLedger.runId !== input.runId ||
+      persistedLedger.taskId !== input.taskId ||
+      persistedLedger.runtimeId !== input.runtimeId ||
+      persistedLedger.connectionId !== input.connectionId ||
+      persistedLedger.sequence !== input.sequence ||
+      persistedLedger.currency !== input.currency
+    )
+      throw new AcpCostGovernanceDeniedError('Persisted ledger identity mismatch');
+    if (
+      persistedLedger.costMinorUnits !== input.costMinorUnits ||
+      persistedLedger.computeUnits !== input.computeUnits
+    )
+      throw new AcpCostGovernanceDeniedError('Persisted ledger usage mismatch');
+    if (
+      persistedLedger.workspacePolicyId !== workspacePolicy.id ||
+      persistedLedger.workspacePolicyHash !== workspacePolicy.policyHash ||
+      persistedLedger.taskPolicyId !== taskPolicy.id ||
+      persistedLedger.taskPolicyHash !== taskPolicy.policyHash
+    )
+      throw new AcpCostGovernanceDeniedError('Persisted ledger policy binding mismatch');
+    if (
+      persistedLedger.workspaceSpendMinorUnits !== workspaceSpendMinorUnits ||
+      persistedLedger.taskSpendMinorUnits !== taskSpendMinorUnits
+    )
+      throw new AcpCostGovernanceDeniedError('Persisted ledger total mismatch');
+    if (
+      persistedLedger.periodStart.toISOString() !== workspacePolicy.periodStart.toISOString() ||
+      persistedLedger.periodEnd.toISOString() !== workspacePolicy.periodEnd.toISOString()
+    )
+      throw new AcpCostGovernanceDeniedError('Persisted ledger period mismatch');
+    if (persistedLedger.recordedAt.toISOString() !== recordedAt.toISOString())
+      throw new AcpCostGovernanceDeniedError('Persisted ledger receipt clock mismatch');
+    if (persistedLedger.checksum !== checksum)
+      throw new AcpCostGovernanceDeniedError('Persisted ledger checksum mismatch');
     await this.auditService.recordOperationalEvent(
       capability,
       context,
@@ -246,7 +304,7 @@ export class AcpCostGovernanceService {
         actorId: context.principalId,
         subjectType: 'AcpCostLedgerEntry',
         subjectId: ledgerEntryId,
-        occurredAt: input.recordedAt.toISOString(),
+        occurredAt: recordedAt.toISOString(),
         idempotencyKey: `cost-ledger:${ledgerEntryId}`,
         correlationId: input.runId,
         facts: {

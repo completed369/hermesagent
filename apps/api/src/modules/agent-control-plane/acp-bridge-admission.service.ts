@@ -1298,7 +1298,6 @@ export class AcpBridgeAdmissionService
         taskPolicyVersion: task.policyVersion,
         taskLimitMinorUnits: task.maximumCostMinorUnits,
         taskComputeLimit: task.maximumComputeUnits,
-        recordedAt: receiptReceivedAt,
       });
       return {
         taskCostUsedMinorUnits: Number(cumulativeCost),

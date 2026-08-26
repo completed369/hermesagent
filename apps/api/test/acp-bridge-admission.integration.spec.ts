@@ -978,7 +978,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             taskPolicyVersion: 'bridge-test-v1',
             taskLimitMinorUnits: 100n,
             taskComputeLimit: 100n,
-            recordedAt,
           });
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
@@ -1650,7 +1649,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           taskPolicyVersion: 'bridge-test-v1',
           taskLimitMinorUnits: 100n,
           taskComputeLimit: 100n,
-          recordedAt: new Date(),
         }),
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
