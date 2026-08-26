@@ -1274,7 +1274,7 @@ model AcpCostBudgetPolicy {
 
   @@id([workspaceId, id])
   @@unique([workspaceId, scope, taskId, currency, periodStart, periodEnd])
-  @@index([workspaceId, scope, currency, periodStart, periodEnd])
+  @@index([workspaceId, scope, currency, periodStart, periodEnd], map: "acp_cost_budget_policy_lookup_idx")
   @@map("acp_cost_budget_policies")
 }
 
@@ -1322,8 +1322,8 @@ model AcpCostLedgerEntry {
   @@unique([workspaceId, receiptId])
   @@unique([workspaceId, receiptId, sessionId, dispatchId, runId, taskId, runtimeId, connectionId, sequence], map: "acp_cost_ledger_receipt_binding_key")
   @@unique([workspaceId, usageId, receiptId, sessionId, dispatchId, runId, sequence], map: "acp_cost_ledger_usage_binding_key")
-  @@index([workspaceId, periodStart, periodEnd, recordedAt(sort: Desc)])
-  @@index([workspaceId, taskId, periodStart, periodEnd, recordedAt(sort: Desc)])
+  @@index([workspaceId, periodStart, periodEnd, recordedAt(sort: Desc)], map: "acp_cost_ledger_workspace_period_idx")
+  @@index([workspaceId, taskId, periodStart, periodEnd, recordedAt(sort: Desc)], map: "acp_cost_ledger_task_period_idx")
   @@map("acp_cost_ledger_entries")
 }
 

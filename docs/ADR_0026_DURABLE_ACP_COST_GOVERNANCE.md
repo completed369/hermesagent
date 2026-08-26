@@ -15,8 +15,16 @@ the database-recorded instant. Missing, overlapping, expired, currency-drifted,
 or hash-drifted policies fail closed. Policy rows are immutable versions. The
 database locks the correlated policies and rejects alternate-writer attempts to
 forge correlations, cumulative spend, or values above either limit. Deferred
-constraint triggers reject a usage row without its ledger entry and reject
-removing a ledger entry while its usage remains.
+constraint triggers reject a usage row without its ledger entry. Ledger evidence
+cannot be removed through direct, usage, receipt, dispatch, session, run, task,
+or policy deletion while the workspace remains; only whole-workspace erasure
+permits its cascade.
+
+Usage and ledger rows share one freshly sampled database timestamp. The database
+requires exact timestamp equality, applies the budget period to that instant,
+and backstops cumulative usage against the durable task's lifetime cost and
+compute ceilings even when a new budget period begins. The canonical lock order
+is durable task, workspace policy, then task policy.
 
 The checksum is deterministic integrity evidence, not a signature and not a
 claim of cryptographic tamper-proof storage. Tenant deletion cascades the usage,
@@ -37,7 +45,8 @@ ledger, and policy evidence; no actor identity or secret is retained here.
 
 Any budget, correlation, checksum-input, receipt, audit, or database error rolls
 back the receipt, usage, ledger, session sequence, and audit event together.
-Concurrent spend is serialized by exact policy locks and serializable isolation.
+Concurrent spend is serialized by the durable task and exact policy locks plus
+serializable isolation.
 The migration fails closed if it encounters pre-existing recognized usage;
 such data requires an explicit reviewed policy-and-ledger remediation rather
 than an invented historical budget assignment.

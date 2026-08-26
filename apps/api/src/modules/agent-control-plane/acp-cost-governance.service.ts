@@ -90,6 +90,9 @@ export class AcpCostGovernanceService {
       throw new AcpCostGovernanceDeniedError('Cost ledger actor binding mismatch');
     const workspaceId = context.workspaceId;
     await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${input.taskId} FOR UPDATE`,
+    );
+    await tx.$queryRaw(
       Prisma.sql`SELECT "id" FROM "acp_cost_budget_policies" WHERE "workspaceId" = ${workspaceId}::uuid AND "currency" = ${input.currency} AND "periodStart" <= ${input.recordedAt} AND "periodEnd" > ${input.recordedAt} ORDER BY CASE "scope" WHEN 'WORKSPACE' THEN 0 ELSE 1 END, "taskId" NULLS FIRST, "id" FOR UPDATE`,
     );
     const policies = await tx.acpCostBudgetPolicy.findMany({

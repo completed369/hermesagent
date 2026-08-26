@@ -1256,6 +1256,12 @@ export class AcpBridgeAdmissionService
         cumulativeCost > task.maximumCostMinorUnits
       )
         throw new AcpBridgeAdmissionDeniedError('Usage exceeds task budget or currency');
+      const spendClock = await tx.$queryRaw<Array<{ recordedAt: Date }>>(
+        Prisma.sql`SELECT clock_timestamp() AS "recordedAt"`,
+      );
+      const spendRecordedAt = spendClock[0]?.recordedAt;
+      if (!spendRecordedAt)
+        throw new AcpBridgeAdmissionDeniedError('Database spend clock unavailable');
       await tx.acpRunUsage.create({
         data: {
           id: receiptId,
@@ -1271,6 +1277,7 @@ export class AcpBridgeAdmissionService
           cumulativeCostMinorUnits: cumulativeCost,
           currency: payload.currency as string,
           evidenceHash: envelope.payloadDigest,
+          recordedAt: spendRecordedAt,
         },
       });
       const governed = await this.costGovernance.recordUsage(capability, context, actorKind, tx, {
@@ -1288,7 +1295,7 @@ export class AcpBridgeAdmissionService
         computeUnits: compute,
         taskPolicyVersion: task.policyVersion,
         taskLimitMinorUnits: task.maximumCostMinorUnits,
-        recordedAt: now,
+        recordedAt: spendRecordedAt,
       });
       return {
         taskCostUsedMinorUnits: Number(cumulativeCost),
