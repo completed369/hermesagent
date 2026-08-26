@@ -1021,9 +1021,11 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       ledgerRecordedAt: Date,
       selectedWorkspacePolicy = workspaceCostPolicy,
       selectedTaskPolicy = taskCostPolicy,
-      priorPeriodSpend = 9n,
+      priorWorkspacePeriodSpend = 9n,
+      priorTaskPeriodSpend = 9n,
       selectedRunId = runId,
       selectedDispatchId = dispatchId,
+      selectedTaskId = taskId,
     ) =>
       prisma.$transaction(async (tx) => {
         const id = `forged-${label}-${suffix}`;
@@ -1040,7 +1042,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             messageType: 'USAGE',
             payloadDigest: digest,
             envelopeDigest: 'e'.repeat(64),
-            taskId,
+            taskId: selectedTaskId,
             runId: selectedRunId,
             dispatchId: selectedDispatchId,
           },
@@ -1072,7 +1074,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             dispatchId: selectedDispatchId,
             sessionId,
             runId: selectedRunId,
-            taskId,
+            taskId: selectedTaskId,
             runtimeId,
             connectionId,
             sequence,
@@ -1085,8 +1087,8 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             taskPolicyHash: selectedTaskPolicy.policyHash,
             periodStart: selectedWorkspacePolicy.periodStart,
             periodEnd: selectedWorkspacePolicy.periodEnd,
-            workspaceSpendMinorUnits: priorPeriodSpend + costMinorUnits,
-            taskSpendMinorUnits: priorPeriodSpend + costMinorUnits,
+            workspaceSpendMinorUnits: priorWorkspacePeriodSpend + costMinorUnits,
+            taskSpendMinorUnits: priorTaskPeriodSpend + costMinorUnits,
             checksum: 'f'.repeat(64),
             recordedAt: ledgerRecordedAt,
           },
@@ -1119,134 +1121,222 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       periodEnd: futurePeriodEnd.toISOString(),
       policyVersion: 'bridge-test-v1',
     };
+    const primaryRun = await prisma.acpRun.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: runId } },
+    });
+    const primaryTask = await prisma.acpTask.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: taskId } },
+    });
+    const lifetimeTaskId = `lifetime-task-${suffix}`;
+    const lifetimeAgentId = primaryRun.assignedAgentId!;
+    await prisma.acpTask.create({
+      data: {
+        id: lifetimeTaskId,
+        workspaceId,
+        objectiveId: primaryTask.objectiveId,
+        projectId: primaryTask.projectId,
+        title: 'Lifetime retry fixture',
+        kind: primaryTask.kind,
+        status: 'RUNNING',
+        requiredAuthority: primaryTask.requiredAuthority,
+        currency: primaryTask.currency,
+        maximumCostMinorUnits: 100n,
+        maximumComputeUnits: 100n,
+        estimatedDurationMs: primaryTask.estimatedDurationMs,
+        acceptanceCriteria: primaryTask.acceptanceCriteria,
+        verificationCriteria: primaryTask.verificationCriteria,
+        stopConditions: primaryTask.stopConditions,
+        maximumAttempts: 2,
+        retryableFailureCodes: primaryTask.retryableFailureCodes,
+        stopAfterFailureCodes: primaryTask.stopAfterFailureCodes,
+        agentPolicy: primaryTask.agentPolicy as Prisma.InputJsonValue,
+        routingPolicy: primaryTask.routingPolicy as Prisma.InputJsonValue,
+        exactTarget: primaryTask.exactTarget,
+        approvalActionCode: primaryTask.approvalActionCode,
+        approvalArtifactVersion: primaryTask.approvalArtifactVersion,
+        approvalEvidenceHash: primaryTask.approvalEvidenceHash,
+        policyVersion: primaryTask.policyVersion,
+        policyHash: primaryTask.policyHash,
+        assignedAgentId: lifetimeAgentId,
+        assignedRuntimeId: runtimeId,
+        assignedConnectionId: connectionId,
+        attempt: 1,
+      },
+    });
+    const currentLifetimeTaskPolicyInput = {
+      schemaVersion: 1 as const,
+      policyId: `task-cost-policy-lifetime-current-${suffix}`,
+      workspaceId,
+      scope: 'TASK' as const,
+      taskId: lifetimeTaskId,
+      currency: 'EUR',
+      limitMinorUnits: 100n,
+      periodStart: workspaceCostPolicy.periodStart.toISOString(),
+      periodEnd: workspaceCostPolicy.periodEnd.toISOString(),
+      policyVersion: 'bridge-test-v1',
+    };
     const futureTaskPolicyInput = {
       ...futureWorkspacePolicyInput,
-      policyId: `task-cost-policy-future-${suffix}`,
+      policyId: `task-cost-policy-lifetime-future-${suffix}`,
       scope: 'TASK' as const,
-      taskId,
+      taskId: lifetimeTaskId,
       limitMinorUnits: 100n,
     };
     await prisma.acpCostBudgetPolicy.createMany({
-      data: [futureWorkspacePolicyInput, futureTaskPolicyInput].map((input) => {
-        const {
-          schemaVersion: _schemaVersion,
-          policyId: id,
-          periodStart,
-          periodEnd,
-          ...policy
-        } = input;
-        return {
-          ...policy,
-          id,
-          periodStart: new Date(periodStart),
-          periodEnd: new Date(periodEnd),
-          policyHash: costBudgetPolicyHash(input),
-        };
-      }),
+      data: [futureWorkspacePolicyInput, currentLifetimeTaskPolicyInput, futureTaskPolicyInput].map(
+        (input) => {
+          const {
+            schemaVersion: _schemaVersion,
+            policyId: id,
+            periodStart,
+            periodEnd,
+            ...policy
+          } = input;
+          return {
+            ...policy,
+            id,
+            periodStart: new Date(periodStart),
+            periodEnd: new Date(periodEnd),
+            policyHash: costBudgetPolicyHash(input),
+          };
+        },
+      ),
     });
-    const [futureWorkspacePolicy, futureTaskPolicy] = await Promise.all([
+    const [futureWorkspacePolicy, currentLifetimeTaskPolicy, futureTaskPolicy] = await Promise.all([
       prisma.acpCostBudgetPolicy.findUniqueOrThrow({
         where: { workspaceId_id: { workspaceId, id: futureWorkspacePolicyInput.policyId } },
+      }),
+      prisma.acpCostBudgetPolicy.findUniqueOrThrow({
+        where: {
+          workspaceId_id: { workspaceId, id: currentLifetimeTaskPolicyInput.policyId },
+        },
       }),
       prisma.acpCostBudgetPolicy.findUniqueOrThrow({
         where: { workspaceId_id: { workspaceId, id: futureTaskPolicyInput.policyId } },
       }),
     ]);
-    const primaryRun = await prisma.acpRun.findUniqueOrThrow({
-      where: { workspaceId_id: { workspaceId, id: runId } },
-    });
-    const retryRunId = `retry-run-${suffix}`;
-    const retryDispatchId = `retry-dispatch-${suffix}`;
-    const retryReservationId = `retry-reservation-${suffix}`;
-    const retryAgentId = primaryRun.assignedAgentId!;
-    const retryEvidenceId = `retry-assignment-${suffix}`;
-    const retryEvidenceHash = '1'.repeat(64);
-    const retryReservationHash = '2'.repeat(64);
-    await prisma.acpRun.create({
-      data: {
-        id: retryRunId,
-        workspaceId,
-        objectiveId: primaryRun.objectiveId,
-        taskId,
-        status: 'RUNNING',
-        requiredAuthority: primaryRun.requiredAuthority,
-        policyVersion: primaryRun.policyVersion,
-        policyHash: primaryRun.policyHash,
-        actionCode: primaryRun.actionCode,
-        exactTarget: primaryRun.exactTarget,
-        artifactVersionId: primaryRun.artifactVersionId,
-        evidenceHash: primaryRun.evidenceHash,
-        assignedAgentId: retryAgentId,
-        assignedRuntimeId: runtimeId,
-        assignedConnectionId: connectionId,
-        assignmentEvidenceId: retryEvidenceId,
-        assignmentEvidenceHash: retryEvidenceHash,
-        assignmentIdempotencyKey: `retry-assignment-${suffix}`,
-        attempt: primaryRun.attempt + 1,
-        version: 1,
-        idempotencyKey: `retry-run-${suffix}`,
-        startedAt: new Date(),
-      },
-    });
-    await prisma.acpBrokerReservation.create({
-      data: {
-        id: retryReservationId,
-        workspaceId,
-        objectiveId: primaryRun.objectiveId,
-        taskId,
-        runId: retryRunId,
-        agentId: retryAgentId,
-        agentEvidenceId: `retry-agent-evidence-${suffix}`,
-        agentEvidenceHash: '3'.repeat(64),
-        runtimeId,
-        connectionId,
-        requestHash: '4'.repeat(64),
-        candidateEvidenceId: `retry-candidates-${suffix}`,
-        candidateEvidenceHash: '5'.repeat(64),
-        taskPolicyHash: primaryRun.policyHash,
-        taskPolicyVersion: primaryRun.policyVersion,
-        expectedRunVersion: 1,
-        selectedScoreBps: 9_000,
-        estimatedCostMinorUnits: 92n,
-        reservedComputeUnits: 92n,
-        maxConcurrentRuns: 10,
-        evidenceHash: retryReservationHash,
-        state: 'RESERVED',
-        testOnly: true,
-        idempotencyKey: `retry-reservation-${suffix}`,
-        expiresAt: new Date(Date.now() + 60_000),
-      },
-    });
-    await prisma.acpBridgeDispatch.create({
-      data: {
-        id: retryDispatchId,
-        workspaceId,
-        objectiveId: primaryRun.objectiveId,
-        taskId,
-        runId: retryRunId,
-        runtimeId,
-        connectionId,
-        sessionId,
-        agentId: retryAgentId,
-        authorityLevel: primaryRun.requiredAuthority,
-        state: 'PREPARED',
-        brokerEvidenceId: retryReservationId,
-        brokerEvidenceHash: retryReservationHash,
-        assignmentEvidenceId: retryEvidenceId,
-        assignmentEvidenceHash: retryEvidenceHash,
-        dispatchEnvelopeHash: '6'.repeat(64),
-        idempotencyKey: `retry-dispatch-${suffix}`,
-      },
-    });
+    const createAcceptedLifetimeRun = async (label: string, attempt: number) => {
+      const selectedRunId = `lifetime-${label}-run-${suffix}`;
+      const selectedDispatchId = `lifetime-${label}-dispatch-${suffix}`;
+      const reservationId = `lifetime-${label}-reservation-${suffix}`;
+      const evidenceId = `lifetime-${label}-assignment-${suffix}`;
+      const evidenceHash = label === 'old' ? '1'.repeat(64) : '7'.repeat(64);
+      const reservationHash = label === 'old' ? '2'.repeat(64) : '8'.repeat(64);
+      await prisma.acpRun.create({
+        data: {
+          id: selectedRunId,
+          workspaceId,
+          objectiveId: primaryRun.objectiveId,
+          taskId: lifetimeTaskId,
+          status: 'RUNNING',
+          requiredAuthority: primaryRun.requiredAuthority,
+          policyVersion: primaryRun.policyVersion,
+          policyHash: primaryRun.policyHash,
+          actionCode: primaryRun.actionCode,
+          exactTarget: primaryRun.exactTarget,
+          artifactVersionId: primaryRun.artifactVersionId,
+          evidenceHash: primaryRun.evidenceHash,
+          assignedAgentId: lifetimeAgentId,
+          assignedRuntimeId: runtimeId,
+          assignedConnectionId: connectionId,
+          assignmentEvidenceId: evidenceId,
+          assignmentEvidenceHash: evidenceHash,
+          assignmentIdempotencyKey: `lifetime-${label}-assignment-${suffix}`,
+          attempt,
+          version: 1,
+          idempotencyKey: `lifetime-${label}-run-${suffix}`,
+          startedAt: new Date(),
+        },
+      });
+      await prisma.acpBrokerReservation.create({
+        data: {
+          id: reservationId,
+          workspaceId,
+          objectiveId: primaryRun.objectiveId,
+          taskId: lifetimeTaskId,
+          runId: selectedRunId,
+          agentId: lifetimeAgentId,
+          agentEvidenceId: `lifetime-${label}-agent-evidence-${suffix}`,
+          agentEvidenceHash: '3'.repeat(64),
+          runtimeId,
+          connectionId,
+          requestHash: '4'.repeat(64),
+          candidateEvidenceId: `lifetime-${label}-candidates-${suffix}`,
+          candidateEvidenceHash: '5'.repeat(64),
+          taskPolicyHash: primaryRun.policyHash,
+          taskPolicyVersion: primaryRun.policyVersion,
+          expectedRunVersion: 1,
+          selectedScoreBps: 9_000,
+          estimatedCostMinorUnits: 92n,
+          reservedComputeUnits: 92n,
+          maxConcurrentRuns: 10,
+          evidenceHash: reservationHash,
+          state: 'RESERVED',
+          testOnly: true,
+          idempotencyKey: `lifetime-${label}-reservation-${suffix}`,
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      await prisma.acpBridgeDispatch.create({
+        data: {
+          id: selectedDispatchId,
+          workspaceId,
+          objectiveId: primaryRun.objectiveId,
+          taskId: lifetimeTaskId,
+          runId: selectedRunId,
+          runtimeId,
+          connectionId,
+          sessionId,
+          agentId: lifetimeAgentId,
+          authorityLevel: primaryRun.requiredAuthority,
+          state: 'PREPARED',
+          brokerEvidenceId: reservationId,
+          brokerEvidenceHash: reservationHash,
+          assignmentEvidenceId: evidenceId,
+          assignmentEvidenceHash: evidenceHash,
+          dispatchEnvelopeHash: '6'.repeat(64),
+          idempotencyKey: `lifetime-${label}-dispatch-${suffix}`,
+        },
+      });
+      await prisma.acpBridgeDispatch.update({
+        where: { workspaceId_id: { workspaceId, id: selectedDispatchId } },
+        data: { state: 'ACCEPTED', acceptedAt: new Date() },
+      });
+      return { runId: selectedRunId, dispatchId: selectedDispatchId };
+    };
+    const oldLifetimeRun = await createAcceptedLifetimeRun('old', 1);
+    const oldLifetimeRecordedAt = new Date();
+    await forgedUsageLedger(
+      'lifetime-old-run',
+      1_101,
+      9n,
+      9n,
+      14n,
+      14n,
+      oldLifetimeRecordedAt,
+      oldLifetimeRecordedAt,
+      workspaceCostPolicy,
+      currentLifetimeTaskPolicy,
+      9n,
+      0n,
+      oldLifetimeRun.runId,
+      oldLifetimeRun.dispatchId,
+      lifetimeTaskId,
+    );
     await prisma.acpBridgeDispatch.update({
-      where: { workspaceId_id: { workspaceId, id: retryDispatchId } },
-      data: { state: 'ACCEPTED', acceptedAt: new Date() },
+      where: { workspaceId_id: { workspaceId, id: oldLifetimeRun.dispatchId } },
+      data: { state: 'COMPLETED', terminalAt: new Date() },
     });
+    await prisma.acpRun.update({
+      where: { workspaceId_id: { workspaceId, id: oldLifetimeRun.runId } },
+      data: { status: 'FAILED', version: 2, completedAt: new Date() },
+    });
+    const retryLifetimeRun = await createAcceptedLifetimeRun('retry', 2);
     const futureUsageTime = new Date(futurePeriodStart.getTime() + 1);
     await expect(
       forgedUsageLedger(
         'lifetime-budget',
-        1_101,
+        1_102,
         92n,
         92n,
         92n,
@@ -1256,15 +1346,17 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         futureWorkspacePolicy,
         futureTaskPolicy,
         0n,
-        retryRunId,
-        retryDispatchId,
+        0n,
+        retryLifetimeRun.runId,
+        retryLifetimeRun.dispatchId,
+        lifetimeTaskId,
       ),
     ).rejects.toThrow(/task durable budget correlation mismatch/iu);
     const boundaryUsageTime = new Date(workspaceCostPolicy.periodEnd.getTime() - 1);
     await expect(
       forgedUsageLedger(
         'period-boundary',
-        1_102,
+        1_103,
         1n,
         10n,
         1n,
