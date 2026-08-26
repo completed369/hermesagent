@@ -1,8 +1,10 @@
 # Known Limitations
 
-> **Current release note (verified 2026-08-26):** VentureOS is not
-> production-ready or production-deployed. The current product `main` baseline
-> is `b5aa3e54ac1de1cfc75f5c466309850a9a4ecf37`. Product PRs #59–#84 are
+> **Release note (reviewed 2026-08-26):** VentureOS is not production-ready or
+> production-deployed. The dated reviewed source baseline for this note is
+> `d462733ec55a8bc98092e39a5a071c01b9c76806`; GitHub is authoritative for live
+> repository main and checks, and generated protected Mission Control evidence
+> is authoritative for live operations. Product PRs #59–#85 are
 > merged, including the provider-neutral Agent Control Plane, Runtime Broker,
 > Dynamic Agent Factory, verified runtime-interface ADR, tenant-shell switch
 > repair, governed AI COO and Voice Gateway foundations, unified event/audit
@@ -60,6 +62,12 @@
 > executable discovery or filesystem inspection and cannot close path-swap or
 > executable-replacement TOCTOU. Its validated output is inert; the production
 > launcher still always denies.
+>
+> A deterministic process-tree harness exercises exact-bound cancellation and
+> cleanup only in local Windows tests and the existing Linux CI path. Its
+> process imports and fixtures are absent from package exports and product
+> images. This is not production Job Object, cgroup, namespace, executable-
+> identity, crash-cleanup, or runtime-connectivity evidence.
 >
 > A dated, non-authoritative operations snapshot verified on 2026-08-25 records
 > operations PR #24 as deployed to the Access-protected Founder Mission Control,

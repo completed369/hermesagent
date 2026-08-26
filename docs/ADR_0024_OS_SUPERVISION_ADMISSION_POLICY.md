@@ -1,6 +1,6 @@
 # ADR-0024: OS supervision admission policy foundation
 
-Status: Proposed (implementation under review)
+Status: Accepted (implemented and verified)
 
 Date: 2026-08-26
 
@@ -79,6 +79,16 @@ credential or provider backend, runtime adapter, deployment, publication, or
 status change. Codex, Hermes, and Pi remain `NOT_CONFIGURED`. Valid policy
 output is not proof that a binary exists, is safe to launch, has launched, or is
 connected.
+
+## Test-only cancellation evidence
+
+A subsequent bounded slice adds a pure lifecycle and exact-cancellation binding
+plus a repository-owned deterministic process-tree harness. The process fixture
+is outside package source and exports, is not copied into product images, and is
+exercised on local Windows and the existing Linux CI path. It may only launch
+the fixed Node fixture. This supplies narrow test evidence for tree cleanup and
+escalation; it is not a production supervisor or proof of Job Object, cgroup,
+namespace, no-breakaway, or launch-time identity enforcement.
 
 ## Next dependency
 

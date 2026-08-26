@@ -1,13 +1,15 @@
 # Roadmap
 
-## Current delivery roadmap (verified 2026-08-26)
+## Delivery roadmap (reviewed 2026-08-26)
 
 The Phase 0–8 checklist below is a historical record of implemented product
-scope. It is **not** a production-readiness or deployment claim. The current
-product baseline is `main` commit
-`4e9a5d82eed81746ee6ce205c08747459cfcd2c2`. Exact-main CI and CodeQL are
-green. The most recent sanitized five-image release-candidate evidence is also
-green, while GitHub remains authoritative for any newer exact-main dispatch. CI
+scope. It is **not** a production-readiness or deployment claim. The dated
+reviewed source baseline for this update is
+`d462733ec55a8bc98092e39a5a071c01b9c76806`; it must never be interpreted as a
+mutable live-main pin. GitHub is authoritative for repository main and checks,
+and generated protected Mission Control evidence is authoritative for the live
+operational snapshot. Exact-baseline CI and CodeQL were green. The corresponding
+sanitized five-image release-candidate evidence was also green. CI
 includes the full migration chain, application integration/E2E, and a disposable
 staging-security/load gate that performs no deployment. The release-candidate
 workflow uploaded no artifacts and created no deployment. Zero CodeQL alerts
@@ -67,6 +69,10 @@ published and current `main` has not been deployed to private staging.
   lexical-worktree, argument-policy, and resource evidence. Its output is inert,
   filesystem and launch-time TOCTOU remain open, and the production launcher
   continues to deny every process request.
+- A pure supervision lifecycle and exact-cancellation binding plus a
+  deterministic test-only process-tree harness. The fixture is absent from
+  package exports and product images and supplies only Windows/Linux test
+  evidence; it is not a production launcher, supervisor, or runtime connection.
 - Product PRs #66, #67, #69, #70, #71, #73, and #74: a dispatch-only,
   non-publishing release-candidate evidence workflow with runner-local five-
   image builds/scans, sanitized conclusions, exact source/archive/report/SBOM
@@ -83,7 +89,9 @@ published and current `main` has not been deployed to private staging.
    reservation and scoped secret-lease foundations are MERGED and VERIFIED.
    The secret boundary remains deny-only and adds no credential backend or
    connection path. The pure OS-supervision admission policy is also MERGED and
-   VERIFIED; it adds no filesystem or process path. Next add a reviewed trusted
+   VERIFIED; its production surface adds no filesystem or process path. A
+   deterministic process-tree fixture exercises cancellation only under tests.
+   Next add a reviewed trusted
    executable/admission-evidence reader and deny-by-default supervisor
    composition before any process creation or runtime adapter. Cost
    governance,

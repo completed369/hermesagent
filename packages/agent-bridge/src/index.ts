@@ -5,3 +5,4 @@ export * from './policy';
 export * from './protocol';
 export * from './secret-lease';
 export * from './supervision-policy';
+export * from './supervision-lifecycle';
