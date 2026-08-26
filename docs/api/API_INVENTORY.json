@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedFrom": "apps/api/src/main.ts + apps/api/src/**/*.controller.ts",
   "globalPrefix": "/api",
-  "routeCount": 78,
+  "routeCount": 79,
   "routes": [
     {
       "method": "GET",
@@ -399,6 +399,12 @@
       "path": "/api/ventures",
       "controller": "VenturesController",
       "source": "apps/api/src/modules/ventures/ventures.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workflow-centre",
+      "controller": "WorkflowCentreController",
+      "source": "apps/api/src/modules/workflow-centre/workflow-centre.controller.ts"
     },
     {
       "method": "POST",

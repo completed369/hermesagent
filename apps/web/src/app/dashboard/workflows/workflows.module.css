@@ -1,0 +1,99 @@
+.stack {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.taskList,
+.runtimeList {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 18px;
+  list-style: none;
+}
+
+.taskCard,
+.runtimeCard {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--vos-border);
+  border-radius: 13px;
+  background: var(--vos-surface-soft);
+}
+
+.taskHeader,
+.runtimeHeader {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.taskHeader h3,
+.runtimeHeader h3 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.meta,
+.dependency {
+  margin: 8px 0 0;
+  color: var(--vos-text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.runtimeBoundary {
+  display: grid;
+  gap: 8px;
+  padding: 17px 18px;
+  border: 1px solid color-mix(in srgb, var(--vos-warning) 38%, var(--vos-border));
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--vos-warning) 7%, var(--vos-bg-elevated));
+}
+
+.runtimeBoundary strong,
+.runtimeBoundary p {
+  margin: 0;
+}
+
+.runtimeBoundary p {
+  color: var(--vos-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.boundaryNote {
+  padding: 11px 18px;
+  color: var(--vos-text-muted);
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .taskHeader,
+  .runtimeHeader {
+    flex-direction: column;
+  }
+
+  .taskList,
+  .runtimeList {
+    padding: 13px;
+  }
+}

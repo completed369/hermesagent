@@ -28,10 +28,13 @@ describe('Dashboard navigation', () => {
     expect(new Set(availableHrefs).size).toBe(availableHrefs.length);
   });
 
-  it('uses a durable planned label instead of stale phase numbering', () => {
+  it('exposes Workflow Centre at one permission-aware route', () => {
     const workflowCentre = nav.find((i) => i.label === 'Workflow Centre');
-    expect(workflowCentre).toMatchObject({ available: false, statusLabel: 'Planned' });
-    expect(workflowCentre?.statusLabel).not.toMatch(/phase/i);
+    expect(workflowCentre).toMatchObject({
+      href: '/dashboard/workflows',
+      available: true,
+      requiredPermissions: ['workflow:view'],
+    });
   });
 
   it('marks exact and nested workspace routes active without matching siblings', () => {
