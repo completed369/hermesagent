@@ -76,7 +76,7 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
           id: prerequisiteId,
           projectId,
           title: `Prepare workflow evidence ${marker}`,
-          kind: 'quality.prepare',
+          kind: 'quality.verify',
           dependencyIds: [],
           requiredAuthority: 3,
           costLimit: { currency: 'EUR', maximumMinorUnits: 40, maximumComputeUnits: 40 },
@@ -90,7 +90,7 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
             stopAfterFailureCodes: ['POLICY_DENIED'],
           },
           agentPolicy: { templateId: 'read-only-viewer' },
-          routingPolicy: { capabilityId: 'quality.prepare' },
+          routingPolicy: { capabilityId: 'quality.verify' },
         },
         {
           id: `workflow-task-${marker}-${suffix}`,
