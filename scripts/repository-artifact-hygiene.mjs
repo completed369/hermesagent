@@ -12,9 +12,9 @@ const TRANSCRIPT_CAPTURE = new RegExp(
   `(?:^|[-_.])transcript[a-z0-9]*(?:[-_.][a-z0-9]+)*\\.(?:log|${RAW_CAPTURE_EXTENSION})$`,
   'i',
 );
-const TRANSCRIPT_STEM = /^(?:chat[-_.]?)?transcript(?:[-_.]?(?:final|\d+))?$/i;
+const TRANSCRIPT_STEM = /(?:^|[-_.])(?:chat[-_.]?)?transcript(?:[-_.]?(?:final|\d+))?$/i;
 const EXECUTION_CAPTURE_STEM =
-  /^(?:build|test|e2e|integration|runtime|worker|console|terminal|command|validation)[-_.]?(?:log(?:ging)?|output|capture)(?:[-_.]?(?:final|\d+))?$/i;
+  /(?:^|[-_.])(?:build|test|e2e|integration|runtime|worker|console|terminal|command|validation)[-_.]?(?:log(?:ging)?|output|capture)(?:[-_.]?(?:final|\d+))?$/i;
 
 export function classifyRawArtifactPath(filePath) {
   if (typeof filePath !== 'string' || filePath.length === 0) {

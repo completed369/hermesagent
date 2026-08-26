@@ -28,6 +28,13 @@ const forbidden = [
   'chat-transcript',
   'test-output.txt',
   'console-capture.txt',
+  'unit-test-output.txt',
+  'api-build-output.txt',
+  'browser-console-capture.txt',
+  'phase4-test-output.txt',
+  'archive-chattranscript.txt',
+  'reports-api-build-output',
+  'archive-chattranscript',
 ];
 
 test('rejects raw log and transcript variants without case, suffix, or extension bypasses', () => {
@@ -49,6 +56,8 @@ test('allows source files and curated dated documentation', () => {
     'packages/contracts/src/chat-transcript.ts',
     'build-logger.txt',
     'contest-output.txt',
+    'rebuild-output.txt',
+    'chattranscription.txt',
     'scripts/repository-artifact-hygiene.test.mjs',
   ];
 
@@ -90,5 +99,12 @@ test('reports every forbidden path with a fixed classification', () => {
     { filePath: 'chat-transcript', reason: 'raw transcript capture' },
     { filePath: 'test-output.txt', reason: 'raw execution log capture' },
     { filePath: 'console-capture.txt', reason: 'raw execution log capture' },
+    { filePath: 'unit-test-output.txt', reason: 'raw execution log capture' },
+    { filePath: 'api-build-output.txt', reason: 'raw execution log capture' },
+    { filePath: 'browser-console-capture.txt', reason: 'raw execution log capture' },
+    { filePath: 'phase4-test-output.txt', reason: 'raw execution log capture' },
+    { filePath: 'archive-chattranscript.txt', reason: 'raw transcript capture' },
+    { filePath: 'reports-api-build-output', reason: 'raw execution log capture' },
+    { filePath: 'archive-chattranscript', reason: 'raw transcript capture' },
   ]);
 });
