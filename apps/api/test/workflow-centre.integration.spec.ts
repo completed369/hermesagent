@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   OperationalEventCapability,
   type AssignmentEvidenceVerifier,
@@ -14,8 +14,10 @@ import { hashSessionToken } from '@ventureos/auth';
 import { loadEnv } from '@ventureos/config';
 import { prisma } from '@ventureos/database';
 import { AppModule } from '../src/app.module';
+import { SafeExceptionFilter } from '../src/common/filters/safe-exception.filter';
 import { AcpTaskRunService } from '../src/modules/agent-control-plane/acp-task-run.service';
 import { AuditService } from '../src/modules/audit/audit.service';
+import { WorkflowCentreService } from '../src/modules/workflow-centre/workflow-centre.service';
 
 describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
   const suffix = randomUUID();
@@ -40,6 +42,7 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
   let otherRunId: string;
   let otherDependencyTaskId: string;
   let expiredApprovalId: string;
+  let capturedHttpException: unknown;
 
   const assignmentVerifier: AssignmentEvidenceVerifier = {
     async verify() {
@@ -139,6 +142,11 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
   }
 
   beforeAll(async () => {
+    const originalCatch = SafeExceptionFilter.prototype.catch;
+    vi.spyOn(SafeExceptionFilter.prototype, 'catch').mockImplementation(function (exception, host) {
+      capturedHttpException = exception;
+      return originalCatch.call(this, exception, host);
+    });
     app = await NestFactory.create(AppModule);
     app.use(cookieParser());
     app.setGlobalPrefix('api');
@@ -237,7 +245,16 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
         startedAt: new Date('2099-01-01T00:00:00.000Z'),
         steps: {
           create: Array.from({ length: 21 }, (_, index) => ({
-            name: index === 0 ? '<img src=x onerror=globalThis.compromised=true>' : `step-${index}`,
+            name:
+              index === 0
+                ? '<img src=x onerror=globalThis.compromised=true>'
+                : index === 1
+                  ? 'pass\u0001word=hunter2'
+                  : index === 2
+                    ? 'api\u200Bkey=secret'
+                    : index === 3
+                      ? 'chain\u200Dof\u200Dthought'
+                      : `step-${index}`,
             status: index === 0 ? 'RUNNING' : 'PENDING',
             attempt: 1,
             input: { authorization: secretSentinel },
@@ -372,6 +389,7 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
     await prisma.role.deleteMany({ where: { id: { in: roleIds } } });
     await app.close();
     await prisma.$disconnect();
+    vi.restoreAllMocks();
   });
 
   it('requires authentication and workflow:view permission', async () => {
@@ -414,10 +432,25 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
   });
 
   it('returns one bounded deterministic workspace snapshot without authority or sensitive data', async () => {
+    const workflowCentre = app.get(WorkflowCentreService);
+    const directSnapshot = await workflowCentre.snapshot(workspaceId);
+    expect(() => JSON.stringify(directSnapshot)).not.toThrow();
+    capturedHttpException = undefined;
+
     const response = await request(app.getHttpServer())
       .get('/api/workflow-centre')
       .query({ workspaceId: otherWorkspaceId })
       .set('Cookie', allowedCookie);
+    if (response.status !== 200 && capturedHttpException instanceof Error) {
+      const safeFrames = capturedHttpException.stack
+        ?.split('\n')
+        .filter((line) => line.includes('/apps/api/'))
+        .slice(0, 3)
+        .join('\n');
+      throw new Error(
+        `Workflow Centre HTTP boundary raised ${capturedHttpException.name}${safeFrames ? `\n${safeFrames}` : ''}`,
+      );
+    }
     expect(response.status).toBe(200);
     expect(response.body.access).toEqual({ permission: 'workflow:view', mode: 'READ_ONLY' });
     expect(response.body.connectivity).toEqual({
@@ -441,7 +474,10 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
     expect(response.body.workflows[0].stepsTruncated).toBe(true);
     expect(response.body.workflows[0].steps.map((step: { name: string }) => step.name)).toEqual([
       '<img src=x onerror=globalThis.compromised=true>',
-      ...Array.from({ length: 19 }, (_, index) => `step-${index + 1}`),
+      '[REDACTED]',
+      '[REDACTED]',
+      '[REDACTED]',
+      ...Array.from({ length: 16 }, (_, index) => `step-${index + 4}`),
     ]);
     expect(response.body.objectives.map((item: { id: string }) => item.id)).toEqual([objectiveId]);
     expect(response.body.tasks.map((item: { id: string }) => item.id)).toContain(taskId);

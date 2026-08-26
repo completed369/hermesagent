@@ -62,6 +62,7 @@ function safeCode(value: string): string {
 }
 
 function safeDisplayText(value: string, maximumLength = 160): string {
+  if (/[\p{Cc}\p{Cf}]/u.test(value)) return '[REDACTED]';
   if (SENSITIVE_TEXT.test(value)) return '[REDACTED]';
   const printable = value
     .replace(/\p{Cc}/gu, ' ')

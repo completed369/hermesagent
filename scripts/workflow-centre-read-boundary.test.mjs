@@ -22,6 +22,7 @@ test('Workflow Centre exposes one authenticated permission-scoped GET only', () 
   assert.equal((controller.match(/@Get\(/gu) ?? []).length, 1);
   assert.doesNotMatch(controller, /@(Post|Put|Patch|Delete)\(/u);
   assert.doesNotMatch(controller, /@(?:Query|Param|Body)\(/u);
+  assert.match(controller, /@Inject\(WorkflowCentreService\)/u);
   assert.match(controller, /snapshot\(user\.workspaceId\)/u);
 });
 
@@ -93,6 +94,7 @@ test('Workflow Centre response source excludes authority-bearing and sensitive f
   assert.match(service, /mode: 'READ_ONLY'/u);
   assert.match(service, /status: 'NOT_CONFIGURED'/u);
   assert.match(service, /targets: \['CODEX', 'HERMES', 'PI'\]/u);
+  assert.match(service, /\[\\p\{Cc\}\\p\{Cf\}\]/u);
 });
 
 test('Workflow Centre page has no mutation or approval-action surface', () => {

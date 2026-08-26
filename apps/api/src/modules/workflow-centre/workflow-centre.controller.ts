@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -10,7 +10,9 @@ import { WorkflowCentreService } from './workflow-centre.service';
 @Controller('workflow-centre')
 @UseGuards(SessionAuthGuard, PermissionGuard)
 export class WorkflowCentreController {
-  constructor(private readonly workflowCentre: WorkflowCentreService) {}
+  constructor(
+    @Inject(WorkflowCentreService) private readonly workflowCentre: WorkflowCentreService,
+  ) {}
 
   @Get()
   @RequirePermission('workflow:view')
