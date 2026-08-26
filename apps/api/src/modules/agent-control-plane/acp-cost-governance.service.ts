@@ -319,12 +319,12 @@ export class AcpCostLedgerQueryService {
         periodEnd: entry.periodEnd.toISOString(),
         recordedAt: entry.recordedAt.toISOString(),
       });
-      if (
-        checksum !== entry.checksum ||
-        policyHash(entry.workspacePolicy) !== entry.workspacePolicyHash ||
-        policyHash(entry.taskPolicy) !== entry.taskPolicyHash
-      )
-        throw new AcpCostGovernanceDeniedError('Cost ledger integrity verification failed');
+      if (checksum !== entry.checksum)
+        throw new AcpCostGovernanceDeniedError('Cost ledger checksum verification failed');
+      if (policyHash(entry.workspacePolicy) !== entry.workspacePolicyHash)
+        throw new AcpCostGovernanceDeniedError('Workspace cost policy verification failed');
+      if (policyHash(entry.taskPolicy) !== entry.taskPolicyHash)
+        throw new AcpCostGovernanceDeniedError('Task cost policy verification failed');
     }
     return entries;
   }
