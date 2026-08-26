@@ -26,17 +26,20 @@ export function classifyRawArtifactPath(filePath) {
   const hasRawCaptureSuffix = RAW_CAPTURE_SUFFIX.test(basename);
   const isExtensionless = !basename.includes('.');
   const rawCaptureStem = basename.replace(RAW_CAPTURE_SUFFIX, '');
+  const normalizedCaptureStem = rawCaptureStem
+    .replace(/\s*\((\d{1,4})\)$/u, '-$1')
+    .replace(/\s+/gu, '-');
 
   if (
     TRANSCRIPT_CAPTURE.test(basename) ||
-    ((hasRawCaptureSuffix || isExtensionless) && TRANSCRIPT_STEM.test(rawCaptureStem))
+    ((hasRawCaptureSuffix || isExtensionless) && TRANSCRIPT_STEM.test(normalizedCaptureStem))
   ) {
     return 'raw transcript capture';
   }
   if (
     LOG_EXTENSION.test(basename) ||
     LOG_TOKEN.test(basename) ||
-    ((hasRawCaptureSuffix || isExtensionless) && EXECUTION_CAPTURE_STEM.test(rawCaptureStem))
+    ((hasRawCaptureSuffix || isExtensionless) && EXECUTION_CAPTURE_STEM.test(normalizedCaptureStem))
   ) {
     return 'raw execution log capture';
   }

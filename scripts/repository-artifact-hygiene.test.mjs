@@ -35,6 +35,10 @@ const forbidden = [
   'archive-chattranscript.txt',
   'reports-api-build-output',
   'archive-chattranscript',
+  'build log.txt',
+  'chat transcript.txt',
+  'build-log (1).txt',
+  'archive chat transcript (12).OUT',
 ];
 
 test('rejects raw log and transcript variants without case, suffix, or extension bypasses', () => {
@@ -58,6 +62,10 @@ test('allows source files and curated dated documentation', () => {
     'contest-output.txt',
     'rebuild-output.txt',
     'chattranscription.txt',
+    'contest output.txt',
+    'build logger.txt',
+    'docs/build log.md',
+    'packages/testing/src/test output.ts',
     'scripts/repository-artifact-hygiene.test.mjs',
   ];
 
@@ -106,5 +114,9 @@ test('reports every forbidden path with a fixed classification', () => {
     { filePath: 'archive-chattranscript.txt', reason: 'raw transcript capture' },
     { filePath: 'reports-api-build-output', reason: 'raw execution log capture' },
     { filePath: 'archive-chattranscript', reason: 'raw transcript capture' },
+    { filePath: 'build log.txt', reason: 'raw execution log capture' },
+    { filePath: 'chat transcript.txt', reason: 'raw transcript capture' },
+    { filePath: 'build-log (1).txt', reason: 'raw execution log capture' },
+    { filePath: 'archive chat transcript (12).OUT', reason: 'raw transcript capture' },
   ]);
 });

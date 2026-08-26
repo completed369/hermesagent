@@ -10,7 +10,9 @@ coverage/
 *-log*.out
 *-log*.trace
 *buildlog*.txt
+*build log*.txt
 *chattranscript*.txt
+*chat transcript*.txt
 *test-output*.txt
 *console-capture*.txt
 *transcript*.txt
