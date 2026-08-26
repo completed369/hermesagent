@@ -36,6 +36,7 @@ import {
 import { Prisma, prisma } from '@ventureos/database';
 import type { AuditService } from '../audit/audit.service';
 import { AUDIT_SERVICE } from '../audit/audit.tokens';
+import { AcpCostGovernanceService } from './acp-cost-governance.service';
 
 export class AcpBridgeAdmissionError extends Error {}
 export class AcpBridgeAdmissionDeniedError extends AcpBridgeAdmissionError {}
@@ -112,6 +113,11 @@ export interface PrepareBridgeDispatchInput {
 interface BridgeUsageAuditTotals {
   readonly taskCostUsedMinorUnits: number;
   readonly taskComputeUsed: number;
+  readonly taskCostLimitMinorUnits: number;
+  readonly workspaceCostUsedMinorUnits: number;
+  readonly workspaceCostLimitMinorUnits: number;
+  readonly workspacePolicyId: string;
+  readonly ledgerEntryId: string;
 }
 
 /**
@@ -133,6 +139,7 @@ export class AcpBridgeAdmissionService
     @Inject(BRIDGE_ARTIFACT_CONTENT_VERIFIER)
     private readonly artifactContent: BridgeArtifactContentVerifier,
     @Inject(BRIDGE_TEST_ONLY_GATE) private readonly testOnlyGate: BridgeTestOnlyGate,
+    private readonly costGovernance: AcpCostGovernanceService,
   ) {}
 
   async provisionRuntime(
@@ -540,6 +547,9 @@ export class AcpBridgeAdmissionService
           envelope,
           receipt.id,
           now,
+          capability,
+          context,
+          actorKind,
         );
         await tx.acpBridgeSession.update({
           where: { workspaceId_id: { workspaceId: context.workspaceId, id: session.id } },
@@ -976,6 +986,9 @@ export class AcpBridgeAdmissionService
     envelope: BridgeEnvelope,
     receiptId: string,
     now: Date,
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    actorKind: 'HUMAN' | 'AGENT' | 'SYSTEM',
   ): Promise<BridgeUsageAuditTotals | undefined> {
     const payload = envelope.payload;
     if (envelope.type === 'CAPABILITIES') {
@@ -1260,9 +1273,31 @@ export class AcpBridgeAdmissionService
           evidenceHash: envelope.payloadDigest,
         },
       });
+      const governed = await this.costGovernance.recordUsage(capability, context, actorKind, tx, {
+        usageId: receiptId,
+        receiptId,
+        dispatchId,
+        sessionId: session.id,
+        runId: dispatch.runId,
+        taskId: dispatch.taskId,
+        runtimeId: dispatch.runtimeId,
+        connectionId: dispatch.connectionId,
+        sequence: envelope.sequence,
+        currency: payload.currency as string,
+        costMinorUnits: cost,
+        computeUnits: compute,
+        taskPolicyVersion: task.policyVersion,
+        taskLimitMinorUnits: task.maximumCostMinorUnits,
+        recordedAt: now,
+      });
       return {
         taskCostUsedMinorUnits: Number(cumulativeCost),
         taskComputeUsed: Number(cumulativeCompute),
+        taskCostLimitMinorUnits: Number(governed.taskLimitMinorUnits),
+        workspaceCostUsedMinorUnits: Number(governed.workspaceSpendMinorUnits),
+        workspaceCostLimitMinorUnits: Number(governed.workspaceLimitMinorUnits),
+        workspacePolicyId: governed.workspacePolicyId,
+        ledgerEntryId: governed.ledgerEntryId,
       };
     }
     if (envelope.type === 'CANCELLED' || envelope.type === 'RESULT' || envelope.type === 'FAILED') {

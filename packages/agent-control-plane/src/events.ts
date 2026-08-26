@@ -26,6 +26,7 @@ export type OperationalEventType =
   | 'approval.permit.issued'
   | 'approval.permit.claimed'
   | 'usage.recorded'
+  | 'cost.ledger.recorded'
   | 'agent.created'
   | 'agent.lifecycle.changed'
   | 'runtime.connection.updated'
@@ -87,6 +88,7 @@ const EVENT_TYPES = new Set<OperationalEventType>([
   'approval.permit.issued',
   'approval.permit.claimed',
   'usage.recorded',
+  'cost.ledger.recorded',
   'agent.created',
   'agent.lifecycle.changed',
   'runtime.connection.updated',
@@ -150,6 +152,19 @@ const FACT_POLICIES: Readonly<Record<OperationalEventType, Readonly<Record<strin
     currency: 'CODE',
     taskCostUsedMinorUnits: 'INTEGER',
     taskComputeUsed: 'INTEGER',
+  },
+  'cost.ledger.recorded': {
+    taskId: 'REFERENCE',
+    runId: 'REFERENCE',
+    usageId: 'REFERENCE',
+    receiptId: 'REFERENCE',
+    currency: 'CODE',
+    costMinorUnits: 'INTEGER',
+    workspaceCostUsedMinorUnits: 'INTEGER',
+    workspaceCostLimitMinorUnits: 'INTEGER',
+    taskCostUsedMinorUnits: 'INTEGER',
+    taskCostLimitMinorUnits: 'INTEGER',
+    workspacePolicyId: 'REFERENCE',
   },
   'agent.created': { lifecycle: 'CODE' },
   'agent.lifecycle.changed': { lifecycle: 'CODE', reasonPresent: 'BOOLEAN' },

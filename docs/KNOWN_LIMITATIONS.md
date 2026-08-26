@@ -62,7 +62,13 @@
 > executable discovery or filesystem inspection and cannot close path-swap or
 > executable-replacement TOCTOU. Its validated output is inert; the production
 > launcher still always denies.
->
+
+The cost-governance foundation pairs authenticated bridge usage with immutable
+recognized-spend evidence under exact workspace and task budget periods. It
+does not activate billing, reconcile provider invoices, convert currencies,
+administer policies through a UI/controller, or treat broker capacity holds as
+spend. Production budget policy administration remains a later governed path.
+
 > A deterministic process-tree harness exercises exact-bound cancellation and
 > cleanup only in local Windows tests and the existing Linux CI path. Its
 > process imports and fixtures are absent from package exports and product

@@ -38,6 +38,12 @@
 > broker reservations now serialize exact, short-lived capacity, cost, and
 > compute holds without launching a runtime or creating a provider/finance
 > charge. The next
+
+Authenticated `USAGE` evidence is being paired atomically with a durable
+workspace/task budget ledger. This recognizes spend only after exact bridge
+evidence; broker reservations remain estimates rather than financial charges.
+
+> The next
 > runtime dependency is a reviewed trusted executable/admission-evidence reader
 > and deny-by-default supervisor composition. Process creation and transport
 > remain separate later changes before any real Codex, Hermes, or Pi adapter is

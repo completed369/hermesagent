@@ -8,3 +8,4 @@ export * from './voice-gateway';
 export * from './approval-bridge';
 export * from './task-run-policy';
 export * from './broker-reservation';
+export * from './cost-governance';

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   OperationalEventCapability,
   computeBrokerReservationEvidenceHash,
+  costBudgetPolicyHash,
   sha256Canonical,
   type DurableObjectivePlanInput,
   type RuntimeRoutingCandidate,
@@ -23,6 +24,10 @@ import {
 } from '../src/modules/agent-control-plane/acp-bridge-admission.service';
 import { AcpBrokerReservationService } from '../src/modules/agent-control-plane/acp-broker-reservation.service';
 import { AcpTaskRunService } from '../src/modules/agent-control-plane/acp-task-run.service';
+import {
+  AcpCostGovernanceService,
+  AcpCostLedgerQueryService,
+} from '../src/modules/agent-control-plane/acp-cost-governance.service';
 
 describe('durable Agent Bridge admission foundation (PostgreSQL integration)', () => {
   const suffix = randomUUID();
@@ -40,6 +45,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
   let capability: OperationalEventCapability;
   let plannerCapability: OperationalEventCapability;
   let bridge: AcpBridgeAdmissionService;
+  let costGovernance: AcpCostGovernanceService;
   let brokerReservations: AcpBrokerReservationService;
   let taskRuns: AcpTaskRunService;
   let fake: DeterministicFakeRuntime;
@@ -176,6 +182,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         },
       },
     );
+    costGovernance = new AcpCostGovernanceService(new AuditService());
     bridge = new AcpBridgeAdmissionService(
       new AuditService(),
       testSecretLease(),
@@ -197,6 +204,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           return requestWorkspaceId === workspaceId;
         },
       },
+      costGovernance,
     );
     taskRuns = new AcpTaskRunService(new AuditService(), bridge, bridge);
   });
@@ -303,6 +311,37 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     level4RunId = createdTasks.get(level4TaskId)!.runs[0]!.id;
     cancelTaskId = `bridge-cancel-${suffix}`;
     cancelRunId = createdTasks.get(cancelTaskId)!.runs[0]!.id;
+    const periodStart = new Date(Date.now() - 86_400_000);
+    const periodEnd = new Date(Date.now() + 86_400_000);
+    const workspacePolicy = {
+      schemaVersion: 1 as const,
+      policyId: `workspace-cost-policy-${suffix}`,
+      workspaceId,
+      scope: 'WORKSPACE' as const,
+      taskId: null,
+      currency: 'EUR',
+      limitMinorUnits: 250n,
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      policyVersion: 'bridge-test-v1',
+    };
+    const taskPolicy = {
+      ...workspacePolicy,
+      policyId: `task-cost-policy-${suffix}`,
+      scope: 'TASK' as const,
+      taskId,
+      limitMinorUnits: 100n,
+    };
+    await prisma.acpCostBudgetPolicy.createMany({
+      data: [
+        { ...workspacePolicy, policyHash: costBudgetPolicyHash(workspacePolicy) },
+        { ...taskPolicy, policyHash: costBudgetPolicyHash(taskPolicy) },
+      ].map(({ schemaVersion: _schemaVersion, periodStart: start, periodEnd: end, ...policy }) => ({
+        ...policy,
+        periodStart: new Date(start),
+        periodEnd: new Date(end),
+      })),
+    });
 
     for (const [label, bytes] of [
       ['zero', 0],
@@ -766,6 +805,63 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         where: { workspaceId, sessionId, sequence: 8 },
       }),
     ).toBe(0);
+    const beforeAuditRollback = {
+      receipts: await prisma.acpBridgeReceipt.count({ where: { workspaceId, dispatchId } }),
+      usages: await prisma.acpRunUsage.count({ where: { workspaceId, dispatchId } }),
+      ledger: await prisma.acpCostLedgerEntry.count({ where: { workspaceId, dispatchId } }),
+    };
+    const failingUsageAudit = {
+      async recordOperationalEvent() {
+        throw new Error('synthetic usage audit failure');
+      },
+    } as AuditService;
+    const rollbackUsageBridge = new AcpBridgeAdmissionService(
+      failingUsageAudit,
+      testSecretLease(),
+      brokerReservations,
+      {
+        async verify(_workspace, _runtime, policyHash, codes) {
+          return (
+            policyHash === capabilityPolicyHash && codes.join(',') === 'health.read,quality.verify'
+          );
+        },
+      },
+      {
+        async verify(evidence) {
+          return trustedArtifactContent.get(evidence.uriReference) === evidence.contentHash;
+        },
+      },
+      {
+        async allowsDeterministicFixture(requestWorkspaceId) {
+          return requestWorkspaceId === workspaceId;
+        },
+      },
+      new AcpCostGovernanceService(failingUsageAudit),
+    );
+    const usageSequence = (
+      await prisma.acpBridgeSession.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: sessionId } },
+      })
+    ).expectedSequence;
+    await expect(
+      rollbackUsageBridge.acceptRuntimeMessage(
+        capability,
+        { workspaceId, principalId },
+        fake.emitAt(usageSequence, 'USAGE', {
+          dispatchId,
+          taskId,
+          runId,
+          computeUnits: 1,
+          costMinorUnits: 1,
+          currency: 'EUR',
+        }),
+      ),
+    ).rejects.toThrow(/synthetic usage audit failure/iu);
+    expect({
+      receipts: await prisma.acpBridgeReceipt.count({ where: { workspaceId, dispatchId } }),
+      usages: await prisma.acpRunUsage.count({ where: { workspaceId, dispatchId } }),
+      ledger: await prisma.acpCostLedgerEntry.count({ where: { workspaceId, dispatchId } }),
+    }).toEqual(beforeAuditRollback);
     await bridge.acceptRuntimeMessage(
       capability,
       { workspaceId, principalId },
@@ -803,50 +899,122 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       `concurrent-usage-a-${suffix}`,
       `concurrent-usage-b-${suffix}`,
     ];
-    await prisma.acpBridgeReceipt.createMany({
-      data: concurrentUsageReceiptIds.map((id, index) => ({
-        id,
-        workspaceId,
-        runtimeId,
-        connectionId,
-        sessionId,
-        sequence: 1_000 + index,
-        messageId: `concurrent-usage-message-${index}-${suffix}`,
-        messageType: 'USAGE',
-        payloadDigest: `${index + 7}`.repeat(64),
-        envelopeDigest: `${index + 8}`.repeat(64),
-        taskId,
-        runId,
-        dispatchId,
-      })),
+    let releaseFirst!: () => void;
+    let signalFirst!: () => void;
+    const firstReady = new Promise<void>((resolve) => {
+      signalFirst = resolve;
     });
-    const concurrentUsageWrites = await Promise.allSettled(
-      concurrentUsageReceiptIds.map((receiptId, index) =>
-        prisma.acpRunUsage.create({
-          data: {
-            id: receiptId,
-            workspaceId,
-            dispatchId,
-            runId,
-            sessionId,
+    const firstRelease = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const concurrentWrite = (index: number, hold: boolean) =>
+      prisma.$transaction(
+        async (tx) => {
+          const receiptId = concurrentUsageReceiptIds[index]!;
+          const sequence = 1_000 + index;
+          const payloadDigest = `${index + 7}`.repeat(64);
+          const recordedAt = new Date();
+          await tx.acpBridgeReceipt.create({
+            data: {
+              id: receiptId,
+              workspaceId,
+              runtimeId,
+              connectionId,
+              sessionId,
+              sequence,
+              messageId: `concurrent-usage-message-${index}-${suffix}`,
+              messageType: 'USAGE',
+              payloadDigest,
+              envelopeDigest: `${index + 8}`.repeat(64),
+              taskId,
+              runId,
+              dispatchId,
+            },
+          });
+          await tx.acpRunUsage.create({
+            data: {
+              id: receiptId,
+              workspaceId,
+              dispatchId,
+              runId,
+              sessionId,
+              receiptId,
+              sequence,
+              computeUnits: 1,
+              costMinorUnits: 1,
+              cumulativeComputeUnits: 13n + BigInt(index),
+              cumulativeCostMinorUnits: 8n + BigInt(index),
+              currency: 'EUR',
+              evidenceHash: payloadDigest,
+            },
+          });
+          if (hold) {
+            signalFirst();
+            await firstRelease;
+          }
+          await costGovernance.recordUsage(capability, { workspaceId, principalId }, 'SYSTEM', tx, {
+            usageId: receiptId,
             receiptId,
-            sequence: 1_000 + index,
-            computeUnits: 1,
-            costMinorUnits: 1,
-            cumulativeComputeUnits: 13,
-            cumulativeCostMinorUnits: 8,
+            dispatchId,
+            sessionId,
+            runId,
+            taskId,
+            runtimeId,
+            connectionId,
+            sequence,
             currency: 'EUR',
-            evidenceHash: `${index + 5}`.repeat(64),
-          },
-        }),
-      ),
-    );
-    expect(concurrentUsageWrites.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
-    expect(concurrentUsageWrites.filter(({ status }) => status === 'rejected')).toHaveLength(1);
-    await prisma.acpBridgeReceipt.deleteMany({
-      where: { workspaceId, id: { in: concurrentUsageReceiptIds } },
+            costMinorUnits: 1n,
+            computeUnits: 1n,
+            taskPolicyVersion: 'bridge-test-v1',
+            taskLimitMinorUnits: 100n,
+            recordedAt,
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+      );
+    const firstConcurrent = concurrentWrite(0, true);
+    await firstReady;
+    const secondConcurrent = concurrentWrite(1, false);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    releaseFirst();
+    await Promise.all([firstConcurrent, secondConcurrent]);
+    expect(await prisma.acpRunUsage.count({ where: { workspaceId, dispatchId } })).toBe(4);
+    const ledger = await prisma.acpCostLedgerEntry.findMany({
+      where: { workspaceId, dispatchId },
+      orderBy: { sequence: 'asc' },
     });
-    expect(await prisma.acpRunUsage.count({ where: { workspaceId, dispatchId } })).toBe(2);
+    expect(ledger).toHaveLength(4);
+    expect(ledger.map((entry) => entry.workspaceSpendMinorUnits)).toEqual([5n, 7n, 8n, 9n]);
+    expect(ledger.map((entry) => entry.taskSpendMinorUnits)).toEqual([5n, 7n, 8n, 9n]);
+    expect(
+      await new AcpCostLedgerQueryService().listLedger(capability, { workspaceId, principalId }),
+    ).toHaveLength(4);
+    await expect(
+      prisma.acpCostLedgerEntry.delete({
+        where: { workspaceId_id: { workspaceId, id: cumulativeUsage.id } },
+      }),
+    ).rejects.toThrow();
+    expect(
+      await prisma.acpCostLedgerEntry.count({
+        where: { workspaceId, usageId: cumulativeUsage.id },
+      }),
+    ).toBe(1);
+    const costAudit = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        workspaceReference: workspaceId,
+        source: 'CONTROL_PLANE',
+        action: 'cost.ledger.recorded',
+        entityType: 'AcpCostLedgerEntry',
+        entityId: cumulativeUsage.id,
+      },
+    });
+    expect(costAudit.after).toMatchObject({
+      workspaceCostUsedMinorUnits: 7,
+      workspaceCostLimitMinorUnits: 250,
+      workspacePolicyId: `workspace-cost-policy-${suffix}`,
+      usageId: cumulativeUsage.id,
+      receiptId: cumulativeUsage.id,
+    });
 
     await bridge.acceptRuntimeMessage(
       capability,
@@ -1711,6 +1879,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           return false;
         },
       },
+      new AcpCostGovernanceService(new AuditService()),
     );
     await expect(
       deniedFixtureBridge.provisionRuntime(
@@ -1890,6 +2059,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           return requestWorkspaceId === erase.id;
         },
       },
+      new AcpCostGovernanceService(new AuditService()),
     );
     await eraseBridge.provisionRuntime(
       eraseCapability,
@@ -1953,6 +2123,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           return requestWorkspaceId === rollback.id;
         },
       },
+      new AcpCostGovernanceService(failingAudit),
     );
     await expect(
       rollbackBridge.provisionRuntime(

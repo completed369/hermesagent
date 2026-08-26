@@ -69,6 +69,9 @@ published and current `main` has not been deployed to private staging.
   lexical-worktree, argument-policy, and resource evidence. Its output is inert,
   filesystem and launch-time TOCTOU remain open, and the production launcher
   continues to deny every process request.
+- Durable cost governance: immutable one-to-one usage ledger evidence with
+  exact workspace/task budget periods is in implementation review. It adds no
+  billing provider, runtime connection, controller, deployment, or publication.
 - A pure supervision lifecycle and exact-cancellation binding plus a
   deterministic test-only process-tree harness. The fixture is absent from
   package exports and product images and supplies only Windows/Linux test

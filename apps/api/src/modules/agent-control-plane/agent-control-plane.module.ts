@@ -23,6 +23,7 @@ import { AuditModule } from '../audit/audit.module';
 import { AcpBridgeAdmissionService } from './acp-bridge-admission.service';
 import { AcpBrokerReservationService } from './acp-broker-reservation.service';
 import { AcpTaskRunService } from './acp-task-run.service';
+import { AcpCostGovernanceService, AcpCostLedgerQueryService } from './acp-cost-governance.service';
 
 const denySecrets = new DenyBridgeSecretLeaseResolver();
 const denyCandidates: TrustedBrokerCandidateReader = {
@@ -66,6 +67,8 @@ const denyTestOnlyGate: BridgeTestOnlyGate = {
     AcpTaskRunService,
     AcpBridgeAdmissionService,
     AcpBrokerReservationService,
+    AcpCostGovernanceService,
+    AcpCostLedgerQueryService,
     { provide: BRIDGE_SECRET_LEASE_RESOLVER, useValue: denySecrets },
     { provide: TRUSTED_BROKER_CANDIDATE_READER, useValue: denyCandidates },
     { provide: TRUSTED_BROKER_AGENT_READER, useValue: denyAgents },
@@ -76,6 +79,11 @@ const denyTestOnlyGate: BridgeTestOnlyGate = {
     { provide: ASSIGNMENT_EVIDENCE_VERIFIER, useExisting: AcpBridgeAdmissionService },
     { provide: DURABLE_ARTIFACT_EVIDENCE_VERIFIER, useExisting: AcpBridgeAdmissionService },
   ],
-  exports: [AcpTaskRunService, AcpBridgeAdmissionService, AcpBrokerReservationService],
+  exports: [
+    AcpTaskRunService,
+    AcpBridgeAdmissionService,
+    AcpBrokerReservationService,
+    AcpCostLedgerQueryService,
+  ],
 })
 export class AgentControlPlaneModule {}

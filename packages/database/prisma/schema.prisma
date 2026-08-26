@@ -139,6 +139,8 @@ model Workspace {
   acpRunUsages             AcpRunUsage[]
   acpBrokerReservations    AcpBrokerReservation[]
   acpBrokerEvaluations     AcpBrokerEvaluation[]
+  acpCostBudgetPolicies    AcpCostBudgetPolicy[]
+  acpCostLedgerEntries     AcpCostLedgerEntry[]
 
   @@map("workspaces")
 }
@@ -981,6 +983,8 @@ model AcpTask {
   runs               AcpRun[]
   artifacts          AcpArtifact[]
   brokerReservations AcpBrokerReservation[]
+  costBudgetPolicies AcpCostBudgetPolicy[]
+  costLedgerEntries  AcpCostLedgerEntry[]
 
   @@id([workspaceId, id])
   @@index([workspaceId, objectiveId, status])
@@ -1038,6 +1042,7 @@ model AcpRun {
   bridgeDispatches   AcpBridgeDispatch[]
   usages             AcpRunUsage[]
   brokerReservations AcpBrokerReservation[]
+  costLedgerEntries  AcpCostLedgerEntry[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
@@ -1096,6 +1101,7 @@ model AcpRuntimeConnection {
   sessions           AcpBridgeSession[]
   dispatches         AcpBridgeDispatch[]
   brokerReservations AcpBrokerReservation[]
+  costLedgerEntries  AcpCostLedgerEntry[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, runtimeId, environment])
@@ -1122,10 +1128,11 @@ model AcpBridgeSession {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  connection AcpRuntimeConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
-  receipts   AcpBridgeReceipt[]
-  dispatches AcpBridgeDispatch[]
+  workspace         Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection        AcpRuntimeConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  receipts          AcpBridgeReceipt[]
+  dispatches        AcpBridgeDispatch[]
+  costLedgerEntries AcpCostLedgerEntry[]
 
   @@id([workspaceId, id])
   @@index([workspaceId, connectionId, state])
@@ -1158,15 +1165,17 @@ model AcpBridgeReceipt {
   contentHash    String?
   receivedAt     DateTime @default(now())
 
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  session   AcpBridgeSession @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
-  usage     AcpRunUsage?
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  session         AcpBridgeSession    @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+  usage           AcpRunUsage?
+  costLedgerEntry AcpCostLedgerEntry?
 
   @@id([workspaceId, id])
   @@unique([workspaceId, sessionId, sequence])
   @@unique([workspaceId, sessionId, messageId])
   @@unique([workspaceId, evidenceId])
   @@unique([workspaceId, id, sessionId, dispatchId, runId, sequence])
+  @@unique([workspaceId, id, sessionId, dispatchId, runId, taskId, runtimeId, connectionId, sequence], map: "acp_bridge_receipts_cost_binding_key")
   @@index([workspaceId, runId, messageType])
   @@map("acp_bridge_receipts")
 }
@@ -1200,11 +1209,13 @@ model AcpBridgeDispatch {
   session           AcpBridgeSession     @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
   brokerReservation AcpBrokerReservation @relation(fields: [workspaceId, brokerEvidenceId, brokerEvidenceHash, taskId, runId, agentId, runtimeId, connectionId], references: [workspaceId, id, evidenceHash, taskId, runId, agentId, runtimeId, connectionId], onDelete: Cascade)
   usages            AcpRunUsage[]
+  costLedgerEntries AcpCostLedgerEntry[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
   @@unique([workspaceId, runId])
   @@unique([workspaceId, id, runId, sessionId])
+  @@unique([workspaceId, id, runId, taskId, runtimeId, connectionId, sessionId], map: "acp_bridge_dispatches_cost_binding_key")
   @@index([workspaceId, connectionId, state])
   @@map("acp_bridge_dispatches")
 }
@@ -1225,17 +1236,95 @@ model AcpRunUsage {
   evidenceHash             String
   recordedAt               DateTime @default(now())
 
-  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  dispatch  AcpBridgeDispatch @relation(fields: [workspaceId, dispatchId, runId, sessionId], references: [workspaceId, id, runId, sessionId], onDelete: Cascade)
-  run       AcpRun            @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
-  receipt   AcpBridgeReceipt  @relation(fields: [workspaceId, receiptId, sessionId, dispatchId, runId, sequence], references: [workspaceId, id, sessionId, dispatchId, runId, sequence], onDelete: Cascade)
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dispatch        AcpBridgeDispatch   @relation(fields: [workspaceId, dispatchId, runId, sessionId], references: [workspaceId, id, runId, sessionId], onDelete: Cascade)
+  run             AcpRun              @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  receipt         AcpBridgeReceipt    @relation(fields: [workspaceId, receiptId, sessionId, dispatchId, runId, sequence], references: [workspaceId, id, sessionId, dispatchId, runId, sequence], onDelete: Cascade)
+  costLedgerEntry AcpCostLedgerEntry?
 
   @@id([workspaceId, id])
   @@unique([workspaceId, receiptId])
   @@unique([workspaceId, receiptId, sessionId, dispatchId, runId, sequence])
+  @@unique([workspaceId, id, receiptId, sessionId, dispatchId, runId, sequence], map: "acp_run_usages_cost_binding_key")
   @@unique([workspaceId, dispatchId, sequence])
   @@index([workspaceId, runId, recordedAt(sort: Desc)])
   @@map("acp_run_usages")
+}
+
+/// Immutable, versioned budget envelope. A workspace policy has taskId NULL;
+/// a task policy binds the exact durable task. Overlapping matching policies
+/// fail closed in the service boundary rather than being selected implicitly.
+model AcpCostBudgetPolicy {
+  id              String
+  workspaceId     String   @db.Uuid
+  taskId          String?
+  scope           String
+  currency        String
+  limitMinorUnits BigInt
+  periodStart     DateTime
+  periodEnd       DateTime
+  policyVersion   String
+  policyHash      String
+  createdAt       DateTime @default(now())
+
+  workspace              Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task                   AcpTask?             @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  workspaceLedgerEntries AcpCostLedgerEntry[] @relation("AcpWorkspaceBudgetPolicyLedger")
+  taskLedgerEntries      AcpCostLedgerEntry[] @relation("AcpTaskBudgetPolicyLedger")
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, scope, taskId, currency, periodStart, periodEnd])
+  @@index([workspaceId, scope, currency, periodStart, periodEnd])
+  @@map("acp_cost_budget_policies")
+}
+
+/// Immutable recognized spend. Broker reservations remain capacity estimates
+/// and are deliberately not related to or counted as ledger spend.
+model AcpCostLedgerEntry {
+  id                       String
+  workspaceId              String   @db.Uuid
+  usageId                  String
+  receiptId                String
+  dispatchId               String
+  sessionId                String
+  runId                    String
+  taskId                   String
+  runtimeId                String
+  connectionId             String
+  sequence                 Int
+  currency                 String
+  costMinorUnits           BigInt
+  computeUnits             BigInt
+  workspacePolicyId        String
+  workspacePolicyHash      String
+  taskPolicyId             String
+  taskPolicyHash           String
+  periodStart              DateTime
+  periodEnd                DateTime
+  workspaceSpendMinorUnits BigInt
+  taskSpendMinorUnits      BigInt
+  checksum                 String
+  recordedAt               DateTime @default(now())
+
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task            AcpTask              @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  run             AcpRun               @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  connection      AcpRuntimeConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  session         AcpBridgeSession     @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+  dispatch        AcpBridgeDispatch    @relation(fields: [workspaceId, dispatchId, runId, taskId, runtimeId, connectionId, sessionId], references: [workspaceId, id, runId, taskId, runtimeId, connectionId, sessionId], onDelete: Cascade)
+  receipt         AcpBridgeReceipt     @relation(fields: [workspaceId, receiptId, sessionId, dispatchId, runId, taskId, runtimeId, connectionId, sequence], references: [workspaceId, id, sessionId, dispatchId, runId, taskId, runtimeId, connectionId, sequence], onDelete: Cascade)
+  usage           AcpRunUsage          @relation(fields: [workspaceId, usageId, receiptId, sessionId, dispatchId, runId, sequence], references: [workspaceId, id, receiptId, sessionId, dispatchId, runId, sequence], onDelete: Cascade)
+  workspacePolicy AcpCostBudgetPolicy  @relation("AcpWorkspaceBudgetPolicyLedger", fields: [workspaceId, workspacePolicyId], references: [workspaceId, id], onDelete: Cascade)
+  taskPolicy      AcpCostBudgetPolicy  @relation("AcpTaskBudgetPolicyLedger", fields: [workspaceId, taskPolicyId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, usageId])
+  @@unique([workspaceId, receiptId])
+  @@unique([workspaceId, receiptId, sessionId, dispatchId, runId, taskId, runtimeId, connectionId, sequence], map: "acp_cost_ledger_receipt_binding_key")
+  @@unique([workspaceId, usageId, receiptId, sessionId, dispatchId, runId, sequence], map: "acp_cost_ledger_usage_binding_key")
+  @@index([workspaceId, periodStart, periodEnd, recordedAt(sort: Desc)])
+  @@index([workspaceId, taskId, periodStart, periodEnd, recordedAt(sort: Desc)])
+  @@map("acp_cost_ledger_entries")
 }
 
 /// Immutable broker decision and capacity/budget hold. This is routing evidence,
