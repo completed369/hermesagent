@@ -205,6 +205,10 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    a separate deployment authorization. Validate migrations, health, E2E,
    responsive/accessibility behavior, tenant isolation, audit evidence,
    backup/restore, and rollback using synthetic data and disabled live providers.
+   The source-only rollback/restore readiness contract now binds exact prior
+   source/digests/health and migration compatibility and exercises a disposable
+   PostgreSQL drill. A real backup, restore, or deployment remains separately
+   gated and is not evidenced by that fixture.
 6. Run a current-main internal synthetic-data rehearsal. An invited pilot follows only after
    privacy/terms/data-handling, access, support, incident, and rollback ownership
    are approved. Record observed pilot evidence; do not infer pricing, revenue,

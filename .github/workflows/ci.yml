@@ -45,6 +45,7 @@ jobs:
         ports:
           - '5432:5432'
         options: >-
+          --label ventureos.fixture.owner=github-ci-restore-drill
           --health-cmd "pg_isready -U ventureos -d ventureos"
           --health-interval 5s
           --health-timeout 5s
