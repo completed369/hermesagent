@@ -21,12 +21,16 @@ or policy deletion while the workspace remains; only whole-workspace erasure
 permits its cascade.
 
 For a `USAGE` message, a database trigger overwrites any caller-supplied receipt
-time with the database clock. The receipt, usage, and ledger rows must then bind
-that exact immutable instant. The database applies the budget period to that
-instant and sums ledger deltas across every period and run to enforce the durable
-task's lifetime cost and compute ceilings. A retry or replacement run therefore
-cannot reset task spend or select a past or future policy period. The canonical
-lock order is durable task, workspace policy, then task policy.
+time with the database clock normalized to UTC. The service rereads that
+persisted value, and the receipt, usage, and ledger rows must bind the exact
+immutable instant. After taking the durable task, workspace-policy, and
+task-policy locks, the ledger guard samples a second UTC database instant and
+requires both selected periods to remain active. A lock wait therefore cannot
+charge an expired period after rollover. The database sums ledger deltas across
+every period and run to enforce the durable task's lifetime cost and compute
+ceilings. A retry or replacement run cannot reset task spend or select a past
+or future policy period. The canonical lock order is durable task, workspace
+policy, then task policy.
 
 The checksum is deterministic integrity evidence, not a signature and not a
 claim of cryptographic tamper-proof storage. Tenant deletion cascades the usage,
@@ -49,6 +53,8 @@ Any budget, correlation, checksum-input, receipt, audit, or database error rolls
 back the receipt, usage, ledger, session sequence, and audit event together.
 Concurrent spend is serialized by the durable task and exact policy locks plus
 serializable isolation.
-The migration fails closed if it encounters pre-existing recognized usage;
-such data requires an explicit reviewed policy-and-ledger remediation rather
-than an invented historical budget assignment.
+The migration locks usage and receipt writes through its remediation checks and
+trigger installation. It fails closed if it encounters pre-existing recognized
+usage or `USAGE` receipts; such data requires an explicit reviewed
+policy-and-ledger remediation rather than an invented historical budget
+assignment.

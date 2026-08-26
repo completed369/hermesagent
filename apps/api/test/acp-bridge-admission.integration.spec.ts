@@ -1027,81 +1027,90 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       selectedRunId = runId,
       selectedDispatchId = dispatchId,
       selectedTaskId = taskId,
+      selectedCurrency = 'EUR',
+      beforeLedger?: () => void,
     ) =>
-      prisma.$transaction(async (tx) => {
-        const id = `forged-${label}-${suffix}`;
-        const digest = 'd'.repeat(64);
-        const receipt = await tx.acpBridgeReceipt.create({
-          data: {
-            id,
-            workspaceId,
-            runtimeId,
-            connectionId,
-            sessionId,
-            sequence,
-            messageId: `forged-message-${label}-${suffix}`,
-            messageType: 'USAGE',
-            payloadDigest: digest,
-            envelopeDigest: 'e'.repeat(64),
-            taskId: selectedTaskId,
-            runId: selectedRunId,
-            dispatchId: selectedDispatchId,
-            ...(usageRecordedAt instanceof Date ? { receivedAt: usageRecordedAt } : {}),
-          },
-        });
-        const resolvedUsageRecordedAt =
-          usageRecordedAt instanceof Date ? usageRecordedAt : usageRecordedAt(receipt.receivedAt);
-        const resolvedLedgerRecordedAt =
-          ledgerRecordedAt instanceof Date
-            ? ledgerRecordedAt
-            : ledgerRecordedAt(receipt.receivedAt);
-        await tx.acpRunUsage.create({
-          data: {
-            id,
-            workspaceId,
-            dispatchId: selectedDispatchId,
-            runId: selectedRunId,
-            sessionId,
-            receiptId: id,
-            sequence,
-            computeUnits,
-            costMinorUnits,
-            cumulativeComputeUnits,
-            cumulativeCostMinorUnits,
-            currency: 'EUR',
-            evidenceHash: digest,
-            recordedAt: resolvedUsageRecordedAt,
-          },
-        });
-        await tx.acpCostLedgerEntry.create({
-          data: {
-            id,
-            workspaceId,
-            usageId: id,
-            receiptId: id,
-            dispatchId: selectedDispatchId,
-            sessionId,
-            runId: selectedRunId,
-            taskId: selectedTaskId,
-            runtimeId,
-            connectionId,
-            sequence,
-            currency: 'EUR',
-            costMinorUnits,
-            computeUnits,
-            workspacePolicyId: selectedWorkspacePolicy.id,
-            workspacePolicyHash: selectedWorkspacePolicy.policyHash,
-            taskPolicyId: selectedTaskPolicy.id,
-            taskPolicyHash: selectedTaskPolicy.policyHash,
-            periodStart: selectedWorkspacePolicy.periodStart,
-            periodEnd: selectedWorkspacePolicy.periodEnd,
-            workspaceSpendMinorUnits: priorWorkspacePeriodSpend + costMinorUnits,
-            taskSpendMinorUnits: priorTaskPeriodSpend + costMinorUnits,
-            checksum: 'f'.repeat(64),
-            recordedAt: resolvedLedgerRecordedAt,
-          },
-        });
-      });
+      prisma.$transaction(
+        async (tx) => {
+          const id = `forged-${label}-${suffix}`;
+          const digest = 'd'.repeat(64);
+          const createdReceipt = await tx.acpBridgeReceipt.create({
+            data: {
+              id,
+              workspaceId,
+              runtimeId,
+              connectionId,
+              sessionId,
+              sequence,
+              messageId: `forged-message-${label}-${suffix}`,
+              messageType: 'USAGE',
+              payloadDigest: digest,
+              envelopeDigest: 'e'.repeat(64),
+              taskId: selectedTaskId,
+              runId: selectedRunId,
+              dispatchId: selectedDispatchId,
+              ...(usageRecordedAt instanceof Date ? { receivedAt: usageRecordedAt } : {}),
+            },
+          });
+          const receipt = await tx.acpBridgeReceipt.findUniqueOrThrow({
+            where: { workspaceId_id: { workspaceId, id: createdReceipt.id } },
+          });
+          const resolvedUsageRecordedAt =
+            usageRecordedAt instanceof Date ? usageRecordedAt : usageRecordedAt(receipt.receivedAt);
+          const resolvedLedgerRecordedAt =
+            ledgerRecordedAt instanceof Date
+              ? ledgerRecordedAt
+              : ledgerRecordedAt(receipt.receivedAt);
+          await tx.acpRunUsage.create({
+            data: {
+              id,
+              workspaceId,
+              dispatchId: selectedDispatchId,
+              runId: selectedRunId,
+              sessionId,
+              receiptId: id,
+              sequence,
+              computeUnits,
+              costMinorUnits,
+              cumulativeComputeUnits,
+              cumulativeCostMinorUnits,
+              currency: selectedCurrency,
+              evidenceHash: digest,
+              recordedAt: resolvedUsageRecordedAt,
+            },
+          });
+          beforeLedger?.();
+          await tx.acpCostLedgerEntry.create({
+            data: {
+              id,
+              workspaceId,
+              usageId: id,
+              receiptId: id,
+              dispatchId: selectedDispatchId,
+              sessionId,
+              runId: selectedRunId,
+              taskId: selectedTaskId,
+              runtimeId,
+              connectionId,
+              sequence,
+              currency: selectedCurrency,
+              costMinorUnits,
+              computeUnits,
+              workspacePolicyId: selectedWorkspacePolicy.id,
+              workspacePolicyHash: selectedWorkspacePolicy.policyHash,
+              taskPolicyId: selectedTaskPolicy.id,
+              taskPolicyHash: selectedTaskPolicy.policyHash,
+              periodStart: selectedWorkspacePolicy.periodStart,
+              periodEnd: selectedWorkspacePolicy.periodEnd,
+              workspaceSpendMinorUnits: priorWorkspacePeriodSpend + costMinorUnits,
+              taskSpendMinorUnits: priorTaskPeriodSpend + costMinorUnits,
+              checksum: 'f'.repeat(64),
+              recordedAt: resolvedLedgerRecordedAt,
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 },
+      );
     await expect(
       forgedUsageLedger(
         'timestamp-drift',
@@ -1248,7 +1257,11 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         where: { workspaceId_id: { workspaceId, id: futureTaskPolicyInput.policyId } },
       }),
     ]);
-    const createAcceptedLifetimeRun = async (label: string, attempt: number) => {
+    const createAcceptedLifetimeRun = async (
+      label: string,
+      attempt: number,
+      selectedTaskId = lifetimeTaskId,
+    ) => {
       const selectedRunId = `lifetime-${label}-run-${suffix}`;
       const selectedDispatchId = `lifetime-${label}-dispatch-${suffix}`;
       const reservationId = `lifetime-${label}-reservation-${suffix}`;
@@ -1260,7 +1273,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           id: selectedRunId,
           workspaceId,
           objectiveId: primaryRun.objectiveId,
-          taskId: lifetimeTaskId,
+          taskId: selectedTaskId,
           status: 'RUNNING',
           requiredAuthority: primaryRun.requiredAuthority,
           policyVersion: primaryRun.policyVersion,
@@ -1286,7 +1299,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           id: reservationId,
           workspaceId,
           objectiveId: primaryRun.objectiveId,
-          taskId: lifetimeTaskId,
+          taskId: selectedTaskId,
           runId: selectedRunId,
           agentId: lifetimeAgentId,
           agentEvidenceId: `lifetime-${label}-agent-evidence-${suffix}`,
@@ -1315,7 +1328,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           id: selectedDispatchId,
           workspaceId,
           objectiveId: primaryRun.objectiveId,
-          taskId: lifetimeTaskId,
+          taskId: selectedTaskId,
           runId: selectedRunId,
           runtimeId,
           connectionId,
@@ -1337,6 +1350,197 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       });
       return { runId: selectedRunId, dispatchId: selectedDispatchId };
     };
+    const hostileTimezoneReceiptId = `hostile-timezone-receipt-${suffix}`;
+    const hostileTimezoneObservation = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
+      await tx.acpBridgeReceipt.create({
+        data: {
+          id: hostileTimezoneReceiptId,
+          workspaceId,
+          runtimeId,
+          connectionId,
+          sessionId,
+          sequence: 1_107,
+          messageId: `hostile-timezone-message-${suffix}`,
+          messageType: 'USAGE',
+          payloadDigest: 'a'.repeat(64),
+          envelopeDigest: 'b'.repeat(64),
+          taskId,
+          runId,
+          dispatchId,
+          receivedAt: new Date('2000-01-01T00:00:00.000Z'),
+        },
+      });
+      const persisted = await tx.acpBridgeReceipt.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: hostileTimezoneReceiptId } },
+      });
+      const [clock] = await tx.$queryRaw<Array<{ observedAt: Date }>>(
+        Prisma.sql`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS "observedAt"`,
+      );
+      await tx.acpBridgeReceipt.delete({
+        where: { workspaceId_id: { workspaceId, id: hostileTimezoneReceiptId } },
+      });
+      return { persistedAt: persisted.receivedAt, observedAt: clock!.observedAt };
+    });
+    expect(
+      Math.abs(
+        hostileTimezoneObservation.persistedAt.getTime() -
+          hostileTimezoneObservation.observedAt.getTime(),
+      ),
+    ).toBeLessThan(2_000);
+
+    const rolloverTaskId = `rollover-task-${suffix}`;
+    await prisma.acpTask.create({
+      data: {
+        id: rolloverTaskId,
+        workspaceId,
+        objectiveId: primaryTask.objectiveId,
+        projectId: primaryTask.projectId,
+        title: 'Policy rollover lock fixture',
+        kind: primaryTask.kind,
+        status: 'RUNNING',
+        requiredAuthority: primaryTask.requiredAuthority,
+        currency: 'USD',
+        maximumCostMinorUnits: 100n,
+        maximumComputeUnits: 100n,
+        estimatedDurationMs: primaryTask.estimatedDurationMs,
+        acceptanceCriteria: primaryTask.acceptanceCriteria,
+        verificationCriteria: primaryTask.verificationCriteria,
+        stopConditions: primaryTask.stopConditions,
+        maximumAttempts: 1,
+        retryableFailureCodes: primaryTask.retryableFailureCodes,
+        stopAfterFailureCodes: primaryTask.stopAfterFailureCodes,
+        agentPolicy: primaryTask.agentPolicy as Prisma.InputJsonValue,
+        routingPolicy: primaryTask.routingPolicy as Prisma.InputJsonValue,
+        exactTarget: primaryTask.exactTarget,
+        approvalActionCode: primaryTask.approvalActionCode,
+        approvalArtifactVersion: primaryTask.approvalArtifactVersion,
+        approvalEvidenceHash: primaryTask.approvalEvidenceHash,
+        policyVersion: primaryTask.policyVersion,
+        policyHash: primaryTask.policyHash,
+        assignedAgentId: lifetimeAgentId,
+        assignedRuntimeId: runtimeId,
+        assignedConnectionId: connectionId,
+        attempt: 1,
+      },
+    });
+    const rolloverRun = await createAcceptedLifetimeRun('rollover', 1, rolloverTaskId);
+    const [rolloverClock] = await prisma.$queryRaw<Array<{ observedAt: Date }>>(
+      Prisma.sql`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS "observedAt"`,
+    );
+    const rolloverPeriodStart = new Date(rolloverClock!.observedAt.getTime() - 1_000);
+    const rolloverPeriodEnd = new Date(rolloverClock!.observedAt.getTime() + 2_000);
+    const rolloverWorkspacePolicyInput = {
+      schemaVersion: 1 as const,
+      policyId: `workspace-cost-policy-rollover-${suffix}`,
+      workspaceId,
+      scope: 'WORKSPACE' as const,
+      taskId: null,
+      currency: 'USD',
+      limitMinorUnits: 100n,
+      periodStart: rolloverPeriodStart.toISOString(),
+      periodEnd: rolloverPeriodEnd.toISOString(),
+      policyVersion: 'bridge-test-v1',
+    };
+    const rolloverTaskPolicyInput = {
+      ...rolloverWorkspacePolicyInput,
+      policyId: `task-cost-policy-rollover-${suffix}`,
+      scope: 'TASK' as const,
+      taskId: rolloverTaskId,
+    };
+    await prisma.acpCostBudgetPolicy.createMany({
+      data: [rolloverWorkspacePolicyInput, rolloverTaskPolicyInput].map((input) => {
+        const { schemaVersion: _schemaVersion, policyId: id, ...policy } = input;
+        return { ...policy, id, policyHash: costBudgetPolicyHash(input) };
+      }),
+    });
+    const [rolloverWorkspacePolicy, rolloverTaskPolicy] = await Promise.all([
+      prisma.acpCostBudgetPolicy.findUniqueOrThrow({
+        where: {
+          workspaceId_id: { workspaceId, id: rolloverWorkspacePolicyInput.policyId },
+        },
+      }),
+      prisma.acpCostBudgetPolicy.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: rolloverTaskPolicyInput.policyId } },
+      }),
+    ]);
+    let releaseRolloverPolicyLock!: () => void;
+    let reportRolloverPolicyLocked!: () => void;
+    const rolloverPolicyLockReleased = new Promise<void>((resolve) => {
+      releaseRolloverPolicyLock = resolve;
+    });
+    const rolloverPolicyLocked = new Promise<void>((resolve) => {
+      reportRolloverPolicyLocked = resolve;
+    });
+    const rolloverPolicyBlocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_cost_budget_policies" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${rolloverWorkspacePolicy.id} FOR UPDATE`,
+      );
+      reportRolloverPolicyLocked();
+      await rolloverPolicyLockReleased;
+    });
+    await rolloverPolicyLocked;
+    let reportRolloverWriteReady!: () => void;
+    const rolloverWriteReady = new Promise<void>((resolve) => {
+      reportRolloverWriteReady = resolve;
+    });
+    const rolloverWriteId = `forged-lock-rollover-${suffix}`;
+    const rolloverWriteOutcome = forgedUsageLedger(
+      'lock-rollover',
+      1_108,
+      1n,
+      1n,
+      1n,
+      1n,
+      (receivedAt) => receivedAt,
+      (receivedAt) => receivedAt,
+      rolloverWorkspacePolicy,
+      rolloverTaskPolicy,
+      0n,
+      0n,
+      rolloverRun.runId,
+      rolloverRun.dispatchId,
+      rolloverTaskId,
+      'USD',
+      reportRolloverWriteReady,
+    ).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    try {
+      await rolloverWriteReady;
+      let periodExpired = false;
+      const waitDeadline = Date.now() + 6_000;
+      while (!periodExpired && Date.now() < waitDeadline) {
+        const [state] = await prisma.$queryRaw<Array<{ expired: boolean }>>(
+          Prisma.sql`SELECT (clock_timestamp() AT TIME ZONE 'UTC') >= ${rolloverPeriodEnd} AS "expired"`,
+        );
+        periodExpired = state!.expired;
+        if (!periodExpired) await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(periodExpired).toBe(true);
+    } finally {
+      releaseRolloverPolicyLock();
+      await rolloverPolicyBlocker;
+    }
+    expect(String(await rolloverWriteOutcome)).toMatch(
+      /cost budget policy expired before ledger commit/iu,
+    );
+    expect(
+      await prisma.acpBridgeReceipt.count({ where: { workspaceId, id: rolloverWriteId } }),
+    ).toBe(0);
+    expect(await prisma.acpRunUsage.count({ where: { workspaceId, id: rolloverWriteId } })).toBe(0);
+    expect(
+      await prisma.acpCostLedgerEntry.count({ where: { workspaceId, id: rolloverWriteId } }),
+    ).toBe(0);
+    await prisma.acpBridgeDispatch.update({
+      where: { workspaceId_id: { workspaceId, id: rolloverRun.dispatchId } },
+      data: { state: 'FAILED', terminalAt: new Date() },
+    });
+    await prisma.acpRun.update({
+      where: { workspaceId_id: { workspaceId, id: rolloverRun.runId } },
+      data: { status: 'FAILED', version: 2, completedAt: new Date() },
+    });
     const oldLifetimeRun = await createAcceptedLifetimeRun('old', 1);
     await forgedUsageLedger(
       'lifetime-old-run',

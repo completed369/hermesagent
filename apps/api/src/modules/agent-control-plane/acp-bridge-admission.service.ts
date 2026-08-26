@@ -943,7 +943,7 @@ export class AcpBridgeAdmissionService
     const payload = envelope.payload;
     const optional = (key: string) =>
       typeof payload[key] === 'string' ? (payload[key] as string) : undefined;
-    return tx.acpBridgeReceipt.create({
+    const receipt = await tx.acpBridgeReceipt.create({
       data: {
         id: randomUUID(),
         workspaceId: envelope.workspaceId,
@@ -966,6 +966,10 @@ export class AcpBridgeAdmissionService
         uriReference: optional('uriReference'),
         contentHash: optional('contentHash'),
       },
+    });
+    if (envelope.type !== 'USAGE') return receipt;
+    return tx.acpBridgeReceipt.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId: envelope.workspaceId, id: receipt.id } },
     });
   }
 

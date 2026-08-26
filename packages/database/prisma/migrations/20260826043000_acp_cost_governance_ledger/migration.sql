@@ -25,6 +25,9 @@ CREATE TABLE "acp_cost_budget_policies" (
 CREATE UNIQUE INDEX "acp_cost_budget_policies_workspaceId_scope_taskId_currency_periodStart_periodEnd_key" ON "acp_cost_budget_policies"("workspaceId", "scope", "taskId", "currency", "periodStart", "periodEnd");
 CREATE INDEX "acp_cost_budget_policy_lookup_idx" ON "acp_cost_budget_policies"("workspaceId", "scope", "currency", "periodStart", "periodEnd");
 
+LOCK TABLE "acp_run_usages" IN SHARE ROW EXCLUSIVE MODE;
+LOCK TABLE "acp_bridge_receipts" IN SHARE ROW EXCLUSIVE MODE;
+
 DO $migration$
 BEGIN
   IF EXISTS (SELECT 1 FROM "acp_run_usages") THEN
@@ -127,7 +130,7 @@ CREATE TRIGGER acp_cost_budget_policy_insert_guard BEFORE INSERT ON "acp_cost_bu
 CREATE OR REPLACE FUNCTION ventureos_bind_usage_receipt_clock() RETURNS trigger AS $$
 BEGIN
   IF NEW."messageType" = 'USAGE' THEN
-    NEW."receivedAt" := clock_timestamp();
+    NEW."receivedAt" := clock_timestamp() AT TIME ZONE 'UTC';
   END IF;
   RETURN NEW;
 END;
@@ -141,6 +144,7 @@ DECLARE
   usage_row "acp_run_usages"%ROWTYPE;
   receipt_type TEXT;
   receipt_received_at TIMESTAMP(3);
+  ledger_clock TIMESTAMP(3);
   task_currency TEXT;
   task_limit BIGINT;
   task_compute_limit BIGINT;
@@ -155,8 +159,10 @@ BEGIN
   SELECT * INTO task_policy FROM "acp_cost_budget_policies" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."taskPolicyId" FOR UPDATE;
   SELECT * INTO usage_row FROM "acp_run_usages" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."usageId" FOR UPDATE;
   SELECT "messageType", "receivedAt" INTO receipt_type, receipt_received_at FROM "acp_bridge_receipts" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."receiptId";
+  ledger_clock := clock_timestamp() AT TIME ZONE 'UTC';
   IF receipt_type IS DISTINCT FROM 'USAGE' OR usage_row."receiptId" IS DISTINCT FROM NEW."receiptId" OR usage_row."dispatchId" IS DISTINCT FROM NEW."dispatchId" OR usage_row."sessionId" IS DISTINCT FROM NEW."sessionId" OR usage_row."runId" IS DISTINCT FROM NEW."runId" OR usage_row."sequence" IS DISTINCT FROM NEW."sequence" OR usage_row."currency" IS DISTINCT FROM NEW."currency" OR usage_row."costMinorUnits" IS DISTINCT FROM NEW."costMinorUnits" OR usage_row."computeUnits" IS DISTINCT FROM NEW."computeUnits" OR usage_row."recordedAt" IS DISTINCT FROM NEW."recordedAt" THEN RAISE EXCEPTION 'usage ledger correlation mismatch'; END IF;
   IF receipt_received_at IS DISTINCT FROM usage_row."recordedAt" OR receipt_received_at IS DISTINCT FROM NEW."recordedAt" THEN RAISE EXCEPTION 'usage receipt database clock correlation mismatch'; END IF;
+  IF NOT (ledger_clock >= workspace_policy."periodStart" AND ledger_clock < workspace_policy."periodEnd" AND ledger_clock >= task_policy."periodStart" AND ledger_clock < task_policy."periodEnd") THEN RAISE EXCEPTION 'cost budget policy expired before ledger commit'; END IF;
   IF workspace_policy."scope" IS DISTINCT FROM 'WORKSPACE' OR workspace_policy."taskId" IS NOT NULL OR workspace_policy."currency" IS DISTINCT FROM NEW."currency" OR workspace_policy."policyHash" IS DISTINCT FROM NEW."workspacePolicyHash" OR workspace_policy."periodStart" IS DISTINCT FROM NEW."periodStart" OR workspace_policy."periodEnd" IS DISTINCT FROM NEW."periodEnd" OR NOT (NEW."recordedAt" >= workspace_policy."periodStart" AND NEW."recordedAt" < workspace_policy."periodEnd") THEN RAISE EXCEPTION 'workspace budget policy correlation mismatch'; END IF;
   IF task_policy."scope" IS DISTINCT FROM 'TASK' OR task_policy."taskId" IS DISTINCT FROM NEW."taskId" OR task_policy."currency" IS DISTINCT FROM NEW."currency" OR task_policy."policyHash" IS DISTINCT FROM NEW."taskPolicyHash" OR task_policy."periodStart" IS DISTINCT FROM workspace_policy."periodStart" OR task_policy."periodEnd" IS DISTINCT FROM workspace_policy."periodEnd" OR NOT (NEW."recordedAt" >= task_policy."periodStart" AND NEW."recordedAt" < task_policy."periodEnd") THEN RAISE EXCEPTION 'task budget policy correlation mismatch'; END IF;
   SELECT COALESCE(SUM("costMinorUnits"), 0), COALESCE(SUM("computeUnits"), 0) INTO prior_task_lifetime_cost, prior_task_lifetime_compute FROM "acp_cost_ledger_entries" WHERE "workspaceId" = NEW."workspaceId" AND "taskId" = NEW."taskId";

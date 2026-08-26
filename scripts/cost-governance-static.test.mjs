@@ -34,10 +34,19 @@ test('recognized usage is transactionally paired with ledger and immutable evide
   assert.match(migration, /usage ledger correlation mismatch/u);
   assert.match(migration, /usage_row\."recordedAt" IS DISTINCT FROM NEW\."recordedAt"/u);
   assert.match(migration, /ventureos_bind_usage_receipt_clock/u);
-  assert.match(migration, /NEW\."receivedAt" := clock_timestamp\(\)/u);
+  assert.match(migration, /NEW\."receivedAt" := clock_timestamp\(\) AT TIME ZONE 'UTC'/u);
+  assert.match(
+    migration,
+    /LOCK TABLE "acp_run_usages" IN SHARE ROW EXCLUSIVE MODE;[\s\S]*?LOCK TABLE "acp_bridge_receipts" IN SHARE ROW EXCLUSIVE MODE;[\s\S]*?existing recognized usage requires/u,
+  );
   assert.match(migration, /receipt_received_at IS DISTINCT FROM usage_row\."recordedAt"/u);
   assert.match(migration, /receipt_received_at IS DISTINCT FROM NEW\."recordedAt"/u);
   assert.match(migration, /usage receipt database clock correlation mismatch/u);
+  assert.match(
+    migration,
+    /SELECT \* INTO workspace_policy[\s\S]*?FOR UPDATE;[\s\S]*?SELECT \* INTO task_policy[\s\S]*?FOR UPDATE;[\s\S]*?ledger_clock := clock_timestamp\(\) AT TIME ZONE 'UTC';[\s\S]*?ledger_clock >= workspace_policy\."periodStart"[\s\S]*?ledger_clock < task_policy\."periodEnd"/u,
+  );
+  assert.match(migration, /cost budget policy expired before ledger commit/u);
   assert.match(migration, /usage_row\."cumulativeCostMinorUnits" > task_limit/u);
   assert.match(migration, /usage_row\."cumulativeComputeUnits" > task_compute_limit/u);
   assert.match(
@@ -62,6 +71,10 @@ test('recognized usage is transactionally paired with ledger and immutable evide
     'utf8',
   );
   assert.match(bridgeService, /receipt\.id,\s*receipt\.receivedAt,\s*now/u);
+  assert.match(
+    bridgeService,
+    /envelope\.type !== 'USAGE'[\s\S]*?acpBridgeReceipt\.findUniqueOrThrow/u,
+  );
   assert.match(bridgeService, /recordedAt:\s*receiptReceivedAt/u);
   assert.doesNotMatch(bridgeService, /spendRecordedAt|Database spend clock unavailable/u);
   assert.match(migration, /cost ledger exceeds or misstates governed budget/u);
@@ -70,10 +83,7 @@ test('recognized usage is transactionally paired with ledger and immutable evide
     migration,
     /existing recognized usage requires an explicit governed-ledger remediation/u,
   );
-  assert.match(
-    migration,
-    /existing usage receipts require explicit database-clock remediation/u,
-  );
+  assert.match(migration, /existing usage receipts require explicit database-clock remediation/u);
   for (const [name, prismaFields, sqlFields] of [
     [
       'acp_cost_budget_policy_lookup_idx',
