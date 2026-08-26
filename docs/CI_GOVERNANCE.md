@@ -157,16 +157,19 @@ remain reviewed source in the exact checked-out commit.
 
 Pull-request-triggered workflows must explicitly set `contents: read` or `none`,
 must not use `pull_request_target`, `contents: write`, `permissions: write-all`,
-or inject a repository secret/token expression. No checkout persists the
-workflow token. Explicit run steps containing both Git and push command tokens
-are rejected as defence in depth, including Git global-option and wrapper forms;
-the repository-write boundary is the combination of explicit read-only
-permissions, no privileged PR trigger, no injected repository credential, and
-checkout credential containment. `scripts/workflow-supply-chain-policy.test.mjs`
+inject a repository secret/token expression, forward reusable-workflow secrets,
+or target a privileged GitHub environment. No checkout persists the workflow
+token. Explicit run steps containing both Git and push command tokens are
+rejected as defence in depth, including Git global-option and wrapper forms; the
+repository-write boundary is the combination of explicit read-only permissions,
+no privileged PR trigger/environment, no injected or inherited repository
+credential, and checkout credential containment.
+`scripts/workflow-supply-chain-policy.test.mjs`
 parses every checked-in workflow as normalized YAML, rejects aliases and merge
 keys, and enforces immutable action/container references and those PR controls.
 Its adversarial fixtures cover flow mappings, quoted and spaced keys/values,
-`pull_request_target`, inline write permissions, credential expressions, mutable
+`pull_request_target`, inline write permissions, credential expressions,
+reusable-workflow secret inheritance, privileged environments, mutable
 job/service/container-action images, Git global options, wrappers, and branch
 pushes.
 

@@ -174,6 +174,12 @@ function policyViolations(name, source) {
     if (pullRequestTriggered && permissionWritesContents(job.permissions)) {
       violations.push(`${name}: pull-request job ${jobName} grants contents write`);
     }
+    if (pullRequestTriggered && job.secrets !== undefined) {
+      violations.push(`${name}: pull-request job ${jobName} forwards reusable-workflow secrets`);
+    }
+    if (pullRequestTriggered && job.environment !== undefined) {
+      violations.push(`${name}: pull-request job ${jobName} targets a privileged environment`);
+    }
     if (pullRequestTriggered && containsRepositoryCredentialExpression(job)) {
       violations.push(`${name}: pull-request job ${jobName} references a repository credential`);
     }
@@ -274,6 +280,20 @@ jobs:
 `;
   assert.deepEqual(policyViolations('wrapper.yml', wrapper), [
     'wrapper.yml: pull-request job unsafe executes git push',
+  ]);
+
+  const reusable = `
+on: [pull_request]
+permissions: { contents: read }
+jobs:
+  unsafe:
+    uses: owner/reusable@${'a'.repeat(40)}
+    secrets: inherit
+    environment: production
+`;
+  assert.deepEqual(policyViolations('reusable.yml', reusable), [
+    'reusable.yml: pull-request job unsafe forwards reusable-workflow secrets',
+    'reusable.yml: pull-request job unsafe targets a privileged environment',
   ]);
 });
 
