@@ -7,32 +7,150 @@ import {
   createMigrationCompatibilityEvidence,
 } from './restore-drill.js';
 
-const databaseUrl = process.env.DATABASE_URL;
-const runIntegration = process.env.CI === 'true' && typeof databaseUrl === 'string';
+const POSTGRES_IMAGE =
+  'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777';
+const FIXTURE_LABEL = 'ventureos.fixture.owner=github-ci-restore-drill';
+const FIXTURE_DATABASE_URL =
+  'postgresql://ventureos:ci-only-password@localhost:5432/ventureos?schema=public';
+const onOwnedGitHubRunner =
+  process.env.CI === 'true' &&
+  process.env.GITHUB_ACTIONS === 'true' &&
+  process.env.RUNNER_ENVIRONMENT === 'github-hosted' &&
+  process.env.GITHUB_REPOSITORY === 'completed369/hermesagent';
 
 function docker(...args: string[]): string {
   return execFileSync('docker', args, { encoding: 'utf8', timeout: 30_000 }).trim();
 }
 
-describe.skipIf(!runIntegration)('real disposable PostgreSQL dump/restore evidence', () => {
+function resolveOwnedFixture(
+  environment: NodeJS.ProcessEnv,
+  dockerCommand: (...args: string[]) => string,
+): { databaseUrl: string; containerId: string } {
+  if (
+    environment.CI !== 'true' ||
+    environment.GITHUB_ACTIONS !== 'true' ||
+    environment.RUNNER_ENVIRONMENT !== 'github-hosted' ||
+    environment.GITHUB_REPOSITORY !== 'completed369/hermesagent' ||
+    environment.DATABASE_URL !== FIXTURE_DATABASE_URL
+  )
+    throw new Error('UNTRUSTED_RESTORE_FIXTURE');
+  let parsed: URL;
+  try {
+    parsed = new URL(environment.DATABASE_URL);
+  } catch {
+    throw new Error('UNTRUSTED_RESTORE_FIXTURE');
+  }
+  if (
+    parsed.protocol !== 'postgresql:' ||
+    parsed.hostname !== 'localhost' ||
+    parsed.port !== '5432' ||
+    parsed.username !== 'ventureos' ||
+    parsed.pathname !== '/ventureos' ||
+    parsed.searchParams.get('schema') !== 'public' ||
+    [...parsed.searchParams.keys()].some((key) => key !== 'schema')
+  )
+    throw new Error('UNTRUSTED_RESTORE_FIXTURE');
+  const containerIds = dockerCommand(
+    'ps',
+    '--filter',
+    `label=${FIXTURE_LABEL}`,
+    '--filter',
+    'publish=5432',
+    '--format',
+    '{{.ID}}',
+  )
+    .split(/\r?\n/u)
+    .filter(Boolean);
+  if (containerIds.length !== 1 || !/^[0-9a-f]{12,64}$/u.test(containerIds[0]!))
+    throw new Error('UNTRUSTED_RESTORE_FIXTURE');
+  const containerId = containerIds[0]!;
+  if (
+    dockerCommand('inspect', '--format', '{{.Config.Image}}', containerId) !== POSTGRES_IMAGE ||
+    dockerCommand(
+      'inspect',
+      '--format',
+      '{{index .Config.Labels "ventureos.fixture.owner"}}',
+      containerId,
+    ) !== 'github-ci-restore-drill' ||
+    (() => {
+      const bindings = dockerCommand('port', containerId, '5432/tcp')
+        .split(/\r?\n/u)
+        .filter(Boolean);
+      return bindings.length === 0 || bindings.some((binding) => !/:5432$/u.test(binding));
+    })()
+  )
+    throw new Error('UNTRUSTED_RESTORE_FIXTURE');
+  return { databaseUrl: environment.DATABASE_URL, containerId };
+}
+
+describe('restore fixture admission', () => {
+  it('rejects untrusted activation before Docker discovery or database mutation', () => {
+    for (const environment of [
+      {},
+      { CI: 'true', DATABASE_URL: 'postgresql://ventureos@example.com:5432/ventureos' },
+      {
+        CI: 'true',
+        GITHUB_ACTIONS: 'true',
+        RUNNER_ENVIRONMENT: 'github-hosted',
+        GITHUB_REPOSITORY: 'completed369/hermesagent',
+        DATABASE_URL: 'postgresql://ventureos@example.com:5432/ventureos?schema=public',
+      },
+      {
+        CI: 'true',
+        GITHUB_ACTIONS: 'true',
+        RUNNER_ENVIRONMENT: 'github-hosted',
+        GITHUB_REPOSITORY: 'completed369/hermesagent',
+        DATABASE_URL: 'postgresql://ventureos:wrong@localhost:5432/ventureos?schema=public',
+      },
+    ]) {
+      let dockerCalled = false;
+      expect(() =>
+        resolveOwnedFixture(environment, () => {
+          dockerCalled = true;
+          return '';
+        }),
+      ).toThrow('UNTRUSTED_RESTORE_FIXTURE');
+      expect(dockerCalled).toBe(false);
+    }
+  });
+
+  it('rejects missing or drifted owned-container evidence before pool creation', () => {
+    const environment = {
+      CI: 'true',
+      GITHUB_ACTIONS: 'true',
+      RUNNER_ENVIRONMENT: 'github-hosted',
+      GITHUB_REPOSITORY: 'completed369/hermesagent',
+      DATABASE_URL: FIXTURE_DATABASE_URL,
+    };
+    expect(() => resolveOwnedFixture(environment, () => '')).toThrow('UNTRUSTED_RESTORE_FIXTURE');
+    expect(() =>
+      resolveOwnedFixture(environment, (...args) => {
+        if (args[0] === 'ps') return '0123456789ab';
+        if (args.includes('{{.Config.Image}}')) return 'postgres:latest';
+        return 'github-ci-restore-drill';
+      }),
+    ).toThrow('UNTRUSTED_RESTORE_FIXTURE');
+  });
+});
+
+describe.runIf(onOwnedGitHubRunner)('real disposable PostgreSQL dump/restore evidence', () => {
   it('dumps the disposable CI database, restores a fresh database, verifies content, and removes it', async () => {
+    const { databaseUrl, containerId } = resolveOwnedFixture(process.env, docker);
     const suffix = randomUUID().replaceAll('-', '').slice(0, 16);
     const target = `ventureos_restore_drill_${suffix}`;
     const sentinelTable = `restore_drill_sentinel_${suffix}`;
     const sentinelDigest = 'd'.repeat(64);
     const backupReference = `ci-pgdump-${suffix}`;
     const dumpPath = `/tmp/${backupReference}.dump`;
-    const containerIds = docker('ps', '--filter', 'publish=5432', '--format', '{{.ID}}')
-      .split(/\r?\n/u)
-      .filter(Boolean);
-    expect(containerIds).toHaveLength(1);
-    const containerId = containerIds[0]!;
-    expect(containerId).toMatch(/^[0-9a-f]{12,64}$/u);
     const admin = new Pool({ connectionString: databaseUrl });
     let targetPool: Pool | undefined;
     let targetCreated = false;
     const backupCreatedAt = new Date();
     try {
+      const identity = await admin.query<{ database: string; username: string }>(
+        'SELECT current_database() AS database, current_user AS username',
+      );
+      expect(identity.rows[0]).toEqual({ database: 'ventureos', username: 'ventureos' });
       await admin.query(`CREATE TABLE "${sentinelTable}" (digest text NOT NULL)`);
       await admin.query(`INSERT INTO "${sentinelTable}" (digest) VALUES ($1)`, [sentinelDigest]);
       const migration = await admin.query<{ migration_name: string }>(

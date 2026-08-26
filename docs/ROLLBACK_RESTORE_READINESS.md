@@ -48,6 +48,12 @@ backup-age and RPO/RTO rejection, migration/sentinel/health/cleanup evidence,
 and a real `pg_dump`/`pg_restore` round-trip into a fresh disposable PostgreSQL
 database in Linux CI.
 
+That positive test first binds the GitHub-hosted runner/repository, exact
+loopback synthetic database identity, and uniquely labelled digest-pinned
+PostgreSQL service. A mismatch denies before Docker discovery or database-pool
+creation. Staging test tooling can discover the fixture without activating it;
+the fixture is absent from every final runtime image.
+
 The pure completion API validates and binds observer-supplied timestamps and
 booleans; it does not authenticate their origin. A future operational composer
 must acquire those fields from trusted clock, health, and cleanup readers before

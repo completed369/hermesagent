@@ -117,4 +117,38 @@ describe('pure disposable PostgreSQL restore evidence completion', () => {
       ),
     ).toThrow('INVALID_PLAN');
   });
+
+  it('returns fixed restore errors for malformed runtime scalar types', () => {
+    for (const malformed of [
+      null,
+      { ...plan, drillId: 1 },
+      { ...plan, targetDatabaseReference: Symbol('target') },
+      { ...plan, backup: { ...plan.backup, createdAt: {} } },
+      { ...plan, migrationDecision: { ...plan.migrationDecision, currentMigrationHead: [] } },
+    ]) {
+      expect(() => completeDisposablePostgresRestoreDrill(malformed, observation())).toThrow(
+        'INVALID_PLAN',
+      );
+    }
+    for (const malformed of [
+      null,
+      { ...observation(), drillId: 1 },
+      { ...observation(), restoredSentinelDigest: Symbol('digest') },
+      { ...observation(), startedAt: {} },
+      { ...observation(), backupChecksum: [] },
+      { ...observation(), restoredMigrationHead: false },
+    ]) {
+      expect(() => completeDisposablePostgresRestoreDrill(plan, malformed)).toThrow(
+        'INVALID_OBSERVATION',
+      );
+    }
+    expect(() =>
+      createMigrationCompatibilityEvidence({
+        decision: 'RESTORE_REQUIRED',
+        currentMigrationHead: {},
+        priorMigrationHead: 'migration-1',
+        decidedAt: '2026-08-26T00:00:30.000Z',
+      }),
+    ).toThrow('INVALID_PLAN');
+  });
 });

@@ -29,6 +29,13 @@ uses `pg_dump`/`pg_restore` with the disposable CI PostgreSQL service, restores 
 fresh database, verifies real restored rows and migration history, then removes
 the target before completing evidence.
 
+The positive fixture requires GitHub-hosted CI identity, the exact repository,
+an exact loopback synthetic database/user/port, and the uniquely labelled,
+digest-pinned PostgreSQL service before opening a database pool or mutating the
+source fixture. The test source is admitted to the staging test-tooling build
+context so package-wide integration discovery remains fail-closed, but final
+runtime stages copy only pruned runtime output and exclude the fixture.
+
 ## Security and truth boundaries
 
 - Neither production contract discovers backups, reads object storage, invokes
