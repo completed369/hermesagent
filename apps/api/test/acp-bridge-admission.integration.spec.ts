@@ -1303,13 +1303,16 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       const [persisted] = await tx.$queryRaw<Array<{ receivedAtIso: string }>>(
         Prisma.sql`SELECT to_char("receivedAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "receivedAtIso" FROM "acp_bridge_receipts" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${hostileTimezoneReceiptId}`,
       );
-      const [clock] = await tx.$queryRaw<Array<{ observedAt: Date }>>(
-        Prisma.sql`SELECT clock_timestamp() AS "observedAt"`,
+      const [clock] = await tx.$queryRaw<Array<{ observedAtIso: string }>>(
+        Prisma.sql`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "observedAtIso"`,
       );
       await tx.acpBridgeReceipt.delete({
         where: { workspaceId_id: { workspaceId, id: hostileTimezoneReceiptId } },
       });
-      return { persistedAt: new Date(persisted!.receivedAtIso), observedAt: clock!.observedAt };
+      return {
+        persistedAt: new Date(persisted!.receivedAtIso),
+        observedAt: new Date(clock!.observedAtIso),
+      };
     });
     expect(
       Math.abs(
