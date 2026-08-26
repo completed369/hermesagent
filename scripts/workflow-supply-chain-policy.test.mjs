@@ -59,6 +59,10 @@ function isPullRequestTriggered(workflow) {
   );
 }
 
+function hasTrigger(workflow, expected) {
+  return triggerNames(workflow.on).includes(expected);
+}
+
 function stepsFor(job) {
   if (job.steps === undefined) return [];
   if (!Array.isArray(job.steps)) throw new Error('steps must be an array');
@@ -68,6 +72,34 @@ function stepsFor(job) {
 function permissionWritesContents(permissions) {
   if (permissions === 'write-all') return true;
   return isObject(permissions) && permissions.contents === 'write';
+}
+
+function hasExplicitReadOnlyContents(permissions) {
+  return isObject(permissions) && ['read', 'none'].includes(permissions.contents);
+}
+
+function containsRepositoryCredentialExpression(value) {
+  if (typeof value === 'string') {
+    const expressions = value.matchAll(/\$\{\{([\s\S]*?)\}\}/g);
+    for (const [, expression] of expressions) {
+      if (
+        /\bsecrets\b/i.test(expression) ||
+        /\bgithub\s*(?:\.\s*token\b|\[\s*['"]token['"]\s*\])/i.test(expression)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (Array.isArray(value)) return value.some(containsRepositoryCredentialExpression);
+  if (!isObject(value)) return false;
+  return Object.values(value).some(containsRepositoryCredentialExpression);
+}
+
+function isExplicitGitPushCommand(command) {
+  // Deliberately conservative: global git options, wrappers such as `env git`,
+  // and shell variables named GIT must not make an explicit push step invisible.
+  return /\bgit\b/i.test(command) && /\bpush\b/i.test(command);
 }
 
 function actionViolation(name, location, reference) {
@@ -104,6 +136,14 @@ function policyViolations(name, source) {
   const violations = [];
   const pullRequestTriggered = isPullRequestTriggered(workflow);
 
+  if (hasTrigger(workflow, 'pull_request_target')) {
+    violations.push(`${name}: pull_request_target is forbidden`);
+  }
+
+  if (pullRequestTriggered && !hasExplicitReadOnlyContents(workflow.permissions)) {
+    violations.push(`${name}: pull-request workflow must explicitly set contents read or none`);
+  }
+
   if (pullRequestTriggered && permissionWritesContents(workflow.permissions)) {
     violations.push(`${name}: pull-request workflow grants contents write`);
   }
@@ -134,6 +174,9 @@ function policyViolations(name, source) {
     if (pullRequestTriggered && permissionWritesContents(job.permissions)) {
       violations.push(`${name}: pull-request job ${jobName} grants contents write`);
     }
+    if (pullRequestTriggered && containsRepositoryCredentialExpression(job)) {
+      violations.push(`${name}: pull-request job ${jobName} references a repository credential`);
+    }
 
     let steps;
     try {
@@ -159,7 +202,11 @@ function policyViolations(name, source) {
           }
         }
       }
-      if (pullRequestTriggered && typeof step.run === 'string' && /\bgit\s+push\b/.test(step.run)) {
+      if (
+        pullRequestTriggered &&
+        typeof step.run === 'string' &&
+        isExplicitGitPushCommand(step.run)
+      ) {
         violations.push(`${name}: pull-request job ${jobName} executes git push`);
       }
     }
@@ -192,10 +239,41 @@ jobs:
       - { run: "git push origin HEAD:fixed-branch" }
 `;
   assert.deepEqual(policyViolations('flow.yml', unsafe), [
+    'flow.yml: pull-request workflow must explicitly set contents read or none',
     'flow.yml: pull-request workflow grants contents write',
     'flow.yml: pull-request job unsafe grants contents write',
     'flow.yml: mutable or malformed action reference jobs.unsafe.steps[0].uses actions/checkout@v4',
     'flow.yml: pull-request job unsafe executes git push',
+  ]);
+});
+
+test('pull-request mutation denial survives git options, credentials and privileged triggers', () => {
+  const unsafe = `
+on: { pull_request_target: {} }
+permissions: { contents: read }
+jobs:
+  unsafe:
+    env:
+      RELEASE_TOKEN: \${{ secrets['RELEASE_TOKEN'] }}
+    steps:
+      - run: git -c credential.helper= push origin HEAD:fixed-branch
+`;
+  assert.deepEqual(policyViolations('credential.yml', unsafe), [
+    'credential.yml: pull_request_target is forbidden',
+    'credential.yml: pull-request job unsafe references a repository credential',
+    'credential.yml: pull-request job unsafe executes git push',
+  ]);
+
+  const wrapper = `
+on: [pull_request]
+permissions: { contents: none }
+jobs:
+  unsafe:
+    steps:
+      - run: env GIT_TRACE=1 $GIT push origin HEAD:fixed-branch
+`;
+  assert.deepEqual(policyViolations('wrapper.yml', wrapper), [
+    'wrapper.yml: pull-request job unsafe executes git push',
   ]);
 });
 
