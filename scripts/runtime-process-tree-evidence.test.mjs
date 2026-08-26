@@ -112,6 +112,7 @@ async function launch(role, nonce, options = {}) {
     windowsHide: true,
   });
   const resource = { child, exited: once(child, 'exit'), nonce, ownedPids: null };
+  let ownershipError = null;
   options.onSpawn?.(child.pid);
   child.on('message', (message) => {
     if (
@@ -120,8 +121,12 @@ async function launch(role, nonce, options = {}) {
       message.rootPid !== child.pid
     )
       return;
-    resource.ownedPids = validatePids(message.pids, child.pid);
-    options.onOwnership?.(resource.ownedPids);
+    try {
+      resource.ownedPids = validatePids(message.pids, child.pid);
+      options.onOwnership?.(resource.ownedPids);
+    } catch (error) {
+      ownershipError = error;
+    }
   });
   let buffered = '';
   child.stdout.setEncoding('utf8');
@@ -147,6 +152,7 @@ async function launch(role, nonce, options = {}) {
         }
       });
     });
+    if (ownershipError) throw ownershipError;
     if (role === 'root') {
       exactMessage(message, ['type', 'nonce', 'rootPid', 'childPid', 'grandchildPid']);
       assert.equal(message.type, 'tree_ready');
