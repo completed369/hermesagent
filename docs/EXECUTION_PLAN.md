@@ -1,9 +1,11 @@
 # Execution Plan — Phase 0 to Phase 8
 
-> **CURRENT DELIVERY UPDATE — verified 2026-08-26.** The Phase 0–8 record below is
+> **DELIVERY UPDATE — reviewed 2026-08-26.** The Phase 0–8 record below is
 > historical implementation evidence, not a production-readiness or deployment
-> claim. The current product baseline is `main`
-> `b5aa3e54ac1de1cfc75f5c466309850a9a4ecf37`. Product PRs #59–#84 are merged,
+> claim. The dated reviewed source baseline for this update is
+> `d462733ec55a8bc98092e39a5a071c01b9c76806`; GitHub is authoritative for live
+> repository main and checks, and generated protected Mission Control evidence
+> is authoritative for live operations. Product PRs #59–#85 are merged,
 > including the Agent Control Plane, Runtime Broker, Dynamic Agent Factory,
 > runtime-interface ADR, tenant-shell switch repair, AI COO, Voice Gateway,
 > unified event/audit spine, approval execution-permit bridge, durable
@@ -12,6 +14,9 @@
 > a scoped deny-only bridge secret-lease boundary, a pure inert OS-supervision
 > admission policy, and sanitized release-
 > candidate evidence workflow/hardening.
+> A pure lifecycle/cancellation contract and deterministic test-only process-
+> tree harness add bounded Windows/Linux cancellation evidence without adding a
+> production launcher, runtime connection, provider, or deployment path.
 > Approval preparation now binds to real workspace-scoped
 > durable task/run rows. Exact-main CI passed the full
 > migration chain, application integration/E2E, and staging-security/load gate

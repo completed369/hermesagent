@@ -10,6 +10,7 @@ const packageFiles = [
   'packages/agent-bridge/src/policy.ts',
   'packages/agent-bridge/src/protocol.ts',
   'packages/agent-bridge/src/secret-lease.ts',
+  'packages/agent-bridge/src/supervision-lifecycle.ts',
   'packages/agent-bridge/src/supervision-policy.ts',
 ];
 const serviceFiles = [
@@ -68,6 +69,23 @@ test('OS supervision policy is inert and the production launcher remains deny-on
   assert.match(policy, /class DenyRuntimeProcessLauncher implements RuntimeProcessLauncher/u);
   assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
   assert.match(policy, /Runtime process launching is not enabled/u);
+});
+
+test('process-tree evidence stays test-only, unexported, and absent from production images', () => {
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const policy = readFileSync('packages/agent-bridge/src/policy.ts', 'utf8');
+  const dockerfile = readFileSync('Dockerfile.staging', 'utf8');
+  const fixture = readFileSync('scripts/fixtures/runtime-process-tree-fixture.mjs', 'utf8');
+  const harness = readFileSync('scripts/runtime-process-tree-evidence.test.mjs', 'utf8');
+  assert.doesNotMatch(index, /runtime-process-tree|process-tree-evidence/u);
+  assert.doesNotMatch(dockerfile, /runtime-process-tree/u);
+  assert.match(fixture, /VENTUREOS_TEST_PROCESS_TREE/u);
+  assert.match(fixture, /test-only process-tree fixture denied/u);
+  assert.match(harness, /process\.execPath/u);
+  assert.match(harness, /process\.kill\(pid, 'SIGKILL'\)/u);
+  assert.doesNotMatch(harness, /process\.argv|process\.env\[[^\]]+\]\s*=|shell:\s*true/u);
+  assert.match(policy, /class DenyRuntimeProcessLauncher implements RuntimeProcessLauncher/u);
+  assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
 });
 
 test('deterministic fake is test-only and no real runtime can be marked connected', () => {
