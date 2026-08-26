@@ -80,6 +80,22 @@ describe('pure disposable PostgreSQL restore evidence completion', () => {
     ).toThrow('MIGRATION_EVIDENCE_HASH_MISMATCH');
   });
 
+  it('canonicalizes migration and final evidence independent of key insertion order', () => {
+    const reordered = createMigrationCompatibilityEvidence({
+      decidedAt: migrationDecision.decidedAt,
+      priorMigrationHead: migrationDecision.priorMigrationHead,
+      currentMigrationHead: migrationDecision.currentMigrationHead,
+      decision: migrationDecision.decision,
+    });
+    expect(reordered.evidenceHash).toBe(migrationDecision.evidenceHash);
+    const reversedObservation = Object.fromEntries(
+      Object.entries(observation()).reverse(),
+    ) as unknown as DisposablePostgresRestoreObservation;
+    expect(completeDisposablePostgresRestoreDrill(plan, reversedObservation).evidenceHash).toBe(
+      completeDisposablePostgresRestoreDrill(plan, observation()).evidenceHash,
+    );
+  });
+
   it('rejects credential and private-reasoning references and non-disposable targets', () => {
     for (const reference of [
       'password-reference',

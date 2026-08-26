@@ -31,9 +31,9 @@ The source contract records these fields:
 | migration decision/evidence hash | Exact compatibility decision associated with the restore        |
 | restored migration head          | Migration identity read from the disposable restored target     |
 | restored sentinel digest         | Known data digest read from the disposable restored target      |
-| health verified                  | Readiness query succeeded after restore                         |
-| duration                         | Trusted-clock elapsed time compared with the supplied RTO       |
-| cleanup verified                 | Disposable target removal completed before evidence returned    |
+| health verified                  | Observer assertion; authority requires a trusted health reader  |
+| duration                         | Observer timestamps compared with the supplied RTO              |
+| cleanup verified                 | Observer assertion; authority requires a trusted cleanup reader |
 | evidence hash                    | Deterministic drift checksum; not a signature/tamper-proof seal |
 
 Template values for a future environment must be decided from business impact,
@@ -47,6 +47,12 @@ health hashes, migration-decision denial, exact backup checksum binding,
 backup-age and RPO/RTO rejection, migration/sentinel/health/cleanup evidence,
 and a real `pg_dump`/`pg_restore` round-trip into a fresh disposable PostgreSQL
 database in Linux CI.
+
+The pure completion API validates and binds observer-supplied timestamps and
+booleans; it does not authenticate their origin. A future operational composer
+must acquire those fields from trusted clock, health, and cleanup readers before
+using the resulting record as authority. The CI fixture supplies its own direct
+disposable-process observations only.
 
 No external environment is backed up or restored by these tests. No image is
 published, no staging or production deployment is changed, no provider is

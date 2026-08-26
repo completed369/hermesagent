@@ -40,6 +40,10 @@ the target before completing evidence.
   restore, Temporal recovery, or a live environment restore.
 - Evidence checksums detect accidental/caller-visible drift; they are not a
   signature or a cryptographic tamper-proof log.
+- Pure completion validates observer-supplied timestamps and true health/cleanup
+  flags but does not authenticate their provenance. Operational authority
+  requires separately reviewed trusted clock, health, artifact, and cleanup
+  readers; none is wired by this slice.
 - RPO and RTO values in tests/templates are synthetic acceptance inputs, not
   Founder-approved production objectives.
 - A real restore, backup-provider activation, credential use, staging or

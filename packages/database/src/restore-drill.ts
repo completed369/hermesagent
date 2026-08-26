@@ -104,8 +104,19 @@ function positiveInteger(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0 && value <= 31_536_000;
 }
 
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function hash(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  return createHash('sha256').update(canonical(value)).digest('hex');
 }
 
 export function createMigrationCompatibilityEvidence(
@@ -122,7 +133,13 @@ export function createMigrationCompatibilityEvidence(
     throw new RestoreDrillError('INVALID_PLAN');
   }
   exactIso(input.decidedAt, 'INVALID_PLAN');
-  return Object.freeze({ ...input, evidenceHash: hash(input) });
+  const normalized = {
+    decision: input.decision,
+    currentMigrationHead: input.currentMigrationHead,
+    priorMigrationHead: input.priorMigrationHead,
+    decidedAt: input.decidedAt,
+  };
+  return Object.freeze({ ...normalized, evidenceHash: hash(normalized) });
 }
 
 function validatePlan(plan: DisposablePostgresRestoreDrillPlan): void {
