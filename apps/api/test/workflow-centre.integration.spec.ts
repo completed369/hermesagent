@@ -290,7 +290,7 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
             status: 'PARTIAL',
             lastHeartbeatHealth: 'HEALTHY',
             lastHeartbeatAt: new Date('2026-08-26T00:00:00.000Z'),
-            lastHeartbeatSequence: 1n,
+            lastHeartbeatSequence: 1,
           },
         },
       },
