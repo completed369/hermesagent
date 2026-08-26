@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
-import { parseControllerSource, readGlobalPrefix } from './generate-api-inventory.mjs';
+import {
+  controllerFiles,
+  parseControllerSource,
+  readGlobalPrefix,
+} from './generate-api-inventory.mjs';
 
 test('committed API inventory matches every controller route', () => {
   const result = spawnSync(process.execPath, ['scripts/generate-api-inventory.mjs', '--check'], {
@@ -81,13 +87,65 @@ test('custom aliases and unsupported mapping decorators fail closed', () => {
       ),
     /Unsupported Nest route decorator/u,
   );
+  for (const unsupported of [
+    'Search',
+    'QueryMethod',
+    'Propfind',
+    'Proppatch',
+    'Mkcol',
+    'Copy',
+    'Move',
+    'Lock',
+    'Unlock',
+  ]) {
+    assert.throws(
+      () =>
+        parseControllerSource(
+          `import { Controller, Get, ${unsupported} } from '@nestjs/common';
+           @Controller('scope') export class UnsupportedController {
+             @Get('x') @${unsupported}('x') read() {}
+           }`,
+          'unsupported.controller.ts',
+          'api',
+        ),
+      /Unsupported Nest route decorator/u,
+    );
+  }
 });
 
 test('global API prefix is structurally derived and must be one literal', () => {
-  assert.equal(readGlobalPrefix(`app.setGlobalPrefix('api')`), 'api');
+  const create = `import { NestFactory } from '@nestjs/core';
+    const app = await NestFactory.create(AppModule);`;
+  assert.equal(readGlobalPrefix(`${create} app.setGlobalPrefix('api')`), 'api');
   assert.throws(
-    () => readGlobalPrefix(`app.setGlobalPrefix(process.env.PREFIX)`),
+    () => readGlobalPrefix(`${create} app.setGlobalPrefix(process.env.PREFIX)`),
     /string literal/u,
   );
-  assert.throws(() => readGlobalPrefix(`const app = {}`), /was not found/u);
+  assert.throws(
+    () =>
+      readGlobalPrefix(
+        `${create} const decoy = { setGlobalPrefix() {} }; decoy.setGlobalPrefix('api')`,
+      ),
+    /was not found/u,
+  );
+  assert.throws(
+    () => readGlobalPrefix(`const app = { setGlobalPrefix() {} }; app.setGlobalPrefix('api')`),
+    /uniquely identifiable Nest application/u,
+  );
+});
+
+test('controller discovery covers the complete API source tree', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ventureos-api-inventory-'));
+  try {
+    mkdirSync(join(root, 'modules', 'inside'), { recursive: true });
+    writeFileSync(join(root, 'modules', 'inside', 'inside.controller.ts'), '', 'utf8');
+    writeFileSync(join(root, 'outside.controller.ts'), '', 'utf8');
+    writeFileSync(join(root, 'ignored.ts'), '', 'utf8');
+    assert.deepEqual(
+      controllerFiles(root).map((path) => path.slice(root.length + 1).replaceAll('\\', '/')),
+      ['modules/inside/inside.controller.ts', 'outside.controller.ts'],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

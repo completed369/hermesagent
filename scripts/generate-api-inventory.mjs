@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const modulesRoot = join(repositoryRoot, 'apps', 'api', 'src', 'modules');
+const apiSourceRoot = join(repositoryRoot, 'apps', 'api', 'src');
 const apiMainPath = join(repositoryRoot, 'apps', 'api', 'src', 'main.ts');
 const outputPath = join(repositoryRoot, 'docs', 'api', 'API_INVENTORY.json');
 const ROUTES = new Map([
@@ -18,9 +18,23 @@ const ROUTES = new Map([
   ['Put', 'PUT'],
   ['Sse', 'GET'],
 ]);
-const UNSUPPORTED_ROUTES = new Set(['RequestMapping']);
+// These are valid Nest route decorators, but the public inventory intentionally
+// does not model their uncommon/custom HTTP semantics. Seeing one must stop the
+// contract instead of silently dropping an endpoint.
+const UNSUPPORTED_ROUTES = new Set([
+  'Copy',
+  'Lock',
+  'Mkcol',
+  'Move',
+  'Propfind',
+  'Proppatch',
+  'QueryMethod',
+  'RequestMapping',
+  'Search',
+  'Unlock',
+]);
 
-function controllerFiles(directory) {
+export function controllerFiles(directory) {
   return readdirSync(directory, { withFileTypes: true })
     .flatMap((entry) => {
       const path = join(directory, entry.name);
@@ -145,11 +159,70 @@ export function readGlobalPrefix(source) {
     ts.ScriptTarget.Latest,
     true,
   );
+  const factoryIdentifiers = new Set();
+  const factoryNamespaces = new Set();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== '@nestjs/core' ||
+      !statement.importClause?.namedBindings
+    ) {
+      continue;
+    }
+    const bindings = statement.importClause.namedBindings;
+    if (ts.isNamespaceImport(bindings)) {
+      factoryNamespaces.add(bindings.name.text);
+      continue;
+    }
+    for (const element of bindings.elements) {
+      if ((element.propertyName?.text ?? element.name.text) === 'NestFactory') {
+        factoryIdentifiers.add(element.name.text);
+      }
+    }
+  }
+
+  const applicationIdentifiers = new Set();
+  function isFactoryCreate(expression) {
+    if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== 'create') {
+      return false;
+    }
+    if (ts.isIdentifier(expression.expression)) {
+      return factoryIdentifiers.has(expression.expression.text);
+    }
+    return (
+      ts.isPropertyAccessExpression(expression.expression) &&
+      ts.isIdentifier(expression.expression.expression) &&
+      factoryNamespaces.has(expression.expression.expression.text) &&
+      expression.expression.name.text === 'NestFactory'
+    );
+  }
+  function findApplication(node) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isAwaitExpression(node.initializer) &&
+      ts.isCallExpression(node.initializer.expression) &&
+      isFactoryCreate(node.initializer.expression.expression)
+    ) {
+      applicationIdentifiers.add(node.name.text);
+    }
+    ts.forEachChild(node, findApplication);
+  }
+  findApplication(sourceFile);
+  if (applicationIdentifiers.size !== 1) {
+    throw new Error('API must create one uniquely identifiable Nest application');
+  }
+  const [applicationIdentifier] = applicationIdentifiers;
+
   let prefix;
   function visit(node) {
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === applicationIdentifier &&
       node.expression.name.text === 'setGlobalPrefix'
     ) {
       if (
@@ -170,7 +243,7 @@ export function readGlobalPrefix(source) {
 
 export function buildInventory() {
   const globalPrefix = readGlobalPrefix(readFileSync(apiMainPath, 'utf8'));
-  const routes = controllerFiles(modulesRoot).flatMap((path) => {
+  const routes = controllerFiles(apiSourceRoot).flatMap((path) => {
     const sourcePath = relative(repositoryRoot, path).replaceAll('\\', '/');
     return parseControllerSource(readFileSync(path, 'utf8'), sourcePath, globalPrefix);
   });
@@ -181,7 +254,7 @@ export function buildInventory() {
   });
   return {
     schemaVersion: 1,
-    generatedFrom: 'apps/api/src/main.ts + apps/api/src/modules/**/*.controller.ts',
+    generatedFrom: 'apps/api/src/main.ts + apps/api/src/**/*.controller.ts',
     globalPrefix: `/${globalPrefix}`,
     routeCount: routes.length,
     routes,
