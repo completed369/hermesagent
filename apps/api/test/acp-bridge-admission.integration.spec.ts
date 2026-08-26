@@ -1117,7 +1117,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         acceptanceCriteria: primaryTask.acceptanceCriteria,
         verificationCriteria: primaryTask.verificationCriteria,
         stopConditions: primaryTask.stopConditions,
-        maximumAttempts: 2,
+        maximumAttempts: 3,
         retryableFailureCodes: primaryTask.retryableFailureCodes,
         stopAfterFailureCodes: primaryTask.stopAfterFailureCodes,
         agentPolicy: primaryTask.agentPolicy as Prisma.InputJsonValue,
@@ -1550,6 +1550,11 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         })
       ).state,
     ).toBe('RELEASED');
+    const futurePolicyRun = await createAcceptedLifetimeRun('future-policy', 3);
+    const rejectedFuturePolicyId = `forged-future-period-clock-${suffix}`;
+    const auditBeforeFuturePolicyDenial = await prisma.auditEvent.count({
+      where: { workspaceReference: workspaceId },
+    });
     await expect(
       forgedUsageLedger(
         'future-period-clock',
@@ -1564,11 +1569,42 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         futureTaskPolicy,
         0n,
         0n,
-        retryLifetimeRun.runId,
-        retryLifetimeRun.dispatchId,
+        futurePolicyRun.runId,
+        futurePolicyRun.dispatchId,
         lifetimeTaskId,
       ),
     ).rejects.toThrow(/workspace budget policy correlation mismatch/iu);
+    expect(
+      await prisma.acpBridgeReceipt.count({
+        where: { workspaceId, id: rejectedFuturePolicyId },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.acpRunUsage.count({ where: { workspaceId, id: rejectedFuturePolicyId } }),
+    ).toBe(0);
+    expect(
+      await prisma.acpCostLedgerEntry.count({
+        where: { workspaceId, id: rejectedFuturePolicyId },
+      }),
+    ).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      auditBeforeFuturePolicyDenial,
+    );
+    await prisma.acpBridgeDispatch.update({
+      where: { workspaceId_id: { workspaceId, id: futurePolicyRun.dispatchId } },
+      data: { state: 'FAILED', terminalAt: new Date() },
+    });
+    await prisma.acpRun.update({
+      where: { workspaceId_id: { workspaceId, id: futurePolicyRun.runId } },
+      data: { status: 'FAILED', version: 2, completedAt: new Date() },
+    });
+    expect(
+      (
+        await prisma.acpBrokerReservation.findFirstOrThrow({
+          where: { workspaceId, runId: futurePolicyRun.runId },
+        })
+      ).state,
+    ).toBe('RELEASED');
     await expect(
       prisma.acpCostLedgerEntry.delete({
         where: { workspaceId_id: { workspaceId, id: cumulativeUsage.id } },
