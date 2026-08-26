@@ -1010,6 +1010,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         where: { workspaceId_id: { workspaceId, id: `task-cost-policy-${suffix}` } },
       }),
     ]);
+    type RecordedAtSource = Date | ((receiptReceivedAt: Date) => Date);
     const forgedUsageLedger = (
       label: string,
       sequence: number,
@@ -1017,8 +1018,8 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       cumulativeCostMinorUnits: bigint,
       computeUnits: bigint,
       cumulativeComputeUnits: bigint,
-      usageRecordedAt: Date,
-      ledgerRecordedAt: Date,
+      usageRecordedAt: RecordedAtSource,
+      ledgerRecordedAt: RecordedAtSource,
       selectedWorkspacePolicy = workspaceCostPolicy,
       selectedTaskPolicy = taskCostPolicy,
       priorWorkspacePeriodSpend = 9n,
@@ -1030,7 +1031,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       prisma.$transaction(async (tx) => {
         const id = `forged-${label}-${suffix}`;
         const digest = 'd'.repeat(64);
-        await tx.acpBridgeReceipt.create({
+        const receipt = await tx.acpBridgeReceipt.create({
           data: {
             id,
             workspaceId,
@@ -1045,8 +1046,15 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             taskId: selectedTaskId,
             runId: selectedRunId,
             dispatchId: selectedDispatchId,
+            ...(usageRecordedAt instanceof Date ? { receivedAt: usageRecordedAt } : {}),
           },
         });
+        const resolvedUsageRecordedAt =
+          usageRecordedAt instanceof Date ? usageRecordedAt : usageRecordedAt(receipt.receivedAt);
+        const resolvedLedgerRecordedAt =
+          ledgerRecordedAt instanceof Date
+            ? ledgerRecordedAt
+            : ledgerRecordedAt(receipt.receivedAt);
         await tx.acpRunUsage.create({
           data: {
             id,
@@ -1062,7 +1070,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             cumulativeCostMinorUnits,
             currency: 'EUR',
             evidenceHash: digest,
-            recordedAt: usageRecordedAt,
+            recordedAt: resolvedUsageRecordedAt,
           },
         });
         await tx.acpCostLedgerEntry.create({
@@ -1090,11 +1098,10 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             workspaceSpendMinorUnits: priorWorkspacePeriodSpend + costMinorUnits,
             taskSpendMinorUnits: priorTaskPeriodSpend + costMinorUnits,
             checksum: 'f'.repeat(64),
-            recordedAt: ledgerRecordedAt,
+            recordedAt: resolvedLedgerRecordedAt,
           },
         });
       });
-    const mismatchedUsageTime = new Date();
     await expect(
       forgedUsageLedger(
         'timestamp-drift',
@@ -1103,10 +1110,36 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         10n,
         1n,
         15n,
-        mismatchedUsageTime,
-        new Date(mismatchedUsageTime.getTime() + 1),
+        (receivedAt) => receivedAt,
+        (receivedAt) => new Date(receivedAt.getTime() + 1),
       ),
     ).rejects.toThrow(/usage ledger correlation mismatch/iu);
+    const forgedPastTime = new Date(Date.now() - 1_000);
+    await expect(
+      forgedUsageLedger(
+        'past-receipt-clock',
+        1_104,
+        1n,
+        10n,
+        1n,
+        15n,
+        forgedPastTime,
+        forgedPastTime,
+      ),
+    ).rejects.toThrow(/usage receipt database clock correlation mismatch/iu);
+    const forgedFutureTime = new Date(Date.now() + 1_000);
+    await expect(
+      forgedUsageLedger(
+        'future-receipt-clock',
+        1_105,
+        1n,
+        10n,
+        1n,
+        15n,
+        forgedFutureTime,
+        forgedFutureTime,
+      ),
+    ).rejects.toThrow(/usage receipt database clock correlation mismatch/iu);
     const futurePeriodStart = workspaceCostPolicy.periodEnd;
     const futurePeriodEnd = new Date(futurePeriodStart.getTime() + 86_400_000);
     const futureWorkspacePolicyInput = {
@@ -1305,7 +1338,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       return { runId: selectedRunId, dispatchId: selectedDispatchId };
     };
     const oldLifetimeRun = await createAcceptedLifetimeRun('old', 1);
-    const oldLifetimeRecordedAt = new Date();
     await forgedUsageLedger(
       'lifetime-old-run',
       1_101,
@@ -1313,8 +1345,8 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       9n,
       14n,
       14n,
-      oldLifetimeRecordedAt,
-      oldLifetimeRecordedAt,
+      (receivedAt) => receivedAt,
+      (receivedAt) => receivedAt,
       workspaceCostPolicy,
       currentLifetimeTaskPolicy,
       9n,
@@ -1332,7 +1364,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       data: { status: 'FAILED', version: 2, completedAt: new Date() },
     });
     const retryLifetimeRun = await createAcceptedLifetimeRun('retry', 2);
-    const futureUsageTime = new Date(futurePeriodStart.getTime() + 1);
     const rejectedLifetimeId = `forged-lifetime-budget-${suffix}`;
     const auditBeforeLifetimeDenial = await prisma.auditEvent.count({
       where: { workspaceReference: workspaceId },
@@ -1345,12 +1376,12 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         92n,
         92n,
         92n,
-        futureUsageTime,
-        futureUsageTime,
-        futureWorkspacePolicy,
-        futureTaskPolicy,
-        0n,
-        0n,
+        (receivedAt) => receivedAt,
+        (receivedAt) => receivedAt,
+        workspaceCostPolicy,
+        currentLifetimeTaskPolicy,
+        18n,
+        9n,
         retryLifetimeRun.runId,
         retryLifetimeRun.dispatchId,
         lifetimeTaskId,
@@ -1383,7 +1414,25 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         })
       ).state,
     ).toBe('RELEASED');
-    const boundaryUsageTime = new Date(workspaceCostPolicy.periodEnd.getTime() - 1);
+    await expect(
+      forgedUsageLedger(
+        'future-period-clock',
+        1_106,
+        1n,
+        1n,
+        1n,
+        1n,
+        (receivedAt) => receivedAt,
+        (receivedAt) => receivedAt,
+        futureWorkspacePolicy,
+        futureTaskPolicy,
+        0n,
+        0n,
+        retryLifetimeRun.runId,
+        retryLifetimeRun.dispatchId,
+        lifetimeTaskId,
+      ),
+    ).rejects.toThrow(/workspace budget policy correlation mismatch/iu);
     await expect(
       forgedUsageLedger(
         'period-boundary',
@@ -1392,10 +1441,10 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         10n,
         1n,
         15n,
-        boundaryUsageTime,
+        workspaceCostPolicy.periodEnd,
         workspaceCostPolicy.periodEnd,
       ),
-    ).rejects.toThrow(/workspace budget policy correlation mismatch/iu);
+    ).rejects.toThrow(/usage receipt database clock correlation mismatch/iu);
     await expect(
       prisma.acpCostLedgerEntry.delete({
         where: { workspaceId_id: { workspaceId, id: cumulativeUsage.id } },

@@ -30,6 +30,9 @@ BEGIN
   IF EXISTS (SELECT 1 FROM "acp_run_usages") THEN
     RAISE EXCEPTION 'existing recognized usage requires an explicit governed-ledger remediation before this migration';
   END IF;
+  IF EXISTS (SELECT 1 FROM "acp_bridge_receipts" WHERE "messageType" = 'USAGE') THEN
+    RAISE EXCEPTION 'existing usage receipts require explicit database-clock remediation before this migration';
+  END IF;
 END;
 $migration$;
 
@@ -121,12 +124,23 @@ END;
 $$ LANGUAGE plpgsql;
 CREATE TRIGGER acp_cost_budget_policy_insert_guard BEFORE INSERT ON "acp_cost_budget_policies" FOR EACH ROW EXECUTE FUNCTION ventureos_validate_cost_budget_policy_insert();
 
+CREATE OR REPLACE FUNCTION ventureos_bind_usage_receipt_clock() RETURNS trigger AS $$
+BEGIN
+  IF NEW."messageType" = 'USAGE' THEN
+    NEW."receivedAt" := clock_timestamp();
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER acp_bridge_usage_receipt_clock BEFORE INSERT ON "acp_bridge_receipts" FOR EACH ROW EXECUTE FUNCTION ventureos_bind_usage_receipt_clock();
+
 CREATE OR REPLACE FUNCTION ventureos_validate_cost_ledger_insert() RETURNS trigger AS $$
 DECLARE
   workspace_policy "acp_cost_budget_policies"%ROWTYPE;
   task_policy "acp_cost_budget_policies"%ROWTYPE;
   usage_row "acp_run_usages"%ROWTYPE;
   receipt_type TEXT;
+  receipt_received_at TIMESTAMP(3);
   task_currency TEXT;
   task_limit BIGINT;
   task_compute_limit BIGINT;
@@ -140,10 +154,11 @@ BEGIN
   SELECT * INTO workspace_policy FROM "acp_cost_budget_policies" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."workspacePolicyId" FOR UPDATE;
   SELECT * INTO task_policy FROM "acp_cost_budget_policies" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."taskPolicyId" FOR UPDATE;
   SELECT * INTO usage_row FROM "acp_run_usages" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."usageId" FOR UPDATE;
-  SELECT "messageType" INTO receipt_type FROM "acp_bridge_receipts" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."receiptId";
+  SELECT "messageType", "receivedAt" INTO receipt_type, receipt_received_at FROM "acp_bridge_receipts" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."receiptId";
+  IF receipt_type IS DISTINCT FROM 'USAGE' OR usage_row."receiptId" IS DISTINCT FROM NEW."receiptId" OR usage_row."dispatchId" IS DISTINCT FROM NEW."dispatchId" OR usage_row."sessionId" IS DISTINCT FROM NEW."sessionId" OR usage_row."runId" IS DISTINCT FROM NEW."runId" OR usage_row."sequence" IS DISTINCT FROM NEW."sequence" OR usage_row."currency" IS DISTINCT FROM NEW."currency" OR usage_row."costMinorUnits" IS DISTINCT FROM NEW."costMinorUnits" OR usage_row."computeUnits" IS DISTINCT FROM NEW."computeUnits" OR usage_row."recordedAt" IS DISTINCT FROM NEW."recordedAt" THEN RAISE EXCEPTION 'usage ledger correlation mismatch'; END IF;
+  IF receipt_received_at IS DISTINCT FROM usage_row."recordedAt" OR receipt_received_at IS DISTINCT FROM NEW."recordedAt" THEN RAISE EXCEPTION 'usage receipt database clock correlation mismatch'; END IF;
   IF workspace_policy."scope" IS DISTINCT FROM 'WORKSPACE' OR workspace_policy."taskId" IS NOT NULL OR workspace_policy."currency" IS DISTINCT FROM NEW."currency" OR workspace_policy."policyHash" IS DISTINCT FROM NEW."workspacePolicyHash" OR workspace_policy."periodStart" IS DISTINCT FROM NEW."periodStart" OR workspace_policy."periodEnd" IS DISTINCT FROM NEW."periodEnd" OR NOT (NEW."recordedAt" >= workspace_policy."periodStart" AND NEW."recordedAt" < workspace_policy."periodEnd") THEN RAISE EXCEPTION 'workspace budget policy correlation mismatch'; END IF;
   IF task_policy."scope" IS DISTINCT FROM 'TASK' OR task_policy."taskId" IS DISTINCT FROM NEW."taskId" OR task_policy."currency" IS DISTINCT FROM NEW."currency" OR task_policy."policyHash" IS DISTINCT FROM NEW."taskPolicyHash" OR task_policy."periodStart" IS DISTINCT FROM workspace_policy."periodStart" OR task_policy."periodEnd" IS DISTINCT FROM workspace_policy."periodEnd" OR NOT (NEW."recordedAt" >= task_policy."periodStart" AND NEW."recordedAt" < task_policy."periodEnd") THEN RAISE EXCEPTION 'task budget policy correlation mismatch'; END IF;
-  IF receipt_type IS DISTINCT FROM 'USAGE' OR usage_row."receiptId" IS DISTINCT FROM NEW."receiptId" OR usage_row."dispatchId" IS DISTINCT FROM NEW."dispatchId" OR usage_row."sessionId" IS DISTINCT FROM NEW."sessionId" OR usage_row."runId" IS DISTINCT FROM NEW."runId" OR usage_row."sequence" IS DISTINCT FROM NEW."sequence" OR usage_row."currency" IS DISTINCT FROM NEW."currency" OR usage_row."costMinorUnits" IS DISTINCT FROM NEW."costMinorUnits" OR usage_row."computeUnits" IS DISTINCT FROM NEW."computeUnits" OR usage_row."recordedAt" IS DISTINCT FROM NEW."recordedAt" THEN RAISE EXCEPTION 'usage ledger correlation mismatch'; END IF;
   SELECT COALESCE(SUM("costMinorUnits"), 0), COALESCE(SUM("computeUnits"), 0) INTO prior_task_lifetime_cost, prior_task_lifetime_compute FROM "acp_cost_ledger_entries" WHERE "workspaceId" = NEW."workspaceId" AND "taskId" = NEW."taskId";
   IF task_currency IS DISTINCT FROM NEW."currency" OR task_limit < task_policy."limitMinorUnits" OR durable_task_policy_version IS DISTINCT FROM task_policy."policyVersion" OR usage_row."cumulativeCostMinorUnits" > task_limit OR usage_row."cumulativeComputeUnits" > task_compute_limit OR prior_task_lifetime_cost + NEW."costMinorUnits" > task_limit OR prior_task_lifetime_compute + NEW."computeUnits" > task_compute_limit THEN RAISE EXCEPTION 'task durable budget correlation mismatch'; END IF;
   SELECT COALESCE(SUM("costMinorUnits"), 0) INTO prior_workspace FROM "acp_cost_ledger_entries" WHERE "workspaceId" = NEW."workspaceId" AND "currency" = NEW."currency" AND "recordedAt" >= workspace_policy."periodStart" AND "recordedAt" < workspace_policy."periodEnd";

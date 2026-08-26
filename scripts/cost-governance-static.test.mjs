@@ -33,6 +33,11 @@ test('recognized usage is transactionally paired with ledger and immutable evide
   assert.match(migration, /cost governance evidence is immutable/u);
   assert.match(migration, /usage ledger correlation mismatch/u);
   assert.match(migration, /usage_row\."recordedAt" IS DISTINCT FROM NEW\."recordedAt"/u);
+  assert.match(migration, /ventureos_bind_usage_receipt_clock/u);
+  assert.match(migration, /NEW\."receivedAt" := clock_timestamp\(\)/u);
+  assert.match(migration, /receipt_received_at IS DISTINCT FROM usage_row\."recordedAt"/u);
+  assert.match(migration, /receipt_received_at IS DISTINCT FROM NEW\."recordedAt"/u);
+  assert.match(migration, /usage receipt database clock correlation mismatch/u);
   assert.match(migration, /usage_row\."cumulativeCostMinorUnits" > task_limit/u);
   assert.match(migration, /usage_row\."cumulativeComputeUnits" > task_compute_limit/u);
   assert.match(
@@ -52,11 +57,22 @@ test('recognized usage is transactionally paired with ledger and immutable evide
     costService,
     /FROM "acp_tasks"[\s\S]*?FOR UPDATE[\s\S]*?FROM "acp_cost_budget_policies"[\s\S]*?FOR UPDATE/u,
   );
+  const bridgeService = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  assert.match(bridgeService, /receipt\.id,\s*receipt\.receivedAt,\s*now/u);
+  assert.match(bridgeService, /recordedAt:\s*receiptReceivedAt/u);
+  assert.doesNotMatch(bridgeService, /spendRecordedAt|Database spend clock unavailable/u);
   assert.match(migration, /cost ledger exceeds or misstates governed budget/u);
   assert.match(migration, /overlapping cost budget policies are forbidden/u);
   assert.match(
     migration,
     /existing recognized usage requires an explicit governed-ledger remediation/u,
+  );
+  assert.match(
+    migration,
+    /existing usage receipts require explicit database-clock remediation/u,
   );
   for (const [name, prismaFields, sqlFields] of [
     [

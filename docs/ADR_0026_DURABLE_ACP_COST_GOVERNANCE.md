@@ -20,12 +20,13 @@ cannot be removed through direct, usage, receipt, dispatch, session, run, task,
 or policy deletion while the workspace remains; only whole-workspace erasure
 permits its cascade.
 
-Usage and ledger rows share one freshly sampled database timestamp. The database
-requires exact timestamp equality, applies the budget period to that instant,
-and sums ledger deltas across every period and run to enforce the durable task's
-lifetime cost and compute ceilings. A retry or replacement run therefore cannot
-reset task spend. The canonical lock order is durable task, workspace policy,
-then task policy.
+For a `USAGE` message, a database trigger overwrites any caller-supplied receipt
+time with the database clock. The receipt, usage, and ledger rows must then bind
+that exact immutable instant. The database applies the budget period to that
+instant and sums ledger deltas across every period and run to enforce the durable
+task's lifetime cost and compute ceilings. A retry or replacement run therefore
+cannot reset task spend or select a past or future policy period. The canonical
+lock order is durable task, workspace policy, then task policy.
 
 The checksum is deterministic integrity evidence, not a signature and not a
 claim of cryptographic tamper-proof storage. Tenant deletion cascades the usage,
