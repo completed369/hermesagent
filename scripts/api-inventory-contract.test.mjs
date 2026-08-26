@@ -113,6 +113,34 @@ test('custom aliases and unsupported mapping decorators fail closed', () => {
   }
 });
 
+test('controller inheritance and route version metadata fail closed', () => {
+  assert.throws(
+    () =>
+      parseControllerSource(
+        `import { Controller, Get } from '@nestjs/common';
+         class Base { @Get('inherited') inherited() {} }
+         @Controller('scope') export class ChildController extends Base { @Get('own') own() {} }`,
+        'inherited.controller.ts',
+        'api',
+      ),
+    /inheritance is not supported/u,
+  );
+  for (const placement of [
+    `@Version('1') @Controller('scope') export class VersionedController { @Get('x') read() {} }`,
+    `@Controller('scope') export class VersionedController { @Version('1') @Get('x') read() {} }`,
+  ]) {
+    assert.throws(
+      () =>
+        parseControllerSource(
+          `import { Controller, Get, Version } from '@nestjs/common'; ${placement}`,
+          'versioned.controller.ts',
+          'api',
+        ),
+      /Unsupported route metadata decorator/u,
+    );
+  }
+});
+
 test('global API prefix is structurally derived and must be one literal', () => {
   const create = `import { NestFactory } from '@nestjs/core';
     const app = await NestFactory.create(AppModule);`;
@@ -127,6 +155,31 @@ test('global API prefix is structurally derived and must be one literal', () => 
         `${create} const decoy = { setGlobalPrefix() {} }; decoy.setGlobalPrefix('api')`,
       ),
     /was not found/u,
+  );
+  assert.throws(
+    () => readGlobalPrefix(`${create} app.enableVersioning(); app.setGlobalPrefix('api')`),
+    /versioning is not represented/u,
+  );
+  assert.throws(
+    () => readGlobalPrefix(`${create} app['enableVersioning'](); app.setGlobalPrefix('api')`),
+    /versioning is not represented/u,
+  );
+  assert.throws(
+    () =>
+      readGlobalPrefix(
+        `import { NestFactory } from '@nestjs/core';
+         { const NestFactory = { create: async () => ({ setGlobalPrefix() {} }) };
+           const app = await NestFactory.create(AppModule); app.setGlobalPrefix('api'); }`,
+      ),
+    /uniquely identifiable Nest application/u,
+  );
+  assert.throws(
+    () =>
+      readGlobalPrefix(
+        `import { NestFactory } from '@nestjs/core';
+         let app = await NestFactory.create(AppModule); app.setGlobalPrefix('api');`,
+      ),
+    /binding must be immutable/u,
   );
   assert.throws(
     () =>

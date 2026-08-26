@@ -33,6 +33,7 @@ const UNSUPPORTED_ROUTES = new Set([
   'Search',
   'Unlock',
 ]);
+const UNSUPPORTED_ROUTE_METADATA = new Set(['Version']);
 
 export function controllerFiles(directory) {
   return readdirSync(directory, { withFileTypes: true })
@@ -115,6 +116,17 @@ export function parseControllerSource(source, sourcePath, globalPrefix) {
       .filter((call) => canonicalDecorator(call.expression, imports) === 'Controller');
     if (controllerCalls.length === 0) continue;
     if (controllerCalls.length !== 1) throw new Error(`Ambiguous @Controller in ${sourcePath}`);
+    if (statement.heritageClauses?.length) {
+      throw new Error(`Controller inheritance is not supported in ${sourcePath}`);
+    }
+    for (const decorator of decorators(statement)) {
+      if (
+        ts.isCallExpression(decorator.expression) &&
+        UNSUPPORTED_ROUTE_METADATA.has(canonicalDecorator(decorator.expression.expression, imports))
+      ) {
+        throw new Error(`Unsupported route metadata decorator in ${sourcePath}`);
+      }
+    }
     controllerCount += 1;
     const controllerPrefix = literalArgument(controllerCalls[0], sourcePath);
 
@@ -124,6 +136,9 @@ export function parseControllerSource(source, sourcePath, globalPrefix) {
       for (const decorator of decorators(member)) {
         if (!ts.isCallExpression(decorator.expression)) continue;
         const canonical = canonicalDecorator(decorator.expression.expression, imports);
+        if (canonical && UNSUPPORTED_ROUTE_METADATA.has(canonical)) {
+          throw new Error(`Unsupported route metadata decorator @${canonical} in ${sourcePath}`);
+        }
         if (canonical && UNSUPPORTED_ROUTES.has(canonical)) {
           throw new Error(`Unsupported Nest route decorator @${canonical} in ${sourcePath}`);
         }
@@ -167,8 +182,8 @@ export function readGlobalPrefix(source) {
   const sourceFile = program.getSourceFile(sourceName);
   if (!sourceFile) throw new Error('API source could not be parsed');
   const checker = program.getTypeChecker();
-  const factoryIdentifiers = new Set();
-  const factoryNamespaces = new Set();
+  const factorySymbols = new Set();
+  const factoryNamespaceSymbols = new Set();
   for (const statement of sourceFile.statements) {
     if (
       !ts.isImportDeclaration(statement) ||
@@ -180,12 +195,14 @@ export function readGlobalPrefix(source) {
     }
     const bindings = statement.importClause.namedBindings;
     if (ts.isNamespaceImport(bindings)) {
-      factoryNamespaces.add(bindings.name.text);
+      const symbol = checker.getSymbolAtLocation(bindings.name);
+      if (symbol) factoryNamespaceSymbols.add(symbol);
       continue;
     }
     for (const element of bindings.elements) {
       if ((element.propertyName?.text ?? element.name.text) === 'NestFactory') {
-        factoryIdentifiers.add(element.name.text);
+        const symbol = checker.getSymbolAtLocation(element.name);
+        if (symbol) factorySymbols.add(symbol);
       }
     }
   }
@@ -196,12 +213,12 @@ export function readGlobalPrefix(source) {
       return false;
     }
     if (ts.isIdentifier(expression.expression)) {
-      return factoryIdentifiers.has(expression.expression.text);
+      return factorySymbols.has(checker.getSymbolAtLocation(expression.expression));
     }
     return (
       ts.isPropertyAccessExpression(expression.expression) &&
       ts.isIdentifier(expression.expression.expression) &&
-      factoryNamespaces.has(expression.expression.expression.text) &&
+      factoryNamespaceSymbols.has(checker.getSymbolAtLocation(expression.expression.expression)) &&
       expression.expression.name.text === 'NestFactory'
     );
   }
@@ -223,11 +240,30 @@ export function readGlobalPrefix(source) {
     throw new Error('API must create one uniquely identifiable Nest application');
   }
   const [applicationDeclaration] = applicationDeclarations;
+  if (
+    !ts.isVariableDeclarationList(applicationDeclaration.parent) ||
+    !(applicationDeclaration.parent.flags & ts.NodeFlags.Const)
+  ) {
+    throw new Error('Nest application binding must be immutable');
+  }
   const applicationSymbol = checker.getSymbolAtLocation(applicationDeclaration.name);
   if (!applicationSymbol) throw new Error('Nest application binding could not be resolved');
 
   let prefix;
   function visit(node) {
+    if (
+      (ts.isPropertyAccessExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        checker.getSymbolAtLocation(node.expression) === applicationSymbol &&
+        node.name.text === 'enableVersioning') ||
+      (ts.isElementAccessExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        checker.getSymbolAtLocation(node.expression) === applicationSymbol &&
+        ts.isStringLiteral(node.argumentExpression) &&
+        node.argumentExpression.text === 'enableVersioning')
+    ) {
+      throw new Error('API versioning is not represented by the route inventory');
+    }
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&

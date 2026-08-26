@@ -22,7 +22,7 @@ remain disabled or unavailable, and consequential actions remain governed. See
 [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md), and
 [docs/RELEASE_READINESS_2026-08-26.md](docs/RELEASE_READINESS_2026-08-26.md).
 GitHub checks and protected operational evidence are authoritative for mutable
-current state.**
+current state.
 
 ## Implemented foundations
 
