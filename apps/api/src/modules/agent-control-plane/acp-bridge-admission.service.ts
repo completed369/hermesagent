@@ -36,6 +36,7 @@ import {
 import { Prisma, prisma } from '@ventureos/database';
 import type { AuditService } from '../audit/audit.service';
 import { AUDIT_SERVICE } from '../audit/audit.tokens';
+import { AcpCostGovernanceService } from './acp-cost-governance.service';
 
 export class AcpBridgeAdmissionError extends Error {}
 export class AcpBridgeAdmissionDeniedError extends AcpBridgeAdmissionError {}
@@ -112,6 +113,11 @@ export interface PrepareBridgeDispatchInput {
 interface BridgeUsageAuditTotals {
   readonly taskCostUsedMinorUnits: number;
   readonly taskComputeUsed: number;
+  readonly taskCostLimitMinorUnits: number;
+  readonly workspaceCostUsedMinorUnits: number;
+  readonly workspaceCostLimitMinorUnits: number;
+  readonly workspacePolicyId: string;
+  readonly ledgerEntryId: string;
 }
 
 /**
@@ -133,6 +139,7 @@ export class AcpBridgeAdmissionService
     @Inject(BRIDGE_ARTIFACT_CONTENT_VERIFIER)
     private readonly artifactContent: BridgeArtifactContentVerifier,
     @Inject(BRIDGE_TEST_ONLY_GATE) private readonly testOnlyGate: BridgeTestOnlyGate,
+    private readonly costGovernance: AcpCostGovernanceService,
   ) {}
 
   async provisionRuntime(
@@ -539,7 +546,11 @@ export class AcpBridgeAdmissionService
           { ...session, connection: lockedConnection },
           envelope,
           receipt.id,
+          receipt.receivedAt,
           now,
+          capability,
+          context,
+          actorKind,
         );
         await tx.acpBridgeSession.update({
           where: { workspaceId_id: { workspaceId: context.workspaceId, id: session.id } },
@@ -932,7 +943,7 @@ export class AcpBridgeAdmissionService
     const payload = envelope.payload;
     const optional = (key: string) =>
       typeof payload[key] === 'string' ? (payload[key] as string) : undefined;
-    return tx.acpBridgeReceipt.create({
+    const receipt = await tx.acpBridgeReceipt.create({
       data: {
         id: randomUUID(),
         workspaceId: envelope.workspaceId,
@@ -956,6 +967,12 @@ export class AcpBridgeAdmissionService
         contentHash: optional('contentHash'),
       },
     });
+    if (envelope.type !== 'USAGE') return receipt;
+    const [persisted] = await tx.$queryRaw<Array<{ receivedAtIso: string }>>(
+      Prisma.sql`SELECT to_char("receivedAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "receivedAtIso" FROM "acp_bridge_receipts" WHERE "workspaceId" = ${envelope.workspaceId}::uuid AND "id" = ${receipt.id}`,
+    );
+    if (!persisted) throw new AcpBridgeAdmissionDeniedError('Usage receipt clock unavailable');
+    return { ...receipt, receivedAt: new Date(persisted.receivedAtIso) };
   }
 
   private async applyMessage(
@@ -975,7 +992,11 @@ export class AcpBridgeAdmissionService
     },
     envelope: BridgeEnvelope,
     receiptId: string,
+    receiptReceivedAt: Date,
     now: Date,
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    actorKind: 'HUMAN' | 'AGENT' | 'SYSTEM',
   ): Promise<BridgeUsageAuditTotals | undefined> {
     const payload = envelope.payload;
     if (envelope.type === 'CAPABILITIES') {
@@ -1258,11 +1279,34 @@ export class AcpBridgeAdmissionService
           cumulativeCostMinorUnits: cumulativeCost,
           currency: payload.currency as string,
           evidenceHash: envelope.payloadDigest,
+          recordedAt: receiptReceivedAt,
         },
+      });
+      const governed = await this.costGovernance.recordUsage(capability, context, actorKind, tx, {
+        usageId: receiptId,
+        receiptId,
+        dispatchId,
+        sessionId: session.id,
+        runId: dispatch.runId,
+        taskId: dispatch.taskId,
+        runtimeId: dispatch.runtimeId,
+        connectionId: dispatch.connectionId,
+        sequence: envelope.sequence,
+        currency: payload.currency as string,
+        costMinorUnits: cost,
+        computeUnits: compute,
+        taskPolicyVersion: task.policyVersion,
+        taskLimitMinorUnits: task.maximumCostMinorUnits,
+        taskComputeLimit: task.maximumComputeUnits,
       });
       return {
         taskCostUsedMinorUnits: Number(cumulativeCost),
         taskComputeUsed: Number(cumulativeCompute),
+        taskCostLimitMinorUnits: Number(governed.taskLimitMinorUnits),
+        workspaceCostUsedMinorUnits: Number(governed.workspaceSpendMinorUnits),
+        workspaceCostLimitMinorUnits: Number(governed.workspaceLimitMinorUnits),
+        workspacePolicyId: governed.workspacePolicyId,
+        ledgerEntryId: governed.ledgerEntryId,
       };
     }
     if (envelope.type === 'CANCELLED' || envelope.type === 'RESULT' || envelope.type === 'FAILED') {
