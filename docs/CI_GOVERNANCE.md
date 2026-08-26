@@ -156,12 +156,13 @@ must likewise use an immutable SHA-256 image digest. Repository-local actions
 remain reviewed source in the exact checked-out commit.
 
 Pull-request-triggered workflows must not grant `contents: write`, use
-`permissions: write-all`, or execute `git push`. The CI and Pi Harness read-only
-validation checkouts do not persist the workflow token.
-`scripts/workflow-supply-chain-policy.test.mjs` enforces the write and immutable
-reference invariants across every checked-in workflow and contains adversarial
-fixtures for mutable action tags, `pull_request_target`, inline write
-permissions, and branch pushes.
+`permissions: write-all`, or execute `git push`. No checkout persists the
+workflow token. `scripts/workflow-supply-chain-policy.test.mjs` parses every
+checked-in workflow as normalized YAML, rejects aliases and merge keys, and
+enforces immutable action/container references, checkout credential containment,
+and pull-request write denial. Its adversarial fixtures cover flow mappings,
+quoted and spaced keys/values, `pull_request_target`, inline write permissions,
+mutable job/service/container-action images, and branch pushes.
 
 The one-time Prisma JavaScript-engine remediation is already part of repository
 source: the generator uses `engineType = "client"`, the PostgreSQL driver adapter
