@@ -1375,7 +1375,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         where: { workspaceId_id: { workspaceId, id: hostileTimezoneReceiptId } },
       });
       const [clock] = await tx.$queryRaw<Array<{ observedAt: Date }>>(
-        Prisma.sql`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS "observedAt"`,
+        Prisma.sql`SELECT clock_timestamp() AS "observedAt"`,
       );
       await tx.acpBridgeReceipt.delete({
         where: { workspaceId_id: { workspaceId, id: hostileTimezoneReceiptId } },
@@ -1426,7 +1426,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     });
     const rolloverRun = await createAcceptedLifetimeRun('rollover', 1, rolloverTaskId);
     const [rolloverClock] = await prisma.$queryRaw<Array<{ observedAt: Date }>>(
-      Prisma.sql`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS "observedAt"`,
+      Prisma.sql`SELECT clock_timestamp() AS "observedAt"`,
     );
     const rolloverPeriodStart = new Date(rolloverClock!.observedAt.getTime() - 1_000);
     const rolloverPeriodEnd = new Date(rolloverClock!.observedAt.getTime() + 2_000);
@@ -1513,7 +1513,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       const waitDeadline = Date.now() + 6_000;
       while (!periodExpired && Date.now() < waitDeadline) {
         const [state] = await prisma.$queryRaw<Array<{ expired: boolean }>>(
-          Prisma.sql`SELECT (clock_timestamp() AT TIME ZONE 'UTC') >= ${rolloverPeriodEnd} AS "expired"`,
+          Prisma.sql`SELECT clock_timestamp() >= ${rolloverPeriodEnd} AS "expired"`,
         );
         periodExpired = state!.expired;
         if (!periodExpired) await new Promise((resolve) => setTimeout(resolve, 25));

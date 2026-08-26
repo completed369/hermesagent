@@ -1163,7 +1163,7 @@ model AcpBridgeReceipt {
   artifactKind   String?
   uriReference   String?
   contentHash    String?
-  receivedAt     DateTime @default(now())
+  receivedAt     DateTime @default(now()) @db.Timestamptz(3)
 
   workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   session         AcpBridgeSession    @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
@@ -1234,7 +1234,7 @@ model AcpRunUsage {
   cumulativeCostMinorUnits BigInt
   currency                 String
   evidenceHash             String
-  recordedAt               DateTime @default(now())
+  recordedAt               DateTime @default(now()) @db.Timestamptz(3)
 
   workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   dispatch        AcpBridgeDispatch   @relation(fields: [workspaceId, dispatchId, runId, sessionId], references: [workspaceId, id, runId, sessionId], onDelete: Cascade)
@@ -1261,8 +1261,8 @@ model AcpCostBudgetPolicy {
   scope           String
   currency        String
   limitMinorUnits BigInt
-  periodStart     DateTime
-  periodEnd       DateTime
+  periodStart     DateTime @db.Timestamptz(3)
+  periodEnd       DateTime @db.Timestamptz(3)
   policyVersion   String
   policyHash      String
   createdAt       DateTime @default(now())
@@ -1299,12 +1299,12 @@ model AcpCostLedgerEntry {
   workspacePolicyHash      String
   taskPolicyId             String
   taskPolicyHash           String
-  periodStart              DateTime
-  periodEnd                DateTime
+  periodStart              DateTime @db.Timestamptz(3)
+  periodEnd                DateTime @db.Timestamptz(3)
   workspaceSpendMinorUnits BigInt
   taskSpendMinorUnits      BigInt
   checksum                 String
-  recordedAt               DateTime @default(now())
+  recordedAt               DateTime @default(now()) @db.Timestamptz(3)
 
   workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   task            AcpTask              @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)

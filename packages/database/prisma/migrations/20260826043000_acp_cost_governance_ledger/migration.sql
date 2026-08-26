@@ -5,8 +5,8 @@ CREATE TABLE "acp_cost_budget_policies" (
   "scope" TEXT NOT NULL,
   "currency" TEXT NOT NULL,
   "limitMinorUnits" BIGINT NOT NULL,
-  "periodStart" TIMESTAMP(3) NOT NULL,
-  "periodEnd" TIMESTAMP(3) NOT NULL,
+  "periodStart" TIMESTAMPTZ(3) NOT NULL,
+  "periodEnd" TIMESTAMPTZ(3) NOT NULL,
   "policyVersion" TEXT NOT NULL,
   "policyHash" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -39,6 +39,9 @@ BEGIN
 END;
 $migration$;
 
+ALTER TABLE "acp_bridge_receipts" ALTER COLUMN "receivedAt" TYPE TIMESTAMPTZ(3) USING "receivedAt" AT TIME ZONE 'UTC';
+ALTER TABLE "acp_run_usages" ALTER COLUMN "recordedAt" TYPE TIMESTAMPTZ(3) USING "recordedAt" AT TIME ZONE 'UTC';
+
 CREATE UNIQUE INDEX "acp_bridge_receipts_cost_binding_key" ON "acp_bridge_receipts"("workspaceId", "id", "sessionId", "dispatchId", "runId", "taskId", "runtimeId", "connectionId", "sequence");
 CREATE UNIQUE INDEX "acp_bridge_dispatches_cost_binding_key" ON "acp_bridge_dispatches"("workspaceId", "id", "runId", "taskId", "runtimeId", "connectionId", "sessionId");
 CREATE UNIQUE INDEX "acp_run_usages_cost_binding_key" ON "acp_run_usages"("workspaceId", "id", "receiptId", "sessionId", "dispatchId", "runId", "sequence");
@@ -62,12 +65,12 @@ CREATE TABLE "acp_cost_ledger_entries" (
   "workspacePolicyHash" TEXT NOT NULL,
   "taskPolicyId" TEXT NOT NULL,
   "taskPolicyHash" TEXT NOT NULL,
-  "periodStart" TIMESTAMP(3) NOT NULL,
-  "periodEnd" TIMESTAMP(3) NOT NULL,
+  "periodStart" TIMESTAMPTZ(3) NOT NULL,
+  "periodEnd" TIMESTAMPTZ(3) NOT NULL,
   "workspaceSpendMinorUnits" BIGINT NOT NULL,
   "taskSpendMinorUnits" BIGINT NOT NULL,
   "checksum" TEXT NOT NULL,
-  "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "recordedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "acp_cost_ledger_entries_pkey" PRIMARY KEY ("workspaceId", "id"),
   CONSTRAINT "acp_cost_ledger_values_check" CHECK (
     "sequence" > 0 AND "currency" ~ '^[A-Z]{3}$' AND
@@ -130,7 +133,7 @@ CREATE TRIGGER acp_cost_budget_policy_insert_guard BEFORE INSERT ON "acp_cost_bu
 CREATE OR REPLACE FUNCTION ventureos_bind_usage_receipt_clock() RETURNS trigger AS $$
 BEGIN
   IF NEW."messageType" = 'USAGE' THEN
-    NEW."receivedAt" := clock_timestamp() AT TIME ZONE 'UTC';
+    NEW."receivedAt" := clock_timestamp();
   END IF;
   RETURN NEW;
 END;
@@ -143,8 +146,8 @@ DECLARE
   task_policy "acp_cost_budget_policies"%ROWTYPE;
   usage_row "acp_run_usages"%ROWTYPE;
   receipt_type TEXT;
-  receipt_received_at TIMESTAMP(3);
-  ledger_clock TIMESTAMP(3);
+  receipt_received_at TIMESTAMPTZ(3);
+  ledger_clock TIMESTAMPTZ(3);
   task_currency TEXT;
   task_limit BIGINT;
   task_compute_limit BIGINT;
@@ -159,7 +162,7 @@ BEGIN
   SELECT * INTO task_policy FROM "acp_cost_budget_policies" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."taskPolicyId" FOR UPDATE;
   SELECT * INTO usage_row FROM "acp_run_usages" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."usageId" FOR UPDATE;
   SELECT "messageType", "receivedAt" INTO receipt_type, receipt_received_at FROM "acp_bridge_receipts" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."receiptId";
-  ledger_clock := clock_timestamp() AT TIME ZONE 'UTC';
+  ledger_clock := clock_timestamp();
   IF receipt_type IS DISTINCT FROM 'USAGE' OR usage_row."receiptId" IS DISTINCT FROM NEW."receiptId" OR usage_row."dispatchId" IS DISTINCT FROM NEW."dispatchId" OR usage_row."sessionId" IS DISTINCT FROM NEW."sessionId" OR usage_row."runId" IS DISTINCT FROM NEW."runId" OR usage_row."sequence" IS DISTINCT FROM NEW."sequence" OR usage_row."currency" IS DISTINCT FROM NEW."currency" OR usage_row."costMinorUnits" IS DISTINCT FROM NEW."costMinorUnits" OR usage_row."computeUnits" IS DISTINCT FROM NEW."computeUnits" OR usage_row."recordedAt" IS DISTINCT FROM NEW."recordedAt" THEN RAISE EXCEPTION 'usage ledger correlation mismatch'; END IF;
   IF receipt_received_at IS DISTINCT FROM usage_row."recordedAt" OR receipt_received_at IS DISTINCT FROM NEW."recordedAt" THEN RAISE EXCEPTION 'usage receipt database clock correlation mismatch'; END IF;
   IF NOT (ledger_clock >= workspace_policy."periodStart" AND ledger_clock < workspace_policy."periodEnd" AND ledger_clock >= task_policy."periodStart" AND ledger_clock < task_policy."periodEnd") THEN RAISE EXCEPTION 'cost budget policy expired before ledger commit'; END IF;

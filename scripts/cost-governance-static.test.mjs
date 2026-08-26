@@ -34,7 +34,30 @@ test('recognized usage is transactionally paired with ledger and immutable evide
   assert.match(migration, /usage ledger correlation mismatch/u);
   assert.match(migration, /usage_row\."recordedAt" IS DISTINCT FROM NEW\."recordedAt"/u);
   assert.match(migration, /ventureos_bind_usage_receipt_clock/u);
-  assert.match(migration, /NEW\."receivedAt" := clock_timestamp\(\) AT TIME ZONE 'UTC'/u);
+  assert.match(migration, /NEW\."receivedAt" := clock_timestamp\(\)/u);
+  assert.match(
+    migration,
+    /ALTER TABLE "acp_bridge_receipts" ALTER COLUMN "receivedAt" TYPE TIMESTAMPTZ\(3\) USING "receivedAt" AT TIME ZONE 'UTC'/u,
+  );
+  assert.match(
+    migration,
+    /ALTER TABLE "acp_run_usages" ALTER COLUMN "recordedAt" TYPE TIMESTAMPTZ\(3\) USING "recordedAt" AT TIME ZONE 'UTC'/u,
+  );
+  assert.match(migration, /"periodStart" TIMESTAMPTZ\(3\) NOT NULL/u);
+  assert.match(migration, /"recordedAt" TIMESTAMPTZ\(3\) NOT NULL DEFAULT CURRENT_TIMESTAMP/u);
+  assert.match(schema, /receivedAt\s+DateTime @default\(now\(\)\) @db\.Timestamptz\(3\)/u);
+  assert.match(
+    schema,
+    /model AcpRunUsage[\s\S]*?recordedAt\s+DateTime @default\(now\(\)\) @db\.Timestamptz\(3\)/u,
+  );
+  assert.match(
+    schema,
+    /model AcpCostBudgetPolicy[\s\S]*?periodStart\s+DateTime @db\.Timestamptz\(3\)[\s\S]*?periodEnd\s+DateTime @db\.Timestamptz\(3\)/u,
+  );
+  assert.match(
+    schema,
+    /model AcpCostLedgerEntry[\s\S]*?periodStart\s+DateTime @db\.Timestamptz\(3\)[\s\S]*?periodEnd\s+DateTime @db\.Timestamptz\(3\)[\s\S]*?recordedAt\s+DateTime @default\(now\(\)\) @db\.Timestamptz\(3\)/u,
+  );
   assert.match(
     migration,
     /LOCK TABLE "acp_run_usages" IN SHARE ROW EXCLUSIVE MODE;[\s\S]*?LOCK TABLE "acp_bridge_receipts" IN SHARE ROW EXCLUSIVE MODE;[\s\S]*?existing recognized usage requires/u,
@@ -44,7 +67,7 @@ test('recognized usage is transactionally paired with ledger and immutable evide
   assert.match(migration, /usage receipt database clock correlation mismatch/u);
   assert.match(
     migration,
-    /SELECT \* INTO workspace_policy[\s\S]*?FOR UPDATE;[\s\S]*?SELECT \* INTO task_policy[\s\S]*?FOR UPDATE;[\s\S]*?ledger_clock := clock_timestamp\(\) AT TIME ZONE 'UTC';[\s\S]*?ledger_clock >= workspace_policy\."periodStart"[\s\S]*?ledger_clock < task_policy\."periodEnd"/u,
+    /SELECT \* INTO workspace_policy[\s\S]*?FOR UPDATE;[\s\S]*?SELECT \* INTO task_policy[\s\S]*?FOR UPDATE;[\s\S]*?ledger_clock := clock_timestamp\(\);[\s\S]*?ledger_clock >= workspace_policy\."periodStart"[\s\S]*?ledger_clock < task_policy\."periodEnd"/u,
   );
   assert.match(migration, /cost budget policy expired before ledger commit/u);
   assert.match(migration, /usage_row\."cumulativeCostMinorUnits" > task_limit/u);
