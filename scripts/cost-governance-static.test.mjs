@@ -93,6 +93,11 @@ test('recognized usage is transactionally paired with ledger and immutable evide
     costService,
     /FROM "acp_tasks"[\s\S]*?FOR UPDATE[\s\S]*?FROM "acp_cost_budget_policies"[\s\S]*?FOR UPDATE/u,
   );
+  assert.match(
+    costService,
+    /INSERT INTO "acp_cost_ledger_entries"[\s\S]*?r\."receivedAt"[\s\S]*?FROM "acp_bridge_receipts" r[\s\S]*?r\."messageType" = 'USAGE'/u,
+  );
+  assert.doesNotMatch(costService, /acpCostLedgerEntry\.create/u);
   const bridgeService = readFileSync(
     'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
     'utf8',

@@ -204,34 +204,36 @@ export class AcpCostGovernanceService {
       periodEnd: workspacePolicy.periodEnd.toISOString(),
       recordedAt: input.recordedAt.toISOString(),
     });
-    await tx.acpCostLedgerEntry.create({
-      data: {
-        id: ledgerEntryId,
-        workspaceId,
-        usageId: input.usageId,
-        receiptId: input.receiptId,
-        dispatchId: input.dispatchId,
-        sessionId: input.sessionId,
-        runId: input.runId,
-        taskId: input.taskId,
-        runtimeId: input.runtimeId,
-        connectionId: input.connectionId,
-        sequence: input.sequence,
-        currency: input.currency,
-        costMinorUnits: input.costMinorUnits,
-        computeUnits: input.computeUnits,
-        workspacePolicyId: workspacePolicy.id,
-        workspacePolicyHash: workspacePolicy.policyHash,
-        taskPolicyId: taskPolicy.id,
-        taskPolicyHash: taskPolicy.policyHash,
-        periodStart: workspacePolicy.periodStart,
-        periodEnd: workspacePolicy.periodEnd,
-        workspaceSpendMinorUnits,
-        taskSpendMinorUnits,
-        checksum,
-        recordedAt: input.recordedAt,
-      },
-    });
+    const inserted = await tx.$executeRaw(
+      Prisma.sql`INSERT INTO "acp_cost_ledger_entries" (
+        "id", "workspaceId", "usageId", "receiptId", "dispatchId", "sessionId", "runId",
+        "taskId", "runtimeId", "connectionId", "sequence", "currency", "costMinorUnits",
+        "computeUnits", "workspacePolicyId", "workspacePolicyHash", "taskPolicyId",
+        "taskPolicyHash", "periodStart", "periodEnd", "workspaceSpendMinorUnits",
+        "taskSpendMinorUnits", "checksum", "recordedAt"
+      )
+      SELECT
+        ${ledgerEntryId}, ${workspaceId}::uuid, ${input.usageId}, r."id", ${input.dispatchId},
+        ${input.sessionId}, ${input.runId}, ${input.taskId}, ${input.runtimeId},
+        ${input.connectionId}, ${input.sequence}, ${input.currency}, ${input.costMinorUnits},
+        ${input.computeUnits}, ${workspacePolicy.id}, ${workspacePolicy.policyHash},
+        ${taskPolicy.id}, ${taskPolicy.policyHash}, ${workspacePolicy.periodStart},
+        ${workspacePolicy.periodEnd}, ${workspaceSpendMinorUnits}, ${taskSpendMinorUnits},
+        ${checksum}, r."receivedAt"
+      FROM "acp_bridge_receipts" r
+      WHERE r."workspaceId" = ${workspaceId}::uuid
+        AND r."id" = ${input.receiptId}
+        AND r."messageType" = 'USAGE'
+        AND r."sessionId" = ${input.sessionId}
+        AND r."dispatchId" = ${input.dispatchId}
+        AND r."runId" = ${input.runId}
+        AND r."taskId" = ${input.taskId}
+        AND r."runtimeId" = ${input.runtimeId}
+        AND r."connectionId" = ${input.connectionId}
+        AND r."sequence" = ${input.sequence}`,
+    );
+    if (inserted !== 1)
+      throw new AcpCostGovernanceDeniedError('Exact usage receipt clock is required');
     await this.auditService.recordOperationalEvent(
       capability,
       context,
