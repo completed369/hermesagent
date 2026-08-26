@@ -70,7 +70,7 @@ published and current `main` has not been deployed to private staging.
   filesystem and launch-time TOCTOU remain open, and the production launcher
   continues to deny every process request.
 - Durable cost governance: immutable one-to-one usage ledger evidence with
-  exact workspace/task budget periods is in implementation review. It adds no
+  exact workspace/task budget periods is MERGED and VERIFIED. It adds no
   billing provider, runtime connection, controller, deployment, or publication.
 - A pure supervision lifecycle and exact-cancellation binding plus a
   deterministic test-only process-tree harness. The fixture is absent from
@@ -94,11 +94,12 @@ published and current `main` has not been deployed to private staging.
    connection path. The pure OS-supervision admission policy is also MERGED and
    VERIFIED; its production surface adds no filesystem or process path. A
    deterministic process-tree fixture exercises cancellation only under tests.
-   Next add a reviewed trusted
-   executable/admission-evidence reader and deny-by-default supervisor
-   composition before any process creation or runtime adapter. Cost
-   governance,
-   evaluations, knowledge/playbooks, and adapter hardening continue afterward.
+   A Linux-only reviewed trusted executable/admission-evidence reader with only
+   a test signer is now in implementation review and remains unable to launch.
+   Production authorization, Windows native identity inspection, and
+   deny-by-default supervisor composition remain required before any process
+   creation or runtime adapter. Evaluations, knowledge/playbooks, and adapter
+   hardening continue afterward.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
@@ -139,7 +140,8 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    exact durable capacity/cost/compute reservations, and scoped deny-only
    secret leases are MERGED and VERIFIED. The bridge is service-only, stops at
    `PARTIAL`, and has a deny-only launcher plus an unexported deterministic test
-   fixture. A trusted executable/admission-evidence reader, deny-by-default
+   fixture. A Linux-only trusted executable/admission-evidence reader is in
+   implementation review; Windows identity inspection, deny-by-default
    supervisor composition, actual process transport, and authenticated runtime
    adapters remain to be completed. Codex, Hermes, and Pi remain
    **NOT_CONFIGURED** until each demonstrates authenticated

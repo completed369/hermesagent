@@ -44,9 +44,11 @@
 > reservations now bind trusted agent and candidate evidence to the exact
 > workspace, task, run, runtime, and connection while serializing short-lived
 > capacity, cost, and compute holds. Those holds are routing evidence, not a
-> runtime launch, provider charge, or connectivity proof. The next runtime
-> dependency is a reviewed trusted executable/admission-evidence reader and
-> deny-by-default supervisor composition. Actual process creation and transport
+> runtime launch, provider charge, or connectivity proof. A Linux-only trusted
+> executable/admission-evidence reader is in implementation review with only a
+> test-only signed authorization source and still cannot launch; production
+> authorization, Windows native identity inspection, and deny-by-default
+> supervisor composition remain required. Actual process creation and transport
 > remain separate later changes. Real Codex, Hermes, and Pi adapters follow only after authenticated
 > end-to-end evidence; repository installation or local process availability is
 > not connection evidence.
@@ -62,6 +64,14 @@
 > executable discovery or filesystem inspection and cannot close path-swap or
 > executable-replacement TOCTOU. Its validated output is inert; the production
 > launcher still always denies.
+
+> The proposed Linux evidence reader opens one exact path with no-follow and
+> non-blocking flags, inspects and hashes the same opened regular file, verifies
+> a short-lived signed test authorization, and rechecks descriptor/current-path
+> identity after hashing. It does not retain a launch handle or close
+> replacement TOCTOU after the final check. Production authorization and Windows
+> remain fail-closed pending reviewed signer/registry and native
+> owner/reparse-point/handle designs.
 
 The cost-governance foundation pairs authenticated bridge usage with immutable
 recognized-spend evidence under exact workspace and task budget periods. It

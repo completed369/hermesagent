@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import { posix, win32 } from 'node:path';
 
 import { canonicalJson } from './codec';
+import {
+  linuxExecutableAuthorizationHash,
+  validateLinuxExecutableAuthorization,
+} from './supervision-authorization';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
@@ -75,7 +79,7 @@ export interface RuntimeLaunchManifest {
 }
 
 export interface TrustedSupervisorAdmissionEvidence {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly evidenceId: string;
   readonly workspaceId: string;
   readonly runtimeId: string;
@@ -94,6 +98,13 @@ export interface TrustedSupervisorAdmissionEvidence {
   readonly authorizedWorktreeRoot: string;
   readonly argvHash: string;
   readonly argumentPolicyReference: string;
+  readonly authorizationId: string;
+  readonly authorizationVersion: number;
+  readonly authorizationHash: string;
+  readonly authorizationSignerKeyId: string;
+  readonly authorizationValidFrom: string;
+  readonly authorizationValidUntil: string;
+  readonly authorizationSignature: string;
   readonly fileKind: 'REGULAR';
   readonly platformEvidence:
     | {
@@ -116,6 +127,12 @@ export interface ValidatedSupervisorAdmission {
   readonly manifestHash: string;
   readonly evidenceHash: string;
   readonly bindingHash: string;
+}
+
+export interface ValidatedSupervisorManifest {
+  readonly manifest: Readonly<RuntimeLaunchManifest>;
+  readonly manifestHash: string;
+  readonly argvHash: string;
 }
 
 export type SupervisorPolicyErrorCode =
@@ -160,6 +177,13 @@ const MANIFEST_KEYS = [
 const EVIDENCE_KEYS = [
   'adapterKind',
   'argumentPolicyReference',
+  'authorizationHash',
+  'authorizationId',
+  'authorizationSignerKeyId',
+  'authorizationSignature',
+  'authorizationValidFrom',
+  'authorizationValidUntil',
+  'authorizationVersion',
   'argvHash',
   'authorizedWorktreeRoot',
   'authorizedManifestHash',
@@ -341,7 +365,7 @@ function platformPolicy(
   if (record.kind !== 'LINUX' || record.symbolicLink !== false)
     throw new SupervisorPolicyError(code);
   const mode = integer(record.mode, 0, 0o777, code);
-  if ((mode & 0o022) !== 0 || (mode & 0o111) === 0) throw new SupervisorPolicyError(code);
+  if ((mode & 0o222) !== 0 || (mode & 0o111) === 0) throw new SupervisorPolicyError(code);
   return {
     kind: 'LINUX',
     ownerUid: integer(record.ownerUid, 0, 2_147_483_647, code),
@@ -446,12 +470,12 @@ function parseManifest(value: unknown): RuntimeLaunchManifest {
 
 function parseEvidence(value: unknown): TrustedSupervisorAdmissionEvidence {
   const record = object(value, EVIDENCE_KEYS, 'INVALID_EVIDENCE');
-  if (record.schemaVersion !== 1) throw new SupervisorPolicyError('INVALID_EVIDENCE');
+  if (record.schemaVersion !== 2) throw new SupervisorPolicyError('INVALID_EVIDENCE');
   if (record.platform !== 'WIN32' && record.platform !== 'LINUX')
     throw new SupervisorPolicyError('INVALID_EVIDENCE');
   if (record.fileKind !== 'REGULAR') throw new SupervisorPolicyError('INVALID_EVIDENCE');
-  return {
-    schemaVersion: 1,
+  const evidence: TrustedSupervisorAdmissionEvidence = {
+    schemaVersion: 2,
     evidenceId: reference(record.evidenceId, 'INVALID_EVIDENCE'),
     workspaceId: reference(record.workspaceId, 'INVALID_EVIDENCE'),
     runtimeId: reference(record.runtimeId, 'INVALID_EVIDENCE'),
@@ -470,9 +494,51 @@ function parseEvidence(value: unknown): TrustedSupervisorAdmissionEvidence {
     authorizedWorktreeRoot: canonicalPath(record.authorizedWorktreeRoot, record.platform),
     argvHash: digest(record.argvHash, 'INVALID_EVIDENCE'),
     argumentPolicyReference: reference(record.argumentPolicyReference, 'INVALID_EVIDENCE'),
+    authorizationId: reference(record.authorizationId, 'INVALID_EVIDENCE'),
+    authorizationVersion: integer(record.authorizationVersion, 1, 1_000_000, 'INVALID_EVIDENCE'),
+    authorizationHash: digest(record.authorizationHash, 'INVALID_EVIDENCE'),
+    authorizationSignerKeyId: reference(record.authorizationSignerKeyId, 'INVALID_EVIDENCE'),
+    authorizationValidFrom: timestamp(record.authorizationValidFrom),
+    authorizationValidUntil: timestamp(record.authorizationValidUntil),
+    authorizationSignature:
+      typeof record.authorizationSignature === 'string'
+        ? record.authorizationSignature
+        : (() => {
+            throw new SupervisorPolicyError('INVALID_EVIDENCE');
+          })(),
     fileKind: 'REGULAR',
     platformEvidence: platformPolicy(record.platformEvidence, record.platform, 'INVALID_EVIDENCE'),
   };
+  if (evidence.platform === 'LINUX' && evidence.platformEvidence.kind === 'LINUX') {
+    try {
+      const authorization = validateLinuxExecutableAuthorization({
+        schemaVersion: 1,
+        authorizationId: evidence.authorizationId,
+        authorizationVersion: evidence.authorizationVersion,
+        signerKeyId: evidence.authorizationSignerKeyId,
+        validFrom: evidence.authorizationValidFrom,
+        validUntil: evidence.authorizationValidUntil,
+        adapterKind: evidence.adapterKind,
+        testOnly: evidence.testOnly,
+        canonicalPath: evidence.canonicalPath,
+        sha256: evidence.sha256,
+        identityReference: evidence.identityReference,
+        ownerUid: evidence.platformEvidence.ownerUid,
+        ownerGid: evidence.platformEvidence.ownerGid,
+        mode: evidence.platformEvidence.mode,
+        authorizedWorktreeRoot: evidence.authorizedWorktreeRoot,
+        argumentPolicyReference: evidence.argumentPolicyReference,
+        signature: evidence.authorizationSignature,
+      });
+      if (linuxExecutableAuthorizationHash(authorization) !== evidence.authorizationHash)
+        throw new Error('authorization hash mismatch');
+    } catch {
+      throw new SupervisorPolicyError('INVALID_EVIDENCE');
+    }
+  } else if (evidence.adapterKind !== 'DETERMINISTIC_FAKE' || evidence.testOnly !== true) {
+    throw new SupervisorPolicyError('INVALID_EVIDENCE');
+  }
+  return evidence;
 }
 
 function sha256(value: unknown): string {
@@ -489,9 +555,10 @@ export function validateSupervisorAdmission(
   manifestInput: unknown,
   evidenceInput: unknown,
 ): ValidatedSupervisorAdmission {
-  const manifest = parseManifest(manifestInput);
+  const validatedManifest = validateSupervisorManifest(manifestInput);
+  const manifest = validatedManifest.manifest;
   const evidence = parseEvidence(evidenceInput);
-  const manifestHash = sha256(manifest);
+  const manifestHash = validatedManifest.manifestHash;
   const observedAt = new Date(evidence.observedAt).getTime();
   const expiresAt = new Date(evidence.expiresAt).getTime();
   const nowMs = Date.now();
@@ -515,7 +582,7 @@ export function validateSupervisorAdmission(
     manifest.adapterKind !== evidence.adapterKind ||
     manifest.platform !== evidence.platform ||
     manifest.worktreeRoot !== evidence.authorizedWorktreeRoot ||
-    sha256(manifest.argv) !== evidence.argvHash ||
+    validatedManifest.argvHash !== evidence.argvHash ||
     manifest.argumentPolicyReference !== evidence.argumentPolicyReference ||
     manifest.executable.canonicalPath !== evidence.canonicalPath ||
     manifest.executable.sha256 !== evidence.sha256 ||
@@ -534,8 +601,21 @@ export function validateSupervisorAdmission(
       workspaceId: manifest.workspaceId,
       runtimeId: manifest.runtimeId,
       connectionId: manifest.connectionId,
+      authorizationId: evidence.authorizationId,
+      authorizationVersion: evidence.authorizationVersion,
+      authorizationHash: evidence.authorizationHash,
+      authorizationSignerKeyId: evidence.authorizationSignerKeyId,
       manifestHash,
       evidenceHash,
     }),
+  });
+}
+
+export function validateSupervisorManifest(manifestInput: unknown): ValidatedSupervisorManifest {
+  const manifest = parseManifest(manifestInput);
+  return frozen({
+    manifest,
+    manifestHash: sha256(manifest),
+    argvHash: sha256(manifest.argv),
   });
 }
