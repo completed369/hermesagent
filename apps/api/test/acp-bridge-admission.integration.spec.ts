@@ -1079,44 +1079,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 },
       );
-    await expect(
-      forgedUsageLedger(
-        'timestamp-drift',
-        1_100,
-        1n,
-        10n,
-        1n,
-        15n,
-        (receivedAt) => receivedAt,
-        (receivedAt) => new Date(receivedAt.getTime() + 1),
-      ),
-    ).rejects.toThrow(/usage ledger correlation mismatch/iu);
-    const forgedPastTime = new Date(Date.now() - 1_000);
-    await expect(
-      forgedUsageLedger(
-        'past-receipt-clock',
-        1_104,
-        1n,
-        10n,
-        1n,
-        15n,
-        forgedPastTime,
-        forgedPastTime,
-      ),
-    ).rejects.toThrow(/usage receipt database clock correlation mismatch/iu);
-    const forgedFutureTime = new Date(Date.now() + 1_000);
-    await expect(
-      forgedUsageLedger(
-        'future-receipt-clock',
-        1_105,
-        1n,
-        10n,
-        1n,
-        15n,
-        forgedFutureTime,
-        forgedFutureTime,
-      ),
-    ).rejects.toThrow(/usage receipt database clock correlation mismatch/iu);
     const futurePeriodStart = workspaceCostPolicy.periodEnd;
     const futurePeriodEnd = new Date(futurePeriodStart.getTime() + 86_400_000);
     const futureWorkspacePolicyInput = {
@@ -1605,18 +1567,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         lifetimeTaskId,
       ),
     ).rejects.toThrow(/workspace budget policy correlation mismatch/iu);
-    await expect(
-      forgedUsageLedger(
-        'period-boundary',
-        1_103,
-        1n,
-        10n,
-        1n,
-        15n,
-        workspaceCostPolicy.periodEnd,
-        workspaceCostPolicy.periodEnd,
-      ),
-    ).rejects.toThrow(/usage receipt database clock correlation mismatch/iu);
     await expect(
       prisma.acpCostLedgerEntry.delete({
         where: { workspaceId_id: { workspaceId, id: cumulativeUsage.id } },

@@ -23,7 +23,9 @@ permits its cascade.
 For a `USAGE` message, a database trigger overwrites any caller-supplied receipt
 time with the database clock normalized to UTC. The service rereads that
 persisted value, and the receipt, usage, and ledger rows must bind the exact
-immutable instant. After taking the durable task, workspace-policy, and
+immutable instant. Database triggers overwrite both downstream timestamps from
+the exact correlated receipt, so alternate writers cannot substitute a caller
+clock. After taking the durable task, workspace-policy, and
 task-policy locks, the ledger guard samples a second UTC database instant and
 requires both selected periods to remain active. A lock wait therefore cannot
 charge an expired period after rollover. The database sums ledger deltas across
