@@ -147,6 +147,40 @@ secret scanning, push protection, branch protection/rulesets, CodeQL/code
 scanning, and dependency-review enforcement require administrator verification
 or explicit workflow/configuration evidence before being claimed enabled.
 
+## Workflow supply-chain policy
+
+Every external GitHub Action used by a governed workflow is pinned to an exact
+40-character commit SHA. A version comment may document the reviewed upstream
+release, but a mutable tag is never the executable reference. Container actions
+must likewise use an immutable SHA-256 image digest. Repository-local actions
+remain reviewed source in the exact checked-out commit.
+
+Pull-request-triggered workflows must explicitly set `contents: read` or `none`,
+must not use `pull_request_target`, `contents: write`, `permissions: write-all`,
+inject a repository secret/token expression, forward reusable-workflow secrets,
+or target a privileged GitHub environment. No checkout persists the workflow
+token. Explicit run steps containing both Git and push command tokens are
+rejected as defence in depth, including Git global-option and wrapper forms; the
+repository-write boundary is the combination of explicit read-only permissions,
+no privileged PR trigger/environment, no injected or inherited repository
+credential, and checkout credential containment.
+`scripts/workflow-supply-chain-policy.test.mjs`
+parses every checked-in workflow as normalized YAML, rejects aliases and merge
+keys, and enforces immutable action/container references and those PR controls.
+Its adversarial fixtures cover flow mappings, quoted and spaced keys/values,
+`pull_request_target`, inline write permissions, credential expressions,
+reusable-workflow secret inheritance, privileged environments, mutable
+job/service/container-action images, Git global options, wrappers, and branch
+pushes.
+
+The one-time Prisma JavaScript-engine remediation is already part of repository
+source: the generator uses `engineType = "client"`, the PostgreSQL driver adapter
+and client versions are pinned, the client constructs `PrismaPg`, and the frozen
+lockfile contains the adapter. The obsolete branch-bootstrap and pull-request
+lockfile workflows were removed after that remediation landed; routine CI now
+validates the checked-in schema, client generation, frozen lockfile, migrations,
+and application suites without mutating a branch.
+
 ## Publication and private-staging workflows
 
 The repository also contains manually dispatched, founder-gated workflows for

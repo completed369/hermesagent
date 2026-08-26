@@ -67,6 +67,7 @@ jobs:
         with:
           ref: ${{ steps.source.outputs.source_sha }}
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Verify protected-main source and authorization boundary
         shell: bash
@@ -135,6 +136,7 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.source_sha }}
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Revalidate artifact immediately before external mutation
         run: node scripts/validate-public-landing.mjs
