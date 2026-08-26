@@ -1,15 +1,24 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import ts from 'typescript';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const modulesRoot = join(repositoryRoot, 'apps', 'api', 'src', 'modules');
+const apiMainPath = join(repositoryRoot, 'apps', 'api', 'src', 'main.ts');
 const outputPath = join(repositoryRoot, 'docs', 'api', 'API_INVENTORY.json');
-const mode = process.argv[2] ?? '--check';
-
-if (!['--check', '--write'].includes(mode)) {
-  throw new Error('Usage: node scripts/generate-api-inventory.mjs [--check|--write]');
-}
+const ROUTES = new Map([
+  ['All', 'ALL'],
+  ['Delete', 'DELETE'],
+  ['Get', 'GET'],
+  ['Head', 'HEAD'],
+  ['Options', 'OPTIONS'],
+  ['Patch', 'PATCH'],
+  ['Post', 'POST'],
+  ['Put', 'PUT'],
+  ['Sse', 'GET'],
+]);
+const UNSUPPORTED_ROUTES = new Set(['RequestMapping']);
 
 function controllerFiles(directory) {
   return readdirSync(directory, { withFileTypes: true })
@@ -24,84 +33,181 @@ function controllerFiles(directory) {
     .sort();
 }
 
-function decoratorArgument(raw, context) {
-  const trimmed = raw.trim();
-  if (trimmed === '') return '';
-  const match = trimmed.match(/^(['"])([^'"\r\n]*)\1$/u);
-  if (!match) throw new Error(`Unsupported non-literal route decorator in ${context}: ${raw}`);
-  return match[2];
-}
-
-function routePath(prefix, suffix) {
-  return `/api/${[prefix, suffix].filter((part) => part.length > 0).join('/')}`.replace(
-    /\/+$/u,
-    '',
-  );
-}
-
-const routes = [];
-for (const path of controllerFiles(modulesRoot)) {
-  const source = readFileSync(path, 'utf8');
-  const sourcePath = relative(repositoryRoot, path).replaceAll('\\', '/');
-  const tokens = [
-    ...source.matchAll(
-      /@Controller\(([^)]*)\)|@(Get|Post|Put|Patch|Delete)\(([^)]*)\)|export class\s+(\w+Controller)\b/gu,
-    ),
-  ];
-  let pendingPrefix;
-  let controller;
-  for (const token of tokens) {
-    if (token[1] !== undefined) {
-      pendingPrefix = decoratorArgument(token[1], sourcePath);
-      controller = undefined;
-      continue;
-    }
-    if (token[4] !== undefined) {
-      if (pendingPrefix === undefined) {
-        throw new Error(`Controller class without @Controller in ${sourcePath}`);
-      }
-      controller = token[4];
-      continue;
-    }
-    if (!controller || pendingPrefix === undefined || token[2] === undefined) {
-      throw new Error(`Route decorator outside a controller in ${sourcePath}`);
-    }
-    routes.push({
-      method: token[2].toUpperCase(),
-      path: routePath(pendingPrefix, decoratorArgument(token[3] ?? '', sourcePath)),
-      controller,
-      source: sourcePath,
-    });
+function literalArgument(call, context) {
+  if (call.arguments.length === 0) return '';
+  if (call.arguments.length !== 1 || !ts.isStringLiteralLike(call.arguments[0])) {
+    throw new Error(`Unsupported non-literal route decorator in ${context}`);
   }
+  return call.arguments[0].text;
 }
 
-routes.sort((left, right) => {
-  const leftKey = `${left.path}\0${left.method}\0${left.controller}`;
-  const rightKey = `${right.path}\0${right.method}\0${right.controller}`;
-  return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-});
+function routePath(globalPrefix, controllerPrefix, suffix) {
+  return `/${[globalPrefix, controllerPrefix, suffix]
+    .filter((part) => part.length > 0)
+    .join('/')}`.replace(/\/+$/u, '');
+}
 
-const inventory = `${JSON.stringify(
-  {
+function nestDecoratorImports(sourceFile) {
+  const named = new Map();
+  const namespaces = new Set();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== '@nestjs/common' ||
+      !statement.importClause?.namedBindings
+    ) {
+      continue;
+    }
+    const bindings = statement.importClause.namedBindings;
+    if (ts.isNamespaceImport(bindings)) {
+      namespaces.add(bindings.name.text);
+      continue;
+    }
+    for (const element of bindings.elements) {
+      named.set(element.name.text, element.propertyName?.text ?? element.name.text);
+    }
+  }
+  return { named, namespaces };
+}
+
+function canonicalDecorator(expression, imports) {
+  if (ts.isIdentifier(expression)) return imports.named.get(expression.text);
+  if (
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    imports.namespaces.has(expression.expression.text)
+  ) {
+    return expression.name.text;
+  }
+  return undefined;
+}
+
+function decorators(node) {
+  return ts.canHaveDecorators(node) ? (ts.getDecorators(node) ?? []) : [];
+}
+
+export function parseControllerSource(source, sourcePath, globalPrefix) {
+  const sourceFile = ts.createSourceFile(sourcePath, source, ts.ScriptTarget.Latest, true);
+  const imports = nestDecoratorImports(sourceFile);
+  const routes = [];
+  let controllerCount = 0;
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isClassDeclaration(statement) || !statement.name) continue;
+    const controllerCalls = decorators(statement)
+      .map((decorator) => decorator.expression)
+      .filter(ts.isCallExpression)
+      .filter((call) => canonicalDecorator(call.expression, imports) === 'Controller');
+    if (controllerCalls.length === 0) continue;
+    if (controllerCalls.length !== 1) throw new Error(`Ambiguous @Controller in ${sourcePath}`);
+    controllerCount += 1;
+    const controllerPrefix = literalArgument(controllerCalls[0], sourcePath);
+
+    for (const member of statement.members) {
+      if (!ts.isMethodDeclaration(member)) continue;
+      let routeDecoratorCount = 0;
+      for (const decorator of decorators(member)) {
+        if (!ts.isCallExpression(decorator.expression)) continue;
+        const canonical = canonicalDecorator(decorator.expression.expression, imports);
+        if (canonical && UNSUPPORTED_ROUTES.has(canonical)) {
+          throw new Error(`Unsupported Nest route decorator @${canonical} in ${sourcePath}`);
+        }
+        const method = canonical ? ROUTES.get(canonical) : undefined;
+        if (!method) continue;
+        routeDecoratorCount += 1;
+        routes.push({
+          method,
+          path: routePath(
+            globalPrefix,
+            controllerPrefix,
+            literalArgument(decorator.expression, sourcePath),
+          ),
+          controller: statement.name.text,
+          source: sourcePath,
+        });
+      }
+      if (routeDecoratorCount !== 1) {
+        throw new Error(
+          `Every controller method must use exactly one direct supported Nest route decorator in ${sourcePath}`,
+        );
+      }
+    }
+  }
+  if (controllerCount === 0) throw new Error(`No imported Nest @Controller found in ${sourcePath}`);
+  return routes;
+}
+
+export function readGlobalPrefix(source) {
+  const sourceFile = ts.createSourceFile(
+    'apps/api/src/main.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  let prefix;
+  function visit(node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === 'setGlobalPrefix'
+    ) {
+      if (
+        prefix !== undefined ||
+        node.arguments.length !== 1 ||
+        !ts.isStringLiteral(node.arguments[0])
+      ) {
+        throw new Error('API global prefix must be one unique string literal');
+      }
+      prefix = node.arguments[0].text.replace(/^\/+|\/+$/gu, '');
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  if (!prefix) throw new Error('API global prefix was not found');
+  return prefix;
+}
+
+export function buildInventory() {
+  const globalPrefix = readGlobalPrefix(readFileSync(apiMainPath, 'utf8'));
+  const routes = controllerFiles(modulesRoot).flatMap((path) => {
+    const sourcePath = relative(repositoryRoot, path).replaceAll('\\', '/');
+    return parseControllerSource(readFileSync(path, 'utf8'), sourcePath, globalPrefix);
+  });
+  routes.sort((left, right) => {
+    const leftKey = `${left.path}\0${left.method}\0${left.controller}`;
+    const rightKey = `${right.path}\0${right.method}\0${right.controller}`;
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
+  return {
     schemaVersion: 1,
-    generatedFrom: 'apps/api/src/modules/**/*.controller.ts',
-    globalPrefix: '/api',
+    generatedFrom: 'apps/api/src/main.ts + apps/api/src/modules/**/*.controller.ts',
+    globalPrefix: `/${globalPrefix}`,
     routeCount: routes.length,
     routes,
-  },
-  null,
-  2,
-)}\n`;
+  };
+}
 
-if (mode === '--write') {
-  mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, inventory, 'utf8');
-  process.stdout.write(`Wrote ${relative(repositoryRoot, outputPath)} (${routes.length} routes)\n`);
-} else {
+function main() {
+  const mode = process.argv[2] ?? '--check';
+  if (!['--check', '--write'].includes(mode)) {
+    throw new Error('Usage: node scripts/generate-api-inventory.mjs [--check|--write]');
+  }
+  const inventory = buildInventory();
+  const serialized = `${JSON.stringify(inventory, null, 2)}\n`;
+  if (mode === '--write') {
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, serialized, 'utf8');
+    process.stdout.write(
+      `Wrote ${relative(repositoryRoot, outputPath)} (${inventory.routeCount} routes)\n`,
+    );
+    return;
+  }
   if (!existsSync(outputPath)) throw new Error('API inventory is missing; run with --write');
-  const committed = readFileSync(outputPath, 'utf8');
-  if (committed !== inventory) {
+  if (readFileSync(outputPath, 'utf8') !== serialized) {
     throw new Error('API inventory is stale; run node scripts/generate-api-inventory.mjs --write');
   }
-  process.stdout.write(`API inventory is current (${routes.length} routes)\n`);
+  process.stdout.write(`API inventory is current (${inventory.routeCount} routes)\n`);
 }
+
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) main();

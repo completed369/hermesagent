@@ -97,7 +97,9 @@ current state: the code has since been installed, migrated, seeded, built,
 and validated locally (see `docs/EXECUTION_PLAN.md`). This section is kept for
 historical context — full details: [docs/SANDBOX_LIMITATIONS.md](docs/SANDBOX_LIMITATIONS.md).
 
-## License
+## Licensing status
 
-Proprietary and unlicensed for external use. See [LICENSE](LICENSE) and
+`package.json` currently declares `UNLICENSED`. No public license grant or
+external contribution terms are evidenced. Licensing and contribution-rights
+decisions require Founder review and, where appropriate, qualified counsel. See
 [CONTRIBUTING.md](CONTRIBUTING.md).

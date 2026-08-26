@@ -4,9 +4,12 @@ REST, NestJS, global prefix `/api`.
 
 The checked-in, generated route inventory is
 [`docs/api/API_INVENTORY.json`](api/API_INVENTORY.json). It is derived from
-literal NestJS controller decorators and checked by `pnpm docs:api:check` as
-part of the root script tests. Run `pnpm docs:api:update` after intentionally
-changing a controller route.
+the literal global prefix plus direct NestJS controller decorators and checked
+by `pnpm docs:api:check` as part of the root script tests. GET, POST, PUT, PATCH,
+DELETE, HEAD, OPTIONS, ALL, and SSE are recognized, including import aliases and
+namespace imports. `RequestMapping`, dynamic paths, custom route wrappers, and
+controller methods without exactly one recognized direct route decorator fail
+closed. Run `pnpm docs:api:update` after intentionally changing a route.
 
 Swagger attempts to generate `/api/docs` at application startup. Generation is
 best-effort and deliberately cannot take down the API if decorator metadata is

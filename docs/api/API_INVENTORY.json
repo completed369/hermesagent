@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedFrom": "apps/api/src/modules/**/*.controller.ts",
+  "generatedFrom": "apps/api/src/main.ts + apps/api/src/modules/**/*.controller.ts",
   "globalPrefix": "/api",
   "routeCount": 78,
   "routes": [

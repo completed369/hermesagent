@@ -1,9 +1,10 @@
 # Contributing to VentureOS
 
-VentureOS is a proprietary repository. A public clone or readable source tree
-does not grant permission to use, copy, distribute, sublicense, sell, or deploy
-the software. Contribution access and acceptance are at the repository owner's
-discretion; see [`LICENSE`](LICENSE).
+`package.json` currently declares this repository `UNLICENSED`. No public
+license grant, contributor license agreement, contribution-rights transfer, or
+external contribution process is evidenced. Do not solicit or accept an
+external contribution until the Founder establishes the applicable terms with
+qualified legal review where appropriate.
 
 ## Before changing source
 
