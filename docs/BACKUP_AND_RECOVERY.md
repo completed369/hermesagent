@@ -81,6 +81,18 @@ selected environment:
 8. Record the restore evidence, duration, data timestamp, and any data loss
    against the approved RPO/RTO.
 
+`packages/database/src/restore-drill.ts` and
+`docs/ROLLBACK_RESTORE_READINESS.md` now define a fail-closed, disposable
+restore-drill orchestration and evidence schema. Its CI fixture creates and
+destroys a fresh synthetic PostgreSQL database. This is useful readiness
+evidence, but it does not prove a provider backup, `pg_dump`, PITR, encryption,
+retention, off-site storage, Temporal recovery, or a real-environment restore.
+
+The same source-only slice records an explicit migration-compatibility decision
+before code rollback. A prior release may be reported as restored only after its
+exact source SHA, all five image digests, and required health checks are observed;
+restart-command acceptance is not success.
+
 ## Production-grade backup automation still required
 
 Before production or commercial launch, implement and verify:

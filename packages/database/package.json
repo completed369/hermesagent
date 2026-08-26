@@ -19,7 +19,8 @@
     "reset-founder-password": "dotenv -e ../../.env -- tsx src/reset-founder-password.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "typecheck": "tsc --noEmit",
-    "test:unit": "vitest run --passWithNoTests"
+    "test:unit": "vitest run --passWithNoTests --exclude src/restore-drill.integration.test.ts",
+    "test:integration": "vitest run src/restore-drill.integration.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "6.19.3",
