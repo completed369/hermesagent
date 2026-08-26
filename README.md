@@ -8,19 +8,23 @@ holding final authority over every spend, publication, and irreversible
 action. See `PROJECT_CONTEXT.md` for the full mission and `docs/ROADMAP.md`
 for the phased delivery plan.
 
-**Current status: verified LOCAL DEVELOPMENT build. All numbered internal
-phases 0–8 are committed and validation-green — the full six-stage suite
-(format, lint, typecheck, unit, integration, build) passes, and the
-Playwright login/dashboard e2e suite passes 4/4. This is NOT a production
-deployment: real AI provider calls, live Etsy publishing, real payments, and
-advertising spend all remain disabled/pending, and founder approval remains
-mandatory for every sensitive action. See
+**Verified repository status (dated reviewed source baseline: 2026-08-26).**
+The application has a green clean-runner CI baseline covering formatting,
+linting, typechecking, Prisma migrations, unit and PostgreSQL integration tests,
+production builds, and Chromium E2E. CodeQL reported no open alerts at review
+time. Collaboration and the service-only Agent Control Plane foundations are
+merged. Codex, Hermes, and Pi remain `NOT_CONFIGURED`: no authenticated runtime
+round trip has been established. This source review is not a production,
+publication, private-staging, customer, or commercial-launch claim. Real AI
+providers, live marketplace publication, payment processing, and advertising
+remain disabled or unavailable, and consequential actions remain governed. See
 [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) (canonical status),
 [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md), and
-[docs/SANDBOX_LIMITATIONS.md](docs/SANDBOX_LIMITATIONS.md) for the historical
-sandbox context in which the code was first authored.**
+[docs/RELEASE_READINESS_2026-08-26.md](docs/RELEASE_READINESS_2026-08-26.md).
+GitHub checks and protected operational evidence are authoritative for mutable
+current state.
 
-## What's implemented in Phase 1
+## Implemented foundations
 
 - Founder authentication (email/password, hashed with scrypt, server-side sessions)
 - Workspace + role-based access control (RBAC), enforced server-side on every route
@@ -35,17 +39,22 @@ sandbox context in which the code was first authored.**
 - Deterministic finance, opportunity-scoring, and policy engines with unit tests
   (built ahead of schedule as shared, framework-agnostic packages so Phase 2/3
   can consume them without rewrites — see `docs/ROADMAP.md`)
+- Collaboration with active-workspace switching, invitation acceptance,
+  membership management, role enforcement, and tenant-scoped session handling
+- Durable, workspace-scoped Agent Control Plane objectives, projects, tasks,
+  dependencies, runs, artifacts, approvals, broker reservations, bridge
+  admission evidence, scoped secret leases, supervision policy, and audit/usage
+  evidence — without claiming a connected or executing production runtime
 
-## What's explicitly NOT implemented yet
+## Explicit boundaries
 
-The numbered internal implementation phases 0–8 (opportunity feed, evidence system, AI board of
-agents, approval workflow, product/listing studio, research connectors,
-marketplace pilot, finance/analytics, multi-venture SaaS) are all built and
-their nav entries are live. What remains deliberately mock-only or pending —
-by founder decision, not omission — is: real AI model calls (`AI_PROVIDER=mock`),
-live Etsy publishing (ADR-007, mock-only), real payment processing (ADR-010,
-mock-only), advertising spend, and any staging/production deployment. These
-stay disabled until the founder explicitly authorises them. See
+Repository source implements the numbered venture workflow and later governed
+workforce foundations. Source presence does not establish that a feature is
+published, deployed, connected to a provider, or available to customers. Real
+AI model calls (`AI_PROVIDER=mock`), live Etsy publishing (ADR-007, mock-only),
+real payment processing (ADR-010, mock-only), advertising spend, production
+runtime launching, and authenticated Codex/Hermes/Pi connections remain absent
+or disabled. See
 `docs/ROADMAP.md`, `docs/DECISIONS.md`, and `docs/KNOWN_LIMITATIONS.md`.
 
 ## Repository layout
@@ -88,6 +97,9 @@ current state: the code has since been installed, migrated, seeded, built,
 and validated locally (see `docs/EXECUTION_PLAN.md`). This section is kept for
 historical context — full details: [docs/SANDBOX_LIMITATIONS.md](docs/SANDBOX_LIMITATIONS.md).
 
-## License
+## Licensing status
 
-Proprietary / unlicensed. Founder: Yiannis.
+`package.json` currently declares `UNLICENSED`. No public license grant or
+external contribution terms are evidenced. Licensing and contribution-rights
+decisions require Founder review and, where appropriate, qualified counsel. See
+[CONTRIBUTING.md](CONTRIBUTING.md).

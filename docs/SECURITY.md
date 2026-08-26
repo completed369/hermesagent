@@ -40,6 +40,12 @@ not access a filesystem, resolve a path, launch a process, or close launch-time
 TOCTOU. The deterministic positive evidence is test-local and the production
 launcher remains deny-only.
 
+ADR-0025 adds a fixed, repository-owned, test-only process-tree fixture that
+exercises bounded cancellation semantics on Windows and Linux. Its process API
+imports remain under `scripts/`, outside production package exports, build
+output, and final images. It accepts no arbitrary executable or argv and does
+not establish a production supervisor or a connected runtime.
+
 ## Implemented in Phase 1
 
 - Password hashing: scrypt with random per-password salt, constant-time
@@ -178,13 +184,18 @@ available`. Mock modes are explicit and never fall through to live behavior.
 
 ## Deferred / not yet implemented
 
-Multi-factor authentication; account recovery; SAST/secret scanning in CI;
-malware scanning for uploaded files (integration point noted in code, no
-scanner wired); OpenTelemetry export; worker/task-queue readiness monitoring;
-real commercial billing verification; and live AI, marketplace, payment,
-advertising, email, and notification adapters.
+Multi-factor authentication; account recovery; malware scanning for uploaded
+files (integration point noted in code, no scanner wired); OpenTelemetry export;
+worker/task-queue readiness monitoring; production runtime supervision and
+authenticated adapters; real commercial billing verification; and live AI,
+marketplace, payment, advertising, email, voice, and notification adapters.
+
+CodeQL and source/workflow secret-pattern gates exist, but they do not prove
+that every repository-host setting, dependency, artifact, or future provider
+payload is safe. Security state must be re-queried for the exact release source.
 
 ## See also
 
-`THREAT_MODEL.md` for the threat-by-threat status, `PRIVACY_GDPR.md` for
-data handling, `KNOWN_LIMITATIONS.md` for the consolidated gap list.
+The repository root `SECURITY.md` defines private reporting. `THREAT_MODEL.md`
+contains threat-by-threat status, `PRIVACY_GDPR.md` covers data handling, and
+`KNOWN_LIMITATIONS.md` is the consolidated gap list.

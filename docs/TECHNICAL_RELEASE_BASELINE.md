@@ -1,5 +1,11 @@
 # Application Technical Release Baseline
 
+> Historical evidence: this 2026-07-30 local baseline is preserved unchanged as
+> a record of what was verified then. It is not the mutable current release
+> state. See `RELEASE_READINESS_2026-08-26.md` for the later dated, public-safe
+> source review; GitHub checks and authorized protected operational evidence are
+> authoritative for live state.
+
 Recorded: 2026-07-30
 
 This record defines the locally verified application technical baseline. It is

@@ -1,9 +1,24 @@
 # API Design
 
-REST, NestJS, global prefix `/api`. OpenAPI docs served at `/api/docs` via
-`@nestjs/swagger` (generated from decorators, not hand-maintained).
+REST, NestJS, global prefix `/api`.
 
-## Phase 1 endpoints
+The checked-in, generated route inventory is
+[`docs/api/API_INVENTORY.json`](api/API_INVENTORY.json). It is derived from
+the literal global prefix plus direct NestJS controller decorators and checked
+by `pnpm docs:api:check` as part of the root script tests. GET, POST, PUT, PATCH,
+DELETE, HEAD, OPTIONS, ALL, and SSE are recognized, including import aliases and
+namespace imports. `RequestMapping`, dynamic paths, custom route wrappers, and
+controller methods without exactly one recognized direct route decorator fail
+closed. Run `pnpm docs:api:update` after intentionally changing a route.
+
+Swagger attempts to generate `/api/docs` at application startup. Generation is
+best-effort and deliberately cannot take down the API if decorator metadata is
+incompatible with the runtime transpiler. Therefore `/api/docs` is not the
+release contract and this repository does not claim a complete OpenAPI snapshot.
+The generated inventory is a route-drift contract only: it does not describe
+request/response schemas, permissions, side effects, or provider availability.
+
+## Representative foundation endpoints
 
 | Method | Path                    | Auth                   | Purpose                                      |
 | ------ | ----------------------- | ---------------------- | -------------------------------------------- |
@@ -30,9 +45,10 @@ in `docs/HEALTH_CHECKS.md`.
   via `SafeExceptionFilter` — internal error detail is logged, never returned.
 - Every response includes an `x-correlation-id` header (set by
   `CorrelationIdMiddleware`, echoing the caller's own ID if provided).
-- Idempotency keys for sensitive mutating operations are planned for Phase 3
-  (approvals, product generation) — not needed yet since Phase 1 has no
-  financially-sensitive mutations.
+- Sensitive implemented mutations use domain-specific idempotency and durable
+  binding where required. An endpoint's presence in the generated inventory
+  never establishes that its provider, publication, payment, or runtime side
+  effect is enabled.
 
 ## Rate limiting
 
