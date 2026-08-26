@@ -10,6 +10,8 @@ const packageFiles = [
   'packages/agent-bridge/src/policy.ts',
   'packages/agent-bridge/src/protocol.ts',
   'packages/agent-bridge/src/secret-lease.ts',
+  'packages/agent-bridge/src/supervision-authorization.ts',
+  'packages/agent-bridge/src/supervision-evidence-reader.ts',
   'packages/agent-bridge/src/supervision-lifecycle.ts',
   'packages/agent-bridge/src/supervision-policy.ts',
 ];
@@ -31,7 +33,10 @@ test('Agent Bridge foundation contains no transport, network, or process executi
 });
 
 test('production secret resolution is deny-only and has no ambient credential source', () => {
-  const source = serviceFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
+  const source = serviceFiles
+    .filter((file) => !file.endsWith('supervision-evidence-reader.ts'))
+    .map((file) => readFileSync(file, 'utf8'))
+    .join('\n');
   const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
   const module = readFileSync(
     'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
@@ -43,6 +48,94 @@ test('production secret resolution is deny-only and has no ambient credential so
   assert.doesNotMatch(source, /\bBRIDGE_SECRET_RESOLVER\b/u);
   assert.match(module, /new DenyBridgeSecretLeaseResolver\(\)/u);
   assert.match(module, /provide:\s*BRIDGE_SECRET_LEASE_RESOLVER/u);
+});
+
+test('trusted executable evidence is Linux-only, opened-file bound, and cannot launch', () => {
+  const reader = readFileSync('packages/agent-bridge/src/supervision-evidence-reader.ts', 'utf8');
+  const authorization = readFileSync(
+    'packages/agent-bridge/src/supervision-authorization.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const tsconfig = JSON.parse(readFileSync('packages/agent-bridge/tsconfig.json', 'utf8'));
+  const testTsconfig = JSON.parse(readFileSync('packages/agent-bridge/tsconfig.test.json', 'utf8'));
+  const packageJson = JSON.parse(readFileSync('packages/agent-bridge/package.json', 'utf8'));
+  const runtimeAssertion = readFileSync(
+    'packages/agent-bridge/scripts/assert-runtime-boundary.mjs',
+    'utf8',
+  );
+  const runtimeCleaner = readFileSync(
+    'packages/agent-bridge/scripts/clean-runtime-output.mjs',
+    'utf8',
+  );
+  const imageWorkflow = readFileSync('.github/workflows/runtime-substrate-remediation.yml', 'utf8');
+  const imageBoundary = readFileSync('scripts/verify-agent-bridge-runtime-root.mjs', 'utf8');
+  assert.match(reader, /process\.platform !== 'linux'/u);
+  assert.match(reader, /validatedLinuxInspectionFlags\(constants\)/u);
+  assert.match(reader, /input\.O_NOFOLLOW[\s\S]*<= 0/u);
+  assert.match(reader, /input\.O_NONBLOCK[\s\S]*<= 0/u);
+  assert.equal((reader.match(/handle\.stat\(\{ bigint: true \}\)/gu) ?? []).length, 2);
+  assert.match(reader, /digestOpenedFile\(handle\)/u);
+  assert.match(reader, /finalStat\.ctimeNs !== stat\.ctimeNs/u);
+  assert.match(reader, /currentPathStat\.ino !== finalStat\.ino/u);
+  assert.match(reader, /finalResolvedPath !== manifest\.executable\.canonicalPath/u);
+  assert.match(reader, /stat\.size > BigInt\(MAX_EXECUTABLE_BYTES\)/u);
+  assert.match(reader, /stat\.mode & 0o7777n/u);
+  assert.match(reader, /mode > 0o777 \|\| \(mode & 0o222\) !== 0/u);
+  assert.match(reader, /identityReference !== authorization\.identityReference/u);
+  assert.match(reader, /sha256 !== authorization\.sha256/u);
+  const revalidationIndex = reader.indexOf(
+    'authorization = validateLinuxExecutableAuthorization(storedAuthorization)',
+  );
+  const openIndex = reader.indexOf('handle = await fs.open(');
+  assert.ok(revalidationIndex >= 0 && openIndex > revalidationIndex);
+  assert.match(reader, /Math\.min\([\s\S]*authorizationExpiryMilliseconds/u);
+  assert.match(authorization, /authorization\.testOnly !== true/u);
+  assert.match(authorization, /verify\(/u);
+  assert.match(reader, /authorizationHash: linuxExecutableAuthorizationHash\(authorization\)/u);
+  assert.match(reader, /return validateSupervisorAdmission\(manifest, evidence\)\.evidence/u);
+  assert.doesNotMatch(
+    reader,
+    /from\s+['"]node:(?:child_process|cluster|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(reader, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.doesNotMatch(reader, /\bprocess\.(?:env|cwd)\b/u);
+  assert.match(index, /supervision-evidence-reader/u);
+  assert.deepEqual(tsconfig.exclude, [
+    'src/**/*.test.ts',
+    'src/**/*.test.tsx',
+    'src/**/*.test.cts',
+    'src/**/*.test.mts',
+    'src/**/*.spec.ts',
+    'src/**/*.spec.tsx',
+    'src/**/*.spec.cts',
+    'src/**/*.spec.mts',
+    'src/**/__tests__/**',
+  ]);
+  assert.deepEqual(testTsconfig.exclude, []);
+  assert.equal(testTsconfig.compilerOptions.noEmit, true);
+  assert.match(packageJson.scripts.build, /clean-runtime-output/u);
+  assert.match(packageJson.scripts.build, /assert-runtime-boundary/u);
+  assert.deepEqual(packageJson.files, ['dist']);
+  assert.match(runtimeCleaner, /tsconfig\.tsbuildinfo/u);
+  assert.match(runtimeAssertion, /\\\.\(\?:test\|spec\)\\\./u);
+  assert.match(runtimeAssertion, /deterministic-supervision/u);
+  assert.match(runtimeAssertion, /package allowlist is not runtime-only/u);
+  assert.match(imageWorkflow, /packages\/agent-bridge\/\*\*/u);
+  assert.match(imageWorkflow, /types: \[opened, synchronize, reopened, ready_for_review\]/u);
+  assert.match(imageWorkflow, /Verify test signing material and fixtures are absent/u);
+  assert.match(imageWorkflow, /verify-agent-bridge-runtime-root\.mjs/u);
+  assert.match(imageWorkflow, /-mindepth 1 -printf '%y\\0%P\\0%l\\0'/u);
+  assert.match(imageWorkflow, /find "\$rootfs" -type f -print0 > "\$runtime_file_manifest"/u);
+  assert.match(imageWorkflow, /done < "\$runtime_file_manifest"/u);
+  assert.doesNotMatch(imageWorkflow, /grep -R/u);
+  assert.match(imageWorkflow, /grep -aFq/u);
+  assert.doesNotMatch(imageWorkflow, /binary-files=without-match/u);
+  assert.doesNotMatch(imageBoundary, /from ['"]node:fs['"]/u);
+  assert.match(imageBoundary, /\\\.\(\?:test\|spec\)\\\./u);
+  assert.match(imageBoundary, /TEST_SIGNING_FINGERPRINT/u);
+  assert.match(imageBoundary, /for await \(const chunk of process\.stdin\)/u);
+  assert.match(imageWorkflow, /MC4CAQAwBQYDK2VwBCIEIDXgLTsIlYz/u);
 });
 
 test('OS supervision policy is inert and the production launcher remains deny-only', () => {
@@ -64,7 +157,8 @@ test('OS supervision policy is inert and the production launcher remains deny-on
   assert.match(supervision, /authorizedWorktreeRoot/u);
   assert.match(supervision, /authorizedManifestHash/u);
   assert.match(supervision, /argumentPolicyReference/u);
-  assert.match(supervision, /sha256\(manifest\.argv\) !== evidence\.argvHash/u);
+  assert.match(supervision, /validatedManifest\.argvHash !== evidence\.argvHash/u);
+  assert.match(supervision, /argvHash: sha256\(manifest\.argv\)/u);
   assert.doesNotMatch(index, /deterministic-supervision/u);
   assert.match(policy, /class DenyRuntimeProcessLauncher implements RuntimeProcessLauncher/u);
   assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);

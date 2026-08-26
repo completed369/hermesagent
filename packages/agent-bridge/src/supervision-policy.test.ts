@@ -171,6 +171,21 @@ describe('runtime OS supervision admission policy', () => {
   });
 
   it.each([
+    ['authorizationId', 'authorization-other'],
+    ['authorizationVersion', 2],
+    ['authorizationHash', '8'.repeat(64)],
+    ['authorizationSignerKeyId', 'signer-other'],
+    ['authorizationValidUntil', '2026-08-26T00:03:00.000Z'],
+    ['authorizationSignature', `${'A'.repeat(86)}==`],
+  ] as const)('rejects unsigned authorization provenance drift in %s', (field, value) => {
+    const fixture = deterministicLinuxAdmission();
+    (fixture.evidence as unknown as Record<string, unknown>)[field] = value;
+    expect(() => validateSupervisorAdmission(fixture.manifest, fixture.evidence)).toThrow(
+      expect.objectContaining({ code: 'INVALID_EVIDENCE' }),
+    );
+  });
+
+  it.each([
     '/opt/ventureos/password/runtime-fixture',
     `/opt/ventureos/${'glpat-abcdefghijklmnopqrstuvwxyz'}/runtime-fixture`,
   ])('rejects sensitive material smuggled through path %s', (canonicalPath) => {
@@ -185,23 +200,23 @@ describe('runtime OS supervision admission policy', () => {
   });
 
   it.each([
-    ['workspaceId', 'workspace-other'],
-    ['runtimeId', 'runtime-other'],
-    ['connectionId', 'connection-other'],
-    ['manifestId', 'manifest-other'],
-    ['manifestVersion', 2],
-    ['authorizedManifestHash', '8'.repeat(64)],
-    ['adapterKind', 'adapter-other'],
-    ['authorizedWorktreeRoot', '/workspaces/other'],
-    ['argumentPolicyReference', 'argument-policy-other'],
-    ['sha256', '8'.repeat(64)],
-    ['identityReference', 'device-8:inode-12'],
-  ] as const)('rejects exact binding drift in %s', (field, value) => {
+    ['workspaceId', 'workspace-other', 'BINDING_MISMATCH'],
+    ['runtimeId', 'runtime-other', 'BINDING_MISMATCH'],
+    ['connectionId', 'connection-other', 'BINDING_MISMATCH'],
+    ['manifestId', 'manifest-other', 'BINDING_MISMATCH'],
+    ['manifestVersion', 2, 'BINDING_MISMATCH'],
+    ['authorizedManifestHash', '8'.repeat(64), 'BINDING_MISMATCH'],
+    ['adapterKind', 'adapter-other', 'INVALID_EVIDENCE'],
+    ['authorizedWorktreeRoot', '/workspaces/other', 'INVALID_EVIDENCE'],
+    ['argumentPolicyReference', 'argument-policy-other', 'INVALID_EVIDENCE'],
+    ['sha256', '8'.repeat(64), 'INVALID_EVIDENCE'],
+    ['identityReference', 'device-8:inode-12', 'INVALID_EVIDENCE'],
+  ] as const)('rejects exact binding drift in %s', (field, value, code) => {
     const fixture = deterministicLinuxAdmission();
     if (field in fixture.evidence)
       (fixture.evidence as unknown as Record<string, unknown>)[field] = value;
     expect(() => validateSupervisorAdmission(fixture.manifest, fixture.evidence)).toThrow(
-      expect.objectContaining({ code: 'BINDING_MISMATCH' }),
+      expect.objectContaining({ code }),
     );
   });
 
@@ -220,6 +235,15 @@ describe('runtime OS supervision admission policy', () => {
         ownerUid: 10_002,
         ownerGid: 10_001,
         mode: 0o500,
+        symbolicLink: false,
+      },
+    },
+    {
+      platformEvidence: {
+        kind: 'LINUX',
+        ownerUid: 10_001,
+        ownerGid: 10_001,
+        mode: 0o700,
         symbolicLink: false,
       },
     },
@@ -340,7 +364,7 @@ describe('runtime OS supervision admission policy', () => {
     const fixture = deterministicLinuxAdmission();
     (fixture.evidence as unknown as Record<string, unknown>).testOnly = false;
     expect(() => validateSupervisorAdmission(fixture.manifest, fixture.evidence)).toThrow(
-      expect.objectContaining({ code: 'TEST_ONLY_MISMATCH' }),
+      expect.objectContaining({ code: 'INVALID_EVIDENCE' }),
     );
     const adapterEscape = deterministicLinuxAdmission();
     (adapterEscape.manifest as unknown as Record<string, unknown>).adapterKind = 'CODEX_APP_SERVER';

@@ -3,10 +3,12 @@ name: Runtime substrate remediation evidence
 'on':
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'Dockerfile.staging'
       - 'package.json'
       - 'packages/database/package.json'
+      - 'packages/agent-bridge/**'
       - 'pnpm-lock.yaml'
       - 'scripts/runtime-secret-entrypoint.mjs'
       - 'scripts/staging-build-contract.test.mjs'
@@ -136,6 +138,41 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/completed369/hermesagent
             org.opencontainers.image.revision=${{ github.event.pull_request.head.sha }}
+      - name: Verify test signing material and fixtures are absent from final image
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker load --input "/tmp/ventureos-${IMAGE_NAME}.tar"
+          image="local/ventureos-${IMAGE_NAME}:${SOURCE_SHA}"
+          cid="$(docker create "$image")"
+          rootfs="$(mktemp -d)"
+          runtime_file_manifest="$(mktemp)"
+          cleanup() {
+            docker rm -f "$cid" >/dev/null 2>&1 || true
+            rm -rf -- "$rootfs"
+            rm -f -- "$runtime_file_manifest"
+          }
+          trap cleanup EXIT
+          docker export "$cid" | tar -xf - -C "$rootfs"
+          find "$rootfs" -mindepth 1 -printf '%y\0%P\0%l\0' | node scripts/verify-agent-bridge-runtime-root.mjs
+          find "$rootfs" -type f -print0 > "$runtime_file_manifest"
+          while IFS= read -r -d '' runtime_file; do
+            if grep -aFq \
+              'MC4CAQAwBQYDK2VwBCIEIDXgLTsIlYz/jfY7Or5Ylt4TinBgk8MUM5C+13sON7Uo' \
+              "$runtime_file"; then
+              echo 'Test signing material entered a final runtime image.' >&2
+              exit 1
+            else
+              fingerprint_status=$?
+              if test "$fingerprint_status" -ne 1; then
+                echo 'Final runtime image signing-material scan failed.' >&2
+                exit 1
+              fi
+            fi
+          done < "$runtime_file_manifest"
       - name: Generate complete vulnerability evidence
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
