@@ -1333,6 +1333,10 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     });
     const retryLifetimeRun = await createAcceptedLifetimeRun('retry', 2);
     const futureUsageTime = new Date(futurePeriodStart.getTime() + 1);
+    const rejectedLifetimeId = `forged-lifetime-budget-${suffix}`;
+    const auditBeforeLifetimeDenial = await prisma.auditEvent.count({
+      where: { workspaceReference: workspaceId },
+    });
     await expect(
       forgedUsageLedger(
         'lifetime-budget',
@@ -1352,6 +1356,33 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         lifetimeTaskId,
       ),
     ).rejects.toThrow(/task durable budget correlation mismatch/iu);
+    expect(
+      await prisma.acpBridgeReceipt.count({ where: { workspaceId, id: rejectedLifetimeId } }),
+    ).toBe(0);
+    expect(await prisma.acpRunUsage.count({ where: { workspaceId, id: rejectedLifetimeId } })).toBe(
+      0,
+    );
+    expect(
+      await prisma.acpCostLedgerEntry.count({ where: { workspaceId, id: rejectedLifetimeId } }),
+    ).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      auditBeforeLifetimeDenial,
+    );
+    await prisma.acpBridgeDispatch.update({
+      where: { workspaceId_id: { workspaceId, id: retryLifetimeRun.dispatchId } },
+      data: { state: 'FAILED', terminalAt: new Date() },
+    });
+    await prisma.acpRun.update({
+      where: { workspaceId_id: { workspaceId, id: retryLifetimeRun.runId } },
+      data: { status: 'FAILED', version: 2, completedAt: new Date() },
+    });
+    expect(
+      (
+        await prisma.acpBrokerReservation.findFirstOrThrow({
+          where: { workspaceId, runId: retryLifetimeRun.runId },
+        })
+      ).state,
+    ).toBe('RELEASED');
     const boundaryUsageTime = new Date(workspaceCostPolicy.periodEnd.getTime() - 1);
     await expect(
       forgedUsageLedger(
@@ -1505,6 +1536,9 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       `complete-${suffix}`,
     );
 
+    const receiptCountBeforeCancellationFlow = await prisma.acpBridgeReceipt.count({
+      where: { workspaceId, sessionId },
+    });
     const cancelDispatchId = `cancel-dispatch-${suffix}`;
     refreshCandidateSnapshot();
     const cancelRouted = await brokerReservations.reserveForPreparedRun(
@@ -1654,7 +1688,9 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       ).state,
     ).toBe('RELEASED');
 
-    expect(await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId } })).toBe(11);
+    expect(await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId } })).toBe(
+      receiptCountBeforeCancellationFlow + 2,
+    );
     expect(
       (
         await prisma.acpBridgeDispatch.findUniqueOrThrow({
