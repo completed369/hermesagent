@@ -1052,9 +1052,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
               ...(usageRecordedAt instanceof Date ? { receivedAt: usageRecordedAt } : {}),
             },
           });
-          const receipt = await tx.acpBridgeReceipt.findUniqueOrThrow({
-            where: { workspaceId_id: { workspaceId, id: createdReceipt.id } },
-          });
+          const [persistedReceiptClock] = await tx.$queryRaw<Array<{ receivedAtIso: string }>>(
+            Prisma.sql`SELECT to_char("receivedAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "receivedAtIso" FROM "acp_bridge_receipts" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${createdReceipt.id}`,
+          );
+          const receipt = {
+            ...createdReceipt,
+            receivedAt: new Date(persistedReceiptClock!.receivedAtIso),
+          };
           const resolvedUsageRecordedAt =
             usageRecordedAt instanceof Date ? usageRecordedAt : usageRecordedAt(receipt.receivedAt);
           const resolvedLedgerRecordedAt =
@@ -1371,16 +1375,16 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           receivedAt: new Date('2000-01-01T00:00:00.000Z'),
         },
       });
-      const persisted = await tx.acpBridgeReceipt.findUniqueOrThrow({
-        where: { workspaceId_id: { workspaceId, id: hostileTimezoneReceiptId } },
-      });
+      const [persisted] = await tx.$queryRaw<Array<{ receivedAtIso: string }>>(
+        Prisma.sql`SELECT to_char("receivedAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "receivedAtIso" FROM "acp_bridge_receipts" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${hostileTimezoneReceiptId}`,
+      );
       const [clock] = await tx.$queryRaw<Array<{ observedAt: Date }>>(
         Prisma.sql`SELECT clock_timestamp() AS "observedAt"`,
       );
       await tx.acpBridgeReceipt.delete({
         where: { workspaceId_id: { workspaceId, id: hostileTimezoneReceiptId } },
       });
-      return { persistedAt: persisted.receivedAt, observedAt: clock!.observedAt };
+      return { persistedAt: new Date(persisted!.receivedAtIso), observedAt: clock!.observedAt };
     });
     expect(
       Math.abs(

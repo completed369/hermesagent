@@ -96,7 +96,7 @@ test('recognized usage is transactionally paired with ledger and immutable evide
   assert.match(bridgeService, /receipt\.id,\s*receipt\.receivedAt,\s*now/u);
   assert.match(
     bridgeService,
-    /envelope\.type !== 'USAGE'[\s\S]*?acpBridgeReceipt\.findUniqueOrThrow/u,
+    /envelope\.type !== 'USAGE'[\s\S]*?to_char\("receivedAt" AT TIME ZONE 'UTC'[\s\S]*?Usage receipt clock unavailable/u,
   );
   assert.match(bridgeService, /recordedAt:\s*receiptReceivedAt/u);
   assert.doesNotMatch(bridgeService, /spendRecordedAt|Database spend clock unavailable/u);

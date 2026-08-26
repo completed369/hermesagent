@@ -968,9 +968,11 @@ export class AcpBridgeAdmissionService
       },
     });
     if (envelope.type !== 'USAGE') return receipt;
-    return tx.acpBridgeReceipt.findUniqueOrThrow({
-      where: { workspaceId_id: { workspaceId: envelope.workspaceId, id: receipt.id } },
-    });
+    const [persisted] = await tx.$queryRaw<Array<{ receivedAtIso: string }>>(
+      Prisma.sql`SELECT to_char("receivedAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "receivedAtIso" FROM "acp_bridge_receipts" WHERE "workspaceId" = ${envelope.workspaceId}::uuid AND "id" = ${receipt.id}`,
+    );
+    if (!persisted) throw new AcpBridgeAdmissionDeniedError('Usage receipt clock unavailable');
+    return { ...receipt, receivedAt: new Date(persisted.receivedAtIso) };
   }
 
   private async applyMessage(
