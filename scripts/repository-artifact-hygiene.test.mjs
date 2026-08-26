@@ -21,6 +21,13 @@ const forbidden = [
   'nested/chat-transcript-2.OUT',
   'nested/chat-transcriptfinal.txt',
   'nested\\CHAT_TRANSCRIPT.TXT',
+  'buildlog.txt',
+  'nested\\BUILDLOG.TXT',
+  'chattranscript.txt',
+  'build-log',
+  'chat-transcript',
+  'test-output.txt',
+  'console-capture.txt',
 ];
 
 test('rejects raw log and transcript variants without case, suffix, or extension bypasses', () => {
@@ -36,6 +43,12 @@ test('allows source files and curated dated documentation', () => {
     'packages/observability/src/logger.ts',
     'apps/api/src/modules/audit/audit-log.service.ts',
     'catalog.txt',
+    'docs/build-log.md',
+    'packages/testing/src/test-output.ts',
+    'apps/web/src/console-capture.tsx',
+    'packages/contracts/src/chat-transcript.ts',
+    'build-logger.txt',
+    'contest-output.txt',
     'scripts/repository-artifact-hygiene.test.mjs',
   ];
 
@@ -70,5 +83,12 @@ test('reports every forbidden path with a fixed classification', () => {
       reason: 'raw transcript capture',
     },
     { filePath: 'nested\\CHAT_TRANSCRIPT.TXT', reason: 'raw transcript capture' },
+    { filePath: 'buildlog.txt', reason: 'raw execution log capture' },
+    { filePath: 'nested\\BUILDLOG.TXT', reason: 'raw execution log capture' },
+    { filePath: 'chattranscript.txt', reason: 'raw transcript capture' },
+    { filePath: 'build-log', reason: 'raw execution log capture' },
+    { filePath: 'chat-transcript', reason: 'raw transcript capture' },
+    { filePath: 'test-output.txt', reason: 'raw execution log capture' },
+    { filePath: 'console-capture.txt', reason: 'raw execution log capture' },
   ]);
 });

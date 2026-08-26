@@ -9,6 +9,10 @@ coverage/
 *-log*.txt
 *-log*.out
 *-log*.trace
+*buildlog*.txt
+*chattranscript*.txt
+*test-output*.txt
+*console-capture*.txt
 *transcript*.txt
 .env
 .env.local

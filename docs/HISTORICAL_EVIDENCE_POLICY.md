@@ -12,12 +12,15 @@ file check. Curated Markdown documents, source code, schemas, migrations, and
 deliberately reviewed test fixtures remain allowed.
 
 The 2026-08-26 cleanup removed legacy root-level logs and a chat transcript from
-the current tree after confirming that no current document or build referred to
-them. This reduces ongoing privacy, path-disclosure, and stale-evidence risk. It
-does **not** rewrite or purge Git history: earlier commits may still contain the
-removed files. Any future discovery of a real secret or regulated personal data
-in history requires a separate incident response, credential rotation where
-applicable, and an explicitly authorized history-remediation decision.
+the current tree after confirming that no build or executable path depends on
+them. Dated historical status reports may still name those removed artifacts as
+evidence observed at the time; those citations do not make the raw files current
+or durable release evidence. This reduces ongoing privacy, path-disclosure, and
+stale-evidence risk. It does **not** rewrite or purge Git history: earlier commits
+may still contain the removed files. Any future discovery of a real secret or
+regulated personal data in history requires a separate incident response,
+credential rotation where applicable, and an explicitly authorized
+history-remediation decision.
 
 Deleting a raw artifact is not evidence that its historical result passed or
 failed. Current status claims must continue to distinguish source, CI,
