@@ -143,6 +143,11 @@ function policyViolations(name, source) {
   if (pullRequestTriggered && !hasExplicitReadOnlyContents(workflow.permissions)) {
     violations.push(`${name}: pull-request workflow must explicitly set contents read or none`);
   }
+  if (pullRequestTriggered && containsRepositoryCredentialExpression(workflow.env)) {
+    violations.push(
+      `${name}: pull-request workflow environment references a repository credential`,
+    );
+  }
 
   if (pullRequestTriggered && permissionWritesContents(workflow.permissions)) {
     violations.push(`${name}: pull-request workflow grants contents write`);
@@ -285,6 +290,8 @@ jobs:
   const reusable = `
 on: [pull_request]
 permissions: { contents: read }
+env:
+  WORKFLOW_PAT: \${{ github['token'] }}
 jobs:
   unsafe:
     uses: owner/reusable@${'a'.repeat(40)}
@@ -292,6 +299,7 @@ jobs:
     environment: production
 `;
   assert.deepEqual(policyViolations('reusable.yml', reusable), [
+    'reusable.yml: pull-request workflow environment references a repository credential',
     'reusable.yml: pull-request job unsafe forwards reusable-workflow secrets',
     'reusable.yml: pull-request job unsafe targets a privileged environment',
   ]);
