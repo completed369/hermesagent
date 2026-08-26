@@ -116,7 +116,14 @@ export class WorkflowCentreService {
           }),
           tx.acpRuntime.count({ where: { workspaceId } }),
           tx.acpRuntimeConnection.count({ where: { workspaceId } }),
-          tx.acpApprovalRequest.count({ where: { workspaceId, state: 'PENDING' } }),
+          tx.acpApprovalRequest.count({
+            where: {
+              workspaceId,
+              state: 'PENDING',
+              requiredAuthorityLevel: 4,
+              expiresAt: { gt: clock.observedAt },
+            },
+          }),
         ]);
 
         const [workflowRows, objectiveRows, runtimeRows, connectionRows, approvalRows] =
@@ -183,7 +190,12 @@ export class WorkflowCentreService {
               },
             }),
             tx.acpApprovalRequest.findMany({
-              where: { workspaceId, state: 'PENDING' },
+              where: {
+                workspaceId,
+                state: 'PENDING',
+                requiredAuthorityLevel: 4,
+                expiresAt: { gt: clock.observedAt },
+              },
               orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
               take: LIMITS.pendingApprovals,
               select: {

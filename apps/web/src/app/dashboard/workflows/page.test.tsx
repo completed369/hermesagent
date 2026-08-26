@@ -101,7 +101,7 @@ function snapshot(): WorkflowCentreSnapshot {
       {
         id: 'generic-runtime-1',
         adapterKind: 'PROTOCOL_NEUTRAL',
-        status: 'PARTIAL',
+        status: 'CONNECTED',
         version: 1,
         updatedAt: '2026-08-26T06:00:00.000Z',
       },
@@ -142,6 +142,7 @@ describe('Workflow Centre dashboard', () => {
 
     expect(html).toContain('Workflow Centre');
     expect(html).toContain('Codex, Hermes and Pi: NOT_CONFIGURED');
+    expect(html).toContain('vos-badge vos-badge--mock">CONNECTED');
     expect(html).toContain('&lt;script&gt;globalThis.compromised=true&lt;/script&gt;');
     expect(html).toContain('&lt;img src=x onerror=globalThis.compromised=true&gt;');
     expect(html).not.toContain('<script>');

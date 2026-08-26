@@ -33,10 +33,13 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
   let primaryWorkflowId: string;
   let objectiveId: string;
   let taskId: string;
+  let primaryDependencyTaskId: string;
   let runId: string;
   let otherObjectiveId: string;
   let otherTaskId: string;
   let otherRunId: string;
+  let otherDependencyTaskId: string;
+  let expiredApprovalId: string;
 
   const assignmentVerifier: AssignmentEvidenceVerifier = {
     async verify() {
@@ -52,6 +55,7 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
 
   function plan(targetWorkspaceId: string, marker: string): DurableObjectivePlanInput {
     const projectId = `workflow-project-${marker}-${suffix}`;
+    const prerequisiteId = `workflow-task-prerequisite-${marker}-${suffix}`;
     return {
       workspaceId: targetWorkspaceId,
       idempotencyKey: `workflow-plan-${marker}-${suffix}`,
@@ -69,6 +73,26 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
       projects: [{ id: projectId, title: `Workflow project ${marker}` }],
       tasks: [
         {
+          id: prerequisiteId,
+          projectId,
+          title: `Prepare workflow evidence ${marker}`,
+          kind: 'quality.prepare',
+          dependencyIds: [],
+          requiredAuthority: 3,
+          costLimit: { currency: 'EUR', maximumMinorUnits: 40, maximumComputeUnits: 40 },
+          estimatedDurationMs: 500,
+          acceptanceCriteria: ['Preparation remains workspace scoped'],
+          verificationCriteria: ['Dependency remains explicit'],
+          stopConditions: ['Policy denial'],
+          retryPolicy: {
+            maximumAttempts: 1,
+            retryableFailureCodes: ['TRANSIENT'],
+            stopAfterFailureCodes: ['POLICY_DENIED'],
+          },
+          agentPolicy: { templateId: 'read-only-viewer' },
+          routingPolicy: { capabilityId: 'quality.prepare' },
+        },
+        {
           id: `workflow-task-${marker}-${suffix}`,
           projectId,
           title:
@@ -76,9 +100,9 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
               ? 'Review <script>globalThis.compromised=true</script>'
               : `Workflow task ${marker}`,
           kind: 'quality.verify',
-          dependencyIds: [],
+          dependencyIds: [prerequisiteId],
           requiredAuthority: 4,
-          costLimit: { currency: 'EUR', maximumMinorUnits: 100, maximumComputeUnits: 100 },
+          costLimit: { currency: 'EUR', maximumMinorUnits: 60, maximumComputeUnits: 60 },
           estimatedDurationMs: 1_000,
           acceptanceCriteria: ['Bounded response'],
           verificationCriteria: ['No authority is exposed'],
@@ -188,10 +212,12 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
       otherPlan,
     );
     objectiveId = primaryPlan.objective.id;
-    taskId = primaryPlan.tasks[0]!.id;
+    taskId = primaryPlan.tasks[1]!.id;
+    primaryDependencyTaskId = primaryPlan.tasks[0]!.id;
     runId = (await prisma.acpRun.findFirstOrThrow({ where: { workspaceId, taskId } })).id;
     otherObjectiveId = otherPlan.objective.id;
-    otherTaskId = otherPlan.tasks[0]!.id;
+    otherTaskId = otherPlan.tasks[1]!.id;
+    otherDependencyTaskId = otherPlan.tasks[0]!.id;
     otherRunId = (
       await prisma.acpRun.findFirstOrThrow({
         where: { workspaceId: otherWorkspaceId, taskId: otherTaskId },
@@ -314,9 +340,16 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
       state: 'PENDING',
       expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
     });
+    const expired = {
+      ...approval(workspaceId, objectiveId, taskId, runId, 'expired'),
+      createdAt: new Date('2020-01-01T00:00:00.000Z'),
+      expiresAt: new Date('2020-01-02T00:00:00.000Z'),
+    };
+    expiredApprovalId = expired.id;
     await prisma.acpApprovalRequest.createMany({
       data: [
         approval(workspaceId, objectiveId, taskId, runId, 'primary'),
+        expired,
         approval(otherWorkspaceId, otherObjectiveId, otherTaskId, otherRunId, 'other'),
       ],
     });
@@ -347,6 +380,37 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
     ).toBe(403);
   });
 
+  it('durably rejects non-Level-4 approval rows before they can pollute the summary', async () => {
+    const existing = await prisma.acpApprovalRequest.findFirstOrThrow({
+      where: { workspaceId, taskId, state: 'PENDING', expiresAt: { gt: new Date() } },
+    });
+    await expect(
+      prisma.acpApprovalRequest.create({
+        data: {
+          id: randomUUID(),
+          workspaceId,
+          objectiveId,
+          taskId,
+          runId,
+          actionCode: existing.actionCode,
+          exactTarget: `l3-target-${suffix}`,
+          artifactVersionId: `l3-artifact-${suffix}`,
+          evidenceHash: existing.evidenceHash,
+          policyVersion: existing.policyVersion,
+          policyHash: existing.policyHash,
+          bindingHash: existing.bindingHash,
+          requesterReference: `l3-requester-${suffix}`,
+          requesterActorKind: 'AGENT',
+          requesterAuthorityLevel: 3,
+          requiredAuthorityLevel: 3,
+          idempotencyKey: `l3-approval-${suffix}`,
+          state: 'PENDING',
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
   it('returns one bounded deterministic workspace snapshot without authority or sensitive data', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/workflow-centre')
@@ -362,8 +426,8 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
     expect(response.body.summary).toMatchObject({
       workflowRuns: 51,
       objectives: 1,
-      tasks: 1,
-      runs: 1,
+      tasks: 2,
+      runs: 2,
       runtimes: 1,
       connections: 1,
       pendingLevel4Approvals: 1,
@@ -378,8 +442,11 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
       ...Array.from({ length: 19 }, (_, index) => `step-${index + 1}`),
     ]);
     expect(response.body.objectives.map((item: { id: string }) => item.id)).toEqual([objectiveId]);
-    expect(response.body.tasks.map((item: { id: string }) => item.id)).toEqual([taskId]);
-    expect(response.body.runs.map((item: { id: string }) => item.id)).toEqual([runId]);
+    expect(response.body.tasks.map((item: { id: string }) => item.id)).toContain(taskId);
+    expect(response.body.runs.map((item: { id: string }) => item.id)).toContain(runId);
+    expect(response.body.dependencies).toEqual([
+      { taskId, dependsOnTaskId: primaryDependencyTaskId },
+    ]);
     expect(response.body.runtimes.map((item: { id: string }) => item.id)).toEqual([
       `runtime-primary-${suffix}`,
     ]);
@@ -393,9 +460,11 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
     expect(serialized).not.toContain(otherObjectiveId);
     expect(serialized).not.toContain(otherTaskId);
     expect(serialized).not.toContain(otherRunId);
+    expect(serialized).not.toContain(otherDependencyTaskId);
+    expect(serialized).not.toContain(expiredApprovalId);
     expect(serialized).not.toContain('otherWorkspaceWorkflow');
     expect(serialized).not.toContain(nullWorkspaceWorkflowId);
-    expect(serialized).not.toContain('CONNECTED');
+    expect(response.body.connectivity.status).toBe('NOT_CONFIGURED');
     for (const forbiddenKey of [
       'input',
       'output',

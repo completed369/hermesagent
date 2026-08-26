@@ -115,7 +115,7 @@ export interface WorkflowCentreSnapshot {
 }
 
 export function statusTone(status: string): 'ok' | 'danger' | 'mock' {
-  if (status === 'COMPLETED' || status === 'CONNECTED' || status === 'HEALTHY') return 'ok';
+  if (status === 'COMPLETED' || status === 'HEALTHY') return 'ok';
   if (status === 'FAILED' || status === 'DEGRADED' || status === 'UNKNOWN') return 'danger';
   return 'mock';
 }

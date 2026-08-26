@@ -38,6 +38,36 @@ test('Workflow Centre service is a bounded repeatable-read projection with no wr
   assert.doesNotMatch(service, /\$executeRaw/u);
 });
 
+test('every collection has a deterministic bound and hierarchical rows cannot escape it', () => {
+  for (const collection of [
+    'workflowRuns',
+    'objectives',
+    'tasks',
+    'dependencies',
+    'runs',
+    'runtimes',
+    'connections',
+    'pendingApprovals',
+  ]) {
+    assert.match(service, new RegExp(`take: LIMITS\\.${collection}`, 'u'), collection);
+    assert.match(service, new RegExp(`${collection}: truncate\\(`, 'u'), collection);
+  }
+  assert.match(service, /take: LIMITS\.stepsPerWorkflow \+ 1/u);
+  assert.match(service, /stepsTruncated: row\.steps\.length > LIMITS\.stepsPerWorkflow/u);
+  assert.match(service, /orderBy: \[\{ startedAt: 'desc' \}, \{ id: 'asc' \}\]/u);
+  assert.match(service, /orderBy: \[\{ createdAt: 'desc' \}, \{ id: 'asc' \}\]/u);
+  assert.match(service, /orderBy: \[\{ updatedAt: 'desc' \}, \{ id: 'asc' \}\]/u);
+  assert.match(service, /orderBy: \[\{ taskId: 'asc' \}, \{ dependsOnTaskId: 'asc' \}\]/u);
+  assert.match(service, /objectiveId: \{ in: objectiveIds \}/u);
+  assert.match(service, /taskId: \{ in: taskIds \}/u);
+});
+
+test('pending Founder summaries are unexpired Level-4 requests at the transaction clock', () => {
+  assert.equal((service.match(/requiredAuthorityLevel: 4/gu) ?? []).length, 2);
+  assert.equal((service.match(/expiresAt: \{ gt: clock\.observedAt \}/gu) ?? []).length, 2);
+  assert.equal((service.match(/state: 'PENDING'/gu) ?? []).length, 2);
+});
+
 test('Workflow Centre response source excludes authority-bearing and sensitive fields', () => {
   for (const forbidden of [
     'input: row.input',

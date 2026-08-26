@@ -17,6 +17,10 @@ dependency, run, runtime, connection, and pending Level-4 approval tables. Every
 collection has a fixed server-side limit and order, and the response reports
 truncation rather than silently implying completeness.
 
+Pending Founder summaries include only durable Level-4 requests whose expiry is
+later than the database clock sampled inside that same transaction. Lower-level
+requests are rejected by the durable schema and are not elevated by this view.
+
 The DTO is an allowlist. It includes identifiers, display-safe titles, persisted
 states, dependency edges, timestamps, and non-authoritative pending-decision
 summaries. It excludes workflow inputs and outputs, errors, task criteria,
@@ -31,6 +35,9 @@ with their stored status and are never promoted to direct-runtime connectivity
 evidence. A real direct-runtime connection still requires authenticated
 registration, capability exchange, heartbeat, task/status exchange, and an
 event/result round trip.
+Even if a future persisted internal record carries the literal `CONNECTED`
+status, the dashboard renders it as unverified rather than as a green direct-
+runtime connection.
 
 ## Security properties
 

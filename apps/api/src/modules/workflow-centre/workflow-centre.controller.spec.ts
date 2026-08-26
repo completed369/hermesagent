@@ -50,4 +50,43 @@ describe('WorkflowCentreService transaction boundary', () => {
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
     });
   });
+
+  it('never infers direct runtime connectivity from an internal CONNECTED record', async () => {
+    const empty = () => ({
+      count: vi.fn().mockResolvedValue(0),
+      findMany: vi.fn().mockResolvedValue([]),
+    });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ observedAt: new Date('2026-08-26T06:30:00.000Z') }]),
+      workflowRun: empty(),
+      acpObjective: empty(),
+      acpTask: empty(),
+      acpTaskDependency: empty(),
+      acpRun: empty(),
+      acpRuntime: empty(),
+      acpRuntimeConnection: {
+        count: vi.fn().mockResolvedValue(1),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'connection-1',
+            runtimeId: 'runtime-1',
+            environment: 'TEST_ONLY',
+            status: 'CONNECTED',
+            lastHeartbeatAt: null,
+            lastHeartbeatHealth: null,
+            version: 1,
+            updatedAt: new Date('2026-08-26T06:00:00.000Z'),
+          },
+        ]),
+      },
+      acpApprovalRequest: empty(),
+    };
+    databaseMock.transaction.mockImplementation(async (callback: (client: typeof tx) => unknown) =>
+      callback(tx),
+    );
+
+    const result = await new WorkflowCentreService().snapshot(user.workspaceId);
+    expect(result.connectivity.status).toBe('NOT_CONFIGURED');
+    expect(result.connections[0]?.status).toBe('CONNECTED');
+  });
 });
