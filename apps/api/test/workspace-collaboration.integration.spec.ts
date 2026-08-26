@@ -7,7 +7,7 @@ import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { prisma } from '@ventureos/database';
-import { hashSessionToken } from '@ventureos/auth';
+import { generateSessionToken, hashSessionToken } from '@ventureos/auth';
 import { loadEnv } from '@ventureos/config';
 import { AppModule } from '../src/app.module';
 import { AuditService } from '../src/modules/audit/audit.service';
@@ -117,7 +117,7 @@ describe('collaborative workspace invitations (integration)', () => {
   });
 
   async function sessionCookie(userId: string, activeWorkspaceId = workspaceId): Promise<string> {
-    const token = randomUUID();
+    const token = generateSessionToken();
     await prisma.session.create({
       data: {
         userId,
@@ -646,7 +646,7 @@ describe('collaborative workspace invitations (integration)', () => {
       data: {
         userId: user.id,
         activeWorkspaceId: sourceWorkspace.id,
-        tokenDigest: hashSessionToken(randomUUID()),
+        tokenDigest: hashSessionToken(generateSessionToken()),
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       },
     });
@@ -709,12 +709,12 @@ describe('collaborative workspace invitations (integration)', () => {
       },
     });
 
-    const singleToken = randomUUID();
+    const singleToken = generateSessionToken();
     const sessions = await Promise.all(
       [
         { userId: singleUser.id, token: singleToken },
-        { userId: multipleUser.id, token: randomUUID() },
-        { userId: orphanUser.id, token: randomUUID() },
+        { userId: multipleUser.id, token: generateSessionToken() },
+        { userId: orphanUser.id, token: generateSessionToken() },
       ].map(({ userId, token }) =>
         prisma.session.create({
           data: {

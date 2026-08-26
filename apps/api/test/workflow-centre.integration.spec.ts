@@ -10,7 +10,7 @@ import {
   type DurableArtifactEvidenceVerifier,
   type DurableObjectivePlanInput,
 } from '@ventureos/agent-control-plane';
-import { hashSessionToken } from '@ventureos/auth';
+import { generateSessionToken, hashSessionToken } from '@ventureos/auth';
 import { loadEnv } from '@ventureos/config';
 import { prisma } from '@ventureos/database';
 import { AppModule } from '../src/app.module';
@@ -129,7 +129,7 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
   }
 
   async function sessionCookie(userId: string, activeWorkspaceId: string): Promise<string> {
-    const token = randomUUID();
+    const token = generateSessionToken();
     await prisma.session.create({
       data: {
         userId,

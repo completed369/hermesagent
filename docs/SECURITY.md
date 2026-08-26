@@ -53,7 +53,14 @@ not establish a production supervisor or a connected runtime.
 - Server-side sessions: an opaque random 32-byte token is returned only at
   creation time. The database stores a deterministic SHA-256 digest in
   `Session.tokenDigest`; incoming tokens are digested before equality lookup.
-  Expiry and revocation remain server-enforced.
+  Cookie values must first match the exact 64-character lower-case hexadecimal
+  token format; JSON-cookie objects, arrays, malformed text, and oversized input
+  are rejected before hashing or database access.
+  Expiry and revocation remain server-enforced. Each protected request uses one
+  database-clock-bound projection of the exact session-selected workspace
+  membership. Deleted users/workspaces, removed memberships, revoked or expired
+  sessions, malformed permission keys, and roles exceeding the fixed permission
+  bound fail closed. Foreign workspace memberships are not hydrated.
 - httpOnly, sameSite=lax session cookie; `secure` flag auto-enabled in
   production (`NODE_ENV=production`).
 - Server-side RBAC on every sensitive route (`SessionAuthGuard` +

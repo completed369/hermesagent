@@ -68,10 +68,12 @@ or workload-scaling need demands independent scaling of specific modules.
 
 ## Server-side authorization, always
 
-Every sensitive route uses `SessionAuthGuard` (resolves a real DB session on
-every request) and, where relevant, `PermissionGuard` + `@RequirePermission`
-(RBAC checked against a live DB-backed role/permission join, not a JWT claim
-that could go stale). The frontend never assumes an action is allowed because a
+Every sensitive route uses `SessionAuthGuard` (resolves a real DB session and
+its exact active, non-deleted workspace membership against the database clock
+on every request) and, where relevant, `PermissionGuard` +
+`@RequirePermission` (RBAC checked against a bounded live DB-backed
+role/permission join, not a JWT claim that could go stale). The frontend never
+assumes an action is allowed because a
 button is visible; every sensitive backend restriction must be enforced in
 deterministic backend code.
 
