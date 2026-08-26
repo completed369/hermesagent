@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ValidatedSupervisorAdmission } from './supervision-policy';
+import { deterministicWindowsAdmission } from './__tests__/fixtures/deterministic-supervision';
 import {
   assertSupervisorProcessTransition,
   createSupervisorProcessBinding,
@@ -9,24 +9,20 @@ import {
   validateSupervisorProcessBinding,
 } from './supervision-lifecycle';
 
-const admission = {
-  manifest: {
-    workspaceId: 'workspace-fixture',
-    runtimeId: 'runtime-fixture',
-    connectionId: 'connection-fixture',
-    platform: 'WIN32',
-    testOnly: true,
-  },
-  manifestHash: '1'.repeat(64),
-  evidenceHash: '2'.repeat(64),
-  bindingHash: '3'.repeat(64),
-} as ValidatedSupervisorAdmission;
-
 function binding() {
-  return createSupervisorProcessBinding(admission, 'supervision-fixture', 'nonce-fixture');
+  const fixture = deterministicWindowsAdmission();
+  return createSupervisorProcessBinding(
+    fixture.manifest,
+    fixture.evidence,
+    'supervision-fixture',
+    'nonce-fixture',
+  );
 }
 
 describe('pure supervisor lifecycle contract', () => {
+  beforeEach(() => vi.useFakeTimers({ now: new Date('2026-08-26T00:00:00.000Z') }));
+  afterEach(() => vi.useRealTimers());
+
   it('binds cancellation to every exact admission and process identity field', () => {
     const current = binding();
     const cancellation = validateSupervisorCancellation(current, {
@@ -96,6 +92,26 @@ describe('pure supervisor lifecycle contract', () => {
     expect(() =>
       validateSupervisorProcessBinding({ ...current, manifestHash: 'not-a-digest' }),
     ).toThrow(/INVALID_BINDING/u);
+  });
+
+  it('cannot mint a lifecycle binding from caller-authored admission hashes or partial fiction', () => {
+    const fixture = deterministicWindowsAdmission();
+    expect(() =>
+      createSupervisorProcessBinding(
+        { workspaceId: 'workspace-fixture', runtimeId: 'runtime-fixture' },
+        { evidenceId: 'fiction' },
+        'supervision-fixture',
+        'nonce-fixture',
+      ),
+    ).toThrow();
+    expect(() =>
+      createSupervisorProcessBinding(
+        fixture.manifest,
+        { ...fixture.evidence, authorizedManifestHash: '9'.repeat(64) },
+        'supervision-fixture',
+        'nonce-fixture',
+      ),
+    ).toThrow(/BINDING_MISMATCH/u);
   });
 
   it('permits only the declared cancellation and terminal sequence', () => {

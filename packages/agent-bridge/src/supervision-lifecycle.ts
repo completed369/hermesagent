@@ -1,4 +1,4 @@
-import type { SupervisorPlatform, ValidatedSupervisorAdmission } from './supervision-policy';
+import { type SupervisorPlatform, validateSupervisorAdmission } from './supervision-policy';
 
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
 const PRIVATE_TEXT =
@@ -108,10 +108,12 @@ function freeze<T extends object>(value: T): Readonly<T> {
 }
 
 export function createSupervisorProcessBinding(
-  admission: ValidatedSupervisorAdmission,
+  manifestInput: unknown,
+  evidenceInput: unknown,
   supervisionId: string,
   launchNonce: string,
 ): Readonly<SupervisorProcessBinding> {
+  const admission = validateSupervisorAdmission(manifestInput, evidenceInput);
   return validateSupervisorProcessBinding({
     schemaVersion: 1,
     supervisionId,
