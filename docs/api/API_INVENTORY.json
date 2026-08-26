@@ -1,0 +1,476 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "apps/api/src/modules/**/*.controller.ts",
+  "globalPrefix": "/api",
+  "routeCount": 78,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/approval-requests",
+      "controller": "ApprovalsController",
+      "source": "apps/api/src/modules/approvals/approvals.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/approval-requests/:id",
+      "controller": "ApprovalsController",
+      "source": "apps/api/src/modules/approvals/approvals.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/approval-requests/:id/decide",
+      "controller": "ApprovalsController",
+      "source": "apps/api/src/modules/approvals/approvals.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/audit-events",
+      "controller": "AuditController",
+      "source": "apps/api/src/modules/audit/audit.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "controller": "AuthController",
+      "source": "apps/api/src/modules/auth/auth.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "controller": "AuthController",
+      "source": "apps/api/src/modules/auth/auth.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "controller": "AuthController",
+      "source": "apps/api/src/modules/auth/auth.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "controller": "AuthController",
+      "source": "apps/api/src/modules/auth/auth.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing",
+      "controller": "BillingController",
+      "source": "apps/api/src/modules/billing/billing.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/billing/cancel",
+      "controller": "BillingController",
+      "source": "apps/api/src/modules/billing/billing.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/billing/change-plan",
+      "controller": "BillingController",
+      "source": "apps/api/src/modules/billing/billing.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/billing/license-keys",
+      "controller": "BillingController",
+      "source": "apps/api/src/modules/billing/billing.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/billing/license-keys",
+      "controller": "BillingController",
+      "source": "apps/api/src/modules/billing/billing.controller.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/billing/license-keys/:id",
+      "controller": "BillingController",
+      "source": "apps/api/src/modules/billing/billing.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/billing/reactivate",
+      "controller": "BillingController",
+      "source": "apps/api/src/modules/billing/billing.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/board-reviews/:id",
+      "controller": "BoardController",
+      "source": "apps/api/src/modules/board/board.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/budgets",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/budgets",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/experiments/:experimentId",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/experiments/:experimentId/decide",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/experiments/:experimentId/request-scale-approval",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/experiments/:experimentId/results",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/experiments/:experimentId/start",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/ledger",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/model-usage",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/ventures/:ventureProposalId/assumptions",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/ventures/:ventureProposalId/assumptions",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/ventures/:ventureProposalId/expenses",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/ventures/:ventureProposalId/expenses",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/ventures/:ventureProposalId/experiments",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/ventures/:ventureProposalId/experiments",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/ventures/:ventureProposalId/forecast",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/ventures/:ventureProposalId/forecast",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/ventures/:ventureProposalId/forecast-vs-actual",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/ventures/:ventureProposalId/revenue",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/ventures/:ventureProposalId/revenue",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/live",
+      "controller": "HealthController",
+      "source": "apps/api/src/modules/health/health.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/ready",
+      "controller": "HealthController",
+      "source": "apps/api/src/modules/health/health.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/temporal",
+      "controller": "HealthController",
+      "source": "apps/api/src/modules/health/health.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/marketplace/listings/:listingVersionId",
+      "controller": "MarketplaceController",
+      "source": "apps/api/src/modules/marketplace/marketplace.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/marketplace/listings/:listingVersionId/prepare",
+      "controller": "MarketplaceController",
+      "source": "apps/api/src/modules/marketplace/marketplace.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/marketplace/listings/:listingVersionId/publish",
+      "controller": "MarketplaceController",
+      "source": "apps/api/src/modules/marketplace/marketplace.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/marketplace/listings/:listingVersionId/request-publication-approval",
+      "controller": "MarketplaceController",
+      "source": "apps/api/src/modules/marketplace/marketplace.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/marketplace/listings/:listingVersionId/start",
+      "controller": "MarketplaceController",
+      "source": "apps/api/src/modules/marketplace/marketplace.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding",
+      "controller": "OnboardingController",
+      "source": "apps/api/src/modules/onboarding/onboarding.controller.ts"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/onboarding",
+      "controller": "OnboardingController",
+      "source": "apps/api/src/modules/onboarding/onboarding.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/opportunities",
+      "controller": "OpportunitiesController",
+      "source": "apps/api/src/modules/opportunities/opportunities.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/opportunities",
+      "controller": "OpportunitiesController",
+      "source": "apps/api/src/modules/opportunities/opportunities.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/opportunities/:id",
+      "controller": "OpportunitiesController",
+      "source": "apps/api/src/modules/opportunities/opportunities.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/opportunities/:id/archive",
+      "controller": "OpportunitiesController",
+      "source": "apps/api/src/modules/opportunities/opportunities.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/opportunities/:id/compliance-assessment",
+      "controller": "OpportunitiesController",
+      "source": "apps/api/src/modules/opportunities/opportunities.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/opportunities/:id/compliance-assessment",
+      "controller": "OpportunitiesController",
+      "source": "apps/api/src/modules/opportunities/opportunities.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/opportunities/:id/promote",
+      "controller": "OpportunitiesController",
+      "source": "apps/api/src/modules/opportunities/opportunities.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/opportunities/:id/reject",
+      "controller": "OpportunitiesController",
+      "source": "apps/api/src/modules/opportunities/opportunities.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/opportunities/:id/rescore",
+      "controller": "OpportunitiesController",
+      "source": "apps/api/src/modules/opportunities/opportunities.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/products",
+      "controller": "ProductsController",
+      "source": "apps/api/src/modules/products/products.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/products/:id",
+      "controller": "ProductsController",
+      "source": "apps/api/src/modules/products/products.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/contracts",
+      "controller": "ResearchController",
+      "source": "apps/api/src/modules/research/research.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/contracts/:id",
+      "controller": "ResearchController",
+      "source": "apps/api/src/modules/research/research.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/contracts/:id/run",
+      "controller": "ResearchController",
+      "source": "apps/api/src/modules/research/research.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/security-events",
+      "controller": "SecurityController",
+      "source": "apps/api/src/modules/security/security.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/venture-proposals/:id/board-reviews",
+      "controller": "BoardController",
+      "source": "apps/api/src/modules/board/board.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/venture-proposals/:id/board-reviews",
+      "controller": "BoardController",
+      "source": "apps/api/src/modules/board/board.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/venture-proposals/:id/products",
+      "controller": "ProductsController",
+      "source": "apps/api/src/modules/products/products.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/venture-proposals/:id/products",
+      "controller": "ProductsController",
+      "source": "apps/api/src/modules/products/products.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ventures",
+      "controller": "VenturesController",
+      "source": "apps/api/src/modules/ventures/ventures.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspace-invitations/accept",
+      "controller": "WorkspaceInvitationsController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspace-invitations/accept-authenticated",
+      "controller": "WorkspaceInvitationsController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspace-invitations/preview",
+      "controller": "WorkspaceInvitationsController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspace-invitations/preview-authenticated",
+      "controller": "WorkspaceInvitationsController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workspaces/available",
+      "controller": "WorkspacesController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/workspaces/branding",
+      "controller": "WorkspacesController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workspaces/current",
+      "controller": "WorkspacesController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspaces/invitations",
+      "controller": "WorkspacesController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workspaces/members",
+      "controller": "WorkspacesController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/workspaces/members/:memberId",
+      "controller": "WorkspacesController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/workspaces/members/:memberId/role",
+      "controller": "WorkspacesController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workspaces/switch",
+      "controller": "WorkspacesController",
+      "source": "apps/api/src/modules/workspaces/workspaces.controller.ts"
+    }
+  ]
+}

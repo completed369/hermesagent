@@ -1,24 +1,25 @@
 # Getting Started with VentureOS
 
-This guide is written for a new customer using VentureOS, not for a
-developer working on VentureOS itself. If you're looking for the internal
-build documentation, see the rest of the `docs/` folder and `README.md`.
+This document describes the intended customer journey represented by the
+reference application. As of the 2026-08-26 dated source review, it is demo and
+pilot-preparation material: it is not evidence that public signup, a hosted
+customer service, a paid plan, or a production deployment is available. Use a
+Founder-authorized protected demonstration environment only. If you are
+developing VentureOS, start with `README.md` and `CONTRIBUTING.md` instead.
 
 ## 1. Create your workspace
 
-Go to the sign-up page and fill in:
+In an authorized demonstration, open the sign-up page and fill in:
 
 - **Workspace name** — your company or agency name. This becomes part of
   your workspace's identity and can be changed later in Settings.
 - **Your name and email** — used for your own login.
 - **Password** — at least 8 characters.
 
-You'll land straight in your dashboard on a 14-day free trial (the
-**Trial** plan): full feature access, one venture. No credit card is
-required to start, and nothing is ever charged automatically — VentureOS's
-billing is currently a real subscription record with no live payment
-processor behind it yet, so upgrading or changing plans in Settings never
-results in an actual charge.
+The reference flow creates a dashboard workspace and a synthetic 14-day
+**Trial** subscription record. It does not charge a card: no live payment
+processor is connected. Plan labels and mock invoice rows are application
+fixtures, not a public pricing offer or proof of a commercial subscription.
 
 ## 2. Complete onboarding
 
@@ -41,21 +42,21 @@ one seeded example. Each opportunity shows two scores:
 
 ## 4. Promote an opportunity into a venture
 
-Clicking "Promote to Venture Proposal" starts the venture lifecycle: your
-AI board reviews it (Board Room), you approve or reject the board's
+Clicking "Promote to Venture Proposal" starts the reference lifecycle: the
+configured mock board reviews it (Board Room), you approve or reject the board's
 recommendation (Approval Centre), and — once approved — VentureOS
 generates the actual product and listing draft (Product Studio / Listing
 Studio). Every one of these steps needs your explicit approval before
-anything moves forward; nothing publishes or spends money without you
-deciding to let it.
+anything moves forward. Live publication and spending adapters are not enabled;
+approval UI alone cannot make them available.
 
 ## 5. See all your ventures in one place
 
 The **Ventures** page lists every venture you've started, side by side,
 with links into each one's Board Room, Finance Centre, and Product page.
-Your plan sets how many concurrent ventures you can run at once — check
-your usage against your limit right there, and upgrade from Settings if
-you need more room.
+The synthetic plan record sets how many concurrent ventures the reference flow
+allows. Changing it in Settings changes local application state only and is not
+a purchase or pricing commitment.
 
 ## 6. Track the money
 
@@ -78,6 +79,8 @@ system will never quietly increase spend on its own.
 
 ## Questions or issues
 
-Everything VentureOS does on your behalf is recorded in the **Audit
-Centre** — if you're ever unsure why something happened, that's the first
-place to look. It shows every action, who (or what) took it, and when.
+Implemented governed actions write audit evidence to the **Audit Centre**. The
+audit system is retention- and erasure-governed; it is not an undeletable
+transparency log. For security issues, follow the repository root
+[`SECURITY.md`](../SECURITY.md) rather than putting sensitive details in a
+public issue.

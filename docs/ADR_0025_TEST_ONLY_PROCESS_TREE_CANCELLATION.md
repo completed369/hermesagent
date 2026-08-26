@@ -1,8 +1,11 @@
 # ADR-0025: test-only process-tree cancellation evidence
 
-Status: Proposed (implementation under review)
+Status: Accepted and implemented as test-only evidence (PR #86)
 
 Date: 2026-08-26
+
+This status records the dated reviewed implementation. It is not a mutable
+current-main pointer or a production-runtime claim.
 
 ## Context
 

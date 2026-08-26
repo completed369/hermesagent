@@ -31,6 +31,8 @@
     "test:integration": "turbo run test:integration",
     "test:e2e": "pnpm run build && pnpm --filter @ventureos/web run test:e2e",
     "test:build-orchestration": "node scripts/verify-api-build.mjs",
+    "docs:api:check": "node scripts/generate-api-inventory.mjs --check",
+    "docs:api:update": "node scripts/generate-api-inventory.mjs --write",
     "db:generate": "pnpm --filter @ventureos/database run generate",
     "db:migrate": "pnpm --filter @ventureos/database run migrate",
     "db:migrate:dev": "pnpm --filter @ventureos/database run migrate:dev",

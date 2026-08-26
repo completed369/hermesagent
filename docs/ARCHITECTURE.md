@@ -16,6 +16,14 @@ apps/web (Next.js)  --HTTP/cookies-->  apps/api (NestJS)  --Prisma-->  PostgreSQ
 apps/api and apps/worker  ---->  StorageProvider abstraction  ---->  MinIO or mock storage
 ```
 
+The repository also contains a service-only Agent Control Plane. Its durable
+task/run, approval, broker, bridge-admission, secret-lease, supervision-policy,
+event/audit, and cost-governance layers remain inside the modular monolith and
+PostgreSQL boundary. The production composition root is deny-only for runtime
+process launch. Test-only process evidence under `scripts/` is excluded from
+package exports and production images. Codex, Hermes, and Pi are
+`NOT_CONFIGURED`; this architecture diagram does not imply runtime connectivity.
+
 ## Module boundaries (apps/api/src/modules)
 
 The API is organized as domain modules with controller/service pairs rather
@@ -23,7 +31,8 @@ than a shared "god service". At the current repository state those modules
 include authentication and platform foundations (`auth`, `workspaces`,
 `onboarding`, `audit`, `security`, `health`) plus later-phase domains that now
 exist in source (`opportunities`, `board`, `approvals`, `products`,
-`marketplace`, `research`, `finance`, `ventures`, `billing`).
+`marketplace`, `research`, `finance`, `ventures`, `billing`) and the governed
+Agent Control Plane service modules.
 
 Repository source shows these modules are implemented in code. Operational
 readiness still depends on the relevant validation layer: local development
@@ -78,3 +87,13 @@ This is an implemented backend/workflow control, not a frontend-only display.
 It is still distinct from production readiness: real-provider side effects
 remain gated/disabled unless a future founder-approved integration supplies the
 additional provider-specific controls and operational evidence.
+
+## Runtime authority boundary
+
+Runtime admission evidence is not execution authority. Durable tasks, runs,
+reservations, bridge messages, secret leases, and supervisor manifests bind
+identity and policy facts, but the repository does not yet compose them into a
+production process controller. Any future launcher must preserve exact
+workspace/runtime/connection binding, executable identity through launch,
+resource and process-tree containment, authenticated transport, audit
+atomicity, cancellation, and deny-by-default production composition.

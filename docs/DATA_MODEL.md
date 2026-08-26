@@ -70,28 +70,40 @@ through their parent `Opportunity`), and cascade-delete with their parent
 except `EvidenceArtifact.dataSourceId`, which is `SetNull` (an artifact
 survives its data source being removed).
 
-## Entities NOT yet in the schema (Phase 3+)
+## Later implemented domains
 
-BoardReview, BoardVote, BoardVeto, DecisionSummary, ApprovalRequest,
-ApprovalDecision, ApprovalCondition, ApprovalExecution, PolicyDefinition(+Version),
-PolicyEvaluation, MarketplacePolicyPack(+Version), Product(+Version),
-ProductAsset(+Version), ProductBrief, ProductPackage, LicenceRecord,
-QualityCheck(Result), Listing(+Version), ListingImage/File, PriceProposal,
-SEOEvaluation, PublicationAttempt, FinancialAssumption, FinancialForecast,
-FinancialScenario, Expense, RevenueEntry, MarketplaceFee, RefundRequest,
-Budget(Allocation), CostLedgerEntry, Experiment(+Variant/Metric/Result/
-Decision), AgentDefinition, AgentPromptVersion, AgentRun, AgentToolCall,
-ModelUsage, ModelCost, Notification(Preference), DataAcquisitionContract,
-EvidenceRelationship, EvidenceReview.
+The old Phase 2 “not yet in schema” list is retired. The current Prisma schema
+now includes the board and approval records; product, listing, quality and
+publication-attempt records; research acquisition; finance, experiments and
+model usage; multi-venture subscription records; collaboration invitations;
+and the durable Agent Control Plane records described below. The Prisma schema
+and immutable migration chain are authoritative for exact field and relation
+definitions; prose summaries are not a substitute for schema review.
 
-Master spec section 22 lists the full target model; adding these in Phase 3
-onward is additive (new tables + relations), not a rewrite, because Phase 1
-already establishes the Workspace/AuditEvent/WorkflowRun spine and Phase 2
-establishes the Opportunity/Evidence spine everything else hangs off. (Note:
-this list reflects Phase 2's snapshot and was not maintained phase-by-phase
-after that — every entity above except the Phase 8 additions below has
-since actually been implemented across Phases 3-7; see each phase's section
-in `docs/EXECUTION_PLAN.md` for the real, current model list per phase.)
+Still-proposed concepts from the long-term company-OS model must not be inferred
+as implemented merely because they appear in roadmap documents. Examples
+include a general notification subsystem, full playbook persistence, broad
+customer/CRM records, and production runtime-controller state.
+
+## Agent Control Plane entities
+
+**Runtime identity and bridge evidence**: `AcpRuntime`,
+`AcpRuntimeConnection`, `AcpBridgeSession`, `AcpBridgeReceipt`, and
+`AcpBridgeDispatch`. Composite workspace/runtime/connection, session, run, and
+task keys prevent cross-tenant correlation. These rows prove durable admission
+and message evidence, not a connected external runtime.
+
+**Routing and usage evidence**: `AcpBrokerReservation`, `AcpBrokerEvaluation`,
+and `AcpRunUsage`. Reservations are bounded durable decisions; they do not
+launch a runtime or charge a provider. Usage evidence is separate from
+commercial billing and does not prove money moved. A durable Agent Control
+Plane budget-policy and cost-ledger subsystem is not part of this dated source
+baseline.
+
+**Authority**: `AcpApprovalRequest`, `AcpApprovalDecision`, and
+`AcpExecutionPermit` bind consequential authority to exact durable rows. A
+claimed permit is authorization evidence only; consuming it is not external
+execution.
 
 ## Phase 8 entities (implemented, `packages/database/prisma/schema.prisma`)
 
@@ -138,8 +150,8 @@ workspace in one transaction.
 
 ## Migrations
 
-The Phase 2 migration is generated and applied via
-`pnpm db:migrate:dev --name phase2_opportunity_evidence` (see
-`docs/LOCAL_VERIFICATION_CHECKLIST.md`). The Phase 8 migration
-(`20260714132415_phase8_multi_venture_and_saas`) was generated and applied
-the same way.
+Local development migrations are created with `pnpm db:migrate:dev --name
+<descriptive_name>`. Clean-runner and release evidence applies the complete
+committed migration chain with `pnpm db:migrate`; historical migration files
+are immutable. Current CI, rather than this prose file, is authoritative for
+whether that chain applies successfully on the reviewed source.

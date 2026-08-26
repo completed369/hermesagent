@@ -1,5 +1,24 @@
 # TODO
 
+<!-- CURRENT PRIORITIES — reviewed 2026-08-26:
+This is a dated reviewed source baseline, not a mutable current-main pointer.
+GitHub checks and protected operational evidence are authoritative for live
+state. The historical phase checklists below are retained as implementation
+history and must not be read as deployment, publication, runtime-connectivity,
+pilot, or customer evidence.
+
+Immediate evidence-backed priorities:
+- keep release checks, migrations, E2E, CodeQL, supply-chain gates, and the
+  sanitized five-image release-candidate workflow green on the selected SHA;
+- complete a production-grade, deny-by-default runtime supervision and
+  authenticated transport composition before any runtime process can execute;
+- keep Codex, Hermes, and Pi NOT_CONFIGURED until registration, capability
+  exchange, heartbeat, task/status, event, and result round trips are verified;
+- complete backup/restore and rollback exercises before production readiness;
+- keep commercial pilot status NOT STARTED until the Founder authorizes the
+  external boundary and real evidence exists.
+-->
+
 <!-- STATUS UPDATE — 2026-08-20:
 Phase 9 collaborative access is implemented on a draft replacement branch:
 hashed provider-free invitations, non-founder roles, explicit per-session
@@ -174,9 +193,9 @@ immediate next actions.
 - [ ] Multi-factor authentication (deferred per master spec section 8, architecture should anticipate it)
 - [ ] Account recovery flow (password reset) — not implemented, dev-login only so far
 - [ ] OpenTelemetry exporter wiring (currently `OTEL_ENABLED=false` stub only)
-- [ ] Obtain one complete green clean-runner CI run, including Prisma migrate,
-      unit tests, integration tests, and production build; the current PR #1
-      run is red at Prisma migrate and skipped all three later stages
+- [x] Obtain complete green clean-runner CI evidence including Prisma migration
+      apply, unit tests, real PostgreSQL integration, production build, and
+      Chromium E2E (verified by 2026-08-26; GitHub remains authoritative).
 
 See `docs/ROADMAP.md` for the full phase-by-phase plan and `docs/KNOWN_LIMITATIONS.md`
 for a complete list of mocked/incomplete functionality.
