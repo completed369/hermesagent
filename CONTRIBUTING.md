@@ -12,6 +12,8 @@ qualified legal review where appropriate.
 - Use an isolated branch or worktree for concurrent work.
 - Never commit credentials, personal data, customer data, confidential reports,
   local environment files, or sensitive infrastructure details.
+- Keep raw local logs and transcripts out of Git; preserve reviewed facts under
+  the [historical evidence policy](docs/HISTORICAL_EVIDENCE_POLICY.md).
 - Do not enable providers, spending, publication, deployment, DNS, or production
   mutations in a routine code change.
 - Preserve workspace scoping, server-side authorization, audit atomicity,
@@ -25,6 +27,7 @@ expected to pass the applicable subset of:
 ```text
 pnpm install --frozen-lockfile
 pnpm run format:check
+pnpm run repository:artifact-hygiene
 pnpm run lint
 pnpm run typecheck
 pnpm db:generate

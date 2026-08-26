@@ -78,6 +78,9 @@ jobs:
           # (packageManager: pnpm@9.12.0) via corepack.
           cache: pnpm
 
+      - name: Repository artifact hygiene
+        run: pnpm run repository:artifact-hygiene
+
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 

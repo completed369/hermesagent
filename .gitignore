@@ -5,6 +5,11 @@ dist/
 out/
 coverage/
 *.log
+*.log.*
+*-log*.txt
+*-log*.out
+*-log*.trace
+*transcript*.txt
 .env
 .env.local
 .env.*.local
