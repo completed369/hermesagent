@@ -50,9 +50,10 @@ database in Linux CI.
 
 That positive test first binds the GitHub-hosted runner/repository, exact
 loopback synthetic database identity, and uniquely labelled digest-pinned
-PostgreSQL service. A mismatch denies before Docker discovery or database-pool
-creation. Staging test tooling can discover the fixture without activating it;
-the fixture is absent from every final runtime image.
+PostgreSQL service. Environment or URL drift denies before Docker discovery;
+container-evidence drift denies before database-pool creation or mutation.
+Staging test tooling can discover the fixture without activating it; the
+fixture is absent from every final runtime image.
 
 The pure completion API validates and binds observer-supplied timestamps and
 booleans; it does not authenticate their origin. A future operational composer

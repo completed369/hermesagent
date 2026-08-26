@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   completeDisposablePostgresRestoreDrill,
   createMigrationCompatibilityEvidence,
-} from './restore-drill.js';
+} from '../src/restore-drill.js';
 
 const POSTGRES_IMAGE =
   'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777';

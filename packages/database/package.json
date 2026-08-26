@@ -11,7 +11,7 @@
     "package.json"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/assert-runtime-boundary.mjs",
     "generate": "dotenv -e ../../.env -- prisma generate",
     "migrate": "dotenv -e ../../.env -- prisma migrate deploy",
     "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
@@ -19,8 +19,8 @@
     "reset-founder-password": "dotenv -e ../../.env -- tsx src/reset-founder-password.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "typecheck": "tsc --noEmit",
-    "test:unit": "vitest run --passWithNoTests --exclude src/restore-drill.integration.test.ts",
-    "test:integration": "vitest run src/restore-drill.integration.test.ts"
+    "test:unit": "vitest run --passWithNoTests --exclude test/restore-drill.integration.test.ts",
+    "test:integration": "vitest run test/restore-drill.integration.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "6.19.3",
