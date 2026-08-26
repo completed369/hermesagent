@@ -153,12 +153,20 @@ export function parseControllerSource(source, sourcePath, globalPrefix) {
 }
 
 export function readGlobalPrefix(source) {
-  const sourceFile = ts.createSourceFile(
-    'apps/api/src/main.ts',
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const sourceName = 'apps/api/src/main.ts';
+  const options = { noResolve: true, target: ts.ScriptTarget.Latest };
+  const host = ts.createCompilerHost(options);
+  const originalGetSourceFile = host.getSourceFile.bind(host);
+  host.fileExists = (fileName) => fileName === sourceName;
+  host.readFile = (fileName) => (fileName === sourceName ? source : undefined);
+  host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) =>
+    fileName === sourceName
+      ? ts.createSourceFile(sourceName, source, languageVersion, true)
+      : originalGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+  const program = ts.createProgram({ rootNames: [sourceName], options, host });
+  const sourceFile = program.getSourceFile(sourceName);
+  if (!sourceFile) throw new Error('API source could not be parsed');
+  const checker = program.getTypeChecker();
   const factoryIdentifiers = new Set();
   const factoryNamespaces = new Set();
   for (const statement of sourceFile.statements) {
@@ -182,7 +190,7 @@ export function readGlobalPrefix(source) {
     }
   }
 
-  const applicationIdentifiers = new Set();
+  const applicationDeclarations = [];
   function isFactoryCreate(expression) {
     if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== 'create') {
       return false;
@@ -206,15 +214,17 @@ export function readGlobalPrefix(source) {
       ts.isCallExpression(node.initializer.expression) &&
       isFactoryCreate(node.initializer.expression.expression)
     ) {
-      applicationIdentifiers.add(node.name.text);
+      applicationDeclarations.push(node);
     }
     ts.forEachChild(node, findApplication);
   }
   findApplication(sourceFile);
-  if (applicationIdentifiers.size !== 1) {
+  if (applicationDeclarations.length !== 1) {
     throw new Error('API must create one uniquely identifiable Nest application');
   }
-  const [applicationIdentifier] = applicationIdentifiers;
+  const [applicationDeclaration] = applicationDeclarations;
+  const applicationSymbol = checker.getSymbolAtLocation(applicationDeclaration.name);
+  if (!applicationSymbol) throw new Error('Nest application binding could not be resolved');
 
   let prefix;
   function visit(node) {
@@ -222,7 +232,7 @@ export function readGlobalPrefix(source) {
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === applicationIdentifier &&
+      checker.getSymbolAtLocation(node.expression.expression) === applicationSymbol &&
       node.expression.name.text === 'setGlobalPrefix'
     ) {
       if (

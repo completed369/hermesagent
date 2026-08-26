@@ -129,6 +129,13 @@ test('global API prefix is structurally derived and must be one literal', () => 
     /was not found/u,
   );
   assert.throws(
+    () =>
+      readGlobalPrefix(
+        `${create} { const app = { setGlobalPrefix() {} }; app.setGlobalPrefix('api'); }`,
+      ),
+    /was not found/u,
+  );
+  assert.throws(
     () => readGlobalPrefix(`const app = { setGlobalPrefix() {} }; app.setGlobalPrefix('api')`),
     /uniquely identifiable Nest application/u,
   );
