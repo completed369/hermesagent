@@ -75,6 +75,26 @@ describe('Auth flow (integration)', () => {
     expect(res.status).toBe(401);
   });
 
+  it('returns a generic 401 for cookie-parser JSON objects and arrays', async () => {
+    const server = app.getHttpServer();
+    const encodedJsonCookies = [
+      encodeURIComponent(`j:${JSON.stringify({ token: 'a'.repeat(64) })}`),
+      encodeURIComponent(`j:${JSON.stringify(['a'.repeat(64)])}`),
+    ];
+
+    for (const value of encodedJsonCookies) {
+      const response = await request(server)
+        .get('/api/workspaces/current')
+        .set('Cookie', `${env.AUTH_COOKIE_NAME}=${value}`);
+      expect(response.status).toBe(401);
+      expect(response.body).toMatchObject({
+        statusCode: 401,
+        message: 'Session invalid or expired',
+      });
+      expect(JSON.stringify(response.body)).not.toContain('token');
+    }
+  });
+
   it('rejects an invalid password', async () => {
     const server = app.getHttpServer();
     const res = await request(server)
