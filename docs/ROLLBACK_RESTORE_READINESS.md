@@ -42,11 +42,14 @@ not copy the synthetic test values into an operational policy.
 
 ## Current evidence
 
-Repository tests exercise source/digest/health drift, migration-decision denial,
-backup-age and RPO/RTO rejection, migration/sentinel/health failure, cleanup
-failure, and a fresh disposable PostgreSQL database round-trip in Linux CI.
+Repository tests exercise source/digest/health drift, canonical decision and
+health hashes, migration-decision denial, exact backup checksum binding,
+backup-age and RPO/RTO rejection, migration/sentinel/health/cleanup evidence,
+and a real `pg_dump`/`pg_restore` round-trip into a fresh disposable PostgreSQL
+database in Linux CI.
 
 No external environment is backed up or restored by these tests. No image is
 published, no staging or production deployment is changed, no provider is
-activated, and no credential is introduced. This disposable round-trip does not
-prove a real backup or operational restore capability.
+activated, and no credential is introduced. The fixture is a real logical dump
+and restore of synthetic CI data, but it does not prove managed backup/PITR,
+retention, encryption, or an operational environment restore capability.

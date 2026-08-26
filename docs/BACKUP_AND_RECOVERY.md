@@ -82,11 +82,12 @@ selected environment:
    against the approved RPO/RTO.
 
 `packages/database/src/restore-drill.ts` and
-`docs/ROLLBACK_RESTORE_READINESS.md` now define a fail-closed, disposable
-restore-drill orchestration and evidence schema. Its CI fixture creates and
-destroys a fresh synthetic PostgreSQL database. This is useful readiness
-evidence, but it does not prove a provider backup, `pg_dump`, PITR, encryption,
-retention, off-site storage, Temporal recovery, or a real-environment restore.
+`docs/ROLLBACK_RESTORE_READINESS.md` now define pure, fail-closed restore-drill
+evidence completion. Its test-only CI fixture performs a real logical
+`pg_dump`/`pg_restore`, verifies content and migration evidence in a fresh
+disposable PostgreSQL database, and removes it. This does not prove a provider
+backup, managed PITR, encryption, retention, off-site storage, Temporal
+recovery, or a real-environment restore.
 
 The same source-only slice records an explicit migration-compatibility decision
 before code rollback. A prior release may be reported as restored only after its

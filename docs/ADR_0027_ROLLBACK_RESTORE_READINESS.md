@@ -13,28 +13,31 @@ recorded healthy-component evidence, and an explicit
 canonical hash. `FORWARD_FIX_ONLY` and `RESTORE_REQUIRED` decisions deny the
 automatic code-rollback path.
 
-The rollback executor is an inert orchestration contract. Its caller supplies a
-trusted driver and it returns `VERIFIED` only after the restarted release is
-observed with the exact prior source, exact digests, and all required health
-checks. Command acceptance is not rollback success. Failure-injection tests deny
-success for source, digest, or health drift.
+The production rollback surface is pure validation and evidence completion. It
+cannot restart a process or release. It returns `VERIFIED` only when a caller
+supplies a post-action observation with the exact prior source, exact digests,
+and all required health checks. Command acceptance is not rollback success.
+Failure-injection tests deny completion for source, digest, health, or canonical
+evidence-hash drift.
 
-The database package also provides a disposable PostgreSQL restore-drill
-orchestrator. It accepts only target names beginning
-`ventureos_restore_drill_`, validates backup age against both a maximum age and
-the declared RPO, verifies migration head, sentinel digest, health, and RTO, and
-always destroys the target before returning evidence. CI uses a synthetic
-snapshot and a fresh disposable PostgreSQL database. The evidence schema records
-the exact decision and measurements and includes a deterministic checksum.
+The database package likewise exports only pure restore-evidence completion. It
+accepts only target names beginning `ventureos_restore_drill_`, exact-binds the
+observed backup reference, content checksum and creation time, validates backup
+age against both a maximum age and the declared RPO, and verifies migration
+head, sentinel digest, health, cleanup, and RTO. A test-only Linux CI harness
+uses `pg_dump`/`pg_restore` with the disposable CI PostgreSQL service, restores a
+fresh database, verifies real restored rows and migration history, then removes
+the target before completing evidence.
 
 ## Security and truth boundaries
 
-- Neither contract discovers backups, reads object storage, invokes a provider,
-  deploys a release, or supplies a production driver.
-- The restore integration fixture proves disposable orchestration and database
-  cleanup. It is not evidence for `pg_dump`, managed PITR, encrypted retention,
-  off-site copies, object-storage restore, Temporal recovery, or a live
-  environment restore.
+- Neither production contract discovers backups, reads object storage, invokes
+  a provider, creates/destroys a database, deploys a release, or supplies a
+  production driver.
+- The restore integration fixture proves one real `pg_dump`/`pg_restore`
+  round-trip and cleanup against disposable CI PostgreSQL. It is not evidence
+  for managed PITR, encrypted retention, off-site copies, object-storage
+  restore, Temporal recovery, or a live environment restore.
 - Evidence checksums detect accidental/caller-visible drift; they are not a
   signature or a cryptographic tamper-proof log.
 - RPO and RTO values in tests/templates are synthetic acceptance inputs, not

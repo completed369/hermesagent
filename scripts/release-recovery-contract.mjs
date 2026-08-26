@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 
 const SHA = /^[0-9a-f]{40}$/u;
 const DIGEST = /^sha256:[0-9a-f]{64}$/u;
-const HASH = /^[0-9a-f]{64}$/u;
 const SAFE_REFERENCE = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,255}$/u;
 const IMAGE_NAMES = ['api', 'ingress', 'tools', 'web', 'worker'];
 const HEALTH_NAMES = ['api', 'apiIngress', 'postgres', 'temporal', 'web', 'webIngress', 'worker'];
@@ -18,9 +17,9 @@ export class RecoveryContractError extends Error {
 function exactKeys(value, keys, code) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new RecoveryContractError(code);
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new RecoveryContractError(code);
+  if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify([...keys].sort())) {
+    throw new RecoveryContractError(code);
+  }
 }
 
 function iso(value, code) {
@@ -78,15 +77,50 @@ function health(value) {
   return normalized;
 }
 
+export function createPriorHealthEvidence(input) {
+  exactKeys(input, ['sourceSha', 'images', 'checks', 'checkedAt'], 'INVALID_HEALTH_EVIDENCE');
+  if (!SHA.test(input.sourceSha)) throw new RecoveryContractError('INVALID_HEALTH_EVIDENCE');
+  const normalized = {
+    sourceSha: input.sourceSha,
+    images: images(input.images),
+    checks: health(input.checks),
+    checkedAt: iso(input.checkedAt, 'INVALID_HEALTH_EVIDENCE'),
+  };
+  return Object.freeze({ ...normalized, evidenceHash: sha256(normalized) });
+}
+
+export function createMigrationDecisionEvidence(input) {
+  exactKeys(
+    input,
+    ['decision', 'currentMigrationHead', 'priorMigrationHead', 'decidedAt'],
+    'INVALID_MIGRATION_DECISION',
+  );
+  if (
+    !['BACKWARD_COMPATIBLE_CODE_ROLLBACK', 'FORWARD_FIX_ONLY', 'RESTORE_REQUIRED'].includes(
+      input.decision,
+    ) ||
+    !safeReference(input.currentMigrationHead) ||
+    !safeReference(input.priorMigrationHead)
+  ) {
+    throw new RecoveryContractError('INVALID_MIGRATION_DECISION');
+  }
+  const normalized = {
+    decision: input.decision,
+    currentMigrationHead: input.currentMigrationHead,
+    priorMigrationHead: input.priorMigrationHead,
+    decidedAt: iso(input.decidedAt, 'INVALID_MIGRATION_DECISION'),
+  };
+  return Object.freeze({ ...normalized, evidenceHash: sha256(normalized) });
+}
+
 export function validateRollbackReadiness(input) {
   exactKeys(
     input,
     ['schemaVersion', 'currentSourceSha', 'priorRelease', 'priorHealth', 'migrationDecision'],
     'INVALID_ROLLBACK_PLAN',
   );
-  if (input.schemaVersion !== 1 || !SHA.test(input.currentSourceSha)) {
+  if (input.schemaVersion !== 1 || !SHA.test(input.currentSourceSha))
     throw new RecoveryContractError('INVALID_ROLLBACK_PLAN');
-  }
   exactKeys(input.priorRelease, ['sourceSha', 'images'], 'INVALID_PRIOR_RELEASE');
   if (
     !SHA.test(input.priorRelease.sourceSha) ||
@@ -95,81 +129,77 @@ export function validateRollbackReadiness(input) {
     throw new RecoveryContractError('INVALID_PRIOR_RELEASE');
   }
   const priorImages = images(input.priorRelease.images);
-
   exactKeys(
     input.priorHealth,
     ['sourceSha', 'images', 'checks', 'checkedAt', 'evidenceHash'],
     'INVALID_HEALTH_EVIDENCE',
   );
-  if (input.priorHealth.sourceSha !== input.priorRelease.sourceSha) {
+  const priorHealth = createPriorHealthEvidence({
+    sourceSha: input.priorHealth.sourceSha,
+    images: input.priorHealth.images,
+    checks: input.priorHealth.checks,
+    checkedAt: input.priorHealth.checkedAt,
+  });
+  if (priorHealth.evidenceHash !== input.priorHealth.evidenceHash) {
+    throw new RecoveryContractError('HEALTH_EVIDENCE_HASH_MISMATCH');
+  }
+  if (priorHealth.sourceSha !== input.priorRelease.sourceSha)
     throw new RecoveryContractError('PRIOR_SOURCE_MISMATCH');
-  }
-  const observedImages = images(input.priorHealth.images);
-  if (canonical(observedImages) !== canonical(priorImages)) {
+  if (canonical(priorHealth.images) !== canonical(priorImages))
     throw new RecoveryContractError('PRIOR_DIGEST_MISMATCH');
-  }
-  const checks = health(input.priorHealth.checks);
-  iso(input.priorHealth.checkedAt, 'INVALID_HEALTH_EVIDENCE');
-  if (!HASH.test(input.priorHealth.evidenceHash))
-    throw new RecoveryContractError('INVALID_HEALTH_EVIDENCE');
-
   exactKeys(
     input.migrationDecision,
     ['decision', 'currentMigrationHead', 'priorMigrationHead', 'decidedAt', 'evidenceHash'],
     'INVALID_MIGRATION_DECISION',
   );
-  if (
-    !['BACKWARD_COMPATIBLE_CODE_ROLLBACK', 'FORWARD_FIX_ONLY', 'RESTORE_REQUIRED'].includes(
-      input.migrationDecision.decision,
-    ) ||
-    !safeReference(input.migrationDecision.currentMigrationHead) ||
-    !safeReference(input.migrationDecision.priorMigrationHead) ||
-    !HASH.test(input.migrationDecision.evidenceHash)
-  ) {
-    throw new RecoveryContractError('INVALID_MIGRATION_DECISION');
+  const migrationDecision = createMigrationDecisionEvidence({
+    decision: input.migrationDecision.decision,
+    currentMigrationHead: input.migrationDecision.currentMigrationHead,
+    priorMigrationHead: input.migrationDecision.priorMigrationHead,
+    decidedAt: input.migrationDecision.decidedAt,
+  });
+  if (migrationDecision.evidenceHash !== input.migrationDecision.evidenceHash) {
+    throw new RecoveryContractError('MIGRATION_EVIDENCE_HASH_MISMATCH');
   }
-  iso(input.migrationDecision.decidedAt, 'INVALID_MIGRATION_DECISION');
-
   const normalized = {
     schemaVersion: 1,
     currentSourceSha: input.currentSourceSha,
     priorRelease: { sourceSha: input.priorRelease.sourceSha, images: priorImages },
-    priorHealth: {
-      sourceSha: input.priorHealth.sourceSha,
-      images: observedImages,
-      checks,
-      checkedAt: input.priorHealth.checkedAt,
-      evidenceHash: input.priorHealth.evidenceHash,
-    },
-    migrationDecision: { ...input.migrationDecision },
+    priorHealth,
+    migrationDecision,
   };
   return Object.freeze({
     ...normalized,
     bindingHash: sha256(normalized),
     automaticCodeRollbackAllowed:
-      normalized.migrationDecision.decision === 'BACKWARD_COMPATIBLE_CODE_ROLLBACK',
+      migrationDecision.decision === 'BACKWARD_COMPATIBLE_CODE_ROLLBACK',
   });
 }
 
-export async function executeVerifiedRollback(readiness, driver) {
+export function completeRollbackVerification(readiness, observed) {
   const verified = validateRollbackReadiness(readiness);
   if (!verified.automaticCodeRollbackAllowed)
     throw new RecoveryContractError('AUTOMATIC_ROLLBACK_DENIED');
-  await driver.restartPriorRelease(verified.priorRelease);
-  const observed = await driver.observePriorRelease();
-  if (observed.sourceSha !== verified.priorRelease.sourceSha) {
+  exactKeys(
+    observed,
+    ['sourceSha', 'images', 'checks', 'checkedAt'],
+    'INVALID_ROLLBACK_OBSERVATION',
+  );
+  const observation = createPriorHealthEvidence(observed);
+  if (observation.sourceSha !== verified.priorRelease.sourceSha) {
     throw new RecoveryContractError('ROLLBACK_SOURCE_NOT_VERIFIED');
   }
-  if (canonical(images(observed.images)) !== canonical(verified.priorRelease.images)) {
+  if (canonical(observation.images) !== canonical(verified.priorRelease.images)) {
     throw new RecoveryContractError('ROLLBACK_DIGEST_NOT_VERIFIED');
   }
-  health(observed.checks);
   return Object.freeze({
     schemaVersion: 1,
     bindingHash: verified.bindingHash,
-    sourceSha: observed.sourceSha,
-    images: images(observed.images),
-    checks: health(observed.checks),
+    sourceSha: observation.sourceSha,
+    images: observation.images,
+    checks: observation.checks,
+    checkedAt: observation.checkedAt,
+    observationHash: observation.evidenceHash,
     outcome: 'VERIFIED',
   });
 }

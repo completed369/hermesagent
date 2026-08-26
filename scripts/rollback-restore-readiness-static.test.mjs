@@ -30,7 +30,10 @@ test('positive PostgreSQL implementation is confined to the CI integration fixtu
 test('docs state the evidence and Founder boundaries without claiming a real restore or deployment', () => {
   for (const source of [adr, runbook]) {
     assert.match(source, /not\s+(?:evidence|establish|prove)|does not\s+prove/iu);
-    assert.match(source, /no (?:image|external environment)|Neither contract/iu);
+    assert.match(
+      source,
+      /no (?:image|external environment)|Neither\s+(?:production\s+)?contract/iu,
+    );
   }
   assert.match(adr, /Level-4\s+boundaries/u);
   assert.match(runbook, /restart command as attempted work, not success/u);

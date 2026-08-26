@@ -21,51 +21,49 @@ export interface DisposablePostgresRestoreDrillPlan {
   readonly maximumBackupAgeSeconds: number;
   readonly recoveryPointObjectiveSeconds: number;
   readonly recoveryTimeObjectiveSeconds: number;
-  readonly migrationCompatibilityDecision: MigrationCompatibilityDecision;
-  readonly migrationDecisionEvidenceHash: string;
+  readonly migrationDecision: {
+    readonly decision: MigrationCompatibilityDecision;
+    readonly currentMigrationHead: string;
+    readonly priorMigrationHead: string;
+    readonly decidedAt: string;
+    readonly evidenceHash: string;
+  };
 }
 
-export interface DisposablePostgresRestoreDrillPort {
-  createDisposableTarget(targetDatabaseReference: string): Promise<void>;
-  restoreBackup(targetDatabaseReference: string, backupReference: string): Promise<void>;
-  readMigrationHead(targetDatabaseReference: string): Promise<string>;
-  readSentinelDigest(targetDatabaseReference: string): Promise<string>;
-  verifyHealth(targetDatabaseReference: string): Promise<boolean>;
-  destroyDisposableTarget(targetDatabaseReference: string): Promise<void>;
-}
-
-export interface RestoreDrillEvidence {
+export interface DisposablePostgresRestoreObservation {
   readonly schemaVersion: 1;
   readonly drillId: string;
   readonly targetDatabaseReference: string;
   readonly backupReference: string;
   readonly backupChecksum: string;
-  readonly backupAgeSeconds: number;
-  readonly recoveryPointObjectiveSeconds: number;
-  readonly recoveryTimeObjectiveSeconds: number;
-  readonly durationMilliseconds: number;
-  readonly migrationCompatibilityDecision: MigrationCompatibilityDecision;
-  readonly migrationDecisionEvidenceHash: string;
+  readonly backupCreatedAt: string;
+  readonly startedAt: string;
+  readonly completedAt: string;
   readonly restoredMigrationHead: string;
   readonly restoredSentinelDigest: string;
   readonly healthVerified: true;
   readonly cleanupVerified: true;
-  readonly completedAt: string;
+}
+
+export interface RestoreDrillEvidence extends DisposablePostgresRestoreObservation {
+  readonly backupAgeSeconds: number;
+  readonly durationMilliseconds: number;
+  readonly recoveryPointObjectiveSeconds: number;
+  readonly recoveryTimeObjectiveSeconds: number;
+  readonly migrationDecisionEvidenceHash: string;
   readonly evidenceHash: string;
 }
 
 export type RestoreDrillErrorCode =
   | 'INVALID_PLAN'
+  | 'INVALID_OBSERVATION'
+  | 'BACKUP_IDENTITY_MISMATCH'
   | 'BACKUP_TOO_OLD'
   | 'RPO_EXCEEDED'
   | 'RTO_EXCEEDED'
   | 'MIGRATION_MISMATCH'
   | 'SENTINEL_MISMATCH'
-  | 'HEALTH_FAILED'
-  | 'TARGET_CREATE_FAILED'
-  | 'RESTORE_FAILED'
-  | 'VERIFICATION_FAILED'
-  | 'CLEANUP_FAILED';
+  | 'MIGRATION_EVIDENCE_HASH_MISMATCH';
 
 export class RestoreDrillError extends Error {
   constructor(readonly code: RestoreDrillErrorCode) {
@@ -74,21 +72,20 @@ export class RestoreDrillError extends Error {
   }
 }
 
-function exactIso(value: string): number {
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
-    throw new RestoreDrillError('INVALID_PLAN');
-  }
-  return parsed.getTime();
-}
-
-function positiveInteger(value: number): boolean {
-  return Number.isSafeInteger(value) && value > 0 && value <= 31_536_000;
-}
-
 function exactKeys(value: unknown, expected: readonly string[]): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  return JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort())
+  );
+}
+
+function exactIso(value: string, code: RestoreDrillErrorCode): number {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value)
+    throw new RestoreDrillError(code);
+  return parsed.getTime();
 }
 
 function safeReference(value: string): boolean {
@@ -103,7 +100,32 @@ function safeReference(value: string): boolean {
   );
 }
 
-function assertPlan(plan: DisposablePostgresRestoreDrillPlan, startedAt: Date): number {
+function positiveInteger(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0 && value <= 31_536_000;
+}
+
+function hash(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+export function createMigrationCompatibilityEvidence(
+  input: Omit<DisposablePostgresRestoreDrillPlan['migrationDecision'], 'evidenceHash'>,
+) {
+  if (
+    !exactKeys(input, ['decision', 'currentMigrationHead', 'priorMigrationHead', 'decidedAt']) ||
+    !['BACKWARD_COMPATIBLE_CODE_ROLLBACK', 'FORWARD_FIX_ONLY', 'RESTORE_REQUIRED'].includes(
+      input.decision,
+    ) ||
+    !safeReference(input.currentMigrationHead) ||
+    !safeReference(input.priorMigrationHead)
+  ) {
+    throw new RestoreDrillError('INVALID_PLAN');
+  }
+  exactIso(input.decidedAt, 'INVALID_PLAN');
+  return Object.freeze({ ...input, evidenceHash: hash(input) });
+}
+
+function validatePlan(plan: DisposablePostgresRestoreDrillPlan): void {
   if (
     !exactKeys(plan, [
       'schemaVersion',
@@ -115,10 +137,16 @@ function assertPlan(plan: DisposablePostgresRestoreDrillPlan, startedAt: Date): 
       'maximumBackupAgeSeconds',
       'recoveryPointObjectiveSeconds',
       'recoveryTimeObjectiveSeconds',
-      'migrationCompatibilityDecision',
-      'migrationDecisionEvidenceHash',
+      'migrationDecision',
     ]) ||
     !exactKeys(plan.backup, ['reference', 'checksum', 'createdAt']) ||
+    !exactKeys(plan.migrationDecision, [
+      'decision',
+      'currentMigrationHead',
+      'priorMigrationHead',
+      'decidedAt',
+      'evidenceHash',
+    ]) ||
     plan.schemaVersion !== 1 ||
     !safeReference(plan.drillId) ||
     !DISPOSABLE_TARGET.test(plan.targetDatabaseReference) ||
@@ -129,103 +157,80 @@ function assertPlan(plan: DisposablePostgresRestoreDrillPlan, startedAt: Date): 
     !HASH.test(plan.expectedSentinelDigest) ||
     !positiveInteger(plan.maximumBackupAgeSeconds) ||
     !positiveInteger(plan.recoveryPointObjectiveSeconds) ||
-    !positiveInteger(plan.recoveryTimeObjectiveSeconds) ||
-    !['BACKWARD_COMPATIBLE_CODE_ROLLBACK', 'FORWARD_FIX_ONLY', 'RESTORE_REQUIRED'].includes(
-      plan.migrationCompatibilityDecision,
-    ) ||
-    !HASH.test(plan.migrationDecisionEvidenceHash)
-  ) {
+    !positiveInteger(plan.recoveryTimeObjectiveSeconds)
+  )
     throw new RestoreDrillError('INVALID_PLAN');
+  exactIso(plan.backup.createdAt, 'INVALID_PLAN');
+  const decision = createMigrationCompatibilityEvidence({
+    decision: plan.migrationDecision.decision,
+    currentMigrationHead: plan.migrationDecision.currentMigrationHead,
+    priorMigrationHead: plan.migrationDecision.priorMigrationHead,
+    decidedAt: plan.migrationDecision.decidedAt,
+  });
+  if (decision.evidenceHash !== plan.migrationDecision.evidenceHash) {
+    throw new RestoreDrillError('MIGRATION_EVIDENCE_HASH_MISMATCH');
   }
-  if (!Number.isFinite(startedAt.getTime())) throw new RestoreDrillError('INVALID_PLAN');
-  const ageMilliseconds = startedAt.getTime() - exactIso(plan.backup.createdAt);
-  if (ageMilliseconds < 0) throw new RestoreDrillError('INVALID_PLAN');
-  const ageSeconds = Math.floor(ageMilliseconds / 1000);
-  if (ageSeconds > plan.maximumBackupAgeSeconds) throw new RestoreDrillError('BACKUP_TOO_OLD');
-  if (ageSeconds > plan.recoveryPointObjectiveSeconds) throw new RestoreDrillError('RPO_EXCEEDED');
-  return ageSeconds;
 }
 
-function hashEvidence(evidence: Omit<RestoreDrillEvidence, 'evidenceHash'>): string {
-  return createHash('sha256').update(JSON.stringify(evidence)).digest('hex');
-}
-
-export async function runDisposablePostgresRestoreDrill(
+export function completeDisposablePostgresRestoreDrill(
   plan: DisposablePostgresRestoreDrillPlan,
-  port: DisposablePostgresRestoreDrillPort,
-): Promise<RestoreDrillEvidence> {
-  const startedAt = new Date();
-  const backupAgeSeconds = assertPlan(plan, startedAt);
-  let targetCreated = false;
-  let primaryError: unknown;
-  let result: RestoreDrillEvidence | undefined;
-  let stage: 'CREATE' | 'RESTORE' | 'VERIFY' = 'CREATE';
-  try {
-    await port.createDisposableTarget(plan.targetDatabaseReference);
-    targetCreated = true;
-    stage = 'RESTORE';
-    await port.restoreBackup(plan.targetDatabaseReference, plan.backup.reference);
-    stage = 'VERIFY';
-    const restoredMigrationHead = await port.readMigrationHead(plan.targetDatabaseReference);
-    if (restoredMigrationHead !== plan.expectedMigrationHead) {
-      throw new RestoreDrillError('MIGRATION_MISMATCH');
-    }
-    const restoredSentinelDigest = await port.readSentinelDigest(plan.targetDatabaseReference);
-    if (restoredSentinelDigest !== plan.expectedSentinelDigest) {
-      throw new RestoreDrillError('SENTINEL_MISMATCH');
-    }
-    if (!(await port.verifyHealth(plan.targetDatabaseReference))) {
-      throw new RestoreDrillError('HEALTH_FAILED');
-    }
-    const completedAt = new Date();
-    const durationMilliseconds = completedAt.getTime() - startedAt.getTime();
-    if (durationMilliseconds < 0) throw new RestoreDrillError('INVALID_PLAN');
-    if (durationMilliseconds > plan.recoveryTimeObjectiveSeconds * 1000) {
-      throw new RestoreDrillError('RTO_EXCEEDED');
-    }
-    const evidenceWithoutHash = {
-      schemaVersion: 1 as const,
-      drillId: plan.drillId,
-      targetDatabaseReference: plan.targetDatabaseReference,
-      backupReference: plan.backup.reference,
-      backupChecksum: plan.backup.checksum,
-      backupAgeSeconds,
-      recoveryPointObjectiveSeconds: plan.recoveryPointObjectiveSeconds,
-      recoveryTimeObjectiveSeconds: plan.recoveryTimeObjectiveSeconds,
-      durationMilliseconds,
-      migrationCompatibilityDecision: plan.migrationCompatibilityDecision,
-      migrationDecisionEvidenceHash: plan.migrationDecisionEvidenceHash,
-      restoredMigrationHead,
-      restoredSentinelDigest,
-      healthVerified: true as const,
-      cleanupVerified: true as const,
-      completedAt: completedAt.toISOString(),
-    };
-    result = Object.freeze({
-      ...evidenceWithoutHash,
-      evidenceHash: hashEvidence(evidenceWithoutHash),
-    });
-  } catch (error) {
-    primaryError =
-      error instanceof RestoreDrillError
-        ? error
-        : new RestoreDrillError(
-            stage === 'CREATE'
-              ? 'TARGET_CREATE_FAILED'
-              : stage === 'RESTORE'
-                ? 'RESTORE_FAILED'
-                : 'VERIFICATION_FAILED',
-          );
-  } finally {
-    if (targetCreated) {
-      try {
-        await port.destroyDisposableTarget(plan.targetDatabaseReference);
-      } catch {
-        throw new RestoreDrillError('CLEANUP_FAILED');
-      }
-    }
+  observation: DisposablePostgresRestoreObservation,
+): RestoreDrillEvidence {
+  validatePlan(plan);
+  if (
+    !exactKeys(observation, [
+      'schemaVersion',
+      'drillId',
+      'targetDatabaseReference',
+      'backupReference',
+      'backupChecksum',
+      'backupCreatedAt',
+      'startedAt',
+      'completedAt',
+      'restoredMigrationHead',
+      'restoredSentinelDigest',
+      'healthVerified',
+      'cleanupVerified',
+    ]) ||
+    observation.schemaVersion !== 1 ||
+    observation.healthVerified !== true ||
+    observation.cleanupVerified !== true
+  ) {
+    throw new RestoreDrillError('INVALID_OBSERVATION');
   }
-  if (primaryError) throw primaryError;
-  if (!result) throw new RestoreDrillError('INVALID_PLAN');
-  return result;
+  if (
+    observation.drillId !== plan.drillId ||
+    observation.targetDatabaseReference !== plan.targetDatabaseReference ||
+    observation.backupReference !== plan.backup.reference ||
+    observation.backupChecksum !== plan.backup.checksum ||
+    observation.backupCreatedAt !== plan.backup.createdAt
+  )
+    throw new RestoreDrillError('BACKUP_IDENTITY_MISMATCH');
+  const startedAt = exactIso(observation.startedAt, 'INVALID_OBSERVATION');
+  const completedAt = exactIso(observation.completedAt, 'INVALID_OBSERVATION');
+  const backupAgeSeconds = Math.floor(
+    (startedAt - exactIso(plan.backup.createdAt, 'INVALID_PLAN')) / 1000,
+  );
+  const durationMilliseconds = completedAt - startedAt;
+  if (backupAgeSeconds < 0 || durationMilliseconds < 0)
+    throw new RestoreDrillError('INVALID_OBSERVATION');
+  if (backupAgeSeconds > plan.maximumBackupAgeSeconds)
+    throw new RestoreDrillError('BACKUP_TOO_OLD');
+  if (backupAgeSeconds > plan.recoveryPointObjectiveSeconds)
+    throw new RestoreDrillError('RPO_EXCEEDED');
+  if (durationMilliseconds > plan.recoveryTimeObjectiveSeconds * 1000)
+    throw new RestoreDrillError('RTO_EXCEEDED');
+  if (observation.restoredMigrationHead !== plan.expectedMigrationHead)
+    throw new RestoreDrillError('MIGRATION_MISMATCH');
+  if (observation.restoredSentinelDigest !== plan.expectedSentinelDigest)
+    throw new RestoreDrillError('SENTINEL_MISMATCH');
+  const evidenceWithoutHash = {
+    ...observation,
+    backupAgeSeconds,
+    durationMilliseconds,
+    recoveryPointObjectiveSeconds: plan.recoveryPointObjectiveSeconds,
+    recoveryTimeObjectiveSeconds: plan.recoveryTimeObjectiveSeconds,
+    migrationDecisionEvidenceHash: plan.migrationDecision.evidenceHash,
+  };
+  return Object.freeze({ ...evidenceWithoutHash, evidenceHash: hash(evidenceWithoutHash) });
 }
