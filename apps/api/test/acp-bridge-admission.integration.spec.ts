@@ -1065,53 +1065,17 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             ledgerRecordedAt instanceof Date
               ? ledgerRecordedAt
               : ledgerRecordedAt(receipt.receivedAt);
-          await tx.acpRunUsage.create({
-            data: {
-              id,
-              workspaceId,
-              dispatchId: selectedDispatchId,
-              runId: selectedRunId,
-              sessionId,
-              receiptId: id,
-              sequence,
-              computeUnits,
-              costMinorUnits,
-              cumulativeComputeUnits,
-              cumulativeCostMinorUnits,
-              currency: selectedCurrency,
-              evidenceHash: digest,
-              recordedAt: resolvedUsageRecordedAt,
-            },
-          });
+          const usageBindsReceipt =
+            resolvedUsageRecordedAt.getTime() === receipt.receivedAt.getTime();
+          const ledgerBindsReceipt =
+            resolvedLedgerRecordedAt.getTime() === receipt.receivedAt.getTime();
+          await tx.$executeRaw(
+            Prisma.sql`INSERT INTO "acp_run_usages" ("id", "workspaceId", "dispatchId", "runId", "sessionId", "receiptId", "sequence", "computeUnits", "costMinorUnits", "cumulativeComputeUnits", "cumulativeCostMinorUnits", "currency", "evidenceHash", "recordedAt") SELECT ${id}, ${workspaceId}::uuid, ${selectedDispatchId}, ${selectedRunId}, ${sessionId}, ${id}, ${sequence}, ${computeUnits}, ${costMinorUnits}, ${cumulativeComputeUnits}, ${cumulativeCostMinorUnits}, ${selectedCurrency}, ${digest}, CASE WHEN ${usageBindsReceipt} THEN r."receivedAt" ELSE ${resolvedUsageRecordedAt}::timestamptz END FROM "acp_bridge_receipts" r WHERE r."workspaceId" = ${workspaceId}::uuid AND r."id" = ${id}`,
+          );
           beforeLedger?.();
-          await tx.acpCostLedgerEntry.create({
-            data: {
-              id,
-              workspaceId,
-              usageId: id,
-              receiptId: id,
-              dispatchId: selectedDispatchId,
-              sessionId,
-              runId: selectedRunId,
-              taskId: selectedTaskId,
-              runtimeId,
-              connectionId,
-              sequence,
-              currency: selectedCurrency,
-              costMinorUnits,
-              computeUnits,
-              workspacePolicyId: selectedWorkspacePolicy.id,
-              workspacePolicyHash: selectedWorkspacePolicy.policyHash,
-              taskPolicyId: selectedTaskPolicy.id,
-              taskPolicyHash: selectedTaskPolicy.policyHash,
-              periodStart: selectedWorkspacePolicy.periodStart,
-              periodEnd: selectedWorkspacePolicy.periodEnd,
-              workspaceSpendMinorUnits: priorWorkspacePeriodSpend + costMinorUnits,
-              taskSpendMinorUnits: priorTaskPeriodSpend + costMinorUnits,
-              checksum: 'f'.repeat(64),
-              recordedAt: resolvedLedgerRecordedAt,
-            },
-          });
+          await tx.$executeRaw(
+            Prisma.sql`INSERT INTO "acp_cost_ledger_entries" ("id", "workspaceId", "usageId", "receiptId", "dispatchId", "sessionId", "runId", "taskId", "runtimeId", "connectionId", "sequence", "currency", "costMinorUnits", "computeUnits", "workspacePolicyId", "workspacePolicyHash", "taskPolicyId", "taskPolicyHash", "periodStart", "periodEnd", "workspaceSpendMinorUnits", "taskSpendMinorUnits", "checksum", "recordedAt") SELECT ${id}, ${workspaceId}::uuid, ${id}, ${id}, ${selectedDispatchId}, ${sessionId}, ${selectedRunId}, ${selectedTaskId}, ${runtimeId}, ${connectionId}, ${sequence}, ${selectedCurrency}, ${costMinorUnits}, ${computeUnits}, ${selectedWorkspacePolicy.id}, ${selectedWorkspacePolicy.policyHash}, ${selectedTaskPolicy.id}, ${selectedTaskPolicy.policyHash}, ${selectedWorkspacePolicy.periodStart}, ${selectedWorkspacePolicy.periodEnd}, ${priorWorkspacePeriodSpend + costMinorUnits}, ${priorTaskPeriodSpend + costMinorUnits}, ${'f'.repeat(64)}, CASE WHEN ${ledgerBindsReceipt} THEN r."receivedAt" ELSE ${resolvedLedgerRecordedAt}::timestamptz END FROM "acp_bridge_receipts" r WHERE r."workspaceId" = ${workspaceId}::uuid AND r."id" = ${id}`,
+          );
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 },
       );
