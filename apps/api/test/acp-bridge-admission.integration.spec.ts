@@ -664,6 +664,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       runtimeNonce: `runtime_nonce_${suffix.replaceAll('-', '')}`,
     };
     const delayedKeys = deriveBridgeKeys(secret, delayedContext);
+    const delayedEnvelopeIdentity = {
+      workspaceId: delayedContext.workspaceId,
+      runtimeId: delayedContext.runtimeId,
+      connectionId: delayedContext.connectionId,
+      sessionId: delayedContext.sessionId,
+      principalReference: delayedContext.principalReference,
+    };
     const delayedFrame = (
       sequence: number,
       type: 'HEARTBEAT' | 'DISPATCH_ACCEPTED',
@@ -672,7 +679,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       signBridgeEnvelope(
         {
           protocolVersion: BRIDGE_PROTOCOL_VERSION,
-          ...delayedContext,
+          ...delayedEnvelopeIdentity,
           sequence,
           messageId: `delayed-lock-message-${sequence}-${suffix}`,
           type,
