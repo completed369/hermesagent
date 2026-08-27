@@ -6,5 +6,16 @@
     "module": "CommonJS",
     "moduleResolution": "Node"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.test.cts",
+    "src/**/*.test.mts",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/**/*.spec.cts",
+    "src/**/*.spec.mts",
+    "src/**/__tests__/**"
+  ]
 }

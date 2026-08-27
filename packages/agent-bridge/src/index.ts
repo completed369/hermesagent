@@ -6,3 +6,5 @@ export * from './protocol';
 export * from './secret-lease';
 export * from './supervision-policy';
 export * from './supervision-lifecycle';
+export * from './supervision-authorization';
+export * from './supervision-evidence-reader';
