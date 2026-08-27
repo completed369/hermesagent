@@ -66,6 +66,9 @@ test('authenticated JSONL session is post-auth, bounded, atomic, and I/O-free', 
   assert.match(session, /verifyBridgeEnvelope\(envelope, keys\.runtimeToParent/u);
   assert.match(session, /keys\.parentToRuntime\.fill\(0\)/u);
   assert.match(session, /keys\.runtimeToParent\.fill\(0\)/u);
+  assert.match(session, /let verificationCompleted = false/u);
+  assert.match(session, /verificationCompleted = true/u);
+  assert.match(session, /if \(!verificationCompleted\)/u);
   assert.match(session, /finally\s*\{/u);
   assert.match(session, /#nextSequence = 1/u);
   assert.match(session, /#capabilitiesAccepted = false/u);

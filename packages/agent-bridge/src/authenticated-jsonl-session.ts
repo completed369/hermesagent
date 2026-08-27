@@ -351,6 +351,7 @@ export class AuthenticatedRuntimeJsonlSession {
       authGeneration: this.#context.authGeneration,
       purpose: 'VERIFY_FRAME',
     });
+    let verificationCompleted = false;
     await this.secretLeaseResolver.withSecret(leaseRequest, (secret) => {
       const keys = deriveBridgeKeys(secret, {
         workspaceId: this.#context.workspaceId,
@@ -373,11 +374,13 @@ export class AuthenticatedRuntimeJsonlSession {
             throw new AuthenticatedJsonlSessionError('FRAME_INVALID');
           verifyBridgeEnvelope(envelope, keys.runtimeToParent, this.#context, observedAt);
         }
+        verificationCompleted = true;
       } finally {
         keys.parentToRuntime.fill(0);
         keys.runtimeToParent.fill(0);
       }
     });
+    if (!verificationCompleted) throw new AuthenticatedJsonlSessionError('AUTHENTICATION_DENIED');
     if (this.#state !== 'ACTIVE') throw new AuthenticatedJsonlSessionError('TERMINAL');
     const commitObservedAt = Date.now();
     if (commitObservedAt >= Date.parse(this.#context.expiresAt))

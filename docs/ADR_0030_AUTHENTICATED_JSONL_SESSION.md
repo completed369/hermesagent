@@ -26,7 +26,8 @@ expiry context. The driver:
 - supports split and coalesced JSONL lines, but verifies every completed envelope in a batch
   before committing any of them;
 - leases secret bytes only for the exact `VERIFY_FRAME` scope, derives the runtime-to-parent
-  key in memory, and zeros both derived directional key arrays on success or failure;
+  key in memory, requires local proof that the lease callback completed every verification,
+  and zeros both derived directional key arrays on success or failure;
 - uses a single observed time for a batch, exact canonical UTC timestamps, the established
   future-skew rule, frame expiry, and session expiry, then rechecks frame and session expiry
   after the lease resolver returns and immediately before committing;

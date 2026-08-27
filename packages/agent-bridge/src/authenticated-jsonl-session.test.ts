@@ -450,6 +450,59 @@ describe('authenticated runtime JSONL session', () => {
     });
   });
 
+  it.each([
+    [
+      'skips the verifier callback',
+      (): BridgeSecretLeaseResolver => ({
+        async withSecret<T>(): Promise<T> {
+          return undefined as T;
+        },
+      }),
+      (): BridgeEnvelope => signedFrame(1),
+    ],
+    [
+      'swallows a verifier callback failure',
+      (): BridgeSecretLeaseResolver => ({
+        async withSecret<T>(
+          _request: Readonly<BridgeSecretLeaseRequest>,
+          consumer: (secret: Uint8Array) => Promise<T> | T,
+        ): Promise<T> {
+          const lease = Uint8Array.from(SECRET);
+          try {
+            return await consumer(lease);
+          } catch {
+            return undefined as T;
+          } finally {
+            lease.fill(0);
+          }
+        },
+      }),
+      (): BridgeEnvelope => {
+        const valid = signedFrame(1);
+        return {
+          ...valid,
+          mac: `${valid.mac[0] === 'A' ? 'B' : 'A'}${valid.mac.slice(1)}`,
+        };
+      },
+    ],
+  ])('denies a resolver that %s', async (_name, makeResolver, makeFrame) => {
+    const session = new AuthenticatedRuntimeJsonlSession(context(), makeResolver());
+    await expect(session.ingest(line(makeFrame()))).rejects.toMatchObject({
+      code: 'AUTHENTICATION_DENIED',
+    });
+    expect(session.snapshot()).toEqual({
+      state: 'FAILED',
+      nextSequence: 1,
+      acceptedFrames: 0,
+      ingestedBytes: 0,
+      bufferedBytes: 0,
+      capabilitiesAccepted: false,
+    });
+    await expect(session.ingest(line(signedFrame(1)))).rejects.toMatchObject({
+      code: 'TERMINAL',
+    });
+  });
+
   it('maps production denial to a fixed error and zeroes both derived keys on success and error', async () => {
     const denied = new AuthenticatedRuntimeJsonlSession(
       context(),
