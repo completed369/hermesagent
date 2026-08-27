@@ -58,6 +58,11 @@ evidence; broker reservations remain estimates rather than financial charges.
 > then proves TERM-to-KILL cleanup of the one admitted process. This is not general
 > process-tree containment. The native path is absent from production packages/images,
 > and production authorization and launching still deny.
+> A proposed Linux-only deterministic test composes that opaque launch handoff with the bounded
+> post-authentication JSONL verifier. The fixed ELF receives a synthetic test secret only through
+> an anonymous descriptor, emits exact success or parent-cancellation lifecycle frames, and yields
+> evidence only after native cleanup. This remains absent from production packages/images and does
+> not configure, connect, or change the durable status of any runtime.
 >
 > Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
 > `ventureos.site` is the public entry point; `staging.ventureos.site`,

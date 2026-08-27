@@ -108,6 +108,12 @@ published and current `main` has not been deployed to private staging.
    no-child/session-escape deny policy, and root-process cleanup in tests only.
    This is not general process-tree containment and is not exported, packaged,
    imaged, or wired to production.
+   The next test-only slice joins that opaque native handoff to the bounded authenticated JSONL
+   verifier for exact capability, heartbeat, success, and cancellation transcripts. Synthetic key
+   material uses only an anonymous inherited descriptor and verification occurs after native
+   cleanup. This is CI evidence only, not a runtime connection or production transport; production
+   authorization, secrets, and launching remain deny-only and all real runtimes remain
+   **NOT_CONFIGURED**.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

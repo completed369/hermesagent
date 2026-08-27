@@ -82,6 +82,8 @@ test('rejects native supervisor test helpers anywhere in a final image', () => {
     'packages/agent-bridge/test/native/native-supervisor-helper.c',
     'app/native-supervisor-helper',
     'app/native-supervisor-addon.node',
+    'app/authenticated-lifecycle-addon.node',
+    'app/authenticated-supervised-lifecycle.test.js',
     'workspace/packages/agent-bridge/test/native/renamed-helper.bin',
     `${packagePrefix}/dist/native-runtime-fixture.js`,
   ])

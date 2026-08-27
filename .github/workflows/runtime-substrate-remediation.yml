@@ -160,7 +160,7 @@ jobs:
           find "$rootfs" -mindepth 1 -printf '%y\0%P\0%l\0' | node scripts/verify-agent-bridge-runtime-root.mjs
           find "$rootfs" -type f -print0 > "$runtime_file_manifest"
           while IFS= read -r -d '' runtime_file; do
-            if grep -aFq 'NATIVE_SUPERVISOR_DENIED:' "$runtime_file"; then
+            if grep -aEq 'NATIVE_SUPERVISOR_DENIED:|AUTHENTICATED_TRANSCRIPT|authenticated-lifecycle-addon' "$runtime_file"; then
               echo 'Native supervisor test helper entered a final runtime image.' >&2
               exit 1
             else
