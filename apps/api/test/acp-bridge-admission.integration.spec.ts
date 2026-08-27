@@ -886,6 +886,22 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         },
       }),
     ).rejects.toThrow(/reference_check|check constraint/iu);
+    await expect(
+      prisma.acpBridgeEgressHandoffAttempt.create({
+        data: {
+          ...durableHandoff,
+          id: `egress-oversized-owner-sql-${suffix}`,
+          ownerReference: `7${'a'.repeat(256)}`,
+          ownerActorKind: 'SYSTEM',
+          claimIdempotencyKey: `egress-oversized-owner-sql-${suffix}`,
+          generation: 3,
+          claimedAt: privacyClaimedAt,
+          expiresAt: new Date(
+            Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
+          ),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
     let reportHandoffLease!: () => void;
     let releaseHandoffLease!: () => void;
     const handoffLeaseReached = new Promise<void>((resolve) => {
@@ -1094,26 +1110,17 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     ).toThrow();
     expect(secretLeaseRequests).toHaveLength(secretRequestsBeforeAtOwner);
     const oversizedPrincipalId = `7${'a'.repeat(256)}`;
-    const oversizedCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
-      {
-        workspaceId,
-        principalId: oversizedPrincipalId,
-        actorKind: 'SYSTEM',
-        authorityLevel: 3,
-      },
-    ]);
     const secretRequestsBeforeOversizedOwner = secretLeaseRequests.length;
-    await expect(
-      bridge.claimDispatchEgressHandoff(
-        oversizedCapability,
-        { workspaceId, principalId: oversizedPrincipalId },
+    expect(() =>
+      OperationalEventCapability.issue('CONTROL_PLANE', [
         {
-          attemptId: `egress-oversized-owner-${suffix}`,
-          outboxId: capsuleId,
-          idempotencyKey: `egress-oversized-owner-${suffix}`,
+          workspaceId,
+          principalId: oversizedPrincipalId,
+          actorKind: 'SYSTEM',
+          authorityLevel: 3,
         },
-      ),
-    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+      ]),
+    ).toThrow();
     expect(secretLeaseRequests).toHaveLength(secretRequestsBeforeOversizedOwner);
     const leaseRequestsBeforePreflightDenials = secretLeaseRequests.length;
     const level2Capability = OperationalEventCapability.issue('CONTROL_PLANE', [
