@@ -111,7 +111,7 @@ test('recognized usage is transactionally paired with ledger and immutable evide
     'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
     'utf8',
   );
-  assert.match(bridgeService, /receipt\.id,\s*receipt\.receivedAt,\s*now/u);
+  assert.match(bridgeService, /receipt\.id,\s*receipt\.receivedAt,\s*persistenceNow/u);
   assert.match(
     bridgeService,
     /envelope\.type !== 'USAGE'[\s\S]*?to_char\("receivedAt" AT TIME ZONE 'UTC'[\s\S]*?Usage receipt clock unavailable/u,
