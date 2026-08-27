@@ -26,7 +26,7 @@ for (const path of files) {
   if (extname(path) === '.js') {
     const source = readFileSync(path, 'utf8');
     if (
-      /runtime-process-tree-fixture|deterministic-supervision|native-supervisor-helper|native-supervisor-addon|native-runtime-fixture|NATIVE_SUPERVISOR_DENIED|node:child_process|MC4CAQAwBQYDK2VwBCIE/u.test(
+      /runtime-process-tree-fixture|deterministic-supervision|native-supervisor-helper|native-supervisor-addon|native-runtime-fixture|authenticated-lifecycle-addon|authenticated-supervised-lifecycle|NATIVE_SUPERVISOR_DENIED|AUTHENTICATED_TRANSCRIPT|node:child_process|MC4CAQAwBQYDK2VwBCIE/u.test(
         source,
       )
     )

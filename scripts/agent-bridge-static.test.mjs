@@ -320,7 +320,7 @@ test('native supervisor evidence stays Linux-test-only and final images deny its
     /RESOLVE_BENEATH \| RESOLVE_NO_SYMLINKS \| RESOLVE_NO_MAGICLINKS \| RESOLVE_NO_XDEV/u,
   );
   assert.match(helper, /SYS_execveat[\s\S]*AT_EMPTY_PATH/u);
-  assert.match(helper, /"--mode"[\s\S]*"jsonl-fixture"/u);
+  assert.match(helper, /fixture_mode = authenticated_mode\(mode\) \? mode : "jsonl-fixture"/u);
   assert.match(helper, /CLOCK_REALTIME/u);
   assert.ok((helper.match(/permit_is_current\(expires_at_ms\)/gu) ?? []).length >= 2);
   assert.match(helper, /renameat\(root, "work", root, "work-retained"\)/u);
@@ -353,7 +353,7 @@ test('native supervisor evidence stays Linux-test-only and final images deny its
   assert.match(testSource, /manifest\.executable\.sha256/u);
   assert.match(testSource, /env: \{\}/u);
   assert.match(addon, /#include "native-supervisor-helper\.c"/u);
-  assert.match(addon, /run_supervisor\(23, arguments, evidence\)/u);
+  assert.match(addon, /run_supervisor\(23, arguments, NULL, 0, evidence, NULL, 0, NULL\)/u);
   assert.match(addon, /napi_get_cb_info\(env, info, &actual, NULL/u);
   assert.match(addon, /napi_get_value_string_utf8\(env, value, NULL, 0, &required\)/u);
   assert.match(addon, /memchr\(output, '\\0', copied\)/u);
@@ -373,6 +373,84 @@ test('native supervisor evidence stays Linux-test-only and final images deny its
   assert.match(runtimeAssertion, /NATIVE_SUPERVISOR_DENIED/u);
   assert.match(imageBoundary, /NATIVE_TEST_FIXTURE/u);
   assert.match(imageWorkflow, /Native supervisor test helper entered a final runtime image/u);
+});
+
+test('authenticated supervised lifecycle evidence is test-only, bounded, and deny-wired', () => {
+  const helper = readFileSync(
+    'packages/agent-bridge/test/native/native-supervisor-helper.c',
+    'utf8',
+  );
+  const fixture = readFileSync(
+    'packages/agent-bridge/test/native/native-runtime-fixture.c',
+    'utf8',
+  );
+  const addon = readFileSync(
+    'packages/agent-bridge/test/native/authenticated-lifecycle-addon.c',
+    'utf8',
+  );
+  const testSource = readFileSync(
+    'packages/agent-bridge/src/authenticated-supervised-lifecycle.test.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const runtimeAssertion = readFileSync(
+    'packages/agent-bridge/scripts/assert-runtime-boundary.mjs',
+    'utf8',
+  );
+  const imageBoundary = readFileSync('scripts/verify-agent-bridge-runtime-root.mjs', 'utf8');
+  const imageWorkflow = readFileSync('.github/workflows/runtime-substrate-remediation.yml', 'utf8');
+
+  assert.match(helper, /pipe2\(secret_pipe, O_CLOEXEC\)/u);
+  assert.match(helper, /write_all\(secret_pipe\[1\], secret, secret_length\)/u);
+  assert.match(helper, /transcript_capacity[\s\S]*line_count != 3/u);
+  assert.match(helper, /authenticated-cancel[\s\S]*kill\(-child, SIGTERM\)/u);
+  assert.match(helper, /wait_child_bounded[\s\S]*cleanupCompletedBeforeEvidence/u);
+  assert.match(
+    helper,
+    /hash_buffer\(\(const unsigned char \*\)transcript_output[\s\S]*transcriptDigest/u,
+  );
+  assert.match(helper, /AUTHENTICATED_TRANSCRIPT/u);
+  assert.match(helper, /expectedTerminal/u);
+  assert.doesNotMatch(helper, /authenticatedTerminal/u);
+  assert.match(fixture, /#define SECRET_FD 3/u);
+  assert.match(fixture, /derive_runtime_key\(secret, runtime_key\)/u);
+  assert.match(fixture, /memset\(secret, 0, sizeof\(secret\)\)/u);
+  assert.match(fixture, /memset\(runtime_key, 0, sizeof\(runtime_key\)\)/u);
+  assert.match(fixture, /"CAPABILITIES"[\s\S]*"HEARTBEAT"[\s\S]*"CANCELLED" : "RESULT"/u);
+  assert.doesNotMatch(fixture, /getenv\s*\(/u);
+  assert.match(addon, /napi_get_typedarray_info/u);
+  assert.match(addon, /secret_length != LIFECYCLE_SECRET_BYTES/u);
+  assert.match(addon, /memset\(owned_secret, 0, sizeof\(owned_secret\)\)/u);
+  assert.match(addon, /napi_call_function\(env, global, consumer, 1, arguments, &tuple\)/u);
+  assert.doesNotMatch(addon, /napi_set_named_property\(env, exports, "launch"/u);
+  assert.match(testSource, /new TrustedSupervisorComposition\(/u);
+  assert.match(testSource, /new AuthenticatedRuntimeJsonlSession\(/u);
+  assert.match(testSource, /ScopedBridgeSecretLeaseResolver/u);
+  assert.match(
+    testSource,
+    /const envelope = this\.#consumeHandoff\(handoff\)[\s\S]*this\.secretResolver\.withSecret/u,
+  );
+  assert.match(testSource, /#nativeTokens = new WeakMap/u);
+  assert.match(
+    testSource,
+    /const verified = await session\.ingest\(transcript\)[\s\S]*this\.completion = Object\.freeze/u,
+  );
+  assert.match(testSource, /expect\(source\.requests\)\.toHaveLength\(0\)/u);
+  assert.match(testSource, /'session'[\s\S]*'nonce'[\s\S]*'generation'[\s\S]*'expiry'/u);
+  assert.match(testSource, /\['CAPABILITIES', 'HEARTBEAT', 'RESULT'\]/u);
+  assert.match(testSource, /\['CAPABILITIES', 'HEARTBEAT', 'CANCELLED'\]/u);
+  assert.match(testSource, /cleanupCompletedBeforeEvidence: true/u);
+  assert.doesNotMatch(index, /authenticated-supervised-lifecycle|authenticated-lifecycle-addon/u);
+  assert.match(module, /new DenyBridgeSecretLeaseResolver\(\)/u);
+  assert.match(module, /new DenyTrustedSupervisorAuthorizationSource\(\)/u);
+  assert.match(module, /new DenyRuntimeProcessLauncher\(\)/u);
+  assert.match(runtimeAssertion, /authenticated-supervised-lifecycle/u);
+  assert.match(imageBoundary, /authenticated-lifecycle-addon/u);
+  assert.match(imageWorkflow, /AUTHENTICATED_TRANSCRIPT/u);
 });
 
 test('process-tree evidence stays test-only, unexported, and absent from production images', () => {

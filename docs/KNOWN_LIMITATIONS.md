@@ -106,6 +106,14 @@
 > launcher, general sandbox, or general process-tree containment. Native execution was not run on the Windows
 > authoring host; Ubuntu CI is authoritative for those claims.
 
+> A proposed deterministic Linux test now joins the composition-owned native handoff to the
+> I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an
+> anonymous inherited descriptor, the fixed ELF emits bounded success or cancellation frames, and
+> the transcript is verified only after pidfd/process-group cleanup evidence. This remains
+> test-only: production authorization, secret resolution, and launching still deny, no durable ACP
+> status is changed, and Codex, Hermes, and Pi remain **NOT_CONFIGURED**. Native execution was not
+> run on the Windows authoring host; Ubuntu CI is authoritative.
+
 The cost-governance foundation pairs authenticated bridge usage with immutable
 recognized-spend evidence under exact workspace and task budget periods. It
 does not activate billing, reconcile provider invoices, convert currencies,
