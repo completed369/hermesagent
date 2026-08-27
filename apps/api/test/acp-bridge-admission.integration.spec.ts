@@ -3243,7 +3243,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     });
     await prisma.acpRun.update({
       where: { workspaceId_id: { workspaceId, id: newRun.id } },
-      data: { status: 'FAILED', version: { increment: 1 }, completedAt: new Date() },
+      data: { status: 'STOPPED', version: { increment: 1 }, completedAt: new Date() },
     });
     for (const { dispatch, run } of prepared) {
       await prisma.acpBridgeDispatch.update({
@@ -3252,7 +3252,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       });
       await prisma.acpRun.update({
         where: { workspaceId_id: { workspaceId, id: run.id } },
-        data: { status: 'FAILED', version: { increment: 1 }, completedAt: new Date() },
+        data: { status: 'STOPPED', version: { increment: 1 }, completedAt: new Date() },
       });
     }
     expect(
