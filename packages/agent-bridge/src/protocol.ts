@@ -8,6 +8,7 @@ export type BridgeMessageType =
   | 'AUTHENTICATE'
   | 'CAPABILITIES'
   | 'HEARTBEAT'
+  | 'DISPATCH'
   | 'DISPATCH_ACCEPTED'
   | 'PROGRESS'
   | 'ARTIFACT'

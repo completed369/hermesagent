@@ -13,11 +13,14 @@ import {
 import { Prisma, prisma } from '@ventureos/database';
 import {
   BRIDGE_PROTOCOL_VERSION,
+  BridgeProtocolError,
   deriveBridgeKeys,
+  DenyBridgeSecretLeaseResolver,
   digestBridgePayload,
   encodeBridgeLine,
   ScopedBridgeSecretLeaseResolver,
   signBridgeEnvelope,
+  verifyBridgeEnvelope,
   type BridgeSecretLeaseRequest,
   type BridgeSecretLeaseResolver,
 } from '@ventureos/agent-bridge';
@@ -86,9 +89,10 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
   function testBridge(
     secretResolver: BridgeSecretLeaseResolver = testSecretLease(),
     brokerVerifier: { verify: AcpBrokerReservationService['verify'] } = brokerReservations,
+    auditService: AuditService = new AuditService(),
   ) {
     return new AcpBridgeAdmissionService(
-      new AuditService(),
+      auditService,
       secretResolver,
       brokerVerifier,
       {
@@ -599,6 +603,128 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     ).rejects.toThrow(/lifecycle fields are immutable/iu);
     const assignmentEvidenceId = prepared.dispatch.assignmentEvidenceId;
     primaryAssignmentEvidenceId = assignmentEvidenceId;
+    const capsuleId = `dispatch-capsule-${suffix}`;
+    const preparedAuthorization = await bridge.prepareDispatchAuthorization(
+      capability,
+      { workspaceId, principalId },
+      {
+        capsuleId,
+        dispatchId,
+        idempotencyKey: `dispatch-capsule-${suffix}`,
+      },
+    );
+    expect(preparedAuthorization.replayed).toBe(false);
+    expect(preparedAuthorization.outbox).toMatchObject({
+      id: capsuleId,
+      workspaceId,
+      runtimeId,
+      connectionId,
+      sessionId,
+      dispatchId,
+      taskId,
+      runId,
+      outboundSequence: 1,
+      messageType: 'DISPATCH',
+      protocolVersion: BRIDGE_PROTOCOL_VERSION,
+      state: 'PREPARED',
+    });
+    expect(preparedAuthorization.frame).toMatchObject({
+      type: 'DISPATCH',
+      sequence: 1,
+      messageId: capsuleId,
+      workspaceId,
+      runtimeId,
+      connectionId,
+      sessionId,
+    });
+    const outboundKeys = deriveBridgeKeys(secret, {
+      workspaceId,
+      runtimeId,
+      connectionId,
+      sessionId,
+      principalReference: `fixture-principal-${suffix}`,
+      parentNonce,
+      runtimeNonce,
+    });
+    const observedAt = new Date(preparedAuthorization.frame.issuedAt);
+    expect(() =>
+      verifyBridgeEnvelope(
+        preparedAuthorization.frame,
+        outboundKeys.parentToRuntime,
+        {
+          workspaceId,
+          runtimeId,
+          connectionId,
+          sessionId,
+          principalReference: `fixture-principal-${suffix}`,
+        },
+        observedAt,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      verifyBridgeEnvelope(
+        preparedAuthorization.frame,
+        outboundKeys.runtimeToParent,
+        {
+          workspaceId,
+          runtimeId,
+          connectionId,
+          sessionId,
+          principalReference: `fixture-principal-${suffix}`,
+        },
+        observedAt,
+      ),
+    ).toThrow(BridgeProtocolError);
+    outboundKeys.parentToRuntime.fill(0);
+    outboundKeys.runtimeToParent.fill(0);
+    const durableCapsule = await prisma.acpBridgeDispatchOutbox.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: capsuleId } },
+    });
+    expect(Object.keys(durableCapsule)).not.toEqual(
+      expect.arrayContaining(['mac', 'payload', 'rawLine', 'principalReference']),
+    );
+    expect(JSON.stringify(durableCapsule)).not.toContain(preparedAuthorization.frame.mac);
+    expect(
+      (
+        await bridge.prepareDispatchAuthorization(
+          capability,
+          { workspaceId, principalId },
+          {
+            capsuleId,
+            dispatchId,
+            idempotencyKey: `dispatch-capsule-${suffix}`,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+    await expect(
+      bridge.prepareDispatchAuthorization(
+        capability,
+        { workspaceId, principalId },
+        {
+          capsuleId: `drifted-capsule-${suffix}`,
+          dispatchId,
+          idempotencyKey: `dispatch-capsule-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      prisma.acpBridgeDispatchOutbox.update({
+        where: { workspaceId_id: { workspaceId, id: capsuleId } },
+        data: { state: 'SENT' },
+      }),
+    ).rejects.toThrow(/immutable/iu);
+    expect(secretLeaseRequests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          workspaceId,
+          runtimeId,
+          connectionId,
+          purpose: 'SIGN_FRAME',
+          expectedDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        }),
+      ]),
+    );
     const auditBeforePreparedRejections = await prisma.auditEvent.count({
       where: { workspaceReference: workspaceId },
     });
@@ -2569,6 +2695,550 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         where: { workspaceId, sessionId: rollbackSessionId, sequence: { gte: 2 } },
       }),
     ).toBe(0);
+  });
+
+  it('serializes outbound capsules and rolls back stale, forged, lease, and audit failures', async () => {
+    const planId = `outbox-${suffix}`;
+    await prisma.acpRuntimeConnection.update({
+      where: { workspaceId_id: { workspaceId, id: connectionId } },
+      data: {
+        status: 'PARTIAL',
+        lastHeartbeatAt: new Date(),
+        lastHeartbeatHealth: 'HEALTHY',
+        lastHeartbeatSequence: 5,
+        version: { increment: 1 },
+      },
+    });
+    const plan = await taskRuns.createPlan(
+      plannerCapability,
+      { workspaceId, principalId },
+      {
+        workspaceId,
+        idempotencyKey: `${planId}:plan`,
+        policyVersion: 'dispatch-outbox-v1',
+        objective: {
+          id: `${planId}:objective`,
+          title: 'Prepare bounded dispatch authorizations',
+          desiredOutcome: 'No transport or delivery claim',
+          maximumAuthority: 3,
+          costLimit: { currency: 'EUR', maximumMinorUnits: 700, maximumComputeUnits: 700 },
+          acceptanceCriteria: ['prepared-only'],
+          verificationCriteria: ['direction-bound'],
+          stopConditions: ['deny-on-drift'],
+        },
+        projects: [{ id: `${planId}:project`, title: 'Outbound authorization' }],
+        tasks: ['one', 'two', 'three', 'four', 'five', 'six', 'seven'].map((label) => ({
+          id: `${planId}:task:${label}`,
+          projectId: `${planId}:project`,
+          title: `Outbox fixture ${label}`,
+          kind: 'quality.verify' as const,
+          dependencyIds: [],
+          requiredAuthority: 3 as const,
+          costLimit: { currency: 'EUR', maximumMinorUnits: 100, maximumComputeUnits: 100 },
+          estimatedDurationMs: 1_000,
+          acceptanceCriteria: ['prepared-only'],
+          verificationCriteria: ['direction-bound'],
+          stopConditions: ['deny-on-drift'],
+          retryPolicy: {
+            maximumAttempts: 1,
+            retryableFailureCodes: ['TRANSIENT'],
+            stopAfterFailureCodes: ['DENIED'],
+          },
+          agentPolicy: { templateId: 'outbox-agent', scopes: ['quality.verify'] },
+          routingPolicy: { capabilityId: 'quality.verify', maximumLatencyMs: 1_000 },
+        })),
+      },
+    );
+    refreshCandidateSnapshot({ maxConcurrentRuns: 10 });
+    const prepared = [];
+    for (const [index, task] of plan.objective.tasks.slice(0, 6).entries()) {
+      const run = task.runs[0]!;
+      const agentId = `${planId}:agent:${index}`;
+      const reservation = await brokerReservations.reserveForPreparedRun(
+        capability,
+        { workspaceId, principalId },
+        {
+          reservationId: `${planId}:reservation:${index}`,
+          runId: run.id,
+          agentId,
+          expectedRunVersion: run.version,
+          idempotencyKey: `${planId}:reservation:${index}`,
+        },
+      );
+      const dispatch = await bridge.prepareDispatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          dispatchId: `${planId}:dispatch:${index}`,
+          agentId,
+          sessionId,
+          idempotencyKey: `${planId}:dispatch:${index}`,
+          brokerEvidence: {
+            evidenceId: reservation.reservation.id,
+            evidenceHash: reservation.reservation.evidenceHash,
+            workspaceId,
+            taskId: task.id,
+            runId: run.id,
+            agentId,
+            runtimeId,
+            connectionId,
+          },
+        },
+      );
+      prepared.push({
+        task,
+        run,
+        dispatch: dispatch.dispatch,
+        reservation: reservation.reservation,
+      });
+    }
+
+    const auditBefore = await prisma.auditEvent.count({
+      where: { workspaceReference: workspaceId },
+    });
+    const sequenceBaseline =
+      (
+        await prisma.acpBridgeDispatchOutbox.aggregate({
+          where: { workspaceId, sessionId },
+          _max: { outboundSequence: true },
+        })
+      )._max.outboundSequence ?? 0;
+    const concurrent = await Promise.all(
+      prepared.slice(0, 2).map(({ dispatch }, index) =>
+        bridge.prepareDispatchAuthorization(
+          capability,
+          { workspaceId, principalId },
+          {
+            capsuleId: `${planId}:capsule:${index}`,
+            dispatchId: dispatch.id,
+            idempotencyKey: `${planId}:capsule:${index}`,
+          },
+        ),
+      ),
+    );
+    expect(concurrent.map((result) => result.outbox.outboundSequence).sort()).toEqual([
+      sequenceBaseline + 1,
+      sequenceBaseline + 2,
+    ]);
+    expect(concurrent.every((result) => result.outbox.state === 'PREPARED')).toBe(true);
+    expect(
+      await prisma.acpBridgeDispatchOutbox.count({
+        where: { workspaceId, id: { startsWith: `${planId}:capsule:` } },
+      }),
+    ).toBe(2);
+    expect(
+      (
+        await bridge.prepareDispatchAuthorization(
+          capability,
+          { workspaceId, principalId },
+          {
+            capsuleId: `${planId}:capsule:0`,
+            dispatchId: prepared[0]!.dispatch.id,
+            idempotencyKey: `${planId}:capsule:0`,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+
+    const beforeDenied = {
+      audit: await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } }),
+      outbox: await prisma.acpBridgeDispatchOutbox.count({ where: { workspaceId } }),
+    };
+    await expect(
+      testBridge(new DenyBridgeSecretLeaseResolver()).prepareDispatchAuthorization(
+        capability,
+        { workspaceId, principalId },
+        {
+          capsuleId: `${planId}:capsule:lease-denied`,
+          dispatchId: prepared[2]!.dispatch.id,
+          idempotencyKey: `${planId}:capsule:lease-denied`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(await prisma.acpBridgeDispatchOutbox.count({ where: { workspaceId } })).toBe(
+      beforeDenied.outbox,
+    );
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      beforeDenied.audit,
+    );
+
+    await prisma.acpRuntimeConnection.update({
+      where: { workspaceId_id: { workspaceId, id: connectionId } },
+      data: { lastHeartbeatAt: new Date(Date.now() - 59_500), version: { increment: 1 } },
+    });
+    let releaseConnection!: () => void;
+    let reportConnectionLock!: () => void;
+    const releaseConnectionLock = new Promise<void>((resolve) => (releaseConnection = resolve));
+    const connectionLocked = new Promise<void>((resolve) => (reportConnectionLock = resolve));
+    const blocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId} FOR UPDATE`,
+      );
+      reportConnectionLock();
+      await releaseConnectionLock;
+    });
+    await connectionLocked;
+    const crossedFreshness = bridge.prepareDispatchAuthorization(
+      capability,
+      { workspaceId, principalId },
+      {
+        capsuleId: `${planId}:capsule:stale`,
+        dispatchId: prepared[2]!.dispatch.id,
+        idempotencyKey: `${planId}:capsule:stale`,
+      },
+    );
+    expect(
+      await Promise.race([
+        crossedFreshness.then(
+          () => 'settled',
+          () => 'settled',
+        ),
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 100)),
+      ]),
+    ).toBe('pending');
+    await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+    releaseConnection();
+    await blocker;
+    await expect(crossedFreshness).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(await prisma.acpBridgeDispatchOutbox.count({ where: { workspaceId } })).toBe(
+      beforeDenied.outbox,
+    );
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      beforeDenied.audit,
+    );
+
+    await prisma.acpRuntimeConnection.update({
+      where: { workspaceId_id: { workspaceId, id: connectionId } },
+      data: { lastHeartbeatAt: new Date(), version: { increment: 1 } },
+    });
+    const directDispatch = prepared[3]!.dispatch;
+    const directRun = prepared[3]!.run;
+    const directData = (issuedAt: Date, outboundSequence: number) => ({
+      id: `${planId}:direct-capsule`,
+      workspaceId,
+      runtimeId,
+      connectionId,
+      sessionId,
+      dispatchId: directDispatch.id,
+      taskId: directDispatch.taskId,
+      runId: directDispatch.runId,
+      agentId: directDispatch.agentId,
+      authorityLevel: directDispatch.authorityLevel,
+      outboundSequence,
+      messageId: `${planId}:direct-capsule`,
+      messageType: 'DISPATCH',
+      protocolVersion: BRIDGE_PROTOCOL_VERSION,
+      state: 'PREPARED',
+      brokerEvidenceId: directDispatch.brokerEvidenceId,
+      brokerEvidenceHash: directDispatch.brokerEvidenceHash,
+      assignmentEvidenceId: directDispatch.assignmentEvidenceId,
+      assignmentEvidenceHash: directDispatch.assignmentEvidenceHash,
+      dispatchEnvelopeHash: directDispatch.dispatchEnvelopeHash,
+      policyHash: directRun.policyHash,
+      capabilityPolicyHash,
+      capabilityDigest: sha256Canonical(['health.read', 'quality.verify']),
+      payloadDigest: '1'.repeat(64),
+      unsignedEnvelopeDigest: '2'.repeat(64),
+      signedEnvelopeDigest: '3'.repeat(64),
+      authenticationTagDigest: '4'.repeat(64),
+      idempotencyKey: `${planId}:direct-capsule`,
+      issuedAt,
+      expiresAt: new Date(issuedAt.getTime() + 5_000),
+      preparedAt: issuedAt,
+    });
+    await expect(
+      prisma.acpBridgeDispatchOutbox.create({ data: directData(new Date(), 99) }),
+    ).rejects.toThrow(/outbound sequence mismatch/iu);
+    expect(
+      await prisma.acpBridgeDispatchOutbox.count({
+        where: { workspaceId, dispatchId: directDispatch.id },
+      }),
+    ).toBe(0);
+
+    await prisma.acpRuntimeConnection.update({
+      where: { workspaceId_id: { workspaceId, id: connectionId } },
+      data: { lastHeartbeatAt: new Date(Date.now() - 59_500), version: { increment: 1 } },
+    });
+    let releaseDirectConnection!: () => void;
+    let reportDirectConnectionLock!: () => void;
+    const releaseDirectConnectionLock = new Promise<void>((resolve) => {
+      releaseDirectConnection = resolve;
+    });
+    const directConnectionLocked = new Promise<void>((resolve) => {
+      reportDirectConnectionLock = resolve;
+    });
+    const directBlocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId} FOR UPDATE`,
+      );
+      reportDirectConnectionLock();
+      await releaseDirectConnectionLock;
+    });
+    await directConnectionLocked;
+    const directCrossedFreshness = prisma.acpBridgeDispatchOutbox.create({
+      data: directData(new Date(), sequenceBaseline + 3),
+    });
+    expect(
+      await Promise.race([
+        directCrossedFreshness.then(
+          () => 'settled',
+          () => 'settled',
+        ),
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 100)),
+      ]),
+    ).toBe('pending');
+    await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+    releaseDirectConnection();
+    await directBlocker;
+    await expect(directCrossedFreshness).rejects.toThrow(/fresh partial bridge evidence/iu);
+    expect(
+      await prisma.acpBridgeDispatchOutbox.count({
+        where: { workspaceId, dispatchId: directDispatch.id },
+      }),
+    ).toBe(0);
+
+    await prisma.acpRuntimeConnection.update({
+      where: { workspaceId_id: { workspaceId, id: connectionId } },
+      data: { lastHeartbeatAt: new Date(Date.now() - 61_000), version: { increment: 1 } },
+    });
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
+        await tx.acpBridgeDispatchOutbox.create({
+          data: directData(new Date(), sequenceBaseline + 3),
+        });
+      }),
+    ).rejects.toThrow(/fresh partial bridge evidence/iu);
+    expect(
+      await prisma.acpBridgeDispatchOutbox.count({
+        where: { workspaceId, dispatchId: directDispatch.id },
+      }),
+    ).toBe(0);
+
+    await prisma.acpRuntimeConnection.update({
+      where: { workspaceId_id: { workspaceId, id: connectionId } },
+      data: { lastHeartbeatAt: new Date(), version: { increment: 1 } },
+    });
+
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
+        const issuedAt = new Date();
+        await tx.acpBridgeDispatchOutbox.create({
+          data: directData(issuedAt, sequenceBaseline + 3),
+        });
+        throw new Error('rollback timezone proof');
+      }),
+    ).rejects.toThrow('rollback timezone proof');
+    expect(
+      await prisma.acpBridgeDispatchOutbox.count({
+        where: { workspaceId, dispatchId: directDispatch.id },
+      }),
+    ).toBe(0);
+
+    const forged = await prisma.acpBridgeDispatchOutbox.create({
+      data: directData(new Date(), sequenceBaseline + 3),
+    });
+    expect(forged.signedEnvelopeDigest).toBe('3'.repeat(64));
+    await expect(
+      bridge.prepareDispatchAuthorization(
+        capability,
+        { workspaceId, principalId },
+        {
+          capsuleId: `${planId}:direct-capsule`,
+          dispatchId: directDispatch.id,
+          idempotencyKey: `${planId}:direct-capsule`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    expect(
+      await prisma.acpBridgeDispatchOutbox.count({
+        where: { workspaceId, dispatchId: directDispatch.id },
+      }),
+    ).toBe(1);
+
+    const rollbackBridge = testBridge(testSecretLease(), brokerReservations, {
+      async recordOperationalEvent() {
+        throw new Error('synthetic outbox audit failure');
+      },
+    } as unknown as AuditService);
+    await expect(
+      rollbackBridge.prepareDispatchAuthorization(
+        capability,
+        { workspaceId, principalId },
+        {
+          capsuleId: `${planId}:capsule:audit-rollback`,
+          dispatchId: prepared[2]!.dispatch.id,
+          idempotencyKey: `${planId}:capsule:audit-rollback`,
+        },
+      ),
+    ).rejects.toThrow('synthetic outbox audit failure');
+    expect(
+      await prisma.acpBridgeDispatchOutbox.count({
+        where: { workspaceId, dispatchId: prepared[2]!.dispatch.id },
+      }),
+    ).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      auditBefore + 2,
+    );
+    const crossingDispatch = prepared[4]!.dispatch;
+    const crossingEnvelope = fake.emit('DISPATCH_ACCEPTED', {
+      dispatchId: crossingDispatch.id,
+      taskId: crossingDispatch.taskId,
+      runId: crossingDispatch.runId,
+      evidenceId: crossingDispatch.assignmentEvidenceId,
+      assignmentEvidenceHash: crossingDispatch.assignmentEvidenceHash,
+    });
+    const crossing = await Promise.allSettled([
+      bridge.prepareDispatchAuthorization(
+        capability,
+        { workspaceId, principalId },
+        {
+          capsuleId: `${planId}:capsule:crossing`,
+          dispatchId: crossingDispatch.id,
+          idempotencyKey: `${planId}:capsule:crossing`,
+        },
+      ),
+      bridge.acceptRuntimeMessage(capability, { workspaceId, principalId }, crossingEnvelope),
+    ]);
+    expect(crossing[1]!.status).toBe('fulfilled');
+    expect(
+      crossing.every(
+        (result) =>
+          result.status === 'fulfilled' || !/40P01|deadlock detected/iu.test(String(result.reason)),
+      ),
+    ).toBe(true);
+    expect(
+      await prisma.acpBridgeReceipt.count({
+        where: { workspaceId, messageId: crossingEnvelope.messageId },
+      }),
+    ).toBe(1);
+    expect(
+      (
+        await prisma.acpBridgeDispatch.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId, id: crossingDispatch.id } },
+        })
+      ).state,
+    ).toBe('ACCEPTED');
+    expect(
+      await prisma.acpBridgeDispatchOutbox.count({
+        where: { workspaceId, dispatchId: crossingDispatch.id },
+      }),
+    ).toBe(crossing[0]!.status === 'fulfilled' ? 1 : 0);
+
+    const newTask = plan.objective.tasks[6]!;
+    const newRun = newTask.runs[0]!;
+    const newAgentId = `${planId}:agent:6`;
+    const newReservation = await brokerReservations.reserveForPreparedRun(
+      capability,
+      { workspaceId, principalId },
+      {
+        reservationId: `${planId}:reservation:6`,
+        runId: newRun.id,
+        agentId: newAgentId,
+        expectedRunVersion: newRun.version,
+        idempotencyKey: `${planId}:reservation:6`,
+      },
+    );
+    let releaseSession!: () => void;
+    let reportSessionLock!: () => void;
+    const releaseSessionLock = new Promise<void>((resolve) => {
+      releaseSession = resolve;
+    });
+    const sessionLocked = new Promise<void>((resolve) => {
+      reportSessionLock = resolve;
+    });
+    const sessionBlocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${sessionId} FOR UPDATE`,
+      );
+      reportSessionLock();
+      await releaseSessionLock;
+    });
+    await sessionLocked;
+    const crossPathPromise = Promise.allSettled([
+      bridge.prepareDispatchAuthorization(
+        capability,
+        { workspaceId, principalId },
+        {
+          capsuleId: `${planId}:capsule:prepare-crossing`,
+          dispatchId: prepared[5]!.dispatch.id,
+          idempotencyKey: `${planId}:capsule:prepare-crossing`,
+        },
+      ),
+      bridge.prepareDispatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          dispatchId: `${planId}:dispatch:6`,
+          agentId: newAgentId,
+          sessionId,
+          idempotencyKey: `${planId}:dispatch:6`,
+          brokerEvidence: {
+            evidenceId: newReservation.reservation.id,
+            evidenceHash: newReservation.reservation.evidenceHash,
+            workspaceId,
+            taskId: newTask.id,
+            runId: newRun.id,
+            agentId: newAgentId,
+            runtimeId,
+            connectionId,
+          },
+        },
+      ),
+    ]);
+    expect(
+      await Promise.race([
+        crossPathPromise.then(() => 'settled'),
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 100)),
+      ]),
+    ).toBe('pending');
+    releaseSession();
+    await sessionBlocker;
+    const crossPath = await crossPathPromise;
+    expect(crossPath.every((result) => result.status === 'fulfilled')).toBe(true);
+    expect(
+      crossPath.some(
+        (result) =>
+          result.status === 'rejected' &&
+          /40P01|P2034|deadlock detected/iu.test(String(result.reason)),
+      ),
+    ).toBe(false);
+    if (crossPath[1]!.status !== 'fulfilled') throw crossPath[1]!.reason;
+    const newDispatch = crossPath[1]!.value.dispatch;
+    expect(newDispatch.state).toBe('PREPARED');
+    expect(
+      await prisma.acpBridgeDispatchOutbox.count({
+        where: { workspaceId, dispatchId: prepared[5]!.dispatch.id },
+      }),
+    ).toBe(1);
+    await prisma.acpBridgeDispatch.update({
+      where: { workspaceId_id: { workspaceId, id: newDispatch.id } },
+      data: { state: 'FAILED', terminalAt: new Date() },
+    });
+    await prisma.acpRun.update({
+      where: { workspaceId_id: { workspaceId, id: newRun.id } },
+      data: { status: 'FAILED', version: { increment: 1 }, completedAt: new Date() },
+    });
+    for (const { dispatch, run } of prepared) {
+      await prisma.acpBridgeDispatch.update({
+        where: { workspaceId_id: { workspaceId, id: dispatch.id } },
+        data: { state: 'FAILED', terminalAt: new Date() },
+      });
+      await prisma.acpRun.update({
+        where: { workspaceId_id: { workspaceId, id: run.id } },
+        data: { status: 'FAILED', version: { increment: 1 }, completedAt: new Date() },
+      });
+    }
+    expect(
+      await prisma.acpBrokerReservation.count({
+        where: {
+          workspaceId,
+          id: { startsWith: `${planId}:reservation:` },
+          state: 'RELEASED',
+        },
+      }),
+    ).toBe(prepared.length + 1);
   });
 
   it('serializes capacity reservations so two ready runs cannot claim one slot', async () => {

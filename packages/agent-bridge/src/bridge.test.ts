@@ -77,6 +77,39 @@ describe('bounded canonical Agent Bridge protocol', () => {
     ).toThrow(BridgeProtocolError);
   });
 
+  it('accepts DISPATCH only when authenticated with the parent-to-runtime key', () => {
+    const keys = deriveBridgeKeys(secret, context);
+    const now = new Date('2026-08-25T12:00:00.000Z');
+    const payload = Object.freeze({
+      dispatchId: 'dispatch-1',
+      runId: 'run-1',
+      taskId: 'task-1',
+      assignmentEvidenceHash: 'a'.repeat(64),
+    });
+    const envelope = signBridgeEnvelope(
+      {
+        protocolVersion: BRIDGE_PROTOCOL_VERSION,
+        workspaceId: context.workspaceId,
+        runtimeId: context.runtimeId,
+        connectionId: context.connectionId,
+        sessionId: context.sessionId,
+        principalReference: context.principalReference,
+        sequence: 1,
+        messageId: 'dispatch-message-1',
+        type: 'DISPATCH',
+        issuedAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 60_000).toISOString(),
+        payloadDigest: digestBridgePayload(payload),
+        payload,
+      },
+      keys.parentToRuntime,
+    );
+    expect(() => verifyBridgeEnvelope(envelope, keys.parentToRuntime, context, now)).not.toThrow();
+    expect(() => verifyBridgeEnvelope(envelope, keys.runtimeToParent, context, now)).toThrow(
+      BridgeProtocolError,
+    );
+  });
+
   it('rejects non-canonical, duplicate, malformed, oversized, expired, and tampered frames', () => {
     const { envelope, keys } = frame();
     const json = JSON.stringify(envelope);

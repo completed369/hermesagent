@@ -129,6 +129,15 @@ describe('scoped bridge secret leases', () => {
     ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
     await expect(
       resolver.withSecret(
+        request({ purpose: 'SIGN_FRAME', expectedDigest: digestSecretReference(secret) }),
+        () => 'signed',
+      ),
+    ).resolves.toBe('signed');
+    await expect(
+      resolver.withSecret(request({ purpose: 'SIGN_FRAME' }), () => undefined),
+    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(
+      resolver.withSecret(
         request({ purpose: 'PROVISION', expectedDigest: digestSecretReference(secret) }),
         () => undefined,
       ),
