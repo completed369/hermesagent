@@ -45,11 +45,11 @@
 > workspace, task, run, runtime, and connection while serializing short-lived
 > capacity, cost, and compute holds. Those holds are routing evidence, not a
 > runtime launch, provider charge, or connectivity proof. A Linux-only trusted
-> executable/admission-evidence reader is in implementation review with only a
-> test-only signed authorization source and still cannot launch; production
-> authorization, Windows native identity inspection, and deny-by-default
-> supervisor composition remain required. Actual process creation and transport
-> remain separate later changes. Real Codex, Hermes, and Pi adapters follow only after authenticated
+> executable/admission-evidence reader is composed behind a live per-admission
+> authorization port. The production source and launcher are both deny-only;
+> only test-local signed authorization is positive. Windows native identity
+> inspection and actual process supervision/transport remain separate later
+> changes. Real Codex, Hermes, and Pi adapters follow only after authenticated
 > end-to-end evidence; repository installation or local process availability is
 > not connection evidence.
 >
@@ -72,6 +72,21 @@
 > replacement TOCTOU after the final check. Production authorization and Windows
 > remain fail-closed pending reviewed signer/registry and native
 > owner/reparse-point/handle designs.
+
+> The supervisor composition issues a deeply frozen, non-serializable in-process
+> plan only after exact authorization, evidence, admission, and lifecycle binding.
+> Private per-instance state keeps the request pending and owner-bound until the
+> exact plan is fully revalidated, then current-time checks and consumes it once
+> before invoking that instance's injected launcher. A foreign composition
+> cannot execute or consume the plan. No lower-level activation or request
+> validator is exported.
+> Its hashes are deterministic correlation/integrity evidence, not signatures or
+> tamper-proof authority. It does not retain the inspected descriptor through a
+> launch, create a process, or close the final filesystem-to-launch TOCTOU gap.
+> The exported composition interface supplies no production signer or positive
+> authorization source. Revocation is only as current as its one source read for
+> an admission; post-decision revocation and atomic launch-time revalidation
+> remain unresolved.
 
 The cost-governance foundation pairs authenticated bridge usage with immutable
 recognized-spend evidence under exact workspace and task budget periods. It

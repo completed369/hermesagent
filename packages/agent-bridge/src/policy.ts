@@ -1,6 +1,8 @@
 import { BridgeProtocolError } from './codec';
 import type { BridgeDispatchState, BridgeSessionState } from './protocol';
 import { BRIDGE_DISPATCH_TRANSITIONS, BRIDGE_SESSION_TRANSITIONS } from './protocol';
+import type { SupervisorProcessBinding } from './supervision-lifecycle';
+import type { RuntimeLaunchManifest } from './supervision-policy';
 
 export interface BridgeUsageDelta {
   readonly computeUnits: number;
@@ -38,9 +40,9 @@ export function validateUsageDelta(delta: BridgeUsageDelta): void {
 }
 
 export interface RuntimeProcessLaunchRequest {
-  readonly executableReference: string;
-  readonly runtimeId: string;
-  readonly workspaceId: string;
+  readonly schemaVersion: 1;
+  readonly processBinding: Readonly<SupervisorProcessBinding>;
+  readonly manifest: Readonly<RuntimeLaunchManifest>;
 }
 
 export interface RuntimeProcessLauncher {

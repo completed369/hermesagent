@@ -94,12 +94,13 @@ published and current `main` has not been deployed to private staging.
    connection path. The pure OS-supervision admission policy is also MERGED and
    VERIFIED; its production surface adds no filesystem or process path. A
    deterministic process-tree fixture exercises cancellation only under tests.
-   A Linux-only reviewed trusted executable/admission-evidence reader with only
-   a test signer is now in implementation review and remains unable to launch.
-   Production authorization, Windows native identity inspection, and
-   deny-by-default supervisor composition remain required before any process
-   creation or runtime adapter. Evaluations, knowledge/playbooks, and adapter
-   hardening continue afterward.
+   A Linux-only reviewed trusted executable/admission-evidence reader and a
+   service-only supervisor composition now bind a live per-admission authority
+   decision to an immutable, process-local launch plan. Production authority and
+   the sole launcher remain deny-only. Windows native identity inspection and
+   actual process supervision remain required before any process creation or
+   runtime adapter. Evaluations, knowledge/playbooks, and adapter hardening
+   continue afterward.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
@@ -140,10 +141,11 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    exact durable capacity/cost/compute reservations, and scoped deny-only
    secret leases are MERGED and VERIFIED. The bridge is service-only, stops at
    `PARTIAL`, and has a deny-only launcher plus an unexported deterministic test
-   fixture. A Linux-only trusted executable/admission-evidence reader is in
-   implementation review; Windows identity inspection, deny-by-default
-   supervisor composition, actual process transport, and authenticated runtime
-   adapters remain to be completed. Codex, Hermes, and Pi remain
+   fixture. A Linux-only trusted executable/admission-evidence reader and
+   deny-by-default composition issue only process-local plans after a live
+   authority read; production authority and launching still deny. Windows
+   identity inspection, actual process supervision/transport, and authenticated
+   runtime adapters remain to be completed. Codex, Hermes, and Pi remain
    **NOT_CONFIGURED** until each demonstrates authenticated
    registration, capability exchange, heartbeat, task/status exchange, and an
    event/result round trip. Do not infer connectivity from installed software,

@@ -135,13 +135,9 @@ describe('bounded canonical Agent Bridge protocol', () => {
   });
 
   it('keeps the production launcher deny-only', async () => {
-    await expect(
-      new DenyRuntimeProcessLauncher().launch({
-        executableReference: 'fixture-only',
-        runtimeId: 'fixture-runtime',
-        workspaceId: 'workspace-1',
-      }),
-    ).rejects.toThrow(/not enabled/u);
+    await expect(new DenyRuntimeProcessLauncher().launch({} as never)).rejects.toThrow(
+      /not enabled/u,
+    );
   });
 
   it('enforces session, dispatch, and usage state policy', () => {

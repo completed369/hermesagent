@@ -21,6 +21,7 @@ const hash = (value: unknown): string =>
 export function deterministicLinuxAdmission(): {
   manifest: RuntimeLaunchManifest;
   evidence: TrustedSupervisorAdmissionEvidence;
+  authorization: LinuxExecutableAuthorization;
   now: Date;
 } {
   const now = new Date('2026-08-26T00:00:00.000Z');
@@ -94,6 +95,7 @@ export function deterministicLinuxAdmission(): {
   return {
     now,
     manifest,
+    authorization,
     evidence: {
       schemaVersion: 2,
       evidenceId: 'fixture-linux-evidence-v1',

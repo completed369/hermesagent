@@ -14,6 +14,7 @@ const packageFiles = [
   'packages/agent-bridge/src/supervision-evidence-reader.ts',
   'packages/agent-bridge/src/supervision-lifecycle.ts',
   'packages/agent-bridge/src/supervision-policy.ts',
+  'packages/agent-bridge/src/supervisor-composition.ts',
 ];
 const serviceFiles = [
   ...packageFiles,
@@ -163,6 +164,77 @@ test('OS supervision policy is inert and the production launcher remains deny-on
   assert.match(policy, /class DenyRuntimeProcessLauncher implements RuntimeProcessLauncher/u);
   assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
   assert.match(policy, /Runtime process launching is not enabled/u);
+});
+
+test('trusted supervisor composition requires live authority and remains deny-wired', () => {
+  const composition = readFileSync('packages/agent-bridge/src/supervisor-composition.ts', 'utf8');
+  const policy = readFileSync('packages/agent-bridge/src/policy.ts', 'utf8');
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  assert.doesNotMatch(
+    composition,
+    /from\s+['"]node:(?:child_process|cluster|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(composition, /\bprocess\.(?:env|cwd|platform)\b|@Controller\s*\(/u);
+  assert.doesNotMatch(composition, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.match(composition, /class DenyTrustedSupervisorAuthorizationSource/u);
+  assert.equal(
+    (composition.match(/implements TrustedSupervisorAuthorizationSource/gu) ?? []).length,
+    1,
+  );
+  assert.match(
+    composition,
+    /readonly #launchPlanStates = new WeakMap<object, LaunchPlanState>\(\)/u,
+  );
+  assert.match(
+    composition,
+    /readonly #launchRequestStates = new WeakMap<object, LaunchRequestState>\(\)/u,
+  );
+  assert.doesNotMatch(composition, /\nconst launch(?:Plan|Request)States = new WeakMap/u);
+  assert.match(composition, /const consumedDecisionIds = new Map<string, number>\(\)/u);
+  assert.match(composition, /const consumedLaunchNonces = new Map<string, number>\(\)/u);
+  assert.match(composition, /requestHash:\s*string/u);
+  assert.doesNotMatch(
+    composition,
+    /interface PrepareTrustedSupervisorLaunchInput[\s\S]{0,180}readonly (?:supervisionId|launchNonce)/u,
+  );
+  assert.match(composition, /validateLinuxExecutableAuthorization/u);
+  assert.match(composition, /validateSupervisorAdmission/u);
+  assert.match(composition, /createSupervisorProcessBinding/u);
+  assert.match(composition, /async execute\(plan: unknown\): Promise<never>/u);
+  assert.match(composition, /this\.#launchPlanStates/u);
+  assert.match(composition, /this\.#launchRequestStates/u);
+  assert.match(composition, /this\.launcher\.launch/u);
+  assert.match(
+    composition,
+    /Math\.min\([\s\S]*authorization\.validUntil[\s\S]*admission\.evidence\.expiresAt/u,
+  );
+  assert.ok((composition.match(/Date\.now\(\) >= [a-zA-Z]+\.expiresAt/gu) ?? []).length >= 2);
+  assert.doesNotMatch(
+    composition,
+    /export function (?:activateTrustedSupervisorLaunchPlan|consumeRuntimeProcessLaunchRequest|validateRuntimeProcessLaunchRequest)/u,
+  );
+  const authorityRead = composition.indexOf('this.authorizationSource.read(authorizationRequest)');
+  const decisionConsumption = composition.indexOf(
+    'consumeAuthorizationDecision(authorizationDecision)',
+  );
+  const evidenceRead = composition.indexOf('this.evidenceReader.read(manifest, authorization)');
+  assert.ok(
+    authorityRead >= 0 && decisionConsumption > authorityRead && evidenceRead > decisionConsumption,
+  );
+  assert.match(module, /new DenyTrustedSupervisorAuthorizationSource\(\)/u);
+  assert.match(module, /provide:\s*TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE/u);
+  assert.match(module, /new DenyRuntimeProcessLauncher\(\)/u);
+  assert.match(module, /provide:\s*RUNTIME_PROCESS_LAUNCHER/u);
+  assert.match(
+    module,
+    /new TrustedSupervisorComposition\([\s\S]*denyRuntimeProcessLauncher[\s\S]*\)/u,
+  );
+  assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
+  assert.doesNotMatch(index, /deterministic-supervision/u);
 });
 
 test('process-tree evidence stays test-only, unexported, and absent from production images', () => {
