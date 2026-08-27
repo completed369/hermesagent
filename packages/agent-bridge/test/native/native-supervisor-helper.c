@@ -232,7 +232,18 @@ static void child_exec(int executable, int working_directory, int status_write, 
 
 failed: {
     const int child_errno = errno;
-    (void)write(status_write, &child_errno, sizeof(child_errno));
+    const unsigned char *error_bytes = (const unsigned char *)&child_errno;
+    size_t error_offset = 0;
+    while (error_offset < sizeof(child_errno)) {
+      const ssize_t written =
+          write(status_write, error_bytes + error_offset, sizeof(child_errno) - error_offset);
+      if (written > 0) {
+        error_offset += (size_t)written;
+        continue;
+      }
+      if (written < 0 && errno == EINTR) continue;
+      break;
+    }
     _exit(127);
   }
 }
