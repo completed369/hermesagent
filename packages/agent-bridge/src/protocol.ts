@@ -1,6 +1,7 @@
 export const BRIDGE_PROTOCOL_VERSION = 'ventureos.bridge.v1' as const;
 export const MAX_BRIDGE_LINE_BYTES = 65_536;
 export const MAX_BRIDGE_BUFFER_BYTES = 131_072;
+export const MAX_BRIDGE_BATCH_FRAMES = 32;
 
 export type BridgeMessageType =
   | 'CHALLENGE'

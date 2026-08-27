@@ -7,9 +7,12 @@ import {
   BRIDGE_SECRET_LEASE_RESOLVER,
   BRIDGE_TEST_ONLY_GATE,
   BRIDGE_PROTOCOL_VERSION,
+  BridgeProtocolError,
   canonicalJson,
+  decodeBridgeBatch,
   deriveBridgeKeys,
   digestSecretReference,
+  encodeBridgeLine,
   validateBridgeEnvelope,
   validateUsageDelta,
   verifyBridgeEnvelope,
@@ -108,6 +111,11 @@ export interface PrepareBridgeDispatchInput {
   readonly sessionId: string;
   readonly brokerEvidence: TrustedBridgeBrokerEvidence;
   readonly idempotencyKey: string;
+}
+
+export interface AcceptAuthenticatedBridgeBatchInput {
+  readonly sessionId: string;
+  readonly bytes: Uint8Array;
 }
 
 interface BridgeUsageAuditTotals {
@@ -454,28 +462,82 @@ export class AcpBridgeAdmissionService
     if (envelope.type === 'AUTHENTICATE' || envelope.type === 'CHALLENGE') {
       throw new AcpBridgeAdmissionDeniedError('Use the dedicated authentication boundary');
     }
+    const snapshot = decodeBridgeBatch(encodeBridgeLine(envelope))[0];
+    if (!snapshot) throw new AcpBridgeAdmissionDeniedError('Bridge frame snapshot unavailable');
+    const receipts = await this.acceptRuntimeEnvelopes(
+      capability,
+      context,
+      actorKind,
+      snapshot.sessionId,
+      [snapshot],
+    );
+    return receipts[0]!;
+  }
+
+  async acceptAuthenticatedBatch(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: AcceptAuthenticatedBridgeBatchInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Object.keys(input).sort().join(',') !== 'bytes,sessionId' ||
+      !(input.bytes instanceof Uint8Array)
+    ) {
+      throw new AcpBridgeAdmissionDeniedError('Authenticated bridge batch input is invalid');
+    }
+    reference(input.sessionId, 'sessionId');
+    let envelopes: readonly BridgeEnvelope[];
+    try {
+      envelopes = decodeBridgeBatch(input.bytes);
+    } catch (error) {
+      if (error instanceof BridgeProtocolError) {
+        throw new AcpBridgeAdmissionDeniedError('Authenticated bridge batch is invalid');
+      }
+      throw error;
+    }
+    return this.acceptRuntimeEnvelopes(capability, context, actorKind, input.sessionId, envelopes);
+  }
+
+  private async acceptRuntimeEnvelopes(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    actorKind: 'HUMAN' | 'AGENT' | 'SYSTEM',
+    sessionId: string,
+    envelopes: readonly BridgeEnvelope[],
+  ) {
     return prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw(
-          Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${envelope.sessionId} FOR UPDATE`,
+          Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${sessionId} FOR UPDATE`,
         );
-        const session = await tx.acpBridgeSession.findUnique({
-          where: { workspaceId_id: { workspaceId: context.workspaceId, id: envelope.sessionId } },
+        let session = await tx.acpBridgeSession.findUnique({
+          where: { workspaceId_id: { workspaceId: context.workspaceId, id: sessionId } },
           include: { connection: { include: { runtime: true } } },
         });
         if (!session) throw new AcpBridgeAdmissionNotFoundError('Bridge session not found');
         await tx.$queryRaw(
           Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${session.connectionId} FOR UPDATE`,
         );
-        const lockedConnection = await tx.acpRuntimeConnection.findUniqueOrThrow({
+        let lockedConnection = await tx.acpRuntimeConnection.findUniqueOrThrow({
           where: {
             workspaceId_id: { workspaceId: context.workspaceId, id: session.connectionId },
           },
           include: { runtime: true },
         });
-        const claimedDispatchId =
-          typeof envelope.payload.dispatchId === 'string' ? envelope.payload.dispatchId : undefined;
-        if (claimedDispatchId) {
+        const claimedDispatchIds = [
+          ...new Set(
+            envelopes.flatMap((envelope) =>
+              typeof envelope.payload.dispatchId === 'string' ? [envelope.payload.dispatchId] : [],
+            ),
+          ),
+        ].sort();
+        const claimedRunIds = new Set<string>();
+        const claimedTaskIds = new Set<string>();
+        for (const claimedDispatchId of claimedDispatchIds) {
+          reference(claimedDispatchId, 'dispatchId');
           await tx.$queryRaw(
             Prisma.sql`SELECT "id" FROM "acp_bridge_dispatches" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${claimedDispatchId} FOR UPDATE`,
           );
@@ -485,13 +547,19 @@ export class AcpBridgeAdmissionService
             },
           });
           if (claimedDispatch) {
-            await tx.$queryRaw(
-              Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${claimedDispatch.runId} FOR UPDATE`,
-            );
-            await tx.$queryRaw(
-              Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${claimedDispatch.taskId} FOR UPDATE`,
-            );
+            claimedRunIds.add(claimedDispatch.runId);
+            claimedTaskIds.add(claimedDispatch.taskId);
           }
+        }
+        for (const claimedRunId of [...claimedRunIds].sort()) {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${claimedRunId} FOR UPDATE`,
+          );
+        }
+        for (const claimedTaskId of [...claimedTaskIds].sort()) {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${claimedTaskId} FOR UPDATE`,
+          );
         }
         const now = await databaseNow(tx);
         await this.assertAdapterIsolation(
@@ -518,60 +586,136 @@ export class AcpBridgeAdmissionService
           parentNonce: session.parentNonce,
           runtimeNonce: session.runtimeNonce,
         };
-        await this.withSecretLease(
-          {
-            workspaceId: session.workspaceId,
-            runtimeId: session.runtimeId,
-            connectionId: session.connectionId,
-            secretReference: lockedConnection.runtime.secretReference,
-            expectedDigest: lockedConnection.runtime.secretDigest,
-            authGeneration: lockedConnection.authGeneration,
-            purpose: 'VERIFY_FRAME',
-          },
-          (secret) => {
-            const keys = deriveBridgeKeys(secret, keyContext);
-            try {
-              verifyBridgeEnvelope(envelope, keys.runtimeToParent, keyContext, now);
-            } finally {
-              keys.parentToRuntime.fill(0);
-              keys.runtimeToParent.fill(0);
-            }
-          },
-        );
-        if (envelope.sequence !== session.expectedSequence)
-          throw new AcpBridgeAdmissionConflictError('Bridge sequence replay or gap');
-        const receipt = await this.createReceipt(tx, envelope);
-        const usageTotals = await this.applyMessage(
-          tx,
-          { ...session, connection: lockedConnection },
-          envelope,
-          receipt.id,
-          receipt.receivedAt,
-          now,
-          capability,
-          context,
-          actorKind,
-        );
-        await tx.acpBridgeSession.update({
-          where: { workspaceId_id: { workspaceId: context.workspaceId, id: session.id } },
-          data: { expectedSequence: { increment: 1 } },
-        });
-        const audit = this.auditForMessage(envelope, receipt.id, now, usageTotals);
-        await this.auditService.recordOperationalEvent(
-          capability,
-          context,
-          {
-            ...audit,
-            id: randomUUID(),
-            workspaceId: context.workspaceId,
-            source: 'CONTROL_PLANE',
+        const sessionExpiresAt = session.expiresAt;
+        if (
+          envelopes.some(
+            (envelope) => envelope.type === 'AUTHENTICATE' || envelope.type === 'CHALLENGE',
+          )
+        ) {
+          throw new AcpBridgeAdmissionDeniedError('Use the dedicated authentication boundary');
+        }
+        for (const [index, envelope] of envelopes.entries()) {
+          if (envelope.sequence !== session.expectedSequence + index) {
+            throw new AcpBridgeAdmissionConflictError('Bridge sequence replay or gap');
+          }
+        }
+        if (
+          (session.state === 'AUTHENTICATED' && envelopes[0]?.type !== 'CAPABILITIES') ||
+          (session.state !== 'AUTHENTICATED' &&
+            envelopes.some((envelope) => envelope.type === 'CAPABILITIES')) ||
+          envelopes.slice(1).some((envelope) => envelope.type === 'CAPABILITIES')
+        ) {
+          throw new AcpBridgeAdmissionDeniedError('Capability exchange ordering is invalid');
+        }
+        let verifiedAt: Date;
+        let verificationCompleted = false;
+        try {
+          verifiedAt = await this.withSecretLease(
+            {
+              workspaceId: session.workspaceId,
+              runtimeId: session.runtimeId,
+              connectionId: session.connectionId,
+              secretReference: lockedConnection.runtime.secretReference,
+              expectedDigest: lockedConnection.runtime.secretDigest,
+              authGeneration: lockedConnection.authGeneration,
+              purpose: 'VERIFY_FRAME',
+            },
+            async (secret) => {
+              const keys = deriveBridgeKeys(secret, keyContext);
+              try {
+                for (const envelope of envelopes) {
+                  verifyBridgeEnvelope(envelope, keys.runtimeToParent, keyContext, now);
+                }
+                const current = await databaseNow(tx);
+                if (sessionExpiresAt <= current) {
+                  throw new AcpBridgeAdmissionDeniedError(
+                    'Authenticated unexpired bridge session required',
+                  );
+                }
+                for (const envelope of envelopes) {
+                  verifyBridgeEnvelope(envelope, keys.runtimeToParent, keyContext, current);
+                }
+                verificationCompleted = true;
+                return current;
+              } finally {
+                keys.parentToRuntime.fill(0);
+                keys.runtimeToParent.fill(0);
+              }
+            },
+          );
+        } catch (error) {
+          if (error instanceof BridgeProtocolError) {
+            throw new AcpBridgeAdmissionDeniedError('Authenticated bridge batch was denied');
+          }
+          throw error;
+        }
+        if (!verificationCompleted || !(verifiedAt instanceof Date)) {
+          throw new AcpBridgeAdmissionDeniedError('Authenticated bridge batch was not verified');
+        }
+        const persistenceNow = await databaseNow(tx);
+        if (
+          session.expiresAt <= persistenceNow ||
+          envelopes.some((envelope) => new Date(envelope.expiresAt) <= persistenceNow)
+        ) {
+          throw new AcpBridgeAdmissionDeniedError('Authenticated bridge batch expired');
+        }
+        const receipts = [];
+        for (const envelope of envelopes) {
+          const receipt = await this.createReceipt(tx, envelope);
+          const usageTotals = await this.applyMessage(
+            tx,
+            { ...session, connection: lockedConnection },
+            envelope,
+            receipt.id,
+            receipt.receivedAt,
+            persistenceNow,
+            capability,
+            context,
             actorKind,
-            actorId: context.principalId,
-          },
-          actorKind === 'HUMAN' ? context.principalId : undefined,
-          tx,
-        );
-        return receipt;
+          );
+          await tx.acpBridgeSession.update({
+            where: { workspaceId_id: { workspaceId: context.workspaceId, id: session.id } },
+            data: { expectedSequence: { increment: 1 } },
+          });
+          const audit = this.auditForMessage(envelope, receipt.id, persistenceNow, usageTotals);
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              ...audit,
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          receipts.push(receipt);
+          session = await tx.acpBridgeSession.findUniqueOrThrow({
+            where: { workspaceId_id: { workspaceId: context.workspaceId, id: session.id } },
+            include: { connection: { include: { runtime: true } } },
+          });
+          lockedConnection = session.connection;
+        }
+        const commitNow = await databaseNow(tx);
+        if (
+          session.expiresAt <= commitNow ||
+          envelopes.some((envelope) => new Date(envelope.expiresAt) <= commitNow) ||
+          envelopes.some(
+            (envelope) =>
+              envelope.type === 'HEARTBEAT' &&
+              new Date(envelope.issuedAt).getTime() < commitNow.getTime() - 60_000,
+          ) ||
+          (envelopes.some((envelope) => envelope.type === 'DISPATCH_ACCEPTED') &&
+            (!lockedConnection.lastHeartbeatAt ||
+              lockedConnection.lastHeartbeatHealth !== 'HEALTHY' ||
+              lockedConnection.lastHeartbeatAt.getTime() < commitNow.getTime() - 60_000))
+        ) {
+          throw new AcpBridgeAdmissionDeniedError('Authenticated bridge batch expired');
+        }
+        return Object.freeze(receipts);
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
@@ -983,11 +1127,13 @@ export class AcpBridgeAdmissionService
       state: string;
       connectionId: string;
       runtimeId: string;
+      expiresAt: Date;
       connection: {
         capabilityCodes: string[];
         status: string;
         lastHeartbeatAt: Date | null;
         lastHeartbeatHealth: string | null;
+        version: number;
       };
     },
     envelope: BridgeEnvelope,
@@ -1042,7 +1188,8 @@ export class AcpBridgeAdmissionService
       exactPayload(payload, ['health']);
       if (
         !['CAPABILITIES_VERIFIED', 'PARTIAL'].includes(session.state) ||
-        (payload.health !== 'HEALTHY' && payload.health !== 'DEGRADED')
+        (payload.health !== 'HEALTHY' && payload.health !== 'DEGRADED') ||
+        new Date(envelope.issuedAt).getTime() < now.getTime() - 60_000
       )
         throw new AcpBridgeAdmissionDeniedError('Invalid heartbeat state or health');
       await tx.acpRuntimeConnection.update({
@@ -1120,7 +1267,6 @@ export class AcpBridgeAdmissionService
         !session.connection.lastHeartbeatAt ||
         session.connection.lastHeartbeatAt.getTime() < now.getTime() - 60_000 ||
         !brokerEvidence ||
-        !(await this.brokerEvidence.verify(brokerEvidence)) ||
         dispatch.dispatchEnvelopeHash !==
           sha256({
             schemaVersion: 1,
@@ -1135,9 +1281,38 @@ export class AcpBridgeAdmissionService
           })
       )
         throw new AcpBridgeAdmissionDeniedError('Dispatch acceptance binding mismatch');
+      const heartbeatIdentity = {
+        at: session.connection.lastHeartbeatAt,
+        health: session.connection.lastHeartbeatHealth,
+        status: session.connection.status,
+        version: session.connection.version,
+      };
+      if (!(await this.brokerEvidence.verify(brokerEvidence)))
+        throw new AcpBridgeAdmissionDeniedError('Dispatch acceptance binding mismatch');
+      const acceptanceNow = await databaseNow(tx);
+      const currentConnection = await tx.acpRuntimeConnection.findUniqueOrThrow({
+        where: {
+          workspaceId_id: {
+            workspaceId: session.workspaceId,
+            id: session.connectionId,
+          },
+        },
+      });
+      if (
+        session.expiresAt <= acceptanceNow ||
+        new Date(envelope.expiresAt) <= acceptanceNow ||
+        currentConnection.version !== heartbeatIdentity.version ||
+        currentConnection.status !== heartbeatIdentity.status ||
+        currentConnection.lastHeartbeatHealth !== heartbeatIdentity.health ||
+        currentConnection.lastHeartbeatAt?.getTime() !== heartbeatIdentity.at.getTime() ||
+        currentConnection.status !== 'PARTIAL' ||
+        currentConnection.lastHeartbeatHealth !== 'HEALTHY' ||
+        currentConnection.lastHeartbeatAt.getTime() < acceptanceNow.getTime() - 60_000
+      )
+        throw new AcpBridgeAdmissionDeniedError('Dispatch acceptance binding mismatch');
       await tx.acpBridgeDispatch.update({
         where: { workspaceId_id: { workspaceId: session.workspaceId, id: dispatch.id } },
-        data: { state: 'ACCEPTED', acceptedAt: now },
+        data: { state: 'ACCEPTED', acceptedAt: acceptanceNow },
       });
       return;
     }

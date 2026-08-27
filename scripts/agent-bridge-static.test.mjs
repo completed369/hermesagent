@@ -89,6 +89,53 @@ test('authenticated JSONL session is post-auth, bounded, atomic, and I/O-free', 
   assert.doesNotMatch(index, /deterministic.*session|fake.*session/iu);
 });
 
+test('durable authenticated batches stay internal, bounded, atomic, and deny-wired', () => {
+  const codec = readFileSync('packages/agent-bridge/src/codec.ts', 'utf8');
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const decodeIndex = service.indexOf('envelopes = decodeBridgeBatch(input.bytes)');
+  const transactionIndex = service.indexOf('private async acceptRuntimeEnvelopes');
+  assert.ok(decodeIndex >= 0 && transactionIndex > decodeIndex);
+  assert.match(codec, /export function decodeBridgeBatch/u);
+  assert.match(codec, /MAX_BRIDGE_BUFFER_BYTES/u);
+  assert.match(codec, /MAX_BRIDGE_BATCH_FRAMES/u);
+  assert.match(codec, /Bridge batch must end with a complete JSON line/u);
+  assert.match(service, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(service, /purpose: 'VERIFY_FRAME'/u);
+  assert.match(service, /for \(const envelope of envelopes\)[\s\S]*verifyBridgeEnvelope/u);
+  assert.match(service, /keys\.parentToRuntime\.fill\(0\)/u);
+  assert.match(service, /keys\.runtimeToParent\.fill\(0\)/u);
+  assert.match(service, /Prisma\.TransactionIsolationLevel\.Serializable/u);
+  assert.match(service, /claimedDispatchIds[\s\S]*\.sort\(\)/u);
+  assert.match(service, /\[\.\.\.claimedRunIds\]\.sort\(\)/u);
+  assert.match(service, /\[\.\.\.claimedTaskIds\]\.sort\(\)/u);
+  assert.match(service, /envelope\.type === 'HEARTBEAT'[\s\S]*commitNow\.getTime\(\) - 60_000/u);
+  const brokerVerificationIndex = service.indexOf(
+    'await this.brokerEvidence.verify(brokerEvidence)',
+  );
+  const acceptanceClockIndex = service.indexOf('const acceptanceNow = await databaseNow(tx)');
+  const acceptanceMutationIndex = service.indexOf(
+    "data: { state: 'ACCEPTED', acceptedAt: acceptanceNow }",
+  );
+  assert.ok(
+    brokerVerificationIndex >= 0 &&
+      acceptanceClockIndex > brokerVerificationIndex &&
+      acceptanceMutationIndex > acceptanceClockIndex,
+  );
+  assert.match(service, /currentConnection\.version !== heartbeatIdentity\.version/u);
+  assert.match(service, /data: \{ expectedSequence: \{ increment: 1 \} \}/u);
+  assert.match(service, /session = await tx\.acpBridgeSession\.findUniqueOrThrow/u);
+  assert.doesNotMatch(service, /@Controller\s*\(/u);
+  assert.match(module, /new DenyBridgeSecretLeaseResolver\(\)/u);
+  assert.match(module, /new DenyRuntimeProcessLauncher\(\)/u);
+});
+
 test('trusted executable evidence is Linux-only, opened-file bound, and cannot launch', () => {
   const reader = readFileSync('packages/agent-bridge/src/supervision-evidence-reader.ts', 'utf8');
   const authorization = readFileSync(
