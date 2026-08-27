@@ -133,14 +133,13 @@ ALTER TABLE "acp_bridge_egress_handoff_releases"
 CREATE OR REPLACE FUNCTION ventureos_validate_egress_handoff_insert() RETURNS trigger AS $$
 DECLARE
   db_now TIMESTAMPTZ;
-  db_utc TIMESTAMP;
   expected_generation INTEGER;
   source_row "acp_bridge_dispatch_outbox"%ROWTYPE;
   session_state TEXT;
-  session_expires TIMESTAMP;
+  session_expires TIMESTAMPTZ;
   connection_state TEXT;
   heartbeat_health TEXT;
-  heartbeat_at TIMESTAMP;
+  heartbeat_at TIMESTAMPTZ;
   connection_capability_digest TEXT;
   runtime_capability_policy TEXT;
   dispatch_state TEXT;
@@ -164,7 +163,6 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'egress handoff outbox is unavailable'; END IF;
 
   db_now := clock_timestamp();
-  db_utc := db_now AT TIME ZONE 'UTC';
   IF NEW."claimedAt" > db_now OR NEW."claimedAt" < db_now - INTERVAL '5 seconds' OR NEW."expiresAt" <= db_now THEN
     RAISE EXCEPTION 'egress handoff requires a fresh database clock';
   END IF;
@@ -194,7 +192,8 @@ BEGIN
     RAISE EXCEPTION 'egress handoff durable binding mismatch';
   END IF;
 
-  SELECT s."state", s."expiresAt", c."status", c."lastHeartbeatHealth", c."lastHeartbeatAt",
+  SELECT s."state", s."expiresAt" AT TIME ZONE 'UTC', c."status", c."lastHeartbeatHealth",
+         c."lastHeartbeatAt" AT TIME ZONE 'UTC',
          c."capabilityDigest", rt."capabilityPolicyHash"
     INTO session_state, session_expires, connection_state, heartbeat_health, heartbeat_at,
          connection_capability_digest, runtime_capability_policy
@@ -210,9 +209,9 @@ BEGIN
   SELECT "state", "claimedDispatchId" INTO reservation_state, reservation_dispatch
   FROM "acp_broker_reservations" WHERE "workspaceId" = NEW."workspaceId" AND "id" = NEW."brokerEvidenceId";
 
-  IF session_state IS DISTINCT FROM 'PARTIAL' OR session_expires <= db_utc OR
+  IF session_state IS DISTINCT FROM 'PARTIAL' OR session_expires <= db_now OR
      connection_state IS DISTINCT FROM 'PARTIAL' OR heartbeat_health IS DISTINCT FROM 'HEALTHY' OR
-     heartbeat_at IS NULL OR heartbeat_at < db_utc - INTERVAL '60 seconds' OR
+     heartbeat_at IS NULL OR heartbeat_at < db_now - INTERVAL '60 seconds' OR
      dispatch_state IS DISTINCT FROM 'PREPARED' OR run_state IS DISTINCT FROM 'PREPARED' OR
      task_state IS DISTINCT FROM 'READY' OR run_authority IS DISTINCT FROM NEW."authorityLevel" OR
      run_policy IS DISTINCT FROM NEW."policyHash" OR
@@ -223,7 +222,7 @@ BEGIN
      source_row."expiresAt" <= db_now THEN
     RAISE EXCEPTION 'egress handoff requires live prepared durable authority';
   END IF;
-  IF NEW."expiresAt" > (session_expires AT TIME ZONE 'UTC') THEN
+  IF NEW."expiresAt" > session_expires THEN
     RAISE EXCEPTION 'egress handoff exceeds session expiry';
   END IF;
   IF EXISTS (SELECT 1 FROM "acp_bridge_egress_handoff_attempts" a

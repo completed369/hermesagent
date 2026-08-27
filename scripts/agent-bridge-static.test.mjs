@@ -210,6 +210,10 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
     'packages/database/prisma/migrations/20260827140000_acp_egress_handoff_claims/migration.sql',
     'utf8',
   );
+  const integration = readFileSync(
+    'apps/api/test/acp-bridge-admission.integration.spec.ts',
+    'utf8',
+  );
   const approvalReferencePolicy = readFileSync(
     'packages/agent-control-plane/src/approval-bridge.ts',
     'utf8',
@@ -268,7 +272,17 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
   assert.match(service, /async releaseDispatchEgressHandoff/u);
   assert.match(service, /AcpBridgeEgressHandoffRelease/u);
   assert.match(migration, /already exclusively claimed/u);
-  assert.match(migration, /db_utc := db_now AT TIME ZONE 'UTC'/u);
+  assert.doesNotMatch(migration, /db_utc/u);
+  assert.match(migration, /session_expires TIMESTAMPTZ/u);
+  assert.match(migration, /heartbeat_at TIMESTAMPTZ/u);
+  assert.match(migration, /s\."expiresAt" AT TIME ZONE 'UTC'/u);
+  assert.match(migration, /c\."lastHeartbeatAt" AT TIME ZONE 'UTC'/u);
+  assert.match(migration, /session_expires <= db_now/u);
+  assert.match(migration, /heartbeat_at < db_now - INTERVAL '60 seconds'/u);
+  assert.match(
+    integration,
+    /WITH db_clock AS \(SELECT clock_timestamp\(\) AS claimed_at\)[\s\S]*JOIN "acp_bridge_dispatch_outbox" source/u,
+  );
   assert.match(migration, /source_row "acp_bridge_dispatch_outbox"%ROWTYPE/u);
   assert.match(migration, /ventureos_egress_safe_reference/u);
   assert.match(

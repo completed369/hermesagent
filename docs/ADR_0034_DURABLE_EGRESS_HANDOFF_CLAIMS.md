@@ -32,6 +32,12 @@ idempotency references are separate, domain-separated canonical SHA-256
 digests of their exact owner, object, and idempotency bindings. Raw caller
 idempotency text is never copied into an audit event.
 
+The insert guard treats every clock comparison as an instant. Legacy bridge
+session and heartbeat columns store UTC wall-clock values without a zone, so
+the guard converts those values to `TIMESTAMPTZ` at UTC before comparing them
+directly with the database clock. Hostile connection time zones cannot make a
+fresh heartbeat stale or a stale heartbeat fresh.
+
 Natural expiry never rewrites an attempt. The same authenticated principal and
 actor kind may end a live claim early through a separate immutable release row
 and zero-payload audit event. A later claim is another append-only generation;
