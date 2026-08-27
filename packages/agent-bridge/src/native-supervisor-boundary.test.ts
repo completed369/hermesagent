@@ -476,10 +476,12 @@ describeLinux('Linux native supervisor evidence helper', () => {
     );
 
     await expect(launcher.launch(plan.launchRequest)).rejects.toMatchObject({
-      code: 'AUTHORIZATION_DENIED',
+      code: 'NATIVE_DENIED',
+      message: 'Native fixture invocation denied',
     });
     await expect(launcher.launch({ ...plan.launchRequest })).rejects.toMatchObject({
-      code: 'AUTHORIZATION_DENIED',
+      code: 'NATIVE_DENIED',
+      message: 'Native fixture invocation denied',
     });
     expect(launcher.calls).toBe(0);
 
@@ -646,7 +648,7 @@ describeLinux('Linux native supervisor evidence helper', () => {
     const notElf = join(ownedRoot, 'not-elf');
     writeFileSync(notElf, 'not an executable', { mode: 0o500 });
     const notElfDigest = createHash('sha256').update('not an executable').digest('hex');
-    expect(run(notElf, createWorktree('not-elf'), notElfDigest)).toMatchObject({
+    expect(run(notElf, createWorktree('not-elf-worktree'), notElfDigest)).toMatchObject({
       status: 70,
       stdout: '',
       stderr: 'NATIVE_SUPERVISOR_DENIED:ELF_REQUIRED\n',
