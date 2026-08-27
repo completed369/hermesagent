@@ -65,7 +65,7 @@ CREATE TABLE "acp_bridge_egress_handoff_attempts" (
     "expiresAt" <= "outboxExpiresAt"
   ),
   CONSTRAINT "acp_bridge_egress_handoff_reference_check" CHECK (
-    ventureos_egress_safe_reference("id") AND ventureos_egress_safe_reference("outboxId") AND
+    ventureos_egress_safe_owner_reference("id") AND ventureos_egress_safe_reference("outboxId") AND
     ventureos_egress_safe_owner_reference("ownerReference") AND ventureos_egress_safe_reference("claimIdempotencyKey") AND
     ventureos_egress_safe_reference("runtimeId") AND ventureos_egress_safe_reference("connectionId") AND
     ventureos_egress_safe_reference("sessionId") AND ventureos_egress_safe_reference("dispatchId") AND
@@ -112,7 +112,7 @@ CREATE TABLE "acp_bridge_egress_handoff_releases" (
   CONSTRAINT "acp_bridge_egress_handoff_release_generation_check" CHECK ("generation" > 0),
   CONSTRAINT "acp_bridge_egress_handoff_release_owner_kind_check" CHECK ("ownerActorKind" IN ('HUMAN', 'AGENT', 'SYSTEM')),
   CONSTRAINT "acp_bridge_egress_handoff_release_reference_check" CHECK (
-    ventureos_egress_safe_reference("id") AND ventureos_egress_safe_reference("attemptId") AND
+    ventureos_egress_safe_owner_reference("id") AND ventureos_egress_safe_owner_reference("attemptId") AND
     ventureos_egress_safe_reference("outboxId") AND ventureos_egress_safe_owner_reference("ownerReference") AND
     ventureos_egress_safe_reference("releaseIdempotencyKey")
   )

@@ -285,10 +285,27 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
     /const CAPABILITY_OWNER_REFERENCE = \/\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/-\]\{0,255\}\$\/u/u,
   );
   assert.match(
+    service,
+    /function auditSubjectReference[\s\S]*CAPABILITY_OWNER_REFERENCE\.test\(value\)/u,
+  );
+  assert.equal(
+    (service.match(/auditSubjectReference\(input\.attemptId, 'attemptId'\)/gu) ?? []).length,
+    2,
+  );
+  assert.match(service, /auditSubjectReference\(input\.releaseId, 'releaseId'\)/u);
+  assert.match(
     migration,
     /ventureos_egress_safe_owner_reference[\s\S]*value ~ '\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/-\]\{0,255\}\$'/u,
   );
   assert.match(migration, /ventureos_egress_safe_owner_reference\("ownerReference"\)/u);
+  assert.match(
+    migration,
+    /acp_bridge_egress_handoff_reference_check[\s\S]*ventureos_egress_safe_owner_reference\("id"\)/u,
+  );
+  assert.match(
+    migration,
+    /acp_bridge_egress_handoff_release_reference_check[\s\S]*ventureos_egress_safe_owner_reference\("id"\)[\s\S]*ventureos_egress_safe_owner_reference\("attemptId"\)/u,
+  );
   assert.doesNotMatch(service, /PRIVATE_REFERENCE/u);
   for (const secretFamily of [
     'github_pat',

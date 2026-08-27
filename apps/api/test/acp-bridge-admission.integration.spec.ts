@@ -809,6 +809,38 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         },
       ),
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    const auditSubjectSecretRequests = secretLeaseRequests.length;
+    let auditSubjectSourceCalls = 0;
+    const auditSubjectBridge = testBridge(testSecretLease(), {
+      async verify() {
+        auditSubjectSourceCalls += 1;
+        throw new Error('audit subject validation reached the evidence source');
+      },
+    });
+    await expect(
+      auditSubjectBridge.claimDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          attemptId: `egress@attempt-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-valid-idempotency-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      auditSubjectBridge.releaseDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          releaseId: `egress@release-${suffix}`,
+          attemptId: handoffId,
+          idempotencyKey: `egress-valid-release-idempotency-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(auditSubjectSourceCalls).toBe(0);
+    expect(secretLeaseRequests).toHaveLength(auditSubjectSecretRequests);
     await expect(
       prisma.acpBridgeEgressHandoffAttempt.update({
         where: { workspaceId_id: { workspaceId, id: handoffId } },
@@ -829,6 +861,21 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         },
       }),
     ).rejects.toThrow(/durable binding mismatch/iu);
+    await expect(
+      prisma.acpBridgeEgressHandoffRelease.create({
+        data: {
+          id: `egress@release-sql-${suffix}`,
+          workspaceId,
+          attemptId: handoffId,
+          outboxId: durableHandoff.outboxId,
+          ownerReference: durableHandoff.ownerReference,
+          ownerActorKind: durableHandoff.ownerActorKind,
+          generation: durableHandoff.generation,
+          releaseIdempotencyKey: `egress-release-sql-${suffix}`,
+          releasedAt: new Date(),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
     const released = await bridge.releaseDispatchEgressHandoff(
       capability,
       { workspaceId, principalId },
@@ -943,6 +990,20 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       },
     );
     const privacyClaimedAt = new Date();
+    await expect(
+      prisma.acpBridgeEgressHandoffAttempt.create({
+        data: {
+          ...durableHandoff,
+          id: `egress@attempt-sql-${suffix}`,
+          claimIdempotencyKey: `egress-attempt-sql-${suffix}`,
+          generation: 3,
+          claimedAt: privacyClaimedAt,
+          expiresAt: new Date(
+            Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
+          ),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
     await expect(
       prisma.acpBridgeEgressHandoffAttempt.create({
         data: {

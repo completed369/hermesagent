@@ -19,9 +19,11 @@ Each append-only attempt copies the complete durable outbox binding, the exact
 authenticated capability principal and actor kind as its owner, a bounded
 idempotency key, serialized generation, database claim time, and at most
 fifteen-second expiry capped by the session and outbox. Callers cannot supply
-or substitute owner authority. Owner references use the capability reference
-alphabet; other public/idempotency references retain the approval-reference
-contract. A still-live attempt excludes competitors. The
+or substitute owner authority. Owner references and the attempt/release IDs
+used as audit subjects use the capability-safe reference alphabet and are
+rejected before lookup, evidence verification, or secret resolution. Other
+public references, including claim/release idempotency inputs, retain the
+approval-reference contract. A still-live attempt excludes competitors. The
 exact same authenticated owner/idempotency tuple may replay only while live,
 after re-signing the frame and constant-time comparison of every durable
 digest. Both directional keys are zeroed. Service-created attempt metadata and

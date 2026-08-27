@@ -82,6 +82,15 @@ function capabilityOwnerReference(value: unknown): asserts value is string {
   }
 }
 
+function auditSubjectReference(value: unknown, field: string): asserts value is string {
+  reference(value, field);
+  if (!CAPABILITY_OWNER_REFERENCE.test(value)) {
+    throw new AcpBridgeAdmissionDeniedError(
+      `${field} must match the capability-safe audit reference`,
+    );
+  }
+}
+
 function digest(value: unknown, field: string): asserts value is string {
   if (typeof value !== 'string' || !SHA256.test(value)) {
     throw new AcpBridgeAdmissionDeniedError(`${field} must be a SHA-256 digest`);
@@ -1408,7 +1417,7 @@ export class AcpBridgeAdmissionService
   ) {
     const actorKind = assertControlPlane(capability, context, 3);
     const ownerReference = context.principalId;
-    publicReference(input.attemptId, 'attemptId');
+    auditSubjectReference(input.attemptId, 'attemptId');
     publicReference(input.outboxId, 'outboxId');
     capabilityOwnerReference(ownerReference);
     publicReference(input.idempotencyKey, 'idempotencyKey');
@@ -1945,8 +1954,8 @@ export class AcpBridgeAdmissionService
   ) {
     const actorKind = assertControlPlane(capability, context, 3);
     const ownerReference = context.principalId;
-    publicReference(input.releaseId, 'releaseId');
-    publicReference(input.attemptId, 'attemptId');
+    auditSubjectReference(input.releaseId, 'releaseId');
+    auditSubjectReference(input.attemptId, 'attemptId');
     capabilityOwnerReference(ownerReference);
     publicReference(input.idempotencyKey, 'idempotencyKey');
 
