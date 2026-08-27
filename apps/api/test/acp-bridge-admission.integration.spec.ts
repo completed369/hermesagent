@@ -2946,6 +2946,36 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       expiresAt: new Date(issuedAt.getTime() + 5_000),
       preparedAt: issuedAt,
     });
+    const insertDirectWithDatabaseClock = async (
+      tx: Prisma.TransactionClient,
+      outboundSequence: number,
+    ) => {
+      const row = directData(new Date(0), outboundSequence);
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "acp_bridge_dispatch_outbox" (
+          "id", "workspaceId", "runtimeId", "connectionId", "sessionId",
+          "dispatchId", "taskId", "runId", "agentId", "authorityLevel",
+          "outboundSequence", "messageId", "messageType", "protocolVersion", "state",
+          "brokerEvidenceId", "brokerEvidenceHash", "assignmentEvidenceId",
+          "assignmentEvidenceHash", "dispatchEnvelopeHash", "policyHash",
+          "capabilityPolicyHash", "capabilityDigest", "payloadDigest",
+          "unsignedEnvelopeDigest", "signedEnvelopeDigest", "authenticationTagDigest",
+          "idempotencyKey", "issuedAt", "expiresAt", "preparedAt"
+        )
+        SELECT
+          ${row.id}, ${row.workspaceId}::uuid, ${row.runtimeId}, ${row.connectionId},
+          ${row.sessionId}, ${row.dispatchId}, ${row.taskId}, ${row.runId}, ${row.agentId},
+          ${row.authorityLevel}, ${row.outboundSequence}, ${row.messageId},
+          ${row.messageType}, ${row.protocolVersion}, ${row.state}, ${row.brokerEvidenceId},
+          ${row.brokerEvidenceHash}, ${row.assignmentEvidenceId},
+          ${row.assignmentEvidenceHash}, ${row.dispatchEnvelopeHash}, ${row.policyHash},
+          ${row.capabilityPolicyHash}, ${row.capabilityDigest}, ${row.payloadDigest},
+          ${row.unsignedEnvelopeDigest}, ${row.signedEnvelopeDigest},
+          ${row.authenticationTagDigest}, ${row.idempotencyKey},
+          db_clock."now", db_clock."now" + INTERVAL '5 seconds', db_clock."now"
+        FROM (SELECT clock_timestamp() AS "now") AS db_clock
+      `);
+    };
     await expect(
       prisma.acpBridgeDispatchOutbox.create({ data: directData(new Date(), 99) }),
     ).rejects.toThrow(/outbound sequence mismatch/iu);
@@ -3004,31 +3034,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     await expect(
       prisma.$transaction(async (tx) => {
         await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
-        const row = directData(new Date(0), sequenceBaseline + 3);
-        await tx.$executeRaw(Prisma.sql`
-          INSERT INTO "acp_bridge_dispatch_outbox" (
-            "id", "workspaceId", "runtimeId", "connectionId", "sessionId",
-            "dispatchId", "taskId", "runId", "agentId", "authorityLevel",
-            "outboundSequence", "messageId", "messageType", "protocolVersion", "state",
-            "brokerEvidenceId", "brokerEvidenceHash", "assignmentEvidenceId",
-            "assignmentEvidenceHash", "dispatchEnvelopeHash", "policyHash",
-            "capabilityPolicyHash", "capabilityDigest", "payloadDigest",
-            "unsignedEnvelopeDigest", "signedEnvelopeDigest", "authenticationTagDigest",
-            "idempotencyKey", "issuedAt", "expiresAt", "preparedAt"
-          )
-          SELECT
-            ${row.id}, ${row.workspaceId}::uuid, ${row.runtimeId}, ${row.connectionId},
-            ${row.sessionId}, ${row.dispatchId}, ${row.taskId}, ${row.runId}, ${row.agentId},
-            ${row.authorityLevel}, ${row.outboundSequence}, ${row.messageId},
-            ${row.messageType}, ${row.protocolVersion}, ${row.state}, ${row.brokerEvidenceId},
-            ${row.brokerEvidenceHash}, ${row.assignmentEvidenceId},
-            ${row.assignmentEvidenceHash}, ${row.dispatchEnvelopeHash}, ${row.policyHash},
-            ${row.capabilityPolicyHash}, ${row.capabilityDigest}, ${row.payloadDigest},
-            ${row.unsignedEnvelopeDigest}, ${row.signedEnvelopeDigest},
-            ${row.authenticationTagDigest}, ${row.idempotencyKey},
-            db_clock."now", db_clock."now" + INTERVAL '5 seconds', db_clock."now"
-          FROM (SELECT clock_timestamp() AS "now") AS db_clock
-        `);
+        await insertDirectWithDatabaseClock(tx, sequenceBaseline + 3);
       }),
     ).rejects.toThrow(/fresh partial bridge evidence/iu);
     expect(
@@ -3045,10 +3051,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     await expect(
       prisma.$transaction(async (tx) => {
         await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
-        const issuedAt = new Date();
-        await tx.acpBridgeDispatchOutbox.create({
-          data: directData(issuedAt, sequenceBaseline + 3),
-        });
+        await insertDirectWithDatabaseClock(tx, sequenceBaseline + 3);
         throw new Error('rollback timezone proof');
       }),
     ).rejects.toThrow('rollback timezone proof');
