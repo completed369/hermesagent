@@ -1048,7 +1048,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       bridge.acceptRuntimeMessage(
         capability,
         { workspaceId, principalId },
-        fake.emitAt(8, 'USAGE', {
+        fake.emitAt(9, 'USAGE', {
           dispatchId,
           taskId,
           runId,
@@ -1060,7 +1060,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
     expect(
       await prisma.acpBridgeReceipt.count({
-        where: { workspaceId, sessionId, sequence: 8 },
+        where: { workspaceId, sessionId, sequence: 9 },
       }),
     ).toBe(0);
     const beforeAuditRollback = {
