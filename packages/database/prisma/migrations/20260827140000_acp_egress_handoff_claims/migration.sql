@@ -8,6 +8,11 @@ CREATE OR REPLACE FUNCTION ventureos_egress_safe_reference(value TEXT) RETURNS B
     value !~ '^[A-Za-z0-9._-]+:[A-Za-z0-9._-]+@[A-Za-z0-9.-]+$';
 $$ LANGUAGE sql IMMUTABLE STRICT;
 
+CREATE OR REPLACE FUNCTION ventureos_egress_safe_owner_reference(value TEXT) RETURNS BOOLEAN AS $$
+  SELECT ventureos_egress_safe_reference(value) AND
+    value ~ '^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$';
+$$ LANGUAGE sql IMMUTABLE STRICT;
+
 CREATE TABLE "acp_bridge_egress_handoff_attempts" (
   "id" TEXT NOT NULL,
   "workspaceId" UUID NOT NULL,
@@ -61,7 +66,7 @@ CREATE TABLE "acp_bridge_egress_handoff_attempts" (
   ),
   CONSTRAINT "acp_bridge_egress_handoff_reference_check" CHECK (
     ventureos_egress_safe_reference("id") AND ventureos_egress_safe_reference("outboxId") AND
-    ventureos_egress_safe_reference("ownerReference") AND ventureos_egress_safe_reference("claimIdempotencyKey") AND
+    ventureos_egress_safe_owner_reference("ownerReference") AND ventureos_egress_safe_reference("claimIdempotencyKey") AND
     ventureos_egress_safe_reference("runtimeId") AND ventureos_egress_safe_reference("connectionId") AND
     ventureos_egress_safe_reference("sessionId") AND ventureos_egress_safe_reference("dispatchId") AND
     ventureos_egress_safe_reference("taskId") AND ventureos_egress_safe_reference("runId") AND
@@ -108,7 +113,7 @@ CREATE TABLE "acp_bridge_egress_handoff_releases" (
   CONSTRAINT "acp_bridge_egress_handoff_release_owner_kind_check" CHECK ("ownerActorKind" IN ('HUMAN', 'AGENT', 'SYSTEM')),
   CONSTRAINT "acp_bridge_egress_handoff_release_reference_check" CHECK (
     ventureos_egress_safe_reference("id") AND ventureos_egress_safe_reference("attemptId") AND
-    ventureos_egress_safe_reference("outboxId") AND ventureos_egress_safe_reference("ownerReference") AND
+    ventureos_egress_safe_reference("outboxId") AND ventureos_egress_safe_owner_reference("ownerReference") AND
     ventureos_egress_safe_reference("releaseIdempotencyKey")
   )
 );

@@ -943,6 +943,22 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       },
     );
     const privacyClaimedAt = new Date();
+    await expect(
+      prisma.acpBridgeEgressHandoffAttempt.create({
+        data: {
+          ...durableHandoff,
+          id: `egress-at-owner-sql-${suffix}`,
+          ownerReference: 'principal@domain.example',
+          ownerActorKind: 'SYSTEM',
+          claimIdempotencyKey: `egress-at-owner-sql-${suffix}`,
+          generation: 3,
+          claimedAt: privacyClaimedAt,
+          expiresAt: new Date(
+            Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
+          ),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
     for (const [index, privateReference] of [
       'token-reference',
       'github_pat_1234567890abcdef',
@@ -1032,7 +1048,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         idempotencyKey: `egress-digit-release-${suffix}`,
       },
     );
-    const punctuatedPrincipalId = `7/@${'a'.repeat(253)}`;
+    const punctuatedPrincipalId = `7/:${'a'.repeat(253)}`;
     expect(punctuatedPrincipalId).toHaveLength(256);
     const punctuatedCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
       {
@@ -1048,7 +1064,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       {
         attemptId: `egress-punctuated-owner-${suffix}`,
         outboxId: capsuleId,
-        idempotencyKey: `egress-punctuated-owner-${suffix}`,
+        idempotencyKey: `egress-punctuated@owner-${suffix}`,
       },
     );
     expect(punctuatedClaim.attempt).toMatchObject({
@@ -1062,9 +1078,21 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       {
         releaseId: `egress-punctuated-release-${suffix}`,
         attemptId: punctuatedClaim.attempt.id,
-        idempotencyKey: `egress-punctuated-release-${suffix}`,
+        idempotencyKey: `egress-punctuated@release-${suffix}`,
       },
     );
+    const secretRequestsBeforeAtOwner = secretLeaseRequests.length;
+    expect(() =>
+      OperationalEventCapability.issue('CONTROL_PLANE', [
+        {
+          workspaceId,
+          principalId: `principal@domain-${suffix}`,
+          actorKind: 'SYSTEM',
+          authorityLevel: 3,
+        },
+      ]),
+    ).toThrow();
+    expect(secretLeaseRequests).toHaveLength(secretRequestsBeforeAtOwner);
     const oversizedPrincipalId = `7${'a'.repeat(256)}`;
     const oversizedCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
       {

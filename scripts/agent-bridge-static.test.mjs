@@ -214,6 +214,7 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
     'packages/agent-control-plane/src/approval-bridge.ts',
     'utf8',
   );
+  const capabilityEventPolicy = readFileSync('packages/agent-control-plane/src/events.ts', 'utf8');
   const model = schema.slice(
     schema.indexOf('model AcpBridgeEgressHandoffAttempt'),
     schema.indexOf('model AcpRunUsage'),
@@ -275,6 +276,19 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
     /const SAFE_REFERENCE = \/\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/@-\]\{0,255\}\$\/u/u,
   );
   assert.match(migration, /value ~ '\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/@-\]\{0,255\}\$'/u);
+  assert.match(
+    capabilityEventPolicy,
+    /const SAFE_REFERENCE = \/\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/-\]\{0,255\}\$\/u/u,
+  );
+  assert.match(
+    service,
+    /const CAPABILITY_OWNER_REFERENCE = \/\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/-\]\{0,255\}\$\/u/u,
+  );
+  assert.match(
+    migration,
+    /ventureos_egress_safe_owner_reference[\s\S]*value ~ '\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/-\]\{0,255\}\$'/u,
+  );
+  assert.match(migration, /ventureos_egress_safe_owner_reference\("ownerReference"\)/u);
   assert.doesNotMatch(service, /PRIVATE_REFERENCE/u);
   for (const secretFamily of [
     'github_pat',

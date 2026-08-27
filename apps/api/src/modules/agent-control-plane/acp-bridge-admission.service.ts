@@ -50,6 +50,7 @@ export class AcpBridgeAdmissionNotFoundError extends AcpBridgeAdmissionError {}
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
+const CAPABILITY_OWNER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
 
 function exactPayload(value: Readonly<Record<string, unknown>>, keys: readonly string[]): void {
   const actual = Object.keys(value).sort();
@@ -70,6 +71,15 @@ function reference(value: unknown, field: string): asserts value is string {
 
 function publicReference(value: unknown, field: string): asserts value is string {
   reference(value, field);
+}
+
+function capabilityOwnerReference(value: unknown): asserts value is string {
+  reference(value, 'ownerReference');
+  if (!CAPABILITY_OWNER_REFERENCE.test(value)) {
+    throw new AcpBridgeAdmissionDeniedError(
+      'ownerReference must match the authenticated capability reference',
+    );
+  }
 }
 
 function digest(value: unknown, field: string): asserts value is string {
@@ -1390,7 +1400,7 @@ export class AcpBridgeAdmissionService
     const ownerReference = context.principalId;
     publicReference(input.attemptId, 'attemptId');
     publicReference(input.outboxId, 'outboxId');
-    publicReference(ownerReference, 'ownerReference');
+    capabilityOwnerReference(ownerReference);
     publicReference(input.idempotencyKey, 'idempotencyKey');
 
     for (let transactionAttempt = 0; transactionAttempt < 3; transactionAttempt += 1) {
@@ -1920,7 +1930,7 @@ export class AcpBridgeAdmissionService
     const ownerReference = context.principalId;
     publicReference(input.releaseId, 'releaseId');
     publicReference(input.attemptId, 'attemptId');
-    publicReference(ownerReference, 'ownerReference');
+    capabilityOwnerReference(ownerReference);
     publicReference(input.idempotencyKey, 'idempotencyKey');
 
     for (let transactionAttempt = 0; transactionAttempt < 3; transactionAttempt += 1) {
