@@ -87,6 +87,13 @@
 > authorization source. Revocation is only as current as its one source read for
 > an admission; post-decision revocation and atomic launch-time revalidation
 > remain unresolved.
+>
+> The authenticated JSONL session is likewise an I/O-free post-authentication
+> verifier only. It owns bounded parsing, runtime-to-parent sequence and batch
+> verification state, including a one-time first `CAPABILITIES` phase, but it
+> does not infer `PARTIAL` or `CONNECTED` and has no socket, process handle, controller, durable
+> writer, or positive production secret source. Verified frozen envelopes do not
+> by themselves authorize an ACP state transition.
 
 The cost-governance foundation pairs authenticated bridge usage with immutable
 recognized-spend evidence under exact workspace and task budget periods. It

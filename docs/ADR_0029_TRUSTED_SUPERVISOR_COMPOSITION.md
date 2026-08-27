@@ -75,7 +75,9 @@ connectivity, heartbeat, task exchange, result evidence, or authenticated end-to
 
 ## Next dependency
 
-The next process-facing slice must preserve the exact issued-plan boundary while implementing a
+The pure post-authentication JSONL session in ADR-0030 is the next bounded prerequisite: it
+verifies already-authenticated runtime-to-parent frames without I/O or durable mutation. A later
+process-facing slice must preserve the exact issued-plan boundary while implementing a
 deny-by-default native supervisor behind an explicit security review. Connecting a real runtime,
 using real credentials, activating a provider, deploying, publishing, or changing a runtime to a
 connected status remains outside this ADR and requires the corresponding authorization and

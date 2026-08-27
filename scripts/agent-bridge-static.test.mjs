@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const packageFiles = [
+  'packages/agent-bridge/src/authenticated-jsonl-session.ts',
   'packages/agent-bridge/src/auth.ts',
   'packages/agent-bridge/src/codec.ts',
   'packages/agent-bridge/src/evidence.ts',
@@ -49,6 +50,40 @@ test('production secret resolution is deny-only and has no ambient credential so
   assert.doesNotMatch(source, /\bBRIDGE_SECRET_RESOLVER\b/u);
   assert.match(module, /new DenyBridgeSecretLeaseResolver\(\)/u);
   assert.match(module, /provide:\s*BRIDGE_SECRET_LEASE_RESOLVER/u);
+});
+
+test('authenticated JSONL session is post-auth, bounded, atomic, and I/O-free', () => {
+  const session = readFileSync('packages/agent-bridge/src/authenticated-jsonl-session.ts', 'utf8');
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  assert.doesNotMatch(
+    session,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(session, /\bprocess\.(?:env|cwd|platform)\b|@Controller\s*\(|Prisma/u);
+  assert.doesNotMatch(session, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.match(session, /purpose:\s*'VERIFY_FRAME'/u);
+  assert.match(session, /deriveBridgeKeys/u);
+  assert.match(session, /verifyBridgeEnvelope\(envelope, keys\.runtimeToParent/u);
+  assert.match(session, /keys\.parentToRuntime\.fill\(0\)/u);
+  assert.match(session, /keys\.runtimeToParent\.fill\(0\)/u);
+  assert.match(session, /finally\s*\{/u);
+  assert.match(session, /#nextSequence = 1/u);
+  assert.match(session, /#capabilitiesAccepted = false/u);
+  assert.match(session, /envelope\.type !== 'CAPABILITIES'/u);
+  assert.match(session, /else if \(envelope\.type === 'CAPABILITIES'\)/u);
+  assert.match(session, /#ingesting = false/u);
+  assert.match(session, /this\.#state = 'FAILED'/u);
+  assert.match(session, /if \(this\.#state !== 'ACTIVE'\)/u);
+  assert.match(session, /MAX_AUTHENTICATED_BATCH_FRAMES/u);
+  assert.match(session, /MAX_AUTHENTICATED_SESSION_FRAMES/u);
+  assert.match(session, /MAX_AUTHENTICATED_SESSION_BYTES/u);
+  assert.match(session, /const commitObservedAt = Date\.now\(\)/u);
+  assert.match(session, /commitObservedAt >= Date\.parse\(this\.#context\.expiresAt\)/u);
+  assert.match(session, /readonly ingestedBytes: number/u);
+  assert.doesNotMatch(session, /acceptedBytes/u);
+  assert.doesNotMatch(session, /POST_AUTH_TYPES[\s\S]{0,300}'(?:CHALLENGE|AUTHENTICATE)'/u);
+  assert.match(index, /authenticated-jsonl-session/u);
+  assert.doesNotMatch(index, /deterministic.*session|fake.*session/iu);
 });
 
 test('trusted executable evidence is Linux-only, opened-file bound, and cannot launch', () => {
