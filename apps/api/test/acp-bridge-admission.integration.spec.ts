@@ -3237,6 +3237,40 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         where: { workspaceId, dispatchId: prepared[5]!.dispatch.id },
       }),
     ).toBe(1);
+    const crossingAssignment = await taskRuns.reserveAssignment(
+      capability,
+      { workspaceId, principalId },
+      {
+        evidenceId: crossingDispatch.assignmentEvidenceId,
+        evidenceHash: crossingDispatch.assignmentEvidenceHash,
+        taskId: crossingDispatch.taskId,
+        runId: crossingDispatch.runId,
+        agentId: crossingDispatch.agentId,
+        runtimeId: crossingDispatch.runtimeId,
+        connectionId: crossingDispatch.connectionId,
+      },
+      prepared[4]!.run.version,
+      `${planId}:crossing-assignment`,
+    );
+    const crossingStarted = await taskRuns.startRun(
+      capability,
+      { workspaceId, principalId },
+      crossingDispatch.runId,
+      crossingAssignment.run.version,
+      `${planId}:crossing-start`,
+    );
+    await prisma.acpBridgeDispatch.update({
+      where: { workspaceId_id: { workspaceId, id: crossingDispatch.id } },
+      data: { state: 'FAILED', terminalAt: new Date() },
+    });
+    await taskRuns.failRun(
+      capability,
+      { workspaceId, principalId },
+      crossingDispatch.runId,
+      crossingStarted.run.version,
+      'DENIED',
+      `${planId}:crossing-stop`,
+    );
     await prisma.acpBridgeDispatch.update({
       where: { workspaceId_id: { workspaceId, id: newDispatch.id } },
       data: { state: 'FAILED', terminalAt: new Date() },
@@ -3246,6 +3280,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       data: { status: 'STOPPED', version: { increment: 1 }, completedAt: new Date() },
     });
     for (const { dispatch, run } of prepared) {
+      if (dispatch.id === crossingDispatch.id) continue;
       await prisma.acpBridgeDispatch.update({
         where: { workspaceId_id: { workspaceId, id: dispatch.id } },
         data: { state: 'FAILED', terminalAt: new Date() },
