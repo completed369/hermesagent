@@ -886,22 +886,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         },
       }),
     ).rejects.toThrow(/reference_check|check constraint/iu);
-    await expect(
-      prisma.acpBridgeEgressHandoffAttempt.create({
-        data: {
-          ...durableHandoff,
-          id: `egress-oversized-owner-sql-${suffix}`,
-          ownerReference: `7${'a'.repeat(256)}`,
-          ownerActorKind: 'SYSTEM',
-          claimIdempotencyKey: `egress-oversized-owner-sql-${suffix}`,
-          generation: 3,
-          claimedAt: privacyClaimedAt,
-          expiresAt: new Date(
-            Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
-          ),
-        },
-      }),
-    ).rejects.toThrow(/reference_check|check constraint/iu);
     let reportHandoffLease!: () => void;
     let releaseHandoffLease!: () => void;
     const handoffLeaseReached = new Promise<void>((resolve) => {
@@ -967,6 +951,22 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           ownerReference: 'principal@domain.example',
           ownerActorKind: 'SYSTEM',
           claimIdempotencyKey: `egress-at-owner-sql-${suffix}`,
+          generation: 3,
+          claimedAt: privacyClaimedAt,
+          expiresAt: new Date(
+            Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
+          ),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
+    await expect(
+      prisma.acpBridgeEgressHandoffAttempt.create({
+        data: {
+          ...durableHandoff,
+          id: `egress-oversized-owner-sql-${suffix}`,
+          ownerReference: `7${'a'.repeat(256)}`,
+          ownerActorKind: 'SYSTEM',
+          claimIdempotencyKey: `egress-oversized-owner-sql-${suffix}`,
           generation: 3,
           claimedAt: privacyClaimedAt,
           expiresAt: new Date(
