@@ -118,7 +118,7 @@ static napi_value launch(napi_env env, napi_callback_info info) {
   return result;
 }
 
-static napi_value bind(napi_env env, napi_callback_info info) {
+static napi_value bind_consumer(napi_env env, napi_callback_info info) {
   napi_value values[1];
   napi_valuetype type;
   if (bound_consumer != NULL || exact_argc(env, info, 1, values) != 0 ||
@@ -140,7 +140,8 @@ static napi_value bind(napi_env env, napi_callback_info info) {
 
 static napi_value initialize(napi_env env, napi_value exports) {
   napi_value bind_function;
-  if (napi_create_function(env, "bind", NAPI_AUTO_LENGTH, bind, NULL, &bind_function) != napi_ok ||
+  if (napi_create_function(env, "bind", NAPI_AUTO_LENGTH, bind_consumer, NULL, &bind_function) !=
+          napi_ok ||
       napi_set_named_property(env, exports, "bind", bind_function) != napi_ok)
     return NULL;
   return exports;
