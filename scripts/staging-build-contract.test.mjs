@@ -169,6 +169,7 @@ test('the immutable migration chain matches the reviewed sequence', () => {
     '20260825230000_durable_broker_reservations',
     '20260826043000_acp_cost_governance_ledger',
     '20260827090000_acp_dispatch_outbox',
+    '20260827140000_acp_egress_handoff_claims',
   ]);
   const unsafeRestoreReference =
     /(?:password|passwd|secret|token|cookie|authorization|chain[-_.:/ ]?of[-_.:/ ]?thought)/u;

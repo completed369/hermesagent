@@ -137,6 +137,8 @@ model Workspace {
   acpBridgeReceipts        AcpBridgeReceipt[]
   acpBridgeDispatches      AcpBridgeDispatch[]
   acpBridgeDispatchOutbox  AcpBridgeDispatchOutbox[]
+  acpBridgeEgressHandoffs  AcpBridgeEgressHandoffAttempt[]
+  acpBridgeEgressReleases  AcpBridgeEgressHandoffRelease[]
   acpRunUsages             AcpRunUsage[]
   acpBrokerReservations    AcpBrokerReservation[]
   acpBrokerEvaluations     AcpBrokerEvaluation[]
@@ -1262,10 +1264,11 @@ model AcpBridgeDispatchOutbox {
   expiresAt               DateTime @db.Timestamptz(3)
   preparedAt              DateTime @db.Timestamptz(3)
 
-  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  session    AcpBridgeSession     @relation(fields: [workspaceId, sessionId, runtimeId, connectionId], references: [workspaceId, id, runtimeId, connectionId], onDelete: Cascade)
-  connection AcpRuntimeConnection @relation(fields: [workspaceId, connectionId, runtimeId], references: [workspaceId, id, runtimeId], onDelete: Cascade)
-  dispatch   AcpBridgeDispatch    @relation(fields: [workspaceId, dispatchId, runId, taskId, runtimeId, connectionId, sessionId, agentId, authorityLevel, brokerEvidenceId, brokerEvidenceHash, assignmentEvidenceId, assignmentEvidenceHash, dispatchEnvelopeHash], references: [workspaceId, id, runId, taskId, runtimeId, connectionId, sessionId, agentId, authorityLevel, brokerEvidenceId, brokerEvidenceHash, assignmentEvidenceId, assignmentEvidenceHash, dispatchEnvelopeHash], onDelete: Cascade)
+  workspace       Workspace                       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  session         AcpBridgeSession                @relation(fields: [workspaceId, sessionId, runtimeId, connectionId], references: [workspaceId, id, runtimeId, connectionId], onDelete: Cascade)
+  connection      AcpRuntimeConnection            @relation(fields: [workspaceId, connectionId, runtimeId], references: [workspaceId, id, runtimeId], onDelete: Cascade)
+  dispatch        AcpBridgeDispatch               @relation(fields: [workspaceId, dispatchId, runId, taskId, runtimeId, connectionId, sessionId, agentId, authorityLevel, brokerEvidenceId, brokerEvidenceHash, assignmentEvidenceId, assignmentEvidenceHash, dispatchEnvelopeHash], references: [workspaceId, id, runId, taskId, runtimeId, connectionId, sessionId, agentId, authorityLevel, brokerEvidenceId, brokerEvidenceHash, assignmentEvidenceId, assignmentEvidenceHash, dispatchEnvelopeHash], onDelete: Cascade)
+  handoffAttempts AcpBridgeEgressHandoffAttempt[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, dispatchId])
@@ -1274,6 +1277,82 @@ model AcpBridgeDispatchOutbox {
   @@unique([workspaceId, sessionId, messageId])
   @@index([workspaceId, connectionId, state], map: "acp_bridge_dispatch_outbox_connection_idx")
   @@map("acp_bridge_dispatch_outbox")
+}
+
+/// Append-only metadata for a short, exclusive opportunity to hand one
+/// prepared DISPATCH frame to a separately supplied egress boundary. This is
+/// not delivery, acknowledgement, a sent state, or durable frame/MAC storage.
+model AcpBridgeEgressHandoffAttempt {
+  id                      String
+  workspaceId             String   @db.Uuid
+  outboxId                String
+  ownerReference          String
+  ownerActorKind          String
+  claimIdempotencyKey     String
+  generation              Int
+  runtimeId               String
+  connectionId            String
+  sessionId               String
+  dispatchId              String
+  taskId                  String
+  runId                   String
+  agentId                 String
+  authorityLevel          Int
+  outboundSequence        Int
+  messageId               String
+  messageType             String
+  protocolVersion         String
+  outboxState             String
+  brokerEvidenceId        String
+  brokerEvidenceHash      String
+  assignmentEvidenceId    String
+  assignmentEvidenceHash  String
+  dispatchEnvelopeHash    String
+  policyHash              String
+  capabilityPolicyHash    String
+  capabilityDigest        String
+  payloadDigest           String
+  unsignedEnvelopeDigest  String
+  signedEnvelopeDigest    String
+  authenticationTagDigest String
+  outboxIdempotencyKey    String
+  outboxIssuedAt          DateTime @db.Timestamptz(3)
+  outboxExpiresAt         DateTime @db.Timestamptz(3)
+  outboxPreparedAt        DateTime @db.Timestamptz(3)
+  claimedAt               DateTime @db.Timestamptz(3)
+  expiresAt               DateTime @db.Timestamptz(3)
+
+  workspace Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  outbox    AcpBridgeDispatchOutbox        @relation(fields: [workspaceId, outboxId], references: [workspaceId, id], onDelete: Cascade)
+  release   AcpBridgeEgressHandoffRelease?
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, claimIdempotencyKey], map: "acp_egress_handoff_claim_key")
+  @@unique([workspaceId, outboxId, generation], map: "acp_egress_handoff_generation_key")
+  @@index([workspaceId, outboxId, expiresAt], map: "acp_bridge_egress_handoff_active_idx")
+  @@map("acp_bridge_egress_handoff_attempts")
+}
+
+/// Append-only early release for one exact handoff generation. Natural expiry
+/// needs no mutation; a later claim is a new attempt generation.
+model AcpBridgeEgressHandoffRelease {
+  id                    String
+  workspaceId           String   @db.Uuid
+  attemptId             String
+  outboxId              String
+  ownerReference        String
+  ownerActorKind        String
+  generation            Int
+  releaseIdempotencyKey String
+  releasedAt            DateTime @db.Timestamptz(3)
+
+  workspace Workspace                     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  attempt   AcpBridgeEgressHandoffAttempt @relation(fields: [workspaceId, attemptId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, attemptId], map: "acp_egress_release_attempt_key")
+  @@unique([workspaceId, releaseIdempotencyKey], map: "acp_egress_release_idempotency_key")
+  @@map("acp_bridge_egress_handoff_releases")
 }
 
 model AcpRunUsage {

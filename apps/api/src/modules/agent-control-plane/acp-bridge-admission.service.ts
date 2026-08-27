@@ -61,7 +61,15 @@ function exactPayload(value: Readonly<Record<string, unknown>>, keys: readonly s
 
 function reference(value: unknown, field: string): asserts value is string {
   if (typeof value !== 'string') throw new AcpBridgeAdmissionDeniedError(`${field} is required`);
-  validateAcpApprovalReference(value, field);
+  try {
+    validateAcpApprovalReference(value, field);
+  } catch {
+    throw new AcpBridgeAdmissionDeniedError(`${field} must be a safe non-sensitive reference`);
+  }
+}
+
+function publicReference(value: unknown, field: string): asserts value is string {
+  reference(value, field);
 }
 
 function digest(value: unknown, field: string): asserts value is string {
@@ -126,6 +134,18 @@ export interface PrepareBridgeDispatchInput {
 export interface PrepareBridgeDispatchAuthorizationInput {
   readonly capsuleId: string;
   readonly dispatchId: string;
+  readonly idempotencyKey: string;
+}
+
+export interface ClaimBridgeEgressHandoffInput {
+  readonly attemptId: string;
+  readonly outboxId: string;
+  readonly idempotencyKey: string;
+}
+
+export interface ReleaseBridgeEgressHandoffInput {
+  readonly releaseId: string;
+  readonly attemptId: string;
   readonly idempotencyKey: string;
 }
 
@@ -1354,6 +1374,679 @@ export class AcpBridgeAdmissionService
       }
     }
     throw new AcpBridgeAdmissionConflictError('Dispatch authorization retry budget exhausted');
+  }
+
+  /**
+   * Claims a short, exclusive opportunity to hand one already-prepared frame
+   * to an injected egress boundary. The returned frame is ephemeral. This
+   * method does not send, enqueue, acknowledge, or change any runtime state.
+   */
+  async claimDispatchEgressHandoff(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: ClaimBridgeEgressHandoffInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    const ownerReference = context.principalId;
+    publicReference(input.attemptId, 'attemptId');
+    publicReference(input.outboxId, 'outboxId');
+    publicReference(ownerReference, 'ownerReference');
+    publicReference(input.idempotencyKey, 'idempotencyKey');
+
+    for (let transactionAttempt = 0; transactionAttempt < 3; transactionAttempt += 1) {
+      try {
+        return await prisma.$transaction(
+          async (tx) => {
+            const referenceRow = await tx.acpBridgeDispatchOutbox.findUnique({
+              where: {
+                workspaceId_id: { workspaceId: context.workspaceId, id: input.outboxId },
+              },
+              select: {
+                sessionId: true,
+                connectionId: true,
+                dispatchId: true,
+                runId: true,
+                taskId: true,
+                runtimeId: true,
+                brokerEvidenceId: true,
+              },
+            });
+            if (!referenceRow)
+              throw new AcpBridgeAdmissionNotFoundError('Egress handoff not found');
+
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${referenceRow.sessionId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${referenceRow.connectionId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_bridge_dispatches" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${referenceRow.dispatchId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${referenceRow.runId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${referenceRow.taskId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runtimes" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${referenceRow.runtimeId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_broker_reservations" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${referenceRow.brokerEvidenceId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_bridge_dispatch_outbox" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.outboxId} FOR UPDATE`,
+            );
+
+            const loadState = () =>
+              tx.acpBridgeDispatchOutbox.findUniqueOrThrow({
+                where: {
+                  workspaceId_id: { workspaceId: context.workspaceId, id: input.outboxId },
+                },
+                include: {
+                  session: true,
+                  connection: { include: { runtime: true } },
+                  dispatch: { include: { run: { include: { task: true } } } },
+                },
+              });
+            let outbox = await loadState();
+            let reservation = await tx.acpBrokerReservation.findUniqueOrThrow({
+              where: {
+                workspaceId_id: {
+                  workspaceId: context.workspaceId,
+                  id: outbox.brokerEvidenceId,
+                },
+              },
+            });
+            const existing = await tx.acpBridgeEgressHandoffAttempt.findFirst({
+              where: {
+                workspaceId: context.workspaceId,
+                OR: [{ id: input.attemptId }, { claimIdempotencyKey: input.idempotencyKey }],
+              },
+              include: { release: true },
+            });
+            if (
+              existing &&
+              (existing.id !== input.attemptId ||
+                existing.outboxId !== input.outboxId ||
+                existing.ownerReference !== ownerReference ||
+                existing.ownerActorKind !== actorKind ||
+                existing.claimIdempotencyKey !== input.idempotencyKey)
+            ) {
+              throw new AcpBridgeAdmissionConflictError('Egress handoff replay drifted');
+            }
+            const preflightNow = await databaseNow(tx);
+            const preflightActive = await tx.acpBridgeEgressHandoffAttempt.findFirst({
+              where: {
+                workspaceId: context.workspaceId,
+                outboxId: outbox.id,
+                expiresAt: { gt: preflightNow },
+                release: { is: null },
+              },
+              orderBy: { generation: 'desc' },
+            });
+            if (preflightActive && preflightActive.id !== existing?.id) {
+              throw new AcpBridgeAdmissionConflictError(
+                'Egress handoff is already exclusively claimed',
+              );
+            }
+            if (existing && (existing.expiresAt <= preflightNow || existing.release)) {
+              throw new AcpBridgeAdmissionDeniedError('Egress handoff replay is no longer live');
+            }
+
+            const brokerSnapshot = {
+              evidenceId: outbox.brokerEvidenceId,
+              evidenceHash: outbox.brokerEvidenceHash,
+              workspaceId: outbox.workspaceId,
+              taskId: outbox.taskId,
+              runId: outbox.runId,
+              agentId: outbox.agentId,
+              runtimeId: outbox.runtimeId,
+              connectionId: outbox.connectionId,
+            };
+            await this.assertAdapterIsolation(
+              context.workspaceId,
+              outbox.connection.runtime.adapterKind,
+              outbox.connection.environment,
+            );
+            if (
+              !(await this.brokerEvidence.verify(brokerSnapshot)) ||
+              !(await this.capabilityPolicy.verify(
+                context.workspaceId,
+                outbox.runtimeId,
+                outbox.connection.runtime.capabilityPolicyHash,
+                outbox.connection.capabilityCodes,
+              ))
+            ) {
+              throw new AcpBridgeAdmissionDeniedError('Egress handoff evidence was denied');
+            }
+
+            let handoffCompleted = false;
+            const result = await this.withSecretLease(
+              {
+                workspaceId: context.workspaceId,
+                runtimeId: outbox.runtimeId,
+                connectionId: outbox.connectionId,
+                secretReference: outbox.connection.runtime.secretReference,
+                expectedDigest: outbox.connection.runtime.secretDigest,
+                authGeneration: outbox.connection.authGeneration,
+                purpose: 'SIGN_FRAME',
+              },
+              async (secret) => {
+                outbox = await loadState();
+                reservation = await tx.acpBrokerReservation.findUniqueOrThrow({
+                  where: {
+                    workspaceId_id: {
+                      workspaceId: context.workspaceId,
+                      id: outbox.brokerEvidenceId,
+                    },
+                  },
+                });
+                await this.assertAdapterIsolation(
+                  context.workspaceId,
+                  outbox.connection.runtime.adapterKind,
+                  outbox.connection.environment,
+                );
+                if (
+                  !(await this.brokerEvidence.verify(brokerSnapshot)) ||
+                  !(await this.capabilityPolicy.verify(
+                    context.workspaceId,
+                    outbox.runtimeId,
+                    outbox.connection.runtime.capabilityPolicyHash,
+                    outbox.connection.capabilityCodes,
+                  ))
+                ) {
+                  throw new AcpBridgeAdmissionDeniedError('Egress handoff evidence was denied');
+                }
+
+                const now = await databaseNow(tx);
+                outbox = await loadState();
+                reservation = await tx.acpBrokerReservation.findUniqueOrThrow({
+                  where: {
+                    workspaceId_id: {
+                      workspaceId: context.workspaceId,
+                      id: outbox.brokerEvidenceId,
+                    },
+                  },
+                });
+                const session = outbox.session;
+                const connection = outbox.connection;
+                const dispatch = outbox.dispatch;
+                const run = dispatch.run;
+                if (
+                  outbox.state !== 'PREPARED' ||
+                  outbox.expiresAt <= now ||
+                  session.state !== 'PARTIAL' ||
+                  session.expiresAt <= now ||
+                  !session.runtimeNonce ||
+                  !session.authenticatedAt ||
+                  !session.keyDigest ||
+                  connection.status !== 'PARTIAL' ||
+                  connection.lastHeartbeatHealth !== 'HEALTHY' ||
+                  !connection.lastHeartbeatAt ||
+                  connection.lastHeartbeatAt.getTime() < now.getTime() - 60_000 ||
+                  !connection.capabilityDigest ||
+                  connection.capabilityDigest !== sha256(connection.capabilityCodes) ||
+                  dispatch.state !== 'PREPARED' ||
+                  run.status !== 'PREPARED' ||
+                  run.task.status !== 'READY' ||
+                  run.requiredAuthority >= 4 ||
+                  run.requiredAuthority !== outbox.authorityLevel ||
+                  reservation.state !== 'CLAIMED' ||
+                  reservation.claimedDispatchId !== dispatch.id
+                ) {
+                  throw new AcpBridgeAdmissionDeniedError(
+                    'Egress handoff durable authority is not live',
+                  );
+                }
+
+                const active = await tx.acpBridgeEgressHandoffAttempt.findFirst({
+                  where: {
+                    workspaceId: context.workspaceId,
+                    outboxId: outbox.id,
+                    expiresAt: { gt: now },
+                    release: { is: null },
+                  },
+                  orderBy: { generation: 'desc' },
+                });
+                if (active && active.id !== existing?.id) {
+                  throw new AcpBridgeAdmissionConflictError(
+                    'Egress handoff is already exclusively claimed',
+                  );
+                }
+                if (existing && existing.expiresAt <= now) {
+                  throw new AcpBridgeAdmissionDeniedError('Egress handoff replay expired');
+                }
+
+                const keyContext = {
+                  workspaceId: session.workspaceId,
+                  runtimeId: session.runtimeId,
+                  connectionId: session.connectionId,
+                  sessionId: session.id,
+                  principalReference: session.principalReference,
+                  parentNonce: session.parentNonce,
+                  runtimeNonce: session.runtimeNonce,
+                };
+                const keys = deriveBridgeKeys(secret, keyContext);
+                try {
+                  const keyDigest = createHash('sha256')
+                    .update(keys.parentToRuntime)
+                    .update(keys.runtimeToParent)
+                    .digest('hex');
+                  if (!exactDigestMatch(keyDigest, session.keyDigest)) {
+                    throw new AcpBridgeAdmissionDeniedError('Egress handoff session key mismatch');
+                  }
+                  const payload = Object.freeze({
+                    schemaVersion: 1,
+                    dispatchId: dispatch.id,
+                    taskId: dispatch.taskId,
+                    runId: dispatch.runId,
+                    agentId: dispatch.agentId,
+                    authorityLevel: dispatch.authorityLevel,
+                    brokerEvidenceId: dispatch.brokerEvidenceId,
+                    brokerEvidenceHash: dispatch.brokerEvidenceHash,
+                    assignmentEvidenceId: dispatch.assignmentEvidenceId,
+                    assignmentEvidenceHash: dispatch.assignmentEvidenceHash,
+                    dispatchEnvelopeHash: dispatch.dispatchEnvelopeHash,
+                    policyHash: run.policyHash,
+                    capabilityPolicyHash: connection.runtime.capabilityPolicyHash,
+                    capabilityDigest: connection.capabilityDigest,
+                  });
+                  const unsigned = {
+                    protocolVersion: BRIDGE_PROTOCOL_VERSION,
+                    workspaceId: context.workspaceId,
+                    runtimeId: outbox.runtimeId,
+                    connectionId: outbox.connectionId,
+                    sessionId: outbox.sessionId,
+                    principalReference: session.principalReference,
+                    sequence: outbox.outboundSequence,
+                    messageId: outbox.messageId,
+                    type: 'DISPATCH' as const,
+                    issuedAt: outbox.issuedAt.toISOString(),
+                    expiresAt: outbox.expiresAt.toISOString(),
+                    payloadDigest: digestBridgePayload(payload),
+                    payload,
+                  };
+                  const frame = signBridgeEnvelope(unsigned, keys.parentToRuntime);
+                  const unsignedDigest = sha256(unsigned);
+                  const signedDigest = sha256(frame);
+                  const tagDigest = createHash('sha256').update(frame.mac).digest('hex');
+                  const expectedEnvelopeHash = sha256({
+                    schemaVersion: 1,
+                    dispatchId: dispatch.id,
+                    taskId: run.taskId,
+                    runId: run.id,
+                    runtimeId: session.runtimeId,
+                    connectionId: session.connectionId,
+                    sessionId: session.id,
+                    authorityLevel: run.requiredAuthority,
+                    policyHash: run.policyHash,
+                  });
+                  if (
+                    outbox.workspaceId !== context.workspaceId ||
+                    outbox.runtimeId !== dispatch.runtimeId ||
+                    outbox.connectionId !== dispatch.connectionId ||
+                    outbox.sessionId !== dispatch.sessionId ||
+                    outbox.dispatchId !== dispatch.id ||
+                    outbox.taskId !== dispatch.taskId ||
+                    outbox.runId !== dispatch.runId ||
+                    outbox.agentId !== dispatch.agentId ||
+                    outbox.authorityLevel !== dispatch.authorityLevel ||
+                    outbox.messageId !== outbox.id ||
+                    outbox.messageType !== 'DISPATCH' ||
+                    outbox.protocolVersion !== BRIDGE_PROTOCOL_VERSION ||
+                    outbox.preparedAt.getTime() !== outbox.issuedAt.getTime() ||
+                    outbox.expiresAt.getTime() > outbox.issuedAt.getTime() + 60_000 ||
+                    outbox.brokerEvidenceId !== dispatch.brokerEvidenceId ||
+                    !exactDigestMatch(outbox.brokerEvidenceHash, dispatch.brokerEvidenceHash) ||
+                    outbox.assignmentEvidenceId !== dispatch.assignmentEvidenceId ||
+                    !exactDigestMatch(
+                      outbox.assignmentEvidenceHash,
+                      dispatch.assignmentEvidenceHash,
+                    ) ||
+                    !exactDigestMatch(outbox.dispatchEnvelopeHash, expectedEnvelopeHash) ||
+                    !exactDigestMatch(outbox.policyHash, run.policyHash) ||
+                    !exactDigestMatch(
+                      outbox.capabilityPolicyHash,
+                      connection.runtime.capabilityPolicyHash,
+                    ) ||
+                    !connection.capabilityDigest ||
+                    !exactDigestMatch(outbox.capabilityDigest, connection.capabilityDigest) ||
+                    !exactDigestMatch(outbox.payloadDigest, unsigned.payloadDigest) ||
+                    !exactDigestMatch(outbox.unsignedEnvelopeDigest, unsignedDigest) ||
+                    !exactDigestMatch(outbox.signedEnvelopeDigest, signedDigest) ||
+                    !exactDigestMatch(outbox.authenticationTagDigest, tagDigest)
+                  ) {
+                    throw new AcpBridgeAdmissionConflictError('Egress handoff outbox drifted');
+                  }
+
+                  const claimedAt = existing?.claimedAt ?? now;
+                  const expiresAt =
+                    existing?.expiresAt ??
+                    new Date(
+                      Math.min(
+                        outbox.expiresAt.getTime(),
+                        session.expiresAt.getTime(),
+                        now.getTime() + 15_000,
+                      ),
+                    );
+                  if (expiresAt <= now) {
+                    throw new AcpBridgeAdmissionDeniedError('Egress handoff authority expired');
+                  }
+                  const generation =
+                    existing?.generation ??
+                    ((
+                      await tx.acpBridgeEgressHandoffAttempt.aggregate({
+                        where: { workspaceId: context.workspaceId, outboxId: outbox.id },
+                        _max: { generation: true },
+                      })
+                    )._max.generation ?? 0) + 1;
+                  const attemptData = {
+                    id: input.attemptId,
+                    workspaceId: context.workspaceId,
+                    outboxId: outbox.id,
+                    ownerReference,
+                    ownerActorKind: actorKind,
+                    claimIdempotencyKey: input.idempotencyKey,
+                    generation,
+                    runtimeId: outbox.runtimeId,
+                    connectionId: outbox.connectionId,
+                    sessionId: outbox.sessionId,
+                    dispatchId: outbox.dispatchId,
+                    taskId: outbox.taskId,
+                    runId: outbox.runId,
+                    agentId: outbox.agentId,
+                    authorityLevel: outbox.authorityLevel,
+                    outboundSequence: outbox.outboundSequence,
+                    messageId: outbox.messageId,
+                    messageType: outbox.messageType,
+                    protocolVersion: outbox.protocolVersion,
+                    outboxState: outbox.state,
+                    brokerEvidenceId: outbox.brokerEvidenceId,
+                    brokerEvidenceHash: outbox.brokerEvidenceHash,
+                    assignmentEvidenceId: outbox.assignmentEvidenceId,
+                    assignmentEvidenceHash: outbox.assignmentEvidenceHash,
+                    dispatchEnvelopeHash: outbox.dispatchEnvelopeHash,
+                    policyHash: outbox.policyHash,
+                    capabilityPolicyHash: outbox.capabilityPolicyHash,
+                    capabilityDigest: outbox.capabilityDigest,
+                    payloadDigest: outbox.payloadDigest,
+                    unsignedEnvelopeDigest: outbox.unsignedEnvelopeDigest,
+                    signedEnvelopeDigest: outbox.signedEnvelopeDigest,
+                    authenticationTagDigest: outbox.authenticationTagDigest,
+                    outboxIdempotencyKey: outbox.idempotencyKey,
+                    outboxIssuedAt: outbox.issuedAt,
+                    outboxExpiresAt: outbox.expiresAt,
+                    outboxPreparedAt: outbox.preparedAt,
+                    claimedAt,
+                    expiresAt,
+                  };
+                  if (
+                    existing &&
+                    (existing.id !== attemptData.id ||
+                      existing.workspaceId !== attemptData.workspaceId ||
+                      existing.outboxId !== attemptData.outboxId ||
+                      existing.ownerReference !== attemptData.ownerReference ||
+                      existing.ownerActorKind !== attemptData.ownerActorKind ||
+                      existing.claimIdempotencyKey !== attemptData.claimIdempotencyKey ||
+                      existing.generation !== attemptData.generation ||
+                      existing.runtimeId !== attemptData.runtimeId ||
+                      existing.connectionId !== attemptData.connectionId ||
+                      existing.sessionId !== attemptData.sessionId ||
+                      existing.dispatchId !== attemptData.dispatchId ||
+                      existing.taskId !== attemptData.taskId ||
+                      existing.runId !== attemptData.runId ||
+                      existing.agentId !== attemptData.agentId ||
+                      existing.authorityLevel !== attemptData.authorityLevel ||
+                      existing.outboundSequence !== attemptData.outboundSequence ||
+                      existing.messageId !== attemptData.messageId ||
+                      existing.messageType !== attemptData.messageType ||
+                      existing.protocolVersion !== attemptData.protocolVersion ||
+                      existing.outboxState !== attemptData.outboxState ||
+                      existing.brokerEvidenceId !== attemptData.brokerEvidenceId ||
+                      !exactDigestMatch(
+                        existing.brokerEvidenceHash,
+                        attemptData.brokerEvidenceHash,
+                      ) ||
+                      existing.assignmentEvidenceId !== attemptData.assignmentEvidenceId ||
+                      !exactDigestMatch(
+                        existing.assignmentEvidenceHash,
+                        attemptData.assignmentEvidenceHash,
+                      ) ||
+                      !exactDigestMatch(
+                        existing.dispatchEnvelopeHash,
+                        attemptData.dispatchEnvelopeHash,
+                      ) ||
+                      !exactDigestMatch(existing.policyHash, attemptData.policyHash) ||
+                      !exactDigestMatch(
+                        existing.capabilityPolicyHash,
+                        attemptData.capabilityPolicyHash,
+                      ) ||
+                      !exactDigestMatch(existing.capabilityDigest, attemptData.capabilityDigest) ||
+                      !exactDigestMatch(existing.payloadDigest, attemptData.payloadDigest) ||
+                      !exactDigestMatch(
+                        existing.unsignedEnvelopeDigest,
+                        attemptData.unsignedEnvelopeDigest,
+                      ) ||
+                      !exactDigestMatch(
+                        existing.signedEnvelopeDigest,
+                        attemptData.signedEnvelopeDigest,
+                      ) ||
+                      !exactDigestMatch(
+                        existing.authenticationTagDigest,
+                        attemptData.authenticationTagDigest,
+                      ) ||
+                      existing.outboxIdempotencyKey !== attemptData.outboxIdempotencyKey ||
+                      existing.outboxIssuedAt.getTime() !== attemptData.outboxIssuedAt.getTime() ||
+                      existing.outboxExpiresAt.getTime() !==
+                        attemptData.outboxExpiresAt.getTime() ||
+                      existing.outboxPreparedAt.getTime() !==
+                        attemptData.outboxPreparedAt.getTime() ||
+                      existing.claimedAt.getTime() !== attemptData.claimedAt.getTime() ||
+                      existing.expiresAt.getTime() !== attemptData.expiresAt.getTime())
+                  ) {
+                    throw new AcpBridgeAdmissionConflictError(
+                      'Egress handoff durable replay drifted',
+                    );
+                  }
+                  const attempt =
+                    existing ??
+                    (await tx.acpBridgeEgressHandoffAttempt.create({ data: attemptData }));
+                  if (!existing) {
+                    await this.auditService.recordOperationalEvent(
+                      capability,
+                      context,
+                      {
+                        id: randomUUID(),
+                        workspaceId: context.workspaceId,
+                        type: 'run.progress',
+                        source: 'CONTROL_PLANE',
+                        actorKind,
+                        actorId: context.principalId,
+                        subjectType: 'AcpBridgeEgressHandoffAttempt',
+                        subjectId: attempt.id,
+                        occurredAt: claimedAt.toISOString(),
+                        idempotencyKey: `bridge-egress-handoff:${input.idempotencyKey}`,
+                        correlationId: outbox.runId,
+                        facts: { payloadFieldCount: 0, payloadBytes: 0 },
+                      },
+                      actorKind === 'HUMAN' ? context.principalId : undefined,
+                      tx,
+                    );
+                  }
+                  handoffCompleted = true;
+                  return Object.freeze({
+                    attempt,
+                    frame: Object.freeze({ ...frame, payload }),
+                    replayed: Boolean(existing),
+                  });
+                } finally {
+                  keys.parentToRuntime.fill(0);
+                  keys.runtimeToParent.fill(0);
+                }
+              },
+            );
+            if (!handoffCompleted || !result) {
+              throw new AcpBridgeAdmissionDeniedError('Egress handoff signing was denied');
+            }
+            return result;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          (error.code === 'P2034' || error.code === 'P2002')
+        ) {
+          if (transactionAttempt < 2) continue;
+          throw new AcpBridgeAdmissionConflictError(
+            'Concurrent egress handoff conflict; retry with current durable state',
+          );
+        }
+        throw error;
+      }
+    }
+    throw new AcpBridgeAdmissionConflictError('Egress handoff retry budget exhausted');
+  }
+
+  /** Records an immutable early release. Natural expiry is already durable. */
+  async releaseDispatchEgressHandoff(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: ReleaseBridgeEgressHandoffInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    const ownerReference = context.principalId;
+    publicReference(input.releaseId, 'releaseId');
+    publicReference(input.attemptId, 'attemptId');
+    publicReference(ownerReference, 'ownerReference');
+    publicReference(input.idempotencyKey, 'idempotencyKey');
+
+    for (let transactionAttempt = 0; transactionAttempt < 3; transactionAttempt += 1) {
+      try {
+        return await prisma.$transaction(
+          async (tx) => {
+            const attemptReference = await tx.acpBridgeEgressHandoffAttempt.findUnique({
+              where: {
+                workspaceId_id: { workspaceId: context.workspaceId, id: input.attemptId },
+              },
+            });
+            if (!attemptReference)
+              throw new AcpBridgeAdmissionNotFoundError('Egress handoff attempt not found');
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${attemptReference.sessionId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${attemptReference.connectionId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_bridge_dispatches" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${attemptReference.dispatchId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${attemptReference.runId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${attemptReference.taskId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runtimes" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${attemptReference.runtimeId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_broker_reservations" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${attemptReference.brokerEvidenceId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_bridge_dispatch_outbox" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${attemptReference.outboxId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_bridge_egress_handoff_attempts" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.attemptId} FOR UPDATE`,
+            );
+
+            const attempt = await tx.acpBridgeEgressHandoffAttempt.findUniqueOrThrow({
+              where: {
+                workspaceId_id: { workspaceId: context.workspaceId, id: input.attemptId },
+              },
+            });
+            const existing = await tx.acpBridgeEgressHandoffRelease.findFirst({
+              where: {
+                workspaceId: context.workspaceId,
+                OR: [
+                  { attemptId: input.attemptId },
+                  { releaseIdempotencyKey: input.idempotencyKey },
+                ],
+              },
+            });
+            if (
+              attempt.ownerReference !== ownerReference ||
+              attempt.ownerActorKind !== actorKind ||
+              (existing &&
+                (existing.id !== input.releaseId ||
+                  existing.attemptId !== input.attemptId ||
+                  existing.ownerReference !== ownerReference ||
+                  existing.ownerActorKind !== actorKind ||
+                  existing.releaseIdempotencyKey !== input.idempotencyKey))
+            ) {
+              throw new AcpBridgeAdmissionConflictError('Egress handoff release drifted');
+            }
+            const now = await databaseNow(tx);
+            if (!existing && attempt.expiresAt <= now) {
+              throw new AcpBridgeAdmissionDeniedError('Expired egress handoff cannot be released');
+            }
+            const release =
+              existing ??
+              (await tx.acpBridgeEgressHandoffRelease.create({
+                data: {
+                  id: input.releaseId,
+                  workspaceId: context.workspaceId,
+                  attemptId: attempt.id,
+                  outboxId: attempt.outboxId,
+                  ownerReference: attempt.ownerReference,
+                  ownerActorKind: attempt.ownerActorKind,
+                  generation: attempt.generation,
+                  releaseIdempotencyKey: input.idempotencyKey,
+                  releasedAt: now,
+                },
+              }));
+            if (!existing) {
+              await this.auditService.recordOperationalEvent(
+                capability,
+                context,
+                {
+                  id: randomUUID(),
+                  workspaceId: context.workspaceId,
+                  type: 'run.progress',
+                  source: 'CONTROL_PLANE',
+                  actorKind,
+                  actorId: context.principalId,
+                  subjectType: 'AcpBridgeEgressHandoffRelease',
+                  subjectId: release.id,
+                  occurredAt: release.releasedAt.toISOString(),
+                  idempotencyKey: `bridge-egress-release:${input.idempotencyKey}`,
+                  correlationId: attempt.runId,
+                  facts: { payloadFieldCount: 0, payloadBytes: 0 },
+                },
+                actorKind === 'HUMAN' ? context.principalId : undefined,
+                tx,
+              );
+            }
+            return Object.freeze({ release, replayed: Boolean(existing) });
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          (error.code === 'P2034' || error.code === 'P2002')
+        ) {
+          if (transactionAttempt < 2) continue;
+          throw new AcpBridgeAdmissionConflictError(
+            'Concurrent egress release conflict; retry with current durable state',
+          );
+        }
+        throw error;
+      }
+    }
+    throw new AcpBridgeAdmissionConflictError('Egress release retry budget exhausted');
   }
 
   async requestCancellation(

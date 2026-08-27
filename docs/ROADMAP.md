@@ -58,6 +58,14 @@ published and current `main` has not been deployed to private staging.
   delivery worker, provider adapter, process path, or `SENT`/connected claim;
   dispatch remains `PREPARED` until separately authenticated runtime evidence
   is admitted.
+- A service-only egress-handoff foundation may re-sign that exact prepared
+  frame and append one short exclusive claim bound to the authenticated
+  principal and actor kind. Expiry is immutable, early release is a separate
+  append-only row, and reclaim is a new generation. Only authenticated service
+  writes carry atomic audit; trigger-valid direct-writer rows remain
+  unauthenticated correlation metadata requiring re-signing/reverification.
+  This is still no sender, queue, socket, process, provider, delivery,
+  acknowledgement, `SENT`, or connectivity path.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
