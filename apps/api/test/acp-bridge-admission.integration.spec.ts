@@ -950,23 +950,31 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           ON source."workspaceId" = ${timezoneAttemptData.workspaceId}::uuid
          AND source."id" = ${timezoneAttemptData.outboxId}
       `);
+    const setStaleTimezoneHeartbeat = (tx: Prisma.TransactionClient) =>
+      tx.$executeRaw(Prisma.sql`
+        UPDATE "acp_runtime_connections"
+        SET "lastHeartbeatAt" = (clock_timestamp() - INTERVAL '61 seconds') AT TIME ZONE 'UTC',
+            "version" = "version" + 1
+        WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId}
+      `);
+    const setFreshTimezoneHeartbeat = (tx: Prisma.TransactionClient) =>
+      tx.$executeRaw(Prisma.sql`
+        UPDATE "acp_runtime_connections"
+        SET "lastHeartbeatAt" = clock_timestamp() AT TIME ZONE 'UTC',
+            "version" = "version" + 1
+        WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId}
+      `);
     await expect(
       prisma.$transaction(async (tx) => {
         await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
-        await tx.acpRuntimeConnection.update({
-          where: { workspaceId_id: { workspaceId, id: connectionId } },
-          data: { lastHeartbeatAt: new Date(Date.now() - 61_000), version: { increment: 1 } },
-        });
+        expect(await setStaleTimezoneHeartbeat(tx)).toBe(1);
         return insertTimezoneAttempt(tx);
       }),
     ).rejects.toThrow(/live prepared durable authority/iu);
     await expect(
       prisma.$transaction(async (tx) => {
         await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
-        await tx.acpRuntimeConnection.update({
-          where: { workspaceId_id: { workspaceId, id: connectionId } },
-          data: { lastHeartbeatAt: new Date(Date.now() - 61_000), version: { increment: 1 } },
-        });
+        expect(await setStaleTimezoneHeartbeat(tx)).toBe(1);
         return insertTimezoneAttempt(tx);
       }),
     ).rejects.toThrow(/live prepared durable authority/iu);
@@ -979,12 +987,14 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     await expect(
       prisma.$transaction(async (tx) => {
         await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
+        expect(await setFreshTimezoneHeartbeat(tx)).toBe(1);
         expect(await insertTimezoneAttempt(tx)).toBe(1);
         throw new Error('rollback fresh Adak timezone proof');
       }),
     ).rejects.toThrow('rollback fresh Adak timezone proof');
     await prisma.$transaction(async (tx) => {
       await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
+      expect(await setFreshTimezoneHeartbeat(tx)).toBe(1);
       expect(await insertTimezoneAttempt(tx)).toBe(1);
     });
     expect(

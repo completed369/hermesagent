@@ -283,6 +283,11 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
     integration,
     /WITH db_clock AS \(SELECT clock_timestamp\(\) AS claimed_at\)[\s\S]*JOIN "acp_bridge_dispatch_outbox" source/u,
   );
+  assert.match(
+    integration,
+    /"lastHeartbeatAt" = \(clock_timestamp\(\) - INTERVAL '61 seconds'\) AT TIME ZONE 'UTC'/u,
+  );
+  assert.match(integration, /"lastHeartbeatAt" = clock_timestamp\(\) AT TIME ZONE 'UTC'/u);
   assert.match(migration, /source_row "acp_bridge_dispatch_outbox"%ROWTYPE/u);
   assert.match(migration, /ventureos_egress_safe_reference/u);
   assert.match(
