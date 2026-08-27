@@ -673,7 +673,7 @@ describeLinux('Linux native supervisor evidence helper', () => {
     expect(run(oversized, createWorktree('oversized'), oversizedDigest)).toMatchObject({
       status: 70,
       stdout: '',
-      stderr: 'NATIVE_SUPERVISOR_DENIED:SOURCE_METADATA\n',
+      stderr: 'NATIVE_SUPERVISOR_DENIED:METADATA_INPUT\n',
     });
 
     const symlinkRoot = join(ownedRoot, 'symlink-root');
