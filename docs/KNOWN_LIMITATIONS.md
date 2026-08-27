@@ -94,6 +94,17 @@
 > does not infer `PARTIAL` or `CONNECTED` and has no socket, process handle, controller, durable
 > writer, or positive production secret source. Verified frozen envelopes do not
 > by themselves authorize an ACP state transition.
+>
+> A Linux x86-64 native supervisor helper and fixed ELF runtime exist only as
+> test sources for Ubuntu CI. They exercise sealed `memfd` plus `execveat`, a
+> safe opened working directory, pidfd/process-group cancellation, exact
+> rlimits, `no_new_privs`, and a narrow filter that denies `socket(2)`, process
+> creation, and session/process-group escape for a fixed no-child fixture. A
+> test-file-local launcher receives only the composition-consumed request; helper
+> authority is not sourced from ambient environment. They are
+> excluded from package output and final images and are not a production
+> launcher, general sandbox, or general process-tree containment. Native execution was not run on the Windows
+> authoring host; Ubuntu CI is authoritative for those claims.
 
 The cost-governance foundation pairs authenticated bridge usage with immutable
 recognized-spend evidence under exact workspace and task budget periods. It

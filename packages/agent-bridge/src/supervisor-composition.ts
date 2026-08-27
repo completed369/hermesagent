@@ -60,6 +60,34 @@ export class TrustedSupervisorCompositionError extends Error {
   }
 }
 
+interface NativeLaunchHandoffState {
+  status: 'ACTIVE' | 'CONSUMED';
+  readonly envelope: Readonly<TrustedNativeLaunchEnvelope>;
+  readonly expiresAt: number;
+}
+
+interface ActivatedSupervisorLaunchPlan {
+  readonly request: Readonly<RuntimeProcessLaunchRequest>;
+  readonly admission: Readonly<ValidatedSupervisorAdmission>;
+  readonly planHash: string;
+  readonly expiresAt: number;
+}
+
+export interface TrustedNativeLaunchEnvelope {
+  readonly request: Readonly<RuntimeProcessLaunchRequest>;
+  readonly admission: Readonly<ValidatedSupervisorAdmission>;
+  readonly planHash: string;
+  readonly expiresAt: number;
+}
+
+export type TrustedNativeLaunchHandoffConsumer = (
+  handoff: unknown,
+) => Readonly<TrustedNativeLaunchEnvelope>;
+
+export type RuntimeProcessLauncherFactory = (
+  consume: TrustedNativeLaunchHandoffConsumer,
+) => RuntimeProcessLauncher;
+
 export interface TrustedSupervisorAuthorizationRequest {
   readonly schemaVersion: 1;
   readonly workspaceId: string;
@@ -271,12 +299,28 @@ function consumeRuntimeProcessLaunchRequest(
 export class TrustedSupervisorComposition {
   readonly #launchPlanStates = new WeakMap<object, LaunchPlanState>();
   readonly #launchRequestStates = new WeakMap<object, LaunchRequestState>();
+  readonly #nativeLaunchHandoffStates = new WeakMap<object, NativeLaunchHandoffState>();
+  readonly #launcher: RuntimeProcessLauncher;
 
   constructor(
     private readonly authorizationSource: TrustedSupervisorAuthorizationSource,
     private readonly evidenceReader: PerAdmissionSupervisorEvidenceReader,
-    private readonly launcher: RuntimeProcessLauncher,
-  ) {}
+    launcherFactory: RuntimeProcessLauncherFactory,
+  ) {
+    this.#launcher = launcherFactory((handoff) => this.#consumeNativeLaunchHandoff(handoff));
+  }
+
+  #consumeNativeLaunchHandoff(handoff: unknown): Readonly<TrustedNativeLaunchEnvelope> {
+    if (typeof handoff !== 'object' || handoff === null)
+      throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
+    const state = this.#nativeLaunchHandoffStates.get(handoff);
+    if (state?.status !== 'ACTIVE' || Date.now() >= state.expiresAt) {
+      if (state) state.status = 'CONSUMED';
+      throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
+    }
+    state.status = 'CONSUMED';
+    return state.envelope;
+  }
 
   async prepare(
     input: PrepareTrustedSupervisorLaunchInput,
@@ -382,14 +426,36 @@ export class TrustedSupervisorComposition {
   }
 
   async execute(plan: unknown): Promise<never> {
-    const launchRequest = activateTrustedSupervisorLaunchPlan(
+    const activatedPlan = activateTrustedSupervisorLaunchPlan(
       plan,
       this.#launchPlanStates,
       this.#launchRequestStates,
     );
-    return this.launcher.launch(
-      consumeRuntimeProcessLaunchRequest(launchRequest, this.#launchRequestStates),
+    const consumedRequest = consumeRuntimeProcessLaunchRequest(
+      activatedPlan.request,
+      this.#launchRequestStates,
     );
+    const expiresAt = this.#launchRequestStates.get(activatedPlan.request)?.expiresAt;
+    if (expiresAt === undefined)
+      throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
+    const handoff = Object.freeze(Object.create(null) as object);
+    const envelope = deepFreeze({
+      request: consumedRequest,
+      admission: activatedPlan.admission,
+      planHash: activatedPlan.planHash,
+      expiresAt,
+    });
+    this.#nativeLaunchHandoffStates.set(handoff, {
+      status: 'ACTIVE',
+      envelope,
+      expiresAt,
+    });
+    try {
+      return await this.#launcher.launch(handoff);
+    } finally {
+      const state = this.#nativeLaunchHandoffStates.get(handoff);
+      if (state) state.status = 'CONSUMED';
+    }
   }
 }
 
@@ -397,7 +463,7 @@ function activateTrustedSupervisorLaunchPlan(
   plan: unknown,
   launchPlanStates: WeakMap<object, LaunchPlanState>,
   launchRequestStates: WeakMap<object, LaunchRequestState>,
-): Readonly<RuntimeProcessLaunchRequest> {
+): Readonly<ActivatedSupervisorLaunchPlan> {
   if (typeof plan !== 'object' || plan === null)
     throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
   const planState = launchPlanStates.get(plan);
@@ -514,5 +580,10 @@ function activateTrustedSupervisorLaunchPlan(
   }
   planState.status = 'CONSUMED';
   requestState.status = 'ACTIVE';
-  return issuedLaunchRequest as unknown as Readonly<RuntimeProcessLaunchRequest>;
+  return {
+    request: issuedLaunchRequest as unknown as Readonly<RuntimeProcessLaunchRequest>,
+    admission,
+    planHash: expectedPlanHash,
+    expiresAt: planState.expiresAt,
+  };
 }

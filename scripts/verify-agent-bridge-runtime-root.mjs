@@ -43,6 +43,15 @@ function resolvedPackageRootLink(path, target) {
 
 export function classifyAgentBridgeRuntimeEntry({ type, path, linkTarget = '' }) {
   if (!/^[bcdflps]$/u.test(type) || !safeRelativePath(path)) return 'MALFORMED_ENTRY';
+  if (
+    /(?:^|\/)(?:native-supervisor-helper|native-supervisor-addon|native-runtime-fixture)(?:\.[^/]*)?$/u.test(
+      path,
+    ) ||
+    path === 'packages/agent-bridge/test/native' ||
+    path.startsWith('packages/agent-bridge/test/native/') ||
+    path.includes('/packages/agent-bridge/test/native/')
+  )
+    return 'NATIVE_TEST_FIXTURE';
   const marker = `/${PACKAGE_ROOT}`;
   const initialMarkerIndex = path.indexOf(marker);
   let packageRootIndex =

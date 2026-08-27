@@ -53,13 +53,16 @@ accepting the structural request type outside this composition path is forbidden
 
 ## Security and lifecycle limits
 
-This slice does not create a controller, listener, child process, network connection, credential
+This production slice does not create a controller, listener, child process, network connection, credential
 backend, provider integration, database writer, deployment, publication, or status mutation. It
 does not retain the inspected executable descriptor through process creation and therefore does
 not close the final filesystem-to-launch TOCTOU window. Process isolation, native Linux process
 groups/cgroups, Windows handle and Job Object semantics, resource enforcement, authenticated
 JSONL transport, cancellation, and cleanup remain requirements for a separately reviewed native
-supervisor.
+supervisor. ADR-0031 adds Linux x86-64 test-only native evidence for retained-descriptor execution,
+a fixed no-child/session-escape policy, and root-process cleanup. It does not prove general
+process-tree containment; its addon/helper is excluded from product output and does not change
+this production boundary.
 
 The issued-plan capability is intentionally process-local and non-durable. Restarting the API or
 crossing a serialization boundary requires a new live authorization and evidence read. Windows is
@@ -75,9 +78,9 @@ connectivity, heartbeat, task exchange, result evidence, or authenticated end-to
 
 ## Next dependency
 
-The pure post-authentication JSONL session in ADR-0030 is the next bounded prerequisite: it
-verifies already-authenticated runtime-to-parent frames without I/O or durable mutation. A later
-process-facing slice must preserve the exact issued-plan boundary while implementing a
+The pure post-authentication JSONL session in ADR-0030 verifies already-authenticated
+runtime-to-parent frames without I/O or durable mutation. ADR-0031 adds a fixed Linux native test
+fixture behind the same issued-plan boundary. A later process-facing slice must implement a
 deny-by-default native supervisor behind an explicit security review. Connecting a real runtime,
 using real credentials, activating a provider, deploying, publishing, or changing a runtime to a
 connected status remains outside this ADR and requires the corresponding authorization and

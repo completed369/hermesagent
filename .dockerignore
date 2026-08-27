@@ -18,6 +18,7 @@ test-results
 **/test-results
 **/*.test.ts
 !packages/database/test/restore-drill.integration.test.ts
+packages/agent-bridge/test/native
 **/*.test.tsx
 **/*.spec.ts
 **/e2e

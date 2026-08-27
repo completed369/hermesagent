@@ -37,7 +37,7 @@ const denyRuntimeProcessLauncher = new DenyRuntimeProcessLauncher();
 const trustedSupervisorComposition = new TrustedSupervisorComposition(
   denySupervisorAuthorization,
   new PerAdmissionLinuxExecutableEvidenceReader(),
-  denyRuntimeProcessLauncher,
+  () => denyRuntimeProcessLauncher,
 );
 const denyCandidates: TrustedBrokerCandidateReader = {
   async read() {

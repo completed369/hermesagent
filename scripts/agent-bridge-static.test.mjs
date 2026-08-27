@@ -245,7 +245,10 @@ test('trusted supervisor composition requires live authority and remains deny-wi
   assert.match(composition, /async execute\(plan: unknown\): Promise<never>/u);
   assert.match(composition, /this\.#launchPlanStates/u);
   assert.match(composition, /this\.#launchRequestStates/u);
-  assert.match(composition, /this\.launcher\.launch/u);
+  assert.match(composition, /this\.#launcher\.launch/u);
+  assert.match(composition, /#nativeLaunchHandoffStates = new WeakMap/u);
+  assert.match(composition, /launcherFactory\(\(handoff\) => this\.#consumeNativeLaunchHandoff/u);
+  assert.doesNotMatch(composition, /export function (?:issue|consume).*NativeLaunchHandoff/u);
   assert.match(
     composition,
     /Math\.min\([\s\S]*authorization\.validUntil[\s\S]*admission\.evidence\.expiresAt/u,
@@ -273,6 +276,103 @@ test('trusted supervisor composition requires live authority and remains deny-wi
   );
   assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
   assert.doesNotMatch(index, /deterministic-supervision/u);
+});
+
+test('native supervisor evidence stays Linux-test-only and final images deny its fixtures', () => {
+  const helper = readFileSync(
+    'packages/agent-bridge/test/native/native-supervisor-helper.c',
+    'utf8',
+  );
+  const fixture = readFileSync(
+    'packages/agent-bridge/test/native/native-runtime-fixture.c',
+    'utf8',
+  );
+  const addon = readFileSync('packages/agent-bridge/test/native/native-supervisor-addon.c', 'utf8');
+  const testSource = readFileSync(
+    'packages/agent-bridge/src/native-supervisor-boundary.test.ts',
+    'utf8',
+  );
+  const policy = readFileSync('packages/agent-bridge/src/policy.ts', 'utf8');
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const dockerignore = readFileSync('.dockerignore', 'utf8');
+  const runtimeAssertion = readFileSync(
+    'packages/agent-bridge/scripts/assert-runtime-boundary.mjs',
+    'utf8',
+  );
+  const imageBoundary = readFileSync('scripts/verify-agent-bridge-runtime-root.mjs', 'utf8');
+  const imageWorkflow = readFileSync('.github/workflows/runtime-substrate-remediation.yml', 'utf8');
+
+  assert.match(helper, /#if !defined\(__linux__\) \|\| !defined\(__x86_64__\)/u);
+  assert.ok(
+    (helper.match(/O_RDONLY \| O_CLOEXEC \| O_NOFOLLOW \| O_NONBLOCK/gu) ?? []).length >= 2,
+  );
+  assert.match(helper, /MAX_EXECUTABLE_BYTES/u);
+  assert.match(helper, /bytes\[0\] != 0x7f[\s\S]*bytes\[3\] != 'F'/u);
+  assert.match(helper, /SYS_memfd_create/u);
+  assert.match(helper, /F_SEAL_WRITE \| F_SEAL_GROW \| F_SEAL_SHRINK \| F_SEAL_SEAL/u);
+  assert.match(helper, /memcmp\(source_digest, sealed_digest, SHA256_BYTES\)/u);
+  assert.match(helper, /metadata_equal\(&initial, &final_source\)/u);
+  assert.match(helper, /metadata_equal\(&final_source, &current\)/u);
+  assert.match(helper, /S_IWUSR \| S_IWGRP \| S_IWOTH/u);
+  assert.match(helper, /SYS_openat2/u);
+  assert.match(
+    helper,
+    /RESOLVE_BENEATH \| RESOLVE_NO_SYMLINKS \| RESOLVE_NO_MAGICLINKS \| RESOLVE_NO_XDEV/u,
+  );
+  assert.match(helper, /SYS_execveat[\s\S]*AT_EMPTY_PATH/u);
+  assert.match(helper, /"--mode"[\s\S]*"jsonl-fixture"/u);
+  assert.match(helper, /CLOCK_REALTIME/u);
+  assert.ok((helper.match(/permit_is_current\(expires_at_ms\)/gu) ?? []).length >= 2);
+  assert.match(helper, /renameat\(root, "work", root, "work-retained"\)/u);
+  assert.match(helper, /char \*const environment\[\] = \{NULL\}/u);
+  assert.match(helper, /pipe2\(status_pipe, O_CLOEXEC\)/u);
+  assert.match(helper, /SYS_pidfd_open/u);
+  assert.match(helper, /setpgid\(0, 0\)/u);
+  assert.match(helper, /kill\(-child, SIGTERM\)/u);
+  assert.match(helper, /kill\(-child, SIGKILL\)/u);
+  assert.match(helper, /process_monitor\.revents & POLLIN/u);
+  assert.match(helper, /WIFSIGNALED\(child_status\)[\s\S]*WTERMSIG\(child_status\) != SIGKILL/u);
+  assert.doesNotMatch(helper, /PR_SET_CHILD_SUBREAPER/u);
+  assert.match(helper, /PR_SET_NO_NEW_PRIVS/u);
+  assert.match(helper, /RLIMIT_CORE[\s\S]*RLIMIT_CPU[\s\S]*RLIMIT_AS[\s\S]*RLIMIT_NOFILE/u);
+  assert.match(helper, /__NR_socket[\s\S]*__NR_clone[\s\S]*__NR_setsid[\s\S]*SECCOMP_RET_ERRNO/u);
+  assert.doesNotMatch(helper, /getenv\s*\(/u);
+  assert.match(fixture, /environ\[0\] != NULL/u);
+  assert.match(fixture, /PR_GET_NO_NEW_PRIVS/u);
+  assert.match(fixture, /argc != 3[\s\S]*strcmp\(argv\[1\], "--mode"\)/u);
+  assert.match(fixture, /fork\(\) >= 0 \|\| errno != EPERM/u);
+  assert.match(fixture, /errno != EPERM/u);
+  assert.match(fixture, /memfd:ventureos-runtime-fixture/u);
+  assert.match(testSource, /process\.platform === 'linux' && process\.arch === 'x64'/u);
+  assert.match(
+    testSource,
+    /class NativeExecveatRuntimeProcessLauncher implements RuntimeProcessLauncher/u,
+  );
+  assert.match(testSource, /new TrustedSupervisorComposition\(/u);
+  assert.match(testSource, /composition\.execute\(plan\)/u);
+  assert.match(testSource, /manifest\.executable\.sha256/u);
+  assert.match(testSource, /env: \{\}/u);
+  assert.match(addon, /#include "native-supervisor-helper\.c"/u);
+  assert.match(addon, /run_supervisor\(23, arguments, evidence\)/u);
+  assert.match(addon, /napi_get_cb_info\(env, info, &actual, NULL/u);
+  assert.match(addon, /napi_get_value_string_utf8\(env, value, NULL, 0, &required\)/u);
+  assert.match(addon, /memchr\(output, '\\0', copied\)/u);
+  assert.match(addon, /static napi_ref bound_consumer = NULL/u);
+  assert.match(addon, /bound_consumer != NULL/u);
+  assert.match(addon, /napi_call_function\(env, global, consumer, 1, handoff, &tuple\)/u);
+  assert.match(addon, /napi_set_named_property\(env, exports, "bind", bind_function\)/u);
+  assert.doesNotMatch(addon, /napi_set_named_property\(env, exports, "launch"/u);
+  assert.match(
+    testSource,
+    /this\.addon\.bind\(\(handoff\) => this\.boundTuple\(consume\(handoff\)\)\)/u,
+  );
+  assert.doesNotMatch(index, /native-supervisor|native-runtime-fixture/u);
+  assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
+  assert.match(policy, /class DenyRuntimeProcessLauncher implements RuntimeProcessLauncher/u);
+  assert.match(dockerignore, /^packages\/agent-bridge\/test\/native$/mu);
+  assert.match(runtimeAssertion, /NATIVE_SUPERVISOR_DENIED/u);
+  assert.match(imageBoundary, /NATIVE_TEST_FIXTURE/u);
+  assert.match(imageWorkflow, /Native supervisor test helper entered a final runtime image/u);
 });
 
 test('process-tree evidence stays test-only, unexported, and absent from production images', () => {

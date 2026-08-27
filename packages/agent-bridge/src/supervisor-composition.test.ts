@@ -16,6 +16,7 @@ import {
   DenyTrustedSupervisorAuthorizationSource,
   type PerAdmissionSupervisorEvidenceReader,
   TrustedSupervisorComposition,
+  type TrustedNativeLaunchHandoffConsumer,
   type TrustedSupervisorAuthorizationRequest,
   type TrustedSupervisorAuthorizationSource,
 } from './supervisor-composition';
@@ -64,10 +65,19 @@ class FixtureEvidenceReader implements PerAdmissionSupervisorEvidenceReader {
 class RecordingDenyLauncher implements RuntimeProcessLauncher {
   request?: Readonly<RuntimeProcessLaunchRequest>;
   calls = 0;
+  private consume?: TrustedNativeLaunchHandoffConsumer;
 
-  async launch(request: RuntimeProcessLaunchRequest): Promise<never> {
+  factory() {
+    return (consume: TrustedNativeLaunchHandoffConsumer): RuntimeProcessLauncher => {
+      this.consume = consume;
+      return this;
+    };
+  }
+
+  async launch(handoff: unknown): Promise<never> {
     this.calls += 1;
-    this.request = request;
+    if (!this.consume) throw new Error('fixture launcher was not composed');
+    this.request = this.consume(handoff).request;
     throw new Error('fixture launcher denied');
   }
 }
@@ -93,7 +103,7 @@ describe('trusted supervisor composition', () => {
     const composition = new TrustedSupervisorComposition(
       source,
       evidence,
-      new RecordingDenyLauncher(),
+      new RecordingDenyLauncher().factory(),
     );
 
     const first = await composition.prepare(input(fixture.manifest));
@@ -139,7 +149,7 @@ describe('trusted supervisor composition', () => {
     const composition = new TrustedSupervisorComposition(
       new DenyTrustedSupervisorAuthorizationSource(),
       evidence,
-      launcher,
+      launcher.factory(),
     );
 
     await expect(composition.prepare(input())).rejects.toMatchObject({
@@ -155,7 +165,7 @@ describe('trusted supervisor composition', () => {
     const composition = new TrustedSupervisorComposition(
       source,
       new FixtureEvidenceReader(fixture.evidence),
-      new RecordingDenyLauncher(),
+      new RecordingDenyLauncher().factory(),
     );
 
     await expect(
@@ -185,7 +195,7 @@ describe('trusted supervisor composition', () => {
         launchNonce: 'replay-nonce',
       }),
       evidence,
-      new RecordingDenyLauncher(),
+      new RecordingDenyLauncher().factory(),
     );
 
     await replayedDecision.prepare(input());
@@ -200,7 +210,7 @@ describe('trusted supervisor composition', () => {
         launchNonce: 'duplicate-nonce',
       }),
       duplicateNonceEvidence,
-      new RecordingDenyLauncher(),
+      new RecordingDenyLauncher().factory(),
     );
     await duplicateNonce.prepare(input());
     await expect(duplicateNonce.prepare(input())).rejects.toMatchObject({
@@ -214,7 +224,7 @@ describe('trusted supervisor composition', () => {
     const malformed = new TrustedSupervisorComposition(
       new FixtureAuthorizationSource({ ...fixture.authorization, authorizationVersion: 2 }),
       new FixtureEvidenceReader(fixture.evidence),
-      new RecordingDenyLauncher(),
+      new RecordingDenyLauncher().factory(),
     );
     await expect(malformed.prepare(input())).rejects.toMatchObject({
       code: 'AUTHORIZATION_DENIED',
@@ -226,7 +236,7 @@ describe('trusted supervisor composition', () => {
         ...fixture.evidence,
         authorizationId: 'different-authorization',
       }),
-      new RecordingDenyLauncher(),
+      new RecordingDenyLauncher().factory(),
     );
     await expect(mismatchedEvidence.prepare(input())).rejects.toMatchObject({
       code: 'BINDING_MISMATCH',
@@ -239,7 +249,7 @@ describe('trusted supervisor composition', () => {
     const composition = new TrustedSupervisorComposition(
       new FixtureAuthorizationSource(fixture.authorization),
       new FixtureEvidenceReader(fixture.evidence),
-      launcher,
+      launcher.factory(),
     );
     const plan = await composition.prepare(input());
 
@@ -291,12 +301,12 @@ describe('trusted supervisor composition', () => {
     const owner = new TrustedSupervisorComposition(
       new FixtureAuthorizationSource(fixture.authorization),
       new FixtureEvidenceReader(fixture.evidence),
-      ownerLauncher,
+      ownerLauncher.factory(),
     );
     const foreign = new TrustedSupervisorComposition(
       new DenyTrustedSupervisorAuthorizationSource(),
       new FixtureEvidenceReader(fixture.evidence),
-      foreignLauncher,
+      foreignLauncher.factory(),
     );
     const plan = await owner.prepare(input());
 
@@ -321,7 +331,7 @@ describe('trusted supervisor composition', () => {
     const expiredPlanComposition = new TrustedSupervisorComposition(
       new FixtureAuthorizationSource(fixture.authorization),
       new FixtureEvidenceReader(fixture.evidence),
-      expiredPlanLauncher,
+      expiredPlanLauncher.factory(),
     );
     const expiredPlan = await expiredPlanComposition.prepare(input());
     vi.setSystemTime(new Date(expiredPlan.expiresAt));
@@ -335,7 +345,7 @@ describe('trusted supervisor composition', () => {
     const expiredRequestComposition = new TrustedSupervisorComposition(
       new FixtureAuthorizationSource(fixture.authorization),
       new FixtureEvidenceReader(fixture.evidence),
-      expiredRequestLauncher,
+      expiredRequestLauncher.factory(),
     );
     const expiredRequestPlan = await expiredRequestComposition.prepare(input());
     const activeTime = Date.parse('2026-08-26T00:00:00.000Z');
@@ -357,7 +367,7 @@ describe('trusted supervisor composition', () => {
     const composition = new TrustedSupervisorComposition(
       new FixtureAuthorizationSource(fixture.authorization),
       evidence,
-      new DenyRuntimeProcessLauncher(),
+      () => new DenyRuntimeProcessLauncher(),
     );
     const plan = await composition.prepare(input());
 
