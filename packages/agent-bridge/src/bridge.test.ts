@@ -4,6 +4,7 @@ import {
   BRIDGE_PROTOCOL_VERSION,
   BridgeProtocolError,
   DenyRuntimeProcessLauncher,
+  decodeBridgeBatch,
   decodeBridgeLine,
   deriveBridgeKeys,
   digestBridgePayload,
@@ -132,6 +133,25 @@ describe('bounded canonical Agent Bridge protocol', () => {
     const rejected = new BoundedBridgeLineBuffer();
     expect(() => rejected.push(Buffer.alloc(131_073))).toThrow(BridgeProtocolError);
     expect(rejected.push(encoded)).toEqual([envelope]);
+  });
+
+  it('decodes only complete bounded canonical JSONL batches without retaining state', () => {
+    const first = frame(1).envelope;
+    const second = frame(2).envelope;
+    const encodedFirst = encodeBridgeLine(first);
+    const encodedSecond = encodeBridgeLine(second);
+    expect(decodeBridgeBatch(Buffer.concat([encodedFirst, encodedSecond]))).toEqual([
+      first,
+      second,
+    ]);
+    expect(() => decodeBridgeBatch(encodedFirst.subarray(0, encodedFirst.byteLength - 1))).toThrow(
+      /complete JSON line/u,
+    );
+    expect(() => decodeBridgeBatch(new Uint8Array())).toThrow(/empty/u);
+    expect(() => decodeBridgeBatch(Buffer.alloc(131_073))).toThrow(/bound/u);
+    expect(() =>
+      decodeBridgeBatch(Buffer.concat(Array.from({ length: 33 }, () => encodedFirst))),
+    ).toThrow(/too many/u);
   });
 
   it('keeps the production launcher deny-only', async () => {

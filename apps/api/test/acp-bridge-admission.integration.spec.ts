@@ -12,8 +12,14 @@ import {
 } from '@ventureos/agent-control-plane';
 import { Prisma, prisma } from '@ventureos/database';
 import {
+  BRIDGE_PROTOCOL_VERSION,
+  deriveBridgeKeys,
+  digestBridgePayload,
+  encodeBridgeLine,
   ScopedBridgeSecretLeaseResolver,
+  signBridgeEnvelope,
   type BridgeSecretLeaseRequest,
+  type BridgeSecretLeaseResolver,
 } from '@ventureos/agent-bridge';
 import { DeterministicFakeRuntime } from '../../../packages/agent-bridge/src/__tests__/fixtures/deterministic-fake';
 import { AuditService } from '../src/modules/audit/audit.service';
@@ -75,6 +81,35 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         return resolve(request);
       },
     });
+  }
+
+  function testBridge(
+    secretResolver: BridgeSecretLeaseResolver = testSecretLease(),
+    brokerVerifier: { verify: AcpBrokerReservationService['verify'] } = brokerReservations,
+  ) {
+    return new AcpBridgeAdmissionService(
+      new AuditService(),
+      secretResolver,
+      brokerVerifier,
+      {
+        async verify(_workspace, _runtime, policyHash, codes) {
+          return (
+            policyHash === capabilityPolicyHash && codes.join(',') === 'health.read,quality.verify'
+          );
+        },
+      },
+      {
+        async verify(evidence) {
+          return trustedArtifactContent.get(evidence.uriReference) === evidence.contentHash;
+        },
+      },
+      {
+        async allowsDeterministicFixture(requestWorkspaceId) {
+          return requestWorkspaceId === workspaceId;
+        },
+      },
+      costGovernance,
+    );
   }
 
   function refreshCandidateSnapshot(overrides: Partial<RuntimeRoutingCandidate> = {}): void {
@@ -183,29 +218,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       },
     );
     costGovernance = new AcpCostGovernanceService(new AuditService());
-    bridge = new AcpBridgeAdmissionService(
-      new AuditService(),
-      testSecretLease(),
-      brokerReservations,
-      {
-        async verify(_workspace, _runtime, policyHash, codes) {
-          return (
-            policyHash === capabilityPolicyHash && codes.join(',') === 'health.read,quality.verify'
-          );
-        },
-      },
-      {
-        async verify(evidence) {
-          return trustedArtifactContent.get(evidence.uriReference) === evidence.contentHash;
-        },
-      },
-      {
-        async allowsDeterministicFixture(requestWorkspaceId) {
-          return requestWorkspaceId === workspaceId;
-        },
-      },
-      costGovernance,
-    );
+    bridge = testBridge();
     taskRuns = new AcpTaskRunService(new AuditService(), bridge, bridge);
   });
 
@@ -626,17 +639,253 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
       auditBeforePreparedRejections,
     );
-    await bridge.acceptRuntimeMessage(
+    const beforeFreshnessRollback = {
+      audit: await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } }),
+      connection: await prisma.acpRuntimeConnection.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: connectionId } },
+        select: {
+          lastHeartbeatAt: true,
+          lastHeartbeatHealth: true,
+          lastHeartbeatSequence: true,
+          status: true,
+          version: true,
+        },
+      }),
+    };
+    const delayedIssuedAt = new Date(Date.now() - 59_000);
+    const delayedExpiresAt = new Date(delayedIssuedAt.getTime() + 5 * 60_000);
+    const delayedContext = {
+      workspaceId,
+      runtimeId,
+      connectionId,
+      sessionId,
+      principalReference: `fixture-principal-${suffix}`,
+      parentNonce: `parent_nonce_${suffix.replaceAll('-', '')}`,
+      runtimeNonce: `runtime_nonce_${suffix.replaceAll('-', '')}`,
+    };
+    const delayedKeys = deriveBridgeKeys(secret, delayedContext);
+    const delayedEnvelopeIdentity = {
+      workspaceId: delayedContext.workspaceId,
+      runtimeId: delayedContext.runtimeId,
+      connectionId: delayedContext.connectionId,
+      sessionId: delayedContext.sessionId,
+      principalReference: delayedContext.principalReference,
+    };
+    const delayedFrame = (
+      sequence: number,
+      type: 'HEARTBEAT' | 'DISPATCH_ACCEPTED',
+      payload: Readonly<Record<string, unknown>>,
+    ) =>
+      signBridgeEnvelope(
+        {
+          protocolVersion: BRIDGE_PROTOCOL_VERSION,
+          ...delayedEnvelopeIdentity,
+          sequence,
+          messageId: `delayed-lock-message-${sequence}-${suffix}`,
+          type,
+          issuedAt: delayedIssuedAt.toISOString(),
+          expiresAt: delayedExpiresAt.toISOString(),
+          payloadDigest: digestBridgePayload(payload),
+          payload,
+        },
+        delayedKeys.runtimeToParent,
+      );
+    const delayedHeartbeat = delayedFrame(4, 'HEARTBEAT', { health: 'HEALTHY' });
+    const delayedAcceptance = delayedFrame(5, 'DISPATCH_ACCEPTED', {
+      dispatchId,
+      taskId,
+      runId,
+      evidenceId: assignmentEvidenceId,
+      assignmentEvidenceHash: prepared.dispatch.assignmentEvidenceHash,
+    });
+    delayedKeys.parentToRuntime.fill(0);
+    delayedKeys.runtimeToParent.fill(0);
+    let releaseFreshnessLock!: () => void;
+    let reportFreshnessLock!: () => void;
+    const releaseFreshness = new Promise<void>((resolve) => {
+      releaseFreshnessLock = resolve;
+    });
+    const freshnessLocked = new Promise<void>((resolve) => {
+      reportFreshnessLock = resolve;
+    });
+    const freshnessBlocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_bridge_dispatches" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${dispatchId} FOR UPDATE`,
+      );
+      reportFreshnessLock();
+      await releaseFreshness;
+    });
+    await freshnessLocked;
+    const delayedAttempt = bridge.acceptAuthenticatedBatch(
       capability,
       { workspaceId, principalId },
-      fake.emit('DISPATCH_ACCEPTED', {
-        dispatchId,
-        taskId,
-        runId,
-        evidenceId: assignmentEvidenceId,
-        assignmentEvidenceHash: prepared.dispatch.assignmentEvidenceHash,
-      }),
+      {
+        sessionId,
+        bytes: Buffer.concat([
+          Buffer.from(encodeBridgeLine(delayedHeartbeat)),
+          Buffer.from(encodeBridgeLine(delayedAcceptance)),
+        ]),
+      },
     );
+    expect(
+      await Promise.race([
+        delayedAttempt.then(
+          () => 'settled',
+          () => 'settled',
+        ),
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 100)),
+      ]),
+    ).toBe('pending');
+    await new Promise<void>((resolve) => setTimeout(resolve, 1_150));
+    releaseFreshnessLock();
+    await freshnessBlocker;
+    await expect(delayedAttempt).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(
+      await prisma.acpBridgeReceipt.count({
+        where: { workspaceId, sessionId, sequence: { in: [4, 5] } },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.acpBridgeSession.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: sessionId } },
+        select: { expectedSequence: true, state: true },
+      }),
+    ).toEqual({ expectedSequence: 4, state: 'PARTIAL' });
+    expect(
+      await prisma.acpRuntimeConnection.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: connectionId } },
+        select: {
+          lastHeartbeatAt: true,
+          lastHeartbeatHealth: true,
+          lastHeartbeatSequence: true,
+          status: true,
+          version: true,
+        },
+      }),
+    ).toEqual(beforeFreshnessRollback.connection);
+    expect(
+      (
+        await prisma.acpBridgeDispatch.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId, id: dispatchId } },
+        })
+      ).state,
+    ).toBe('PREPARED');
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      beforeFreshnessRollback.audit,
+    );
+    const staleHeartbeatAt = new Date(Date.now() - 59_000);
+    await prisma.acpRuntimeConnection.update({
+      where: { workspaceId_id: { workspaceId, id: connectionId } },
+      data: {
+        lastHeartbeatAt: staleHeartbeatAt,
+        lastHeartbeatHealth: 'HEALTHY',
+        status: 'PARTIAL',
+        version: { increment: 1 },
+      },
+    });
+    const beforeAsyncVerifierRollback = {
+      audit: await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } }),
+      connection: await prisma.acpRuntimeConnection.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: connectionId } },
+        select: {
+          lastHeartbeatAt: true,
+          lastHeartbeatHealth: true,
+          lastHeartbeatSequence: true,
+          status: true,
+          version: true,
+        },
+      }),
+    };
+    let delayedBrokerVerifications = 0;
+    const delayedBrokerBridge = testBridge(testSecretLease(), {
+      async verify(evidence) {
+        delayedBrokerVerifications += 1;
+        await new Promise<void>((resolve) => setTimeout(resolve, 1_250));
+        return brokerReservations.verify(evidence);
+      },
+    });
+    const asyncDelayRuntime = new DeterministicFakeRuntime(delayedContext, secret, new Date());
+    const staleFirstAcceptance = asyncDelayRuntime.emitAt(4, 'DISPATCH_ACCEPTED', {
+      dispatchId,
+      taskId,
+      runId,
+      evidenceId: assignmentEvidenceId,
+      assignmentEvidenceHash: prepared.dispatch.assignmentEvidenceHash,
+    });
+    const tooLateHeartbeat = asyncDelayRuntime.emitAt(5, 'HEARTBEAT', { health: 'HEALTHY' });
+    await expect(
+      delayedBrokerBridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId,
+          bytes: Buffer.concat([
+            Buffer.from(encodeBridgeLine(staleFirstAcceptance)),
+            Buffer.from(encodeBridgeLine(tooLateHeartbeat)),
+          ]),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(delayedBrokerVerifications).toBe(1);
+    expect(
+      await prisma.acpBridgeReceipt.count({
+        where: { workspaceId, sessionId, sequence: { in: [4, 5] } },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.acpBridgeSession.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: sessionId } },
+        select: { expectedSequence: true, state: true },
+      }),
+    ).toEqual({ expectedSequence: 4, state: 'PARTIAL' });
+    expect(
+      await prisma.acpRuntimeConnection.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: connectionId } },
+        select: {
+          lastHeartbeatAt: true,
+          lastHeartbeatHealth: true,
+          lastHeartbeatSequence: true,
+          status: true,
+          version: true,
+        },
+      }),
+    ).toEqual(beforeAsyncVerifierRollback.connection);
+    expect(
+      (
+        await prisma.acpBridgeDispatch.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId, id: dispatchId } },
+        })
+      ).state,
+    ).toBe('PREPARED');
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      beforeAsyncVerifierRollback.audit,
+    );
+    const freshHeartbeat = fake.emit('HEARTBEAT', { health: 'HEALTHY' });
+    const freshAcceptance = fake.emit('DISPATCH_ACCEPTED', {
+      dispatchId,
+      taskId,
+      runId,
+      evidenceId: assignmentEvidenceId,
+      assignmentEvidenceHash: prepared.dispatch.assignmentEvidenceHash,
+    });
+    expect(
+      (
+        await bridge.acceptAuthenticatedBatch(
+          capability,
+          { workspaceId, principalId },
+          {
+            sessionId,
+            bytes: Buffer.concat([
+              Buffer.from(encodeBridgeLine(freshHeartbeat)),
+              Buffer.from(encodeBridgeLine(freshAcceptance)),
+            ]),
+          },
+        )
+      ).map((receipt) => [receipt.messageType, receipt.sequence]),
+    ).toEqual([
+      ['HEARTBEAT', 4],
+      ['DISPATCH_ACCEPTED', 5],
+    ]);
     const assignment = {
       evidenceId: assignmentEvidenceId,
       evidenceHash: prepared.dispatch.assignmentEvidenceHash,
@@ -661,12 +910,12 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         bridge.acceptRuntimeMessage(
           capability,
           { workspaceId, principalId },
-          fake.emitAt(5, type, payload),
+          fake.emitAt(6, type, payload),
         ),
       ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
     }
     expect(
-      await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId, sequence: 5 } }),
+      await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId, sequence: 6 } }),
     ).toBe(0);
     expect(await prisma.acpRunUsage.count({ where: { workspaceId, runId } })).toBe(0);
     expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
@@ -691,7 +940,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       bridge.acceptRuntimeMessage(
         capability,
         { workspaceId, principalId },
-        fake.emitAt(5, 'RESULT', { dispatchId, resultCode: 'RACE_BEFORE_ASSIGNMENT' }),
+        fake.emitAt(6, 'RESULT', { dispatchId, resultCode: 'RACE_BEFORE_ASSIGNMENT' }),
       ),
     ]);
     const reservationOutcome = assignmentRace[0]!;
@@ -707,12 +956,12 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         bridge.acceptRuntimeMessage(
           capability,
           { workspaceId, principalId },
-          fake.emitAt(5, type, payload),
+          fake.emitAt(6, type, payload),
         ),
       ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
     }
     expect(
-      await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId, sequence: 5 } }),
+      await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId, sequence: 6 } }),
     ).toBe(0);
     expect(await prisma.acpRunUsage.count({ where: { workspaceId, runId } })).toBe(0);
     expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
@@ -737,7 +986,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       bridge.acceptRuntimeMessage(
         capability,
         { workspaceId, principalId },
-        fake.emitAt(5, 'ARTIFACT', {
+        fake.emitAt(6, 'ARTIFACT', {
           dispatchId,
           taskId,
           runId,
@@ -752,7 +1001,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       ),
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
     expect(
-      await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId, sequence: 5 } }),
+      await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId, sequence: 6 } }),
     ).toBe(0);
     for (const [index, criterion] of ['artifact-one', 'artifact-two'].entries()) {
       const evidence = {
@@ -799,7 +1048,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       bridge.acceptRuntimeMessage(
         capability,
         { workspaceId, principalId },
-        fake.emitAt(8, 'USAGE', {
+        fake.emitAt(9, 'USAGE', {
           dispatchId,
           taskId,
           runId,
@@ -811,7 +1060,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
     expect(
       await prisma.acpBridgeReceipt.count({
-        where: { workspaceId, sessionId, sequence: 8 },
+        where: { workspaceId, sessionId, sequence: 9 },
       }),
     ).toBe(0);
     const beforeAuditRollback = {
@@ -1926,6 +2175,402 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     expect(JSON.stringify(runtime)).not.toContain(secret.toString('utf8'));
   });
 
+  it('atomically admits a bounded authenticated JSONL batch from the durable checkpoint', async () => {
+    const batchSessionId = `batch-session-${suffix}`;
+    const batchParentNonce = `batch_parent_${suffix.replaceAll('-', '')}`;
+    const batchRuntimeNonce = `batch_runtime_${suffix.replaceAll('-', '')}`;
+    const openedAt = new Date();
+    await bridge.openSession(
+      capability,
+      { workspaceId, principalId },
+      {
+        sessionId: batchSessionId,
+        connectionId,
+        parentNonce: batchParentNonce,
+        expiresAt: new Date(openedAt.getTime() + 240_000).toISOString(),
+      },
+    );
+    const batchRuntime = new DeterministicFakeRuntime(
+      {
+        workspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: batchSessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce: batchParentNonce,
+        runtimeNonce: batchRuntimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    await bridge.authenticateSession(
+      capability,
+      { workspaceId, principalId },
+      batchRuntime.emit('AUTHENTICATE', {
+        parentNonce: batchParentNonce,
+        runtimeNonce: batchRuntimeNonce,
+      }),
+    );
+    const capabilityFrame = batchRuntime.emit('CAPABILITIES', {
+      capabilityCodes: ['health.read', 'quality.verify'],
+    });
+    const heartbeatFrame = batchRuntime.emit('HEARTBEAT', { health: 'HEALTHY' });
+    const leaseCount = secretLeaseRequests.length;
+    const bytes = Buffer.concat([
+      encodeBridgeLine(capabilityFrame),
+      encodeBridgeLine(heartbeatFrame),
+    ]);
+    const raced = await Promise.allSettled([
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: batchSessionId,
+          bytes,
+        },
+      ),
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: batchSessionId,
+          bytes,
+        },
+      ),
+    ]);
+    expect(raced.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(raced.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const receipts = raced.find((result) => result.status === 'fulfilled')!.value;
+    expect(receipts.map((receipt) => receipt.sequence)).toEqual([2, 3]);
+    expect(secretLeaseRequests.slice(leaseCount)).toEqual([
+      expect.objectContaining({
+        workspaceId,
+        runtimeId,
+        connectionId,
+        secretReference,
+        authGeneration: 1,
+        purpose: 'VERIFY_FRAME',
+      }),
+    ]);
+    const durableSession = await prisma.acpBridgeSession.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: batchSessionId } },
+      include: { connection: true },
+    });
+    expect(durableSession.state).toBe('PARTIAL');
+    expect(durableSession.expectedSequence).toBe(4);
+    expect(durableSession.connection.status).toBe('PARTIAL');
+    expect(
+      (
+        await prisma.acpRuntime.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId, id: runtimeId } },
+        })
+      ).status,
+    ).toBe('NOT_CONFIGURED');
+  });
+
+  it('rolls back an earlier valid frame when a later batch frame fails policy', async () => {
+    const rollbackSessionId = `batch-rollback-${suffix}`;
+    const parentNonce = `rollback_parent_${suffix.replaceAll('-', '')}`;
+    const runtimeNonce = `rollback_runtime_${suffix.replaceAll('-', '')}`;
+    const openedAt = new Date();
+    await bridge.openSession(
+      capability,
+      { workspaceId, principalId },
+      {
+        sessionId: rollbackSessionId,
+        connectionId,
+        parentNonce,
+        expiresAt: new Date(openedAt.getTime() + 240_000).toISOString(),
+      },
+    );
+    const runtime = new DeterministicFakeRuntime(
+      {
+        workspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: rollbackSessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce,
+        runtimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    await bridge.authenticateSession(
+      capability,
+      { workspaceId, principalId },
+      runtime.emit('AUTHENTICATE', { parentNonce, runtimeNonce }),
+    );
+    const leaseCountBeforeMalformed = secretLeaseRequests.length;
+    await expect(
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: `missing-batch-${suffix}`,
+          bytes: Buffer.from('{"incomplete":true}', 'utf8'),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(secretLeaseRequests).toHaveLength(leaseCountBeforeMalformed);
+
+    const gapRuntime = new DeterministicFakeRuntime(
+      {
+        workspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: rollbackSessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce,
+        runtimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    gapRuntime.emit('AUTHENTICATE', { parentNonce, runtimeNonce });
+    gapRuntime.emit('CAPABILITIES', {
+      capabilityCodes: ['health.read', 'quality.verify'],
+    });
+    await expect(
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: rollbackSessionId,
+          bytes: encodeBridgeLine(gapRuntime.emit('HEARTBEAT', { health: 'HEALTHY' })),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    expect(secretLeaseRequests).toHaveLength(leaseCountBeforeMalformed);
+
+    const orderingRuntime = new DeterministicFakeRuntime(
+      {
+        workspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: rollbackSessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce,
+        runtimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    orderingRuntime.emit('AUTHENTICATE', { parentNonce, runtimeNonce });
+    await expect(
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: rollbackSessionId,
+          bytes: encodeBridgeLine(orderingRuntime.emit('HEARTBEAT', { health: 'HEALTHY' })),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(secretLeaseRequests).toHaveLength(leaseCountBeforeMalformed);
+
+    const duplicateCapabilityRuntime = new DeterministicFakeRuntime(
+      {
+        workspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: rollbackSessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce,
+        runtimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    duplicateCapabilityRuntime.emit('AUTHENTICATE', { parentNonce, runtimeNonce });
+    await expect(
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: rollbackSessionId,
+          bytes: Buffer.concat([
+            encodeBridgeLine(
+              duplicateCapabilityRuntime.emit('CAPABILITIES', {
+                capabilityCodes: ['health.read', 'quality.verify'],
+              }),
+            ),
+            encodeBridgeLine(
+              duplicateCapabilityRuntime.emit('CAPABILITIES', {
+                capabilityCodes: ['health.read', 'quality.verify'],
+              }),
+            ),
+          ]),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(secretLeaseRequests).toHaveLength(leaseCountBeforeMalformed);
+
+    const beforeAudit = await prisma.auditEvent.count({
+      where: { workspaceReference: workspaceId },
+    });
+    await expect(
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: rollbackSessionId,
+          bytes: Buffer.concat([
+            encodeBridgeLine(
+              runtime.emit('CAPABILITIES', {
+                capabilityCodes: ['health.read', 'quality.verify'],
+              }),
+            ),
+            encodeBridgeLine(runtime.emit('HEARTBEAT', { health: 'UNKNOWN' })),
+          ]),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    const rolledBack = await prisma.acpBridgeSession.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: rollbackSessionId } },
+    });
+    expect(rolledBack.state).toBe('AUTHENTICATED');
+    expect(rolledBack.expectedSequence).toBe(2);
+    expect(
+      await prisma.acpBridgeReceipt.count({
+        where: { workspaceId, sessionId: rollbackSessionId, sequence: { gte: 2 } },
+      }),
+    ).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      beforeAudit,
+    );
+
+    const policyRuntime = new DeterministicFakeRuntime(
+      {
+        workspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: rollbackSessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce,
+        runtimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    policyRuntime.emit('AUTHENTICATE', { parentNonce, runtimeNonce });
+    await expect(
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: rollbackSessionId,
+          bytes: encodeBridgeLine(
+            policyRuntime.emit('CAPABILITIES', { capabilityCodes: ['health.read'] }),
+          ),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+
+    const crossWorkspaceRuntime = new DeterministicFakeRuntime(
+      {
+        workspaceId: otherWorkspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: rollbackSessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce,
+        runtimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    crossWorkspaceRuntime.emit('AUTHENTICATE', { parentNonce, runtimeNonce });
+    await expect(
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: rollbackSessionId,
+          bytes: encodeBridgeLine(
+            crossWorkspaceRuntime.emit('CAPABILITIES', {
+              capabilityCodes: ['health.read', 'quality.verify'],
+            }),
+          ),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+
+    const skippedConsumerRuntime = new DeterministicFakeRuntime(
+      {
+        workspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: rollbackSessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce,
+        runtimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    skippedConsumerRuntime.emit('AUTHENTICATE', { parentNonce, runtimeNonce });
+    const skippedConsumerBridge = testBridge({
+      async withSecret() {
+        return new Date() as never;
+      },
+    });
+    await expect(
+      skippedConsumerBridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: rollbackSessionId,
+          bytes: encodeBridgeLine(
+            skippedConsumerRuntime.emit('CAPABILITIES', {
+              capabilityCodes: ['health.read', 'quality.verify'],
+            }),
+          ),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+
+    const invalidMacRuntime = new DeterministicFakeRuntime(
+      {
+        workspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: rollbackSessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce,
+        runtimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    invalidMacRuntime.emit('AUTHENTICATE', { parentNonce, runtimeNonce });
+    const validCapability = invalidMacRuntime.emit('CAPABILITIES', {
+      capabilityCodes: ['health.read', 'quality.verify'],
+    });
+    const invalidHeartbeat = {
+      ...invalidMacRuntime.emit('HEARTBEAT', { health: 'HEALTHY' }),
+      mac: 'A'.repeat(43),
+    };
+    await expect(
+      bridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: rollbackSessionId,
+          bytes: Buffer.concat([
+            encodeBridgeLine(validCapability),
+            encodeBridgeLine(invalidHeartbeat),
+          ]),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(
+      await prisma.acpBridgeReceipt.count({
+        where: { workspaceId, sessionId: rollbackSessionId, sequence: { gte: 2 } },
+      }),
+    ).toBe(0);
+  });
+
   it('serializes capacity reservations so two ready runs cannot claim one slot', async () => {
     const planId = `capacity-${suffix}`;
     const plan = await taskRuns.createPlan(
@@ -2708,10 +3353,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     const capabilityFrame = expiryFake.emit('CAPABILITIES', {
       capabilityCodes: ['health.read', 'quality.verify'],
     });
-    const attempt = bridge.acceptRuntimeMessage(
+    const attempt = bridge.acceptAuthenticatedBatch(
       capability,
       { workspaceId, principalId },
-      capabilityFrame,
+      {
+        sessionId: expirySessionId,
+        bytes: encodeBridgeLine(capabilityFrame),
+      },
     );
     await new Promise<void>((resolve) =>
       setTimeout(resolve, Math.max(1, expiresAt.getTime() - Date.now() + 150)),
@@ -2724,6 +3372,88 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         where: { workspaceId, sessionId: expirySessionId, sequence: 2 },
       }),
     ).toBeNull();
+  });
+
+  it('resamples the database clock after the secret consumer returns and rolls expiry back', async () => {
+    const expirySessionId = `lease-expiry-session-${suffix}`;
+    const openedAt = new Date();
+    const expiresAt = new Date(openedAt.getTime() + 2_500);
+    const parentNonce = `lease_expiry_parent_${suffix.replaceAll('-', '')}`;
+    const runtimeNonce = `lease_expiry_runtime_${suffix.replaceAll('-', '')}`;
+    await bridge.openSession(
+      capability,
+      { workspaceId, principalId },
+      {
+        sessionId: expirySessionId,
+        connectionId,
+        parentNonce,
+        expiresAt: expiresAt.toISOString(),
+      },
+    );
+    const expiryRuntime = new DeterministicFakeRuntime(
+      {
+        workspaceId,
+        runtimeId,
+        connectionId,
+        sessionId: expirySessionId,
+        principalReference: `fixture-principal-${suffix}`,
+        parentNonce,
+        runtimeNonce,
+      },
+      secret,
+      openedAt,
+    );
+    await bridge.authenticateSession(
+      capability,
+      { workspaceId, principalId },
+      expiryRuntime.emit('AUTHENTICATE', { parentNonce, runtimeNonce }),
+    );
+    let consumerCompleted = false;
+    const delayedBridge = testBridge({
+      async withSecret(request, consumer) {
+        expect(request).toEqual(
+          expect.objectContaining({
+            workspaceId,
+            runtimeId,
+            connectionId,
+            secretReference,
+            authGeneration: 1,
+            purpose: 'VERIFY_FRAME',
+          }),
+        );
+        const result = await consumer(secret);
+        consumerCompleted = true;
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, Math.max(1, expiresAt.getTime() - Date.now() + 100)),
+        );
+        return result;
+      },
+    });
+    await expect(
+      delayedBridge.acceptAuthenticatedBatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          sessionId: expirySessionId,
+          bytes: encodeBridgeLine(
+            expiryRuntime.emit('CAPABILITIES', {
+              capabilityCodes: ['health.read', 'quality.verify'],
+            }),
+          ),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(consumerCompleted).toBe(true);
+    expect(
+      await prisma.acpBridgeReceipt.findFirst({
+        where: { workspaceId, sessionId: expirySessionId, sequence: 2 },
+      }),
+    ).toBeNull();
+    const durableSession = await prisma.acpBridgeSession.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: expirySessionId } },
+    });
+    expect(durableSession.state).toBe('AUTHENTICATED');
+    expect(durableSession.expectedSequence).toBe(2);
   });
 
   it('cascades tenant erasure across bridge evidence while audit retains governed references', async () => {

@@ -1,5 +1,6 @@
 import {
   BRIDGE_PROTOCOL_VERSION,
+  MAX_BRIDGE_BATCH_FRAMES,
   MAX_BRIDGE_BUFFER_BYTES,
   MAX_BRIDGE_LINE_BYTES,
   type BridgeEnvelope,
@@ -170,6 +171,37 @@ export function decodeBridgeLine(input: Uint8Array): BridgeEnvelope {
     throw new BridgeProtocolError('Frame must use canonical JSON without duplicate fields');
   }
   return parsed;
+}
+
+/**
+ * Decodes one complete, bounded JSONL batch. This helper deliberately retains
+ * no partial line between calls: a missing final newline is a malformed batch,
+ * not streaming state.
+ */
+export function decodeBridgeBatch(input: Uint8Array): readonly BridgeEnvelope[] {
+  if (!(input instanceof Uint8Array) || input.byteLength === 0) {
+    throw new BridgeProtocolError('Bridge batch is empty');
+  }
+  if (input.byteLength > MAX_BRIDGE_BUFFER_BYTES) {
+    throw new BridgeProtocolError('Bridge batch exceeded its bound');
+  }
+  const bytes = Buffer.from(input);
+  if (bytes[bytes.byteLength - 1] !== 10) {
+    throw new BridgeProtocolError('Bridge batch must end with a complete JSON line');
+  }
+  const messages: BridgeEnvelope[] = [];
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const newline = bytes.indexOf(10, offset);
+    if (newline < 0) throw new BridgeProtocolError('Bridge batch contains a partial line');
+    const line = bytes.subarray(offset, newline + 1);
+    messages.push(decodeBridgeLine(line));
+    if (messages.length > MAX_BRIDGE_BATCH_FRAMES) {
+      throw new BridgeProtocolError('Bridge batch contains too many frames');
+    }
+    offset = newline + 1;
+  }
+  return Object.freeze(messages);
 }
 
 export class BoundedBridgeLineBuffer {

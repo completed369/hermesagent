@@ -65,6 +65,27 @@ digest, and authenticator. The service locks the session row before sampling
 the database clock or advancing the expected sequence. A failed validation or
 audit write rolls the whole transaction back.
 
+The service also accepts a complete bounded raw JSONL batch through an internal
+service method. Canonical decoding and all byte/line/frame limits are enforced
+before any database or secret-source call. After the dedicated authentication
+frame has durably advanced sequence 1, the first post-auth frame must be the
+capability exchange at sequence 2. The service locks the durable session and
+connection, then pre-locks every claimed dispatch and its correlated run and
+task in canonical dispatch/run/task identifier order. It derives context and
+the sequence checkpoint only from locked rows, leases the locked secret
+reference once, verifies every frame before any receipt is written, then
+applies each receipt, domain mutation, sequence step, and audit in one
+serializable transaction. It resamples the database clock after all durable
+locks and secret verification and again before commit. Heartbeat issuance and
+dispatch heartbeat freshness are rechecked against the final clock so a lock
+wait or asynchronous policy reader cannot turn stale evidence into a durable
+admission. Dispatch acceptance additionally samples the database clock and
+rereads the exact locked connection immediately after broker verification; the
+heartbeat timestamp, health, status, and version must still match the precise
+precondition that authorized that frame. A later heartbeat in the same batch
+cannot rescue an earlier stale acceptance. Expiry or any later semantic failure
+rolls back the whole batch. No raw line, payload, MAC, or transcript is retained.
+
 Checksums and HMAC evidence are not described as administrator-resistant
 tamper-proofing. Database administrators and the configured secret store remain
 trusted system boundaries.
@@ -86,8 +107,8 @@ cleanup. None of those future requirements is claimed implemented here.
 
 ## Explicit non-capabilities
 
-This foundation does not start a process, send a frame, expose an ingestion
-endpoint, execute a runtime task, connect a provider, consume a Level-4 permit,
+This foundation does not start a process, send a frame, expose a controller or
+transport ingestion endpoint, execute a runtime task, connect a provider, consume a Level-4 permit,
 change a real runtime's status, deploy, publish, activate a provider, spend
 money, or alter DNS/Cloudflare.
 
