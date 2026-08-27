@@ -3004,9 +3004,31 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     await expect(
       prisma.$transaction(async (tx) => {
         await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
-        await tx.acpBridgeDispatchOutbox.create({
-          data: directData(new Date(), sequenceBaseline + 3),
-        });
+        const row = directData(new Date(0), sequenceBaseline + 3);
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO "acp_bridge_dispatch_outbox" (
+            "id", "workspaceId", "runtimeId", "connectionId", "sessionId",
+            "dispatchId", "taskId", "runId", "agentId", "authorityLevel",
+            "outboundSequence", "messageId", "messageType", "protocolVersion", "state",
+            "brokerEvidenceId", "brokerEvidenceHash", "assignmentEvidenceId",
+            "assignmentEvidenceHash", "dispatchEnvelopeHash", "policyHash",
+            "capabilityPolicyHash", "capabilityDigest", "payloadDigest",
+            "unsignedEnvelopeDigest", "signedEnvelopeDigest", "authenticationTagDigest",
+            "idempotencyKey", "issuedAt", "expiresAt", "preparedAt"
+          )
+          SELECT
+            ${row.id}, ${row.workspaceId}::uuid, ${row.runtimeId}, ${row.connectionId},
+            ${row.sessionId}, ${row.dispatchId}, ${row.taskId}, ${row.runId}, ${row.agentId},
+            ${row.authorityLevel}, ${row.outboundSequence}, ${row.messageId},
+            ${row.messageType}, ${row.protocolVersion}, ${row.state}, ${row.brokerEvidenceId},
+            ${row.brokerEvidenceHash}, ${row.assignmentEvidenceId},
+            ${row.assignmentEvidenceHash}, ${row.dispatchEnvelopeHash}, ${row.policyHash},
+            ${row.capabilityPolicyHash}, ${row.capabilityDigest}, ${row.payloadDigest},
+            ${row.unsignedEnvelopeDigest}, ${row.signedEnvelopeDigest},
+            ${row.authenticationTagDigest}, ${row.idempotencyKey},
+            db_clock."now", db_clock."now" + INTERVAL '5 seconds', db_clock."now"
+          FROM (SELECT clock_timestamp() AS "now") AS db_clock
+        `);
       }),
     ).rejects.toThrow(/fresh partial bridge evidence/iu);
     expect(
