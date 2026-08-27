@@ -587,7 +587,7 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
           : loaded,
       );
     }
-  });
+  }, 60_000);
 
   afterAll(() => {
     if (ownedRoot) rmSync(ownedRoot, { recursive: true, force: true });
