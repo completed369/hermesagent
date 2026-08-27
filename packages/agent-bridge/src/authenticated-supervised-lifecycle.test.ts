@@ -101,7 +101,7 @@ class RecordingSecretSource {
       request.workspaceId !== 'lifecycle-workspace' ||
       request.runtimeId !== 'lifecycle-runtime' ||
       request.connectionId !== 'lifecycle-connection' ||
-      request.secretReference !== 'lifecycle-secret-reference' ||
+      request.secretReference !== 'lifecycle-key-reference' ||
       request.expectedDigest !== digestSecretReference(SECRET) ||
       request.authGeneration !== 1 ||
       (request.purpose !== 'AUTHENTICATE' && request.purpose !== 'VERIFY_FRAME')
@@ -538,7 +538,7 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
       principalReference: 'lifecycle-principal',
       parentNonce: 'lifecycle-parent-nonce',
       runtimeNonce: 'lifecycle-runtime-nonce',
-      secretReference: 'lifecycle-secret-reference',
+      secretReference: 'lifecycle-key-reference',
       expectedSecretDigest: digestSecretReference(SECRET),
       authGeneration: 1,
       authenticatedAt: new Date(Date.now() - 30_000).toISOString(),
