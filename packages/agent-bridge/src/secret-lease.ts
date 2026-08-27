@@ -11,7 +11,7 @@ const PRIVATE_TEXT =
 const SECRET_LIKE =
   /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|\bBearer\s+[A-Za-z0-9._~+/=-]{12,}|\b(?:sk|gh[opusr]|github_pat|glpat|xox[baprs]|AKIA)[_-]?[A-Za-z0-9_-]{12,}|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/u;
 
-export type BridgeSecretLeasePurpose = 'PROVISION' | 'AUTHENTICATE' | 'VERIFY_FRAME';
+export type BridgeSecretLeasePurpose = 'PROVISION' | 'AUTHENTICATE' | 'VERIFY_FRAME' | 'SIGN_FRAME';
 
 export interface BridgeSecretLeaseRequest {
   readonly workspaceId: string;
@@ -77,7 +77,7 @@ function validateRequest(request: Readonly<BridgeSecretLeaseRequest>): void {
     reference(value);
   if (!Number.isSafeInteger(request.authGeneration) || request.authGeneration < 1)
     throw new BridgeSecretLeaseError('INVALID_REQUEST');
-  if (!['PROVISION', 'AUTHENTICATE', 'VERIFY_FRAME'].includes(request.purpose))
+  if (!['PROVISION', 'AUTHENTICATE', 'VERIFY_FRAME', 'SIGN_FRAME'].includes(request.purpose))
     throw new BridgeSecretLeaseError('INVALID_REQUEST');
   if (request.purpose === 'PROVISION') {
     if (request.expectedDigest !== undefined) throw new BridgeSecretLeaseError('INVALID_REQUEST');

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   BRIDGE_BROKER_EVIDENCE_VERIFIER,
   BRIDGE_ARTIFACT_CONTENT_VERIFIER,
@@ -11,11 +11,13 @@ import {
   canonicalJson,
   decodeBridgeBatch,
   deriveBridgeKeys,
+  digestBridgePayload,
   digestSecretReference,
   encodeBridgeLine,
   validateBridgeEnvelope,
   validateUsageDelta,
   verifyBridgeEnvelope,
+  signBridgeEnvelope,
   BridgeSecretLeaseError,
   type BridgeArtifactContentVerifier,
   type BridgeBrokerEvidenceVerifier,
@@ -94,6 +96,14 @@ function sha256(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
+function exactDigestMatch(left: string, right: string): boolean {
+  return (
+    SHA256.test(left) &&
+    SHA256.test(right) &&
+    timingSafeEqual(Buffer.from(left), Buffer.from(right))
+  );
+}
+
 export interface ProvisionBridgeRuntimeInput {
   readonly runtimeId: string;
   readonly connectionId: string;
@@ -110,6 +120,12 @@ export interface PrepareBridgeDispatchInput {
   readonly agentId: string;
   readonly sessionId: string;
   readonly brokerEvidence: TrustedBridgeBrokerEvidence;
+  readonly idempotencyKey: string;
+}
+
+export interface PrepareBridgeDispatchAuthorizationInput {
+  readonly capsuleId: string;
+  readonly dispatchId: string;
   readonly idempotencyKey: string;
 }
 
@@ -459,7 +475,11 @@ export class AcpBridgeAdmissionService
   ) {
     const actorKind = assertControlPlane(capability, context, 3);
     validateBridgeEnvelope(envelope);
-    if (envelope.type === 'AUTHENTICATE' || envelope.type === 'CHALLENGE') {
+    if (
+      envelope.type === 'AUTHENTICATE' ||
+      envelope.type === 'CHALLENGE' ||
+      envelope.type === 'DISPATCH'
+    ) {
       throw new AcpBridgeAdmissionDeniedError('Use the dedicated authentication boundary');
     }
     const snapshot = decodeBridgeBatch(encodeBridgeLine(envelope))[0];
@@ -589,7 +609,10 @@ export class AcpBridgeAdmissionService
         const sessionExpiresAt = session.expiresAt;
         if (
           envelopes.some(
-            (envelope) => envelope.type === 'AUTHENTICATE' || envelope.type === 'CHALLENGE',
+            (envelope) =>
+              envelope.type === 'AUTHENTICATE' ||
+              envelope.type === 'CHALLENGE' ||
+              envelope.type === 'DISPATCH',
           )
         ) {
           throw new AcpBridgeAdmissionDeniedError('Use the dedicated authentication boundary');
@@ -772,31 +795,20 @@ export class AcpBridgeAdmissionService
           return { dispatch: existing, replayed: true };
         }
         await tx.$queryRaw(
-          Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.brokerEvidence.runId} FOR UPDATE`,
+          Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.sessionId} FOR UPDATE`,
         );
-        const runReference = await tx.acpRun.findUnique({
-          where: {
-            workspaceId_id: { workspaceId: context.workspaceId, id: input.brokerEvidence.runId },
-          },
+        let session = await tx.acpBridgeSession.findUnique({
+          where: { workspaceId_id: { workspaceId: context.workspaceId, id: input.sessionId } },
         });
-        if (!runReference) throw new AcpBridgeAdmissionNotFoundError('Bound run not found');
+        if (!session) throw new AcpBridgeAdmissionNotFoundError('Bound session not found');
         await tx.$queryRaw(
-          Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${runReference.taskId} FOR UPDATE`,
+          Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${session.connectionId} FOR UPDATE`,
         );
-        const run = await tx.acpRun.findUniqueOrThrow({
-          where: {
-            workspaceId_id: { workspaceId: context.workspaceId, id: input.brokerEvidence.runId },
-          },
-          include: { task: true },
-        });
-        await tx.$queryRaw(
-          Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.brokerEvidence.connectionId} FOR UPDATE`,
-        );
-        const connection = await tx.acpRuntimeConnection.findUnique({
+        let connection = await tx.acpRuntimeConnection.findUnique({
           where: {
             workspaceId_id: {
               workspaceId: context.workspaceId,
-              id: input.brokerEvidence.connectionId,
+              id: session.connectionId,
             },
           },
           include: { runtime: true },
@@ -804,13 +816,18 @@ export class AcpBridgeAdmissionService
         if (!connection)
           throw new AcpBridgeAdmissionNotFoundError('Bound runtime connection not found');
         await tx.$queryRaw(
-          Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.sessionId} FOR UPDATE`,
+          Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.brokerEvidence.runId} FOR UPDATE`,
         );
-        const session = await tx.acpBridgeSession.findUnique({
-          where: { workspaceId_id: { workspaceId: context.workspaceId, id: input.sessionId } },
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.brokerEvidence.taskId} FOR UPDATE`,
+        );
+        let run = await tx.acpRun.findUnique({
+          where: {
+            workspaceId_id: { workspaceId: context.workspaceId, id: input.brokerEvidence.runId },
+          },
+          include: { task: true },
         });
-        if (!session) throw new AcpBridgeAdmissionNotFoundError('Bound session not found');
-        const now = await databaseNow(tx);
+        if (!run) throw new AcpBridgeAdmissionNotFoundError('Bound run not found');
         await this.assertAdapterIsolation(
           context.workspaceId,
           connection.runtime.adapterKind,
@@ -819,6 +836,22 @@ export class AcpBridgeAdmissionService
         if (!(await this.brokerEvidence.verify(input.brokerEvidence))) {
           throw new AcpBridgeAdmissionDeniedError('Broker evidence changed before dispatch claim');
         }
+        session = await tx.acpBridgeSession.findUniqueOrThrow({
+          where: { workspaceId_id: { workspaceId: context.workspaceId, id: input.sessionId } },
+        });
+        connection = await tx.acpRuntimeConnection.findUniqueOrThrow({
+          where: {
+            workspaceId_id: { workspaceId: context.workspaceId, id: session.connectionId },
+          },
+          include: { runtime: true },
+        });
+        run = await tx.acpRun.findUniqueOrThrow({
+          where: {
+            workspaceId_id: { workspaceId: context.workspaceId, id: input.brokerEvidence.runId },
+          },
+          include: { task: true },
+        });
+        const now = await databaseNow(tx);
         if (
           session.state !== 'PARTIAL' ||
           session.expiresAt <= now ||
@@ -905,6 +938,422 @@ export class AcpBridgeAdmissionService
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+  }
+
+  /**
+   * Prepares one authenticated parent-to-runtime DISPATCH envelope and stores
+   * only immutable correlation/digest metadata. It does not write a raw line,
+   * enqueue transport work, claim delivery, or promote runtime status.
+   */
+  async prepareDispatchAuthorization(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: PrepareBridgeDispatchAuthorizationInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    for (const [field, value] of Object.entries(input)) reference(value, field);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await prisma.$transaction(
+          async (tx) => {
+            const dispatchReference = await tx.acpBridgeDispatch.findUnique({
+              where: { workspaceId_id: { workspaceId: context.workspaceId, id: input.dispatchId } },
+              select: { sessionId: true, connectionId: true, runId: true, taskId: true },
+            });
+            if (!dispatchReference)
+              throw new AcpBridgeAdmissionNotFoundError('Bridge dispatch not found');
+
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${dispatchReference.sessionId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${dispatchReference.connectionId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_bridge_dispatches" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${input.dispatchId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${dispatchReference.runId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${dispatchReference.taskId} FOR UPDATE`,
+            );
+            await tx.$queryRaw(
+              Prisma.sql`SELECT r."id" FROM "acp_runtimes" r JOIN "acp_runtime_connections" c ON c."workspaceId" = r."workspaceId" AND c."runtimeId" = r."id" WHERE c."workspaceId" = ${context.workspaceId}::uuid AND c."id" = ${dispatchReference.connectionId} FOR UPDATE OF r`,
+            );
+
+            const loadBoundState = () =>
+              tx.acpBridgeDispatch.findUniqueOrThrow({
+                where: {
+                  workspaceId_id: { workspaceId: context.workspaceId, id: input.dispatchId },
+                },
+                include: {
+                  run: { include: { task: true } },
+                  session: true,
+                  connection: { include: { runtime: true } },
+                },
+              });
+            let dispatch = await loadBoundState();
+            await tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_broker_reservations" WHERE "workspaceId" = ${context.workspaceId}::uuid AND "id" = ${dispatch.brokerEvidenceId} FOR UPDATE`,
+            );
+            const reservation = await tx.acpBrokerReservation.findUniqueOrThrow({
+              where: {
+                workspaceId_id: {
+                  workspaceId: context.workspaceId,
+                  id: dispatch.brokerEvidenceId,
+                },
+              },
+            });
+            const existing = await tx.acpBridgeDispatchOutbox.findFirst({
+              where: {
+                workspaceId: context.workspaceId,
+                OR: [{ idempotencyKey: input.idempotencyKey }, { dispatchId: input.dispatchId }],
+              },
+            });
+            if (
+              existing &&
+              (existing.id !== input.capsuleId ||
+                existing.dispatchId !== input.dispatchId ||
+                existing.idempotencyKey !== input.idempotencyKey)
+            ) {
+              throw new AcpBridgeAdmissionConflictError(
+                'Dispatch authorization idempotency replay drifted',
+              );
+            }
+
+            await this.assertAdapterIsolation(
+              context.workspaceId,
+              dispatch.connection.runtime.adapterKind,
+              dispatch.connection.environment,
+            );
+            const brokerEvidence = {
+              evidenceId: dispatch.brokerEvidenceId,
+              evidenceHash: dispatch.brokerEvidenceHash,
+              workspaceId: dispatch.workspaceId,
+              taskId: dispatch.taskId,
+              runId: dispatch.runId,
+              agentId: dispatch.agentId,
+              runtimeId: dispatch.runtimeId,
+              connectionId: dispatch.connectionId,
+            };
+            if (
+              !(await this.brokerEvidence.verify(brokerEvidence)) ||
+              !(await this.capabilityPolicy.verify(
+                context.workspaceId,
+                dispatch.runtimeId,
+                dispatch.connection.runtime.capabilityPolicyHash,
+                dispatch.connection.capabilityCodes,
+              ))
+            ) {
+              throw new AcpBridgeAdmissionDeniedError(
+                'Dispatch authorization evidence or policy was denied',
+              );
+            }
+
+            let signingCompleted = false;
+            const result = await this.withSecretLease(
+              {
+                workspaceId: context.workspaceId,
+                runtimeId: dispatch.runtimeId,
+                connectionId: dispatch.connectionId,
+                secretReference: dispatch.connection.runtime.secretReference,
+                expectedDigest: dispatch.connection.runtime.secretDigest,
+                authGeneration: dispatch.connection.authGeneration,
+                purpose: 'SIGN_FRAME',
+              },
+              async (secret) => {
+                dispatch = await loadBoundState();
+                await this.assertAdapterIsolation(
+                  context.workspaceId,
+                  dispatch.connection.runtime.adapterKind,
+                  dispatch.connection.environment,
+                );
+                if (
+                  !(await this.brokerEvidence.verify(brokerEvidence)) ||
+                  !(await this.capabilityPolicy.verify(
+                    context.workspaceId,
+                    dispatch.runtimeId,
+                    dispatch.connection.runtime.capabilityPolicyHash,
+                    dispatch.connection.capabilityCodes,
+                  ))
+                ) {
+                  throw new AcpBridgeAdmissionDeniedError(
+                    'Dispatch authorization evidence or policy was denied',
+                  );
+                }
+                const now = await databaseNow(tx);
+                dispatch = await loadBoundState();
+                const session = dispatch.session;
+                const connection = dispatch.connection;
+                const run = dispatch.run;
+                const expectedDispatchEnvelopeHash = sha256({
+                  schemaVersion: 1,
+                  dispatchId: dispatch.id,
+                  taskId: run.taskId,
+                  runId: run.id,
+                  runtimeId: session.runtimeId,
+                  connectionId: session.connectionId,
+                  sessionId: session.id,
+                  authorityLevel: run.requiredAuthority,
+                  policyHash: run.policyHash,
+                });
+                if (
+                  dispatch.state !== 'PREPARED' ||
+                  run.status !== 'PREPARED' ||
+                  run.task.status !== 'READY' ||
+                  run.requiredAuthority >= 4 ||
+                  dispatch.authorityLevel !== run.requiredAuthority ||
+                  dispatch.taskId !== run.taskId ||
+                  dispatch.runtimeId !== session.runtimeId ||
+                  dispatch.connectionId !== session.connectionId ||
+                  connection.runtimeId !== session.runtimeId ||
+                  session.state !== 'PARTIAL' ||
+                  session.expiresAt <= now ||
+                  !session.runtimeNonce ||
+                  !session.authenticatedAt ||
+                  !session.keyDigest ||
+                  connection.status !== 'PARTIAL' ||
+                  connection.lastHeartbeatHealth !== 'HEALTHY' ||
+                  !connection.lastHeartbeatAt ||
+                  connection.lastHeartbeatAt.getTime() < now.getTime() - 60_000 ||
+                  !connection.capabilityDigest ||
+                  connection.capabilityDigest !== sha256(connection.capabilityCodes) ||
+                  dispatch.dispatchEnvelopeHash !== expectedDispatchEnvelopeHash
+                ) {
+                  throw new AcpBridgeAdmissionDeniedError(
+                    'Dispatch authorization durable binding mismatch',
+                  );
+                }
+                if (existing && existing.expiresAt <= now) {
+                  throw new AcpBridgeAdmissionDeniedError(
+                    'Prepared dispatch authorization expired',
+                  );
+                }
+                if (
+                  reservation.state !== 'CLAIMED' ||
+                  reservation.claimedDispatchId !== dispatch.id
+                ) {
+                  throw new AcpBridgeAdmissionDeniedError(
+                    'Dispatch authorization requires an active claimed reservation',
+                  );
+                }
+
+                const keyContext = {
+                  workspaceId: session.workspaceId,
+                  runtimeId: session.runtimeId,
+                  connectionId: session.connectionId,
+                  sessionId: session.id,
+                  principalReference: session.principalReference,
+                  parentNonce: session.parentNonce,
+                  runtimeNonce: session.runtimeNonce,
+                };
+                const keys = deriveBridgeKeys(secret, keyContext);
+                try {
+                  const derivedKeyDigest = createHash('sha256')
+                    .update(keys.parentToRuntime)
+                    .update(keys.runtimeToParent)
+                    .digest('hex');
+                  if (derivedKeyDigest !== session.keyDigest) {
+                    throw new AcpBridgeAdmissionDeniedError(
+                      'Dispatch authorization session key mismatch',
+                    );
+                  }
+                  const outboundSequence =
+                    existing?.outboundSequence ??
+                    ((
+                      await tx.acpBridgeDispatchOutbox.aggregate({
+                        where: { workspaceId: context.workspaceId, sessionId: session.id },
+                        _max: { outboundSequence: true },
+                      })
+                    )._max.outboundSequence ?? 0) + 1;
+                  const payload = Object.freeze({
+                    schemaVersion: 1,
+                    dispatchId: dispatch.id,
+                    taskId: dispatch.taskId,
+                    runId: dispatch.runId,
+                    agentId: dispatch.agentId,
+                    authorityLevel: dispatch.authorityLevel,
+                    brokerEvidenceId: dispatch.brokerEvidenceId,
+                    brokerEvidenceHash: dispatch.brokerEvidenceHash,
+                    assignmentEvidenceId: dispatch.assignmentEvidenceId,
+                    assignmentEvidenceHash: dispatch.assignmentEvidenceHash,
+                    dispatchEnvelopeHash: dispatch.dispatchEnvelopeHash,
+                    policyHash: run.policyHash,
+                    capabilityPolicyHash: connection.runtime.capabilityPolicyHash,
+                    capabilityDigest: connection.capabilityDigest,
+                  });
+                  const issuedAt = existing?.issuedAt ?? now;
+                  const expiresAt =
+                    existing?.expiresAt ??
+                    new Date(Math.min(session.expiresAt.getTime(), now.getTime() + 60_000));
+                  if (expiresAt <= now) {
+                    throw new AcpBridgeAdmissionDeniedError(
+                      'Prepared dispatch authorization expired',
+                    );
+                  }
+                  const unsigned = {
+                    protocolVersion: BRIDGE_PROTOCOL_VERSION,
+                    workspaceId: context.workspaceId,
+                    runtimeId: dispatch.runtimeId,
+                    connectionId: dispatch.connectionId,
+                    sessionId: dispatch.sessionId,
+                    principalReference: session.principalReference,
+                    sequence: outboundSequence,
+                    messageId: existing?.messageId ?? input.capsuleId,
+                    type: 'DISPATCH' as const,
+                    issuedAt: issuedAt.toISOString(),
+                    expiresAt: expiresAt.toISOString(),
+                    payloadDigest: digestBridgePayload(payload),
+                    payload,
+                  };
+                  const frame = signBridgeEnvelope(unsigned, keys.parentToRuntime);
+                  const unsignedEnvelopeDigest = sha256(unsigned);
+                  const signedEnvelopeDigest = sha256(frame);
+                  const authenticationTagDigest = createHash('sha256')
+                    .update(frame.mac)
+                    .digest('hex');
+                  if (
+                    existing &&
+                    (existing.workspaceId !== context.workspaceId ||
+                      existing.runtimeId !== dispatch.runtimeId ||
+                      existing.connectionId !== dispatch.connectionId ||
+                      existing.sessionId !== dispatch.sessionId ||
+                      existing.dispatchId !== dispatch.id ||
+                      existing.taskId !== dispatch.taskId ||
+                      existing.runId !== dispatch.runId ||
+                      existing.agentId !== dispatch.agentId ||
+                      existing.authorityLevel !== dispatch.authorityLevel ||
+                      existing.outboundSequence !== outboundSequence ||
+                      existing.messageId !== input.capsuleId ||
+                      existing.messageType !== 'DISPATCH' ||
+                      existing.protocolVersion !== BRIDGE_PROTOCOL_VERSION ||
+                      existing.state !== 'PREPARED' ||
+                      existing.brokerEvidenceId !== dispatch.brokerEvidenceId ||
+                      !exactDigestMatch(existing.brokerEvidenceHash, dispatch.brokerEvidenceHash) ||
+                      existing.assignmentEvidenceId !== dispatch.assignmentEvidenceId ||
+                      !exactDigestMatch(
+                        existing.assignmentEvidenceHash,
+                        dispatch.assignmentEvidenceHash,
+                      ) ||
+                      !exactDigestMatch(
+                        existing.dispatchEnvelopeHash,
+                        dispatch.dispatchEnvelopeHash,
+                      ) ||
+                      !exactDigestMatch(existing.policyHash, run.policyHash) ||
+                      !exactDigestMatch(
+                        existing.capabilityPolicyHash,
+                        connection.runtime.capabilityPolicyHash,
+                      ) ||
+                      !exactDigestMatch(existing.capabilityDigest, connection.capabilityDigest) ||
+                      !exactDigestMatch(existing.payloadDigest, unsigned.payloadDigest) ||
+                      !exactDigestMatch(existing.unsignedEnvelopeDigest, unsignedEnvelopeDigest) ||
+                      !exactDigestMatch(existing.signedEnvelopeDigest, signedEnvelopeDigest) ||
+                      !exactDigestMatch(
+                        existing.authenticationTagDigest,
+                        authenticationTagDigest,
+                      ) ||
+                      existing.idempotencyKey !== input.idempotencyKey ||
+                      existing.issuedAt.getTime() !== issuedAt.getTime() ||
+                      existing.expiresAt.getTime() !== expiresAt.getTime() ||
+                      existing.preparedAt.getTime() !== issuedAt.getTime())
+                  ) {
+                    throw new AcpBridgeAdmissionConflictError(
+                      'Dispatch authorization durable replay drifted',
+                    );
+                  }
+                  const outbox =
+                    existing ??
+                    (await tx.acpBridgeDispatchOutbox.create({
+                      data: {
+                        id: input.capsuleId,
+                        workspaceId: context.workspaceId,
+                        runtimeId: dispatch.runtimeId,
+                        connectionId: dispatch.connectionId,
+                        sessionId: dispatch.sessionId,
+                        dispatchId: dispatch.id,
+                        taskId: dispatch.taskId,
+                        runId: dispatch.runId,
+                        agentId: dispatch.agentId,
+                        authorityLevel: dispatch.authorityLevel,
+                        outboundSequence,
+                        messageId: input.capsuleId,
+                        messageType: 'DISPATCH',
+                        protocolVersion: BRIDGE_PROTOCOL_VERSION,
+                        state: 'PREPARED',
+                        brokerEvidenceId: dispatch.brokerEvidenceId,
+                        brokerEvidenceHash: dispatch.brokerEvidenceHash,
+                        assignmentEvidenceId: dispatch.assignmentEvidenceId,
+                        assignmentEvidenceHash: dispatch.assignmentEvidenceHash,
+                        dispatchEnvelopeHash: dispatch.dispatchEnvelopeHash,
+                        policyHash: run.policyHash,
+                        capabilityPolicyHash: connection.runtime.capabilityPolicyHash,
+                        capabilityDigest: connection.capabilityDigest,
+                        payloadDigest: unsigned.payloadDigest,
+                        unsignedEnvelopeDigest,
+                        signedEnvelopeDigest,
+                        authenticationTagDigest,
+                        idempotencyKey: input.idempotencyKey,
+                        issuedAt,
+                        expiresAt,
+                        preparedAt: issuedAt,
+                      },
+                    }));
+                  if (!existing) {
+                    await this.auditService.recordOperationalEvent(
+                      capability,
+                      context,
+                      {
+                        id: randomUUID(),
+                        workspaceId: context.workspaceId,
+                        type: 'run.progress',
+                        source: 'CONTROL_PLANE',
+                        actorKind,
+                        actorId: context.principalId,
+                        subjectType: 'AcpBridgeDispatchOutbox',
+                        subjectId: outbox.id,
+                        occurredAt: issuedAt.toISOString(),
+                        idempotencyKey: `bridge-dispatch-outbox:${input.idempotencyKey}`,
+                        correlationId: dispatch.runId,
+                        facts: { payloadFieldCount: 0, payloadBytes: 0 },
+                      },
+                      actorKind === 'HUMAN' ? context.principalId : undefined,
+                      tx,
+                    );
+                  }
+                  signingCompleted = true;
+                  return Object.freeze({
+                    outbox,
+                    frame: Object.freeze({ ...frame, payload }),
+                    replayed: Boolean(existing),
+                  });
+                } finally {
+                  keys.parentToRuntime.fill(0);
+                  keys.runtimeToParent.fill(0);
+                }
+              },
+            );
+            if (!signingCompleted || !result) {
+              throw new AcpBridgeAdmissionDeniedError('Dispatch authorization signing was denied');
+            }
+            return result;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          (error.code === 'P2034' || error.code === 'P2002')
+        ) {
+          if (attempt < 2) continue;
+          throw new AcpBridgeAdmissionConflictError(
+            'Concurrent dispatch authorization conflict; retry with current durable state',
+          );
+        }
+        throw error;
+      }
+    }
+    throw new AcpBridgeAdmissionConflictError('Dispatch authorization retry budget exhausted');
   }
 
   async requestCancellation(

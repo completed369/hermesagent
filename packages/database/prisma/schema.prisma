@@ -136,6 +136,7 @@ model Workspace {
   acpBridgeSessions        AcpBridgeSession[]
   acpBridgeReceipts        AcpBridgeReceipt[]
   acpBridgeDispatches      AcpBridgeDispatch[]
+  acpBridgeDispatchOutbox  AcpBridgeDispatchOutbox[]
   acpRunUsages             AcpRunUsage[]
   acpBrokerReservations    AcpBrokerReservation[]
   acpBrokerEvaluations     AcpBrokerEvaluation[]
@@ -1096,12 +1097,13 @@ model AcpRuntimeConnection {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  runtime            AcpRuntime             @relation(fields: [workspaceId, runtimeId], references: [workspaceId, id], onDelete: Cascade)
+  workspace          Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runtime            AcpRuntime                @relation(fields: [workspaceId, runtimeId], references: [workspaceId, id], onDelete: Cascade)
   sessions           AcpBridgeSession[]
   dispatches         AcpBridgeDispatch[]
   brokerReservations AcpBrokerReservation[]
   costLedgerEntries  AcpCostLedgerEntry[]
+  dispatchOutbox     AcpBridgeDispatchOutbox[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, runtimeId, environment])
@@ -1128,13 +1130,15 @@ model AcpBridgeSession {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  workspace         Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  connection        AcpRuntimeConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  workspace         Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection        AcpRuntimeConnection      @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
   receipts          AcpBridgeReceipt[]
   dispatches        AcpBridgeDispatch[]
   costLedgerEntries AcpCostLedgerEntry[]
+  dispatchOutbox    AcpBridgeDispatchOutbox[]
 
   @@id([workspaceId, id])
+  @@unique([workspaceId, id, runtimeId, connectionId], map: "acp_bridge_sessions_outbox_binding_key")
   @@index([workspaceId, connectionId, state])
   @@index([expiresAt])
   @@map("acp_bridge_sessions")
@@ -1203,21 +1207,73 @@ model AcpBridgeDispatch {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  workspace         Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  run               AcpRun               @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
-  connection        AcpRuntimeConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
-  session           AcpBridgeSession     @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
-  brokerReservation AcpBrokerReservation @relation(fields: [workspaceId, brokerEvidenceId, brokerEvidenceHash, taskId, runId, agentId, runtimeId, connectionId], references: [workspaceId, id, evidenceHash, taskId, runId, agentId, runtimeId, connectionId], onDelete: Cascade)
+  workspace         Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  run               AcpRun                    @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  connection        AcpRuntimeConnection      @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  session           AcpBridgeSession          @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+  brokerReservation AcpBrokerReservation      @relation(fields: [workspaceId, brokerEvidenceId, brokerEvidenceHash, taskId, runId, agentId, runtimeId, connectionId], references: [workspaceId, id, evidenceHash, taskId, runId, agentId, runtimeId, connectionId], onDelete: Cascade)
   usages            AcpRunUsage[]
   costLedgerEntries AcpCostLedgerEntry[]
+  outboundCapsules  AcpBridgeDispatchOutbox[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
   @@unique([workspaceId, runId])
   @@unique([workspaceId, id, runId, sessionId])
   @@unique([workspaceId, id, runId, taskId, runtimeId, connectionId, sessionId], map: "acp_bridge_dispatches_cost_binding_key")
+  @@unique([workspaceId, id, runId, taskId, runtimeId, connectionId, sessionId, agentId, authorityLevel, brokerEvidenceId, brokerEvidenceHash, assignmentEvidenceId, assignmentEvidenceHash, dispatchEnvelopeHash], map: "acp_bridge_dispatches_outbox_binding_key")
   @@index([workspaceId, connectionId, state])
   @@map("acp_bridge_dispatches")
+}
+
+/// Immutable metadata for a prepared parent-to-runtime DISPATCH authorization.
+/// Raw JSONL, payload JSON, MACs, task text, prompts, and secret material are
+/// deliberately not durable. No delivery or SENT state exists in this slice.
+model AcpBridgeDispatchOutbox {
+  id                      String
+  workspaceId             String   @db.Uuid
+  runtimeId               String
+  connectionId            String
+  sessionId               String
+  dispatchId              String
+  taskId                  String
+  runId                   String
+  agentId                 String
+  authorityLevel          Int
+  outboundSequence        Int
+  messageId               String
+  messageType             String   @default("DISPATCH")
+  protocolVersion         String
+  state                   String   @default("PREPARED")
+  brokerEvidenceId        String
+  brokerEvidenceHash      String
+  assignmentEvidenceId    String
+  assignmentEvidenceHash  String
+  dispatchEnvelopeHash    String
+  policyHash              String
+  capabilityPolicyHash    String
+  capabilityDigest        String
+  payloadDigest           String
+  unsignedEnvelopeDigest  String
+  signedEnvelopeDigest    String
+  authenticationTagDigest String
+  idempotencyKey          String
+  issuedAt                DateTime @db.Timestamptz(3)
+  expiresAt               DateTime @db.Timestamptz(3)
+  preparedAt              DateTime @db.Timestamptz(3)
+
+  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  session    AcpBridgeSession     @relation(fields: [workspaceId, sessionId, runtimeId, connectionId], references: [workspaceId, id, runtimeId, connectionId], onDelete: Cascade)
+  connection AcpRuntimeConnection @relation(fields: [workspaceId, connectionId, runtimeId], references: [workspaceId, id, runtimeId], onDelete: Cascade)
+  dispatch   AcpBridgeDispatch    @relation(fields: [workspaceId, dispatchId, runId, taskId, runtimeId, connectionId, sessionId, agentId, authorityLevel, brokerEvidenceId, brokerEvidenceHash, assignmentEvidenceId, assignmentEvidenceHash, dispatchEnvelopeHash], references: [workspaceId, id, runId, taskId, runtimeId, connectionId, sessionId, agentId, authorityLevel, brokerEvidenceId, brokerEvidenceHash, assignmentEvidenceId, assignmentEvidenceHash, dispatchEnvelopeHash], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@unique([workspaceId, dispatchId])
+  @@unique([workspaceId, idempotencyKey])
+  @@unique([workspaceId, sessionId, outboundSequence])
+  @@unique([workspaceId, sessionId, messageId])
+  @@index([workspaceId, connectionId, state], map: "acp_bridge_dispatch_outbox_connection_idx")
+  @@map("acp_bridge_dispatch_outbox")
 }
 
 model AcpRunUsage {

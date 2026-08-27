@@ -136,6 +136,70 @@ test('durable authenticated batches stay internal, bounded, atomic, and deny-wir
   assert.match(module, /new DenyRuntimeProcessLauncher\(\)/u);
 });
 
+test('dispatch authorization outbox is metadata-only, directional, and has no delivery path', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260827090000_acp_dispatch_outbox/migration.sql',
+    'utf8',
+  );
+  const outbox = schema.slice(
+    schema.indexOf('model AcpBridgeDispatchOutbox'),
+    schema.indexOf('model AcpRunUsage'),
+  );
+  const preparation = service.slice(
+    service.indexOf('async prepareDispatchAuthorization'),
+    service.indexOf('async requestCancellation'),
+  );
+  const dispatchPreparation = service.slice(
+    service.indexOf('async prepareDispatch('),
+    service.indexOf('async prepareDispatchAuthorization'),
+  );
+  assert.match(service, /prepareDispatchAuthorization/u);
+  assert.match(service, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(service, /purpose: 'SIGN_FRAME'/u);
+  assert.match(service, /signBridgeEnvelope\(unsigned, keys\.parentToRuntime\)/u);
+  assert.match(service, /keys\.parentToRuntime\.fill\(0\)/u);
+  assert.match(service, /keys\.runtimeToParent\.fill\(0\)/u);
+  assert.match(service, /dispatch\.state !== 'PREPARED'/u);
+  assert.match(service, /run\.requiredAuthority >= 4/u);
+  assert.match(service, /connection\.lastHeartbeatAt\.getTime\(\) < now\.getTime\(\) - 60_000/u);
+  assert.match(service, /Prisma\.TransactionIsolationLevel\.Serializable/u);
+  assert.match(preparation, /error\.code === 'P2034'[\s\S]*error\.code === 'P2002'/u);
+  assert.match(
+    preparation,
+    /acp_bridge_sessions[\s\S]*FOR UPDATE[\s\S]*acp_runtime_connections[\s\S]*FOR UPDATE[\s\S]*acp_bridge_dispatches[\s\S]*FOR UPDATE[\s\S]*acp_runs[\s\S]*FOR UPDATE[\s\S]*acp_tasks[\s\S]*FOR UPDATE/u,
+  );
+  assert.match(
+    dispatchPreparation,
+    /acp_bridge_sessions[\s\S]*FOR UPDATE[\s\S]*acp_runtime_connections[\s\S]*FOR UPDATE[\s\S]*acp_runs[\s\S]*FOR UPDATE[\s\S]*acp_tasks[\s\S]*FOR UPDATE/u,
+  );
+  assert.doesNotMatch(preparation, /reservation\.expiresAt/u);
+  assert.doesNotMatch(
+    outbox,
+    /\b(?:mac|payload|rawLine|taskText|prompt|transcript|secret)\s+String\b/iu,
+  );
+  assert.match(outbox, /messageType\s+String\s+@default\("DISPATCH"\)/u);
+  assert.match(outbox, /state\s+String\s+@default\("PREPARED"\)/u);
+  assert.doesNotMatch(outbox, /SENT|DELIVERED|ACKNOWLEDGED/u);
+  assert.match(migration, /dispatch authorization metadata is immutable/u);
+  assert.match(migration, /outbound sequence mismatch/u);
+  assert.match(migration, /"messageType" = 'DISPATCH'/u);
+  assert.match(
+    migration,
+    /acp_bridge_sessions[\s\S]*FOR UPDATE;[\s\S]*acp_runtime_connections[\s\S]*FOR UPDATE;[\s\S]*acp_bridge_dispatches[\s\S]*FOR UPDATE;[\s\S]*acp_runs[\s\S]*FOR UPDATE;[\s\S]*acp_tasks[\s\S]*FOR UPDATE;[\s\S]*acp_runtimes[\s\S]*FOR UPDATE;[\s\S]*acp_broker_reservations[\s\S]*FOR UPDATE;[\s\S]*db_now := clock_timestamp\(\)/u,
+  );
+  assert.match(migration, /db_utc := db_now AT TIME ZONE 'UTC'/u);
+  assert.match(migration, /active claimed reservation/u);
+  assert.doesNotMatch(migration, /reservation_expires/u);
+  assert.match(service, /existing\.signedEnvelopeDigest, signedEnvelopeDigest/u);
+  assert.match(service, /existing\.authenticationTagDigest/u);
+  assert.doesNotMatch(service, /@Controller\s*\(|\bfetch\s*\(|\b(?:spawn|exec|fork)\s*\(/u);
+});
+
 test('trusted executable evidence is Linux-only, opened-file bound, and cannot launch', () => {
   const reader = readFileSync('packages/agent-bridge/src/supervision-evidence-reader.ts', 'utf8');
   const authorization = readFileSync(

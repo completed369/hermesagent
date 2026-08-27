@@ -53,6 +53,15 @@
 > end-to-end evidence; repository installation or local process availability is
 > not connection evidence.
 >
+> A service-only outbound foundation can prepare a short-lived, direction-bound
+> `DISPATCH` authorization for an exact durable `PREPARED` dispatch. Its durable
+> outbox row is metadata-only and has no `SENT` or delivery state; the signed
+> envelope is not transmitted by this repository. Production secret resolution
+> remains deny-only, runtime truth remains at most `PARTIAL`, and no real adapter
+> becomes configured or connected. The database row is correlation metadata,
+> not cryptographic authorization: its trigger cannot verify an HMAC, and any
+> future consumer must re-sign or reverify through the trusted service boundary.
+>
 > Secret material remains unavailable in production. The scoped bridge lease
 > interface is deny-only in the production composition root and has no file,
 > environment, network, or provider backend. Its deterministic positive source

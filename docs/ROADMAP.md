@@ -52,6 +52,12 @@ published and current `main` has not been deployed to private staging.
   artifact verification ports, and deterministic test-only fixture coverage.
   It adds no transport, controller, network, process launcher, or runtime
   connectivity claim and stops runtime truth at `PARTIAL`.
+- A bounded outbound foundation prepares immutable metadata for one
+  parent-to-runtime `DISPATCH` authorization and signs an ephemeral canonical
+  envelope with the direction-specific leased key. It still adds no transport,
+  delivery worker, provider adapter, process path, or `SENT`/connected claim;
+  dispatch remains `PREPARED` until separately authenticated runtime evidence
+  is admitted.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
