@@ -46,11 +46,11 @@ export interface RuntimeProcessLaunchRequest {
 }
 
 export interface RuntimeProcessLauncher {
-  launch(request: RuntimeProcessLaunchRequest): Promise<never>;
+  launch(handoff: unknown): Promise<never>;
 }
 
 export class DenyRuntimeProcessLauncher implements RuntimeProcessLauncher {
-  async launch(_request: RuntimeProcessLaunchRequest): Promise<never> {
+  async launch(_handoff: unknown): Promise<never> {
     throw new BridgeProtocolError('Runtime process launching is not enabled');
   }
 }

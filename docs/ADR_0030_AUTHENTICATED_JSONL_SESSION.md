@@ -56,7 +56,8 @@ transactional checks.
 ## Consequences and next dependency
 
 This closes the pure post-authentication framing prerequisite without creating a runtime
-connection. A later separately reviewed change must bind a real supervisor-owned handle to an
+connection. ADR-0031 adds separately confined Linux test-only native execution and cleanup
+evidence, but no production handle. A later separately reviewed change must bind a real supervisor-owned handle to an
 authenticated handshake, cancellation, cleanup, and durable ACP message admission. Real
 process creation, transport, credentials, provider activation, deployment, and runtime status
 changes remain absent. Codex, Hermes, and Pi remain `NOT_CONFIGURED`.

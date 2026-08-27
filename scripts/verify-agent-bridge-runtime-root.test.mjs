@@ -77,6 +77,17 @@ test('allows unrelated dependency tests but denies malformed and traversal recor
     assert.equal(classifyAgentBridgeRuntimeEntry({ type: 'f', path }), 'MALFORMED_ENTRY');
 });
 
+test('rejects native supervisor test helpers anywhere in a final image', () => {
+  for (const path of [
+    'packages/agent-bridge/test/native/native-supervisor-helper.c',
+    'app/native-supervisor-helper',
+    'app/native-supervisor-addon.node',
+    'workspace/packages/agent-bridge/test/native/renamed-helper.bin',
+    `${packagePrefix}/dist/native-runtime-fixture.js`,
+  ])
+    assert.equal(classifyAgentBridgeRuntimeEntry({ type: 'f', path }), 'NATIVE_TEST_FIXTURE');
+});
+
 test(
   'accepts the root-excluding NUL manifest emitted by real GNU find',
   { skip: process.platform !== 'linux' },

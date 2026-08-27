@@ -52,6 +52,12 @@ evidence; broker reservations remain estimates rather than financial charges.
 > durable state. Process creation, handshake transport, and supervisor-owned
 > handles remain separate later changes before any real Codex, Hermes, or Pi
 > adapter is treated as usable.
+> A fixed Linux x86-64 helper and test-file-local launcher now supply test-only
+> evidence that a composition-owned, one-use request reaches sealed retained-descriptor
+> execution. The fixed no-child policy denies process creation and session/group escape,
+> then proves TERM-to-KILL cleanup of the one admitted process. This is not general
+> process-tree containment. The native path is absent from production packages/images,
+> and production authorization and launching still deny.
 >
 > Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
 > `ventureos.site` is the public entry point; `staging.ventureos.site`,

@@ -100,9 +100,14 @@ published and current `main` has not been deployed to private staging.
    the sole launcher remain deny-only. A bounded I/O-free post-authentication
    JSONL session now verifies runtime-to-parent batches in memory; it is not a
    transport, durable writer, or connection. Windows native identity inspection and
-   actual process supervision remain required before any process creation or
+   actual production process supervision remain required before any process creation or
    runtime adapter. Evaluations, knowledge/playbooks, and adapter hardening
    continue afterward.
+   A fixed Linux x86-64 native helper and test-file-local launcher exercise the
+   composition-to-native one-use handoff, sealed retained-ELF execution, a fixed
+   no-child/session-escape deny policy, and root-process cleanup in tests only.
+   This is not general process-tree containment and is not exported, packaged,
+   imaged, or wired to production.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
