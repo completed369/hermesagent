@@ -28,9 +28,11 @@ Add a service-only trusted-supervisor composition boundary to `@ventureos/agent-
 7. create the immutable supervision lifecycle binding; and
 8. issue one deeply frozen, in-process launch plan and exact launcher request.
 
-Issued plans and launcher requests are registered in internal `WeakMap` state as non-serializable
-in-process capabilities. A request starts pending and is bound to its exact plan and to the earlier
-of authorization and evidence expiry. It cannot be consumed before the full plan is revalidated;
+Issued plans and launcher requests are registered in private, per-composition-instance `WeakMap`
+state as non-serializable in-process capabilities. A plan prepared by one composition instance
+cannot be executed through another instance or its launcher. A request starts pending and is bound
+to its exact owner, plan, and the earlier of authorization and evidence expiry. It cannot be
+consumed before the full plan is revalidated;
 successful plan validation activates only that request, and request validation rechecks current
 time and consumes it exactly once. Copies or caller-reconstructed objects are rejected even when
 their deterministic hashes are internally consistent. Deterministic hashes are correlation and

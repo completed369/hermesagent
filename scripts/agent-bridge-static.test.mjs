@@ -185,11 +185,15 @@ test('trusted supervisor composition requires live authority and remains deny-wi
     (composition.match(/implements TrustedSupervisorAuthorizationSource/gu) ?? []).length,
     1,
   );
-  assert.match(composition, /const launchPlanStates = new WeakMap<object, LaunchPlanState>\(\)/u);
   assert.match(
     composition,
-    /const launchRequestStates = new WeakMap<object, LaunchRequestState>\(\)/u,
+    /readonly #launchPlanStates = new WeakMap<object, LaunchPlanState>\(\)/u,
   );
+  assert.match(
+    composition,
+    /readonly #launchRequestStates = new WeakMap<object, LaunchRequestState>\(\)/u,
+  );
+  assert.doesNotMatch(composition, /\nconst launch(?:Plan|Request)States = new WeakMap/u);
   assert.match(composition, /const consumedDecisionIds = new Map<string, number>\(\)/u);
   assert.match(composition, /const consumedLaunchNonces = new Map<string, number>\(\)/u);
   assert.match(composition, /requestHash:\s*string/u);
@@ -201,8 +205,8 @@ test('trusted supervisor composition requires live authority and remains deny-wi
   assert.match(composition, /validateSupervisorAdmission/u);
   assert.match(composition, /createSupervisorProcessBinding/u);
   assert.match(composition, /async execute\(plan: unknown\): Promise<never>/u);
-  assert.match(composition, /activateTrustedSupervisorLaunchPlan\(plan\)/u);
-  assert.match(composition, /consumeRuntimeProcessLaunchRequest\(launchRequest\)/u);
+  assert.match(composition, /this\.#launchPlanStates/u);
+  assert.match(composition, /this\.#launchRequestStates/u);
   assert.match(composition, /this\.launcher\.launch/u);
   assert.match(
     composition,

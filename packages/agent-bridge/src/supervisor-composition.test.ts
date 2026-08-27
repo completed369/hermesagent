@@ -284,6 +284,37 @@ describe('trusted supervisor composition', () => {
     expect(launcher.calls).toBe(1);
   });
 
+  it('binds every plan to the exact composition owner and never calls a foreign launcher', async () => {
+    const fixture = deterministicLinuxAdmission();
+    const ownerLauncher = new RecordingDenyLauncher();
+    const foreignLauncher = new RecordingDenyLauncher();
+    const owner = new TrustedSupervisorComposition(
+      new FixtureAuthorizationSource(fixture.authorization),
+      new FixtureEvidenceReader(fixture.evidence),
+      ownerLauncher,
+    );
+    const foreign = new TrustedSupervisorComposition(
+      new DenyTrustedSupervisorAuthorizationSource(),
+      new FixtureEvidenceReader(fixture.evidence),
+      foreignLauncher,
+    );
+    const plan = await owner.prepare(input());
+
+    await expect(foreign.execute(plan)).rejects.toMatchObject({
+      code: 'AUTHORIZATION_DENIED',
+    });
+    expect(ownerLauncher.calls).toBe(0);
+    expect(foreignLauncher.calls).toBe(0);
+
+    await expect(owner.execute(plan)).rejects.toThrow('fixture launcher denied');
+    expect(ownerLauncher.calls).toBe(1);
+    expect(foreignLauncher.calls).toBe(0);
+    await expect(owner.execute(plan)).rejects.toMatchObject({
+      code: 'AUTHORIZATION_DENIED',
+    });
+    expect(ownerLauncher.calls).toBe(1);
+  });
+
   it('denies plans and activated requests at their earliest evidence or authority expiry', async () => {
     const fixture = deterministicLinuxAdmission();
     const expiredPlanLauncher = new RecordingDenyLauncher();

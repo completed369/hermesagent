@@ -37,8 +37,6 @@ interface LaunchRequestState {
   readonly plan: object;
   readonly expiresAt: number;
 }
-const launchPlanStates = new WeakMap<object, LaunchPlanState>();
-const launchRequestStates = new WeakMap<object, LaunchRequestState>();
 const consumedDecisionIds = new Map<string, number>();
 const consumedSupervisionIds = new Map<string, number>();
 const consumedLaunchNonces = new Map<string, number>();
@@ -248,7 +246,10 @@ function validateRuntimeProcessLaunchRequestShape(
   });
 }
 
-function consumeRuntimeProcessLaunchRequest(input: unknown): Readonly<RuntimeProcessLaunchRequest> {
+function consumeRuntimeProcessLaunchRequest(
+  input: unknown,
+  launchRequestStates: WeakMap<object, LaunchRequestState>,
+): Readonly<RuntimeProcessLaunchRequest> {
   if (typeof input !== 'object' || input === null)
     throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
   const state = launchRequestStates.get(input);
@@ -268,6 +269,9 @@ function consumeRuntimeProcessLaunchRequest(input: unknown): Readonly<RuntimePro
 }
 
 export class TrustedSupervisorComposition {
+  readonly #launchPlanStates = new WeakMap<object, LaunchPlanState>();
+  readonly #launchRequestStates = new WeakMap<object, LaunchRequestState>();
+
   constructor(
     private readonly authorizationSource: TrustedSupervisorAuthorizationSource,
     private readonly evidenceReader: PerAdmissionSupervisorEvidenceReader,
@@ -364,12 +368,12 @@ export class TrustedSupervisorComposition {
       expiresAt,
     };
     const plan = deepFreeze({ ...planWithoutHash, planHash: sha256(planWithoutHash) });
-    launchPlanStates.set(plan, {
+    this.#launchPlanStates.set(plan, {
       status: 'PENDING',
       request: launchRequest,
       expiresAt: expiresAtMilliseconds,
     });
-    launchRequestStates.set(launchRequest, {
+    this.#launchRequestStates.set(launchRequest, {
       status: 'PENDING',
       plan,
       expiresAt: expiresAtMilliseconds,
@@ -378,12 +382,22 @@ export class TrustedSupervisorComposition {
   }
 
   async execute(plan: unknown): Promise<never> {
-    const launchRequest = activateTrustedSupervisorLaunchPlan(plan);
-    return this.launcher.launch(consumeRuntimeProcessLaunchRequest(launchRequest));
+    const launchRequest = activateTrustedSupervisorLaunchPlan(
+      plan,
+      this.#launchPlanStates,
+      this.#launchRequestStates,
+    );
+    return this.launcher.launch(
+      consumeRuntimeProcessLaunchRequest(launchRequest, this.#launchRequestStates),
+    );
   }
 }
 
-function activateTrustedSupervisorLaunchPlan(plan: unknown): Readonly<RuntimeProcessLaunchRequest> {
+function activateTrustedSupervisorLaunchPlan(
+  plan: unknown,
+  launchPlanStates: WeakMap<object, LaunchPlanState>,
+  launchRequestStates: WeakMap<object, LaunchRequestState>,
+): Readonly<RuntimeProcessLaunchRequest> {
   if (typeof plan !== 'object' || plan === null)
     throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
   const planState = launchPlanStates.get(plan);

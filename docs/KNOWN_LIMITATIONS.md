@@ -75,9 +75,11 @@
 
 > The supervisor composition issues a deeply frozen, non-serializable in-process
 > plan only after exact authorization, evidence, admission, and lifecycle binding.
-> Internal state keeps the request pending until the exact plan is fully
-> revalidated, then current-time checks and consumes it once before invoking the
-> injected launcher. No lower-level activation or request validator is exported.
+> Private per-instance state keeps the request pending and owner-bound until the
+> exact plan is fully revalidated, then current-time checks and consumes it once
+> before invoking that instance's injected launcher. A foreign composition
+> cannot execute or consume the plan. No lower-level activation or request
+> validator is exported.
 > Its hashes are deterministic correlation/integrity evidence, not signatures or
 > tamper-proof authority. It does not retain the inspected descriptor through a
 > launch, create a process, or close the final filesystem-to-launch TOCTOU gap.
