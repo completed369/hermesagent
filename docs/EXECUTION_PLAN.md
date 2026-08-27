@@ -47,8 +47,11 @@ evidence; broker reservations remain estimates rather than financial charges.
 > runtime dependency now includes a reviewed Linux executable/admission-evidence
 > reader and a deny-by-default supervisor composition with a live per-admission
 > authorization port. Production authorization and launching still deny.
-> Process creation and transport remain separate later changes before any real
-> Codex, Hermes, or Pi adapter is treated as usable.
+> A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
+> atomic in-memory batches through scoped secret leases, without owning I/O or
+> durable state. Process creation, handshake transport, and supervisor-owned
+> handles remain separate later changes before any real Codex, Hermes, or Pi
+> adapter is treated as usable.
 >
 > Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
 > `ventureos.site` is the public entry point; `staging.ventureos.site`,
@@ -582,8 +585,9 @@ phase deliverables. Current status:
    foundations through PR #84. The runtime foundation now includes a reviewed
    Linux executable/admission-evidence reader and deny-by-default supervisor
    composition across the existing service-only bridge boundary. Its production
-   authorization source and launcher both deny. Actual process creation and real
-   adapters follow only after authenticated
+   authorization source and launcher both deny. The intervening authenticated
+   JSONL session is I/O-free and production secret resolution still denies.
+   Actual process creation and real adapters follow only after authenticated
    end-to-end evidence; Codex, Hermes, and Pi remain `NOT_CONFIGURED`.
 3. Keep running the sanitized five-image workflow against exact current `main`
    as scan evidence only. Image publication requires separate approval for that

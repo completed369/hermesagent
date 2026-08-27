@@ -97,7 +97,9 @@ published and current `main` has not been deployed to private staging.
    A Linux-only reviewed trusted executable/admission-evidence reader and a
    service-only supervisor composition now bind a live per-admission authority
    decision to an immutable, process-local launch plan. Production authority and
-   the sole launcher remain deny-only. Windows native identity inspection and
+   the sole launcher remain deny-only. A bounded I/O-free post-authentication
+   JSONL session now verifies runtime-to-parent batches in memory; it is not a
+   transport, durable writer, or connection. Windows native identity inspection and
    actual process supervision remain required before any process creation or
    runtime adapter. Evaluations, knowledge/playbooks, and adapter hardening
    continue afterward.

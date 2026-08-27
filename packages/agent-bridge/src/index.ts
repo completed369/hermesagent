@@ -9,3 +9,4 @@ export * from './supervision-lifecycle';
 export * from './supervision-authorization';
 export * from './supervision-evidence-reader';
 export * from './supervisor-composition';
+export * from './authenticated-jsonl-session';
