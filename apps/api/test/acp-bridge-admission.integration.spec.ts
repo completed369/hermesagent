@@ -907,6 +907,48 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         data: { releasedAt: new Date() },
       }),
     ).rejects.toThrow(/immutable/iu);
+    // Keep database-clock/time-zone proofs adjacent to the freshly prepared outbox.
+    // Later adversarial lease and lock waits must not turn this into an expiry test.
+    const shortClaimedAt = new Date();
+    const shortAttemptData = {
+      ...durableHandoff,
+      id: `egress-short-${suffix}`,
+      ownerReference: principalId,
+      claimIdempotencyKey: `egress-short-${suffix}`,
+      generation: 2,
+      claimedAt: shortClaimedAt,
+      expiresAt: new Date(
+        Math.min(shortClaimedAt.getTime() + 1_500, durableCapsule.expiresAt.getTime()),
+      ),
+    };
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
+        await tx.acpRuntimeConnection.update({
+          where: { workspaceId_id: { workspaceId, id: connectionId } },
+          data: { lastHeartbeatAt: new Date(Date.now() - 61_000), version: { increment: 1 } },
+        });
+        return tx.acpBridgeEgressHandoffAttempt.create({ data: shortAttemptData });
+      }),
+    ).rejects.toThrow(/live prepared durable authority/iu);
+    const directWriterAuditCount = await prisma.auditEvent.count({
+      where: {
+        workspaceReference: workspaceId,
+        subjectType: 'AcpBridgeEgressHandoffAttempt',
+      },
+    });
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
+      await tx.acpBridgeEgressHandoffAttempt.create({ data: shortAttemptData });
+    });
+    expect(
+      await prisma.auditEvent.count({
+        where: {
+          workspaceReference: workspaceId,
+          subjectType: 'AcpBridgeEgressHandoffAttempt',
+        },
+      }),
+    ).toBe(directWriterAuditCount);
     const reclaimed = await bridge.claimDispatchEgressHandoff(
       capability,
       { workspaceId, principalId },
@@ -916,7 +958,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         idempotencyKey: `egress-reclaim-${suffix}`,
       },
     );
-    expect(reclaimed.attempt.generation).toBe(2);
+    expect(reclaimed.attempt.generation).toBe(3);
     expect(reclaimed.replayed).toBe(false);
     await expect(
       prisma.acpBridgeEgressHandoffRelease.create({
@@ -996,7 +1038,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           ...durableHandoff,
           id: `egress@attempt-sql-${suffix}`,
           claimIdempotencyKey: `egress-attempt-sql-${suffix}`,
-          generation: 3,
+          generation: 4,
           claimedAt: privacyClaimedAt,
           expiresAt: new Date(
             Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
@@ -1012,7 +1054,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           ownerReference: 'principal@domain.example',
           ownerActorKind: 'SYSTEM',
           claimIdempotencyKey: `egress-at-owner-sql-${suffix}`,
-          generation: 3,
+          generation: 4,
           claimedAt: privacyClaimedAt,
           expiresAt: new Date(
             Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
@@ -1028,7 +1070,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           ownerReference: `7${'a'.repeat(256)}`,
           ownerActorKind: 'SYSTEM',
           claimIdempotencyKey: `egress-oversized-owner-sql-${suffix}`,
-          generation: 3,
+          generation: 4,
           claimedAt: privacyClaimedAt,
           expiresAt: new Date(
             Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
@@ -1054,7 +1096,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             ownerReference: privateReference,
             ownerActorKind: 'SYSTEM',
             claimIdempotencyKey: `egress-private-sql-${index}-${suffix}`,
-            generation: 3,
+            generation: 4,
             claimedAt: privacyClaimedAt,
             expiresAt: new Date(
               Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
@@ -1083,7 +1125,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       throw new Error('expected one exclusive egress handoff winner');
     }
     const raceWinner = raceWinnerResult.value;
-    expect(raceWinner.attempt.generation).toBe(3);
+    expect(raceWinner.attempt.generation).toBe(4);
     await bridge.releaseDispatchEgressHandoff(
       capability,
       { workspaceId, principalId },
@@ -1114,7 +1156,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     expect(digitLeadingClaim.attempt).toMatchObject({
       ownerReference: digitLeadingPrincipalId,
       ownerActorKind: 'SYSTEM',
-      generation: 4,
+      generation: 5,
     });
     await bridge.releaseDispatchEgressHandoff(
       digitLeadingCapability,
@@ -1149,7 +1191,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     expect(punctuatedClaim.attempt).toMatchObject({
       ownerReference: punctuatedPrincipalId,
       ownerActorKind: 'SYSTEM',
-      generation: 5,
+      generation: 6,
     });
     expect(
       (
@@ -1342,46 +1384,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       where: { workspaceId_id: { workspaceId, id: connectionId } },
       data: { lastHeartbeatAt: new Date(), version: { increment: 1 } },
     });
-    const shortClaimedAt = new Date();
-    const shortAttemptData = {
-      ...durableHandoff,
-      id: `egress-short-${suffix}`,
-      ownerReference: principalId,
-      claimIdempotencyKey: `egress-short-${suffix}`,
-      generation: 6,
-      claimedAt: shortClaimedAt,
-      expiresAt: new Date(
-        Math.min(shortClaimedAt.getTime() + 1_500, durableCapsule.expiresAt.getTime()),
-      ),
-    };
-    await expect(
-      prisma.$transaction(async (tx) => {
-        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
-        await tx.acpRuntimeConnection.update({
-          where: { workspaceId_id: { workspaceId, id: connectionId } },
-          data: { lastHeartbeatAt: new Date(Date.now() - 61_000), version: { increment: 1 } },
-        });
-        return tx.acpBridgeEgressHandoffAttempt.create({ data: shortAttemptData });
-      }),
-    ).rejects.toThrow(/live prepared durable authority/iu);
-    const directWriterAuditCount = await prisma.auditEvent.count({
-      where: {
-        workspaceReference: workspaceId,
-        subjectType: 'AcpBridgeEgressHandoffAttempt',
-      },
-    });
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
-      await tx.acpBridgeEgressHandoffAttempt.create({ data: shortAttemptData });
-    });
-    expect(
-      await prisma.auditEvent.count({
-        where: {
-          workspaceReference: workspaceId,
-          subjectType: 'AcpBridgeEgressHandoffAttempt',
-        },
-      }),
-    ).toBe(directWriterAuditCount);
     let reportClaimExpiryLock!: () => void;
     let releaseClaimExpiryLock!: () => void;
     const claimExpiryLocked = new Promise<void>((resolve) => {
