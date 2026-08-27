@@ -168,8 +168,17 @@ test('the immutable migration chain matches the reviewed sequence', () => {
     '20260825190000_durable_agent_bridge_foundation',
     '20260825230000_durable_broker_reservations',
     '20260826043000_acp_cost_governance_ledger',
-    '20260827090000_acp_dispatch_authorization_outbox',
+    '20260827090000_acp_dispatch_outbox',
   ]);
+  const unsafeRestoreReference =
+    /(?:password|passwd|secret|token|cookie|authorization|chain[-_.:/ ]?of[-_.:/ ]?thought)/u;
+  const migrationHead = migrations.at(-1);
+  assert.match(migrationHead, /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u);
+  assert.doesNotMatch(
+    migrationHead.toLowerCase(),
+    unsafeRestoreReference,
+    `migration head must remain compatible with restore-drill safe references: ${migrationHead}`,
+  );
 });
 
 test('the API egress probe uses distroless Node and remains fail-closed', () => {

@@ -143,7 +143,7 @@ test('dispatch authorization outbox is metadata-only, directional, and has no de
   );
   const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
   const migration = readFileSync(
-    'packages/database/prisma/migrations/20260827090000_acp_dispatch_authorization_outbox/migration.sql',
+    'packages/database/prisma/migrations/20260827090000_acp_dispatch_outbox/migration.sql',
     'utf8',
   );
   const outbox = schema.slice(
