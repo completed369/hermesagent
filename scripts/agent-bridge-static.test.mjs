@@ -330,6 +330,16 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
     /trigger-valid but unauthenticated correlation row without an audit event/u,
   );
   assert.doesNotMatch(migration, /INSERT INTO "audit_events"|auditService/u);
+  assert.match(
+    service,
+    /function egressAuditIdempotencyKey[\s\S]*`bridge-egress-\$\{kind\}:\$\{sha256\(\{[\s\S]*ventureos\.bridge\.egress\.\$\{kind\}\.audit\.v1/u,
+  );
+  assert.match(service, /egressAuditIdempotencyKey\('claim'/u);
+  assert.match(service, /egressAuditIdempotencyKey\('release'/u);
+  assert.doesNotMatch(
+    service,
+    /idempotencyKey:\s*`bridge-egress-(?:handoff|release):\$\{input\.idempotencyKey\}`/u,
+  );
   for (const indexName of [
     'acp_egress_handoff_claim_key',
     'acp_egress_handoff_generation_key',

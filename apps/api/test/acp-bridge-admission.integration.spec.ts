@@ -1074,13 +1074,15 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         authorityLevel: 3,
       },
     ]);
+    const punctuatedClaimIdempotencyKey = `egress-punctuated@owner-${suffix}`;
+    const punctuatedReleaseIdempotencyKey = `egress-punctuated@release-${suffix}`;
     const punctuatedClaim = await bridge.claimDispatchEgressHandoff(
       punctuatedCapability,
       { workspaceId, principalId: punctuatedPrincipalId },
       {
         attemptId: `egress-punctuated-owner-${suffix}`,
         outboxId: capsuleId,
-        idempotencyKey: `egress-punctuated@owner-${suffix}`,
+        idempotencyKey: punctuatedClaimIdempotencyKey,
       },
     );
     expect(punctuatedClaim.attempt).toMatchObject({
@@ -1088,15 +1090,75 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       ownerActorKind: 'SYSTEM',
       generation: 5,
     });
-    await bridge.releaseDispatchEgressHandoff(
+    expect(
+      (
+        await bridge.claimDispatchEgressHandoff(
+          punctuatedCapability,
+          { workspaceId, principalId: punctuatedPrincipalId },
+          {
+            attemptId: punctuatedClaim.attempt.id,
+            outboxId: capsuleId,
+            idempotencyKey: punctuatedClaimIdempotencyKey,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+    const punctuatedRelease = await bridge.releaseDispatchEgressHandoff(
       punctuatedCapability,
       { workspaceId, principalId: punctuatedPrincipalId },
       {
         releaseId: `egress-punctuated-release-${suffix}`,
         attemptId: punctuatedClaim.attempt.id,
-        idempotencyKey: `egress-punctuated@release-${suffix}`,
+        idempotencyKey: punctuatedReleaseIdempotencyKey,
       },
     );
+    expect(punctuatedRelease.replayed).toBe(false);
+    expect(
+      (
+        await bridge.releaseDispatchEgressHandoff(
+          punctuatedCapability,
+          { workspaceId, principalId: punctuatedPrincipalId },
+          {
+            releaseId: punctuatedRelease.release.id,
+            attemptId: punctuatedClaim.attempt.id,
+            idempotencyKey: punctuatedReleaseIdempotencyKey,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+    const punctuatedClaimAuditKey = `bridge-egress-claim:${sha256Canonical({
+      domain: 'ventureos.bridge.egress.claim.audit.v1',
+      workspaceId,
+      attemptId: punctuatedClaim.attempt.id,
+      outboxId: punctuatedClaim.attempt.outboxId,
+      ownerReference: punctuatedClaim.attempt.ownerReference,
+      ownerActorKind: punctuatedClaim.attempt.ownerActorKind,
+      claimIdempotencyKey: punctuatedClaimIdempotencyKey,
+    })}`;
+    const punctuatedReleaseAuditKey = `bridge-egress-release:${sha256Canonical({
+      domain: 'ventureos.bridge.egress.release.audit.v1',
+      workspaceId,
+      releaseId: punctuatedRelease.release.id,
+      attemptId: punctuatedRelease.release.attemptId,
+      outboxId: punctuatedRelease.release.outboxId,
+      ownerReference: punctuatedRelease.release.ownerReference,
+      ownerActorKind: punctuatedRelease.release.ownerActorKind,
+      releaseIdempotencyKey: punctuatedReleaseIdempotencyKey,
+    })}`;
+    const punctuatedAuditRows = await prisma.auditEvent.findMany({
+      where: {
+        workspaceReference: workspaceId,
+        idempotencyKey: { in: [punctuatedClaimAuditKey, punctuatedReleaseAuditKey] },
+      },
+      orderBy: { idempotencyKey: 'asc' },
+    });
+    expect(punctuatedAuditRows).toHaveLength(2);
+    expect(punctuatedAuditRows.map((row) => row.idempotencyKey).sort()).toEqual(
+      [punctuatedClaimAuditKey, punctuatedReleaseAuditKey].sort(),
+    );
+    expect(punctuatedClaimAuditKey).not.toBe(punctuatedReleaseAuditKey);
+    expect(JSON.stringify(punctuatedAuditRows)).not.toContain(punctuatedClaimIdempotencyKey);
+    expect(JSON.stringify(punctuatedAuditRows)).not.toContain(punctuatedReleaseIdempotencyKey);
     const secretRequestsBeforeAtOwner = secretLeaseRequests.length;
     expect(() =>
       OperationalEventCapability.issue('CONTROL_PLANE', [

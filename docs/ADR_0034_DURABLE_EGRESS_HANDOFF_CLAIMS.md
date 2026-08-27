@@ -25,7 +25,10 @@ contract. A still-live attempt excludes competitors. The
 exact same authenticated owner/idempotency tuple may replay only while live,
 after re-signing the frame and constant-time comparison of every durable
 digest. Both directional keys are zeroed. Service-created attempt metadata and
-its zero-payload audit event commit atomically.
+its zero-payload audit event commit atomically. Claim and release audit
+idempotency references are separate, domain-separated canonical SHA-256
+digests of their exact owner, object, and idempotency bindings. Raw caller
+idempotency text is never copied into an audit event.
 
 Natural expiry never rewrites an attempt. The same authenticated principal and
 actor kind may end a live claim early through a separate immutable release row

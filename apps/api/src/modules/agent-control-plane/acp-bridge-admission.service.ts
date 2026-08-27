@@ -114,6 +114,16 @@ function sha256(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
+function egressAuditIdempotencyKey(
+  kind: 'claim' | 'release',
+  binding: Readonly<Record<string, unknown>>,
+): string {
+  return `bridge-egress-${kind}:${sha256({
+    ...binding,
+    domain: `ventureos.bridge.egress.${kind}.audit.v1`,
+  })}`;
+}
+
 function exactDigestMatch(left: string, right: string): boolean {
   return (
     SHA256.test(left) &&
@@ -1877,7 +1887,14 @@ export class AcpBridgeAdmissionService
                         subjectType: 'AcpBridgeEgressHandoffAttempt',
                         subjectId: attempt.id,
                         occurredAt: claimedAt.toISOString(),
-                        idempotencyKey: `bridge-egress-handoff:${input.idempotencyKey}`,
+                        idempotencyKey: egressAuditIdempotencyKey('claim', {
+                          workspaceId: context.workspaceId,
+                          attemptId: attempt.id,
+                          outboxId: attempt.outboxId,
+                          ownerReference: attempt.ownerReference,
+                          ownerActorKind: attempt.ownerActorKind,
+                          claimIdempotencyKey: attempt.claimIdempotencyKey,
+                        }),
                         correlationId: outbox.runId,
                         facts: { payloadFieldCount: 0, payloadBytes: 0 },
                       },
@@ -2031,7 +2048,15 @@ export class AcpBridgeAdmissionService
                   subjectType: 'AcpBridgeEgressHandoffRelease',
                   subjectId: release.id,
                   occurredAt: release.releasedAt.toISOString(),
-                  idempotencyKey: `bridge-egress-release:${input.idempotencyKey}`,
+                  idempotencyKey: egressAuditIdempotencyKey('release', {
+                    workspaceId: context.workspaceId,
+                    releaseId: release.id,
+                    attemptId: release.attemptId,
+                    outboxId: release.outboxId,
+                    ownerReference: release.ownerReference,
+                    ownerActorKind: release.ownerActorKind,
+                    releaseIdempotencyKey: release.releaseIdempotencyKey,
+                  }),
                   correlationId: attempt.runId,
                   facts: { payloadFieldCount: 0, payloadBytes: 0 },
                 },
