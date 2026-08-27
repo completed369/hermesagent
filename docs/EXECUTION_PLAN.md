@@ -44,10 +44,11 @@ workspace/task budget ledger. This recognizes spend only after exact bridge
 evidence; broker reservations remain estimates rather than financial charges.
 
 > The next
-> runtime dependency is a reviewed trusted executable/admission-evidence reader
-> and deny-by-default supervisor composition. Process creation and transport
-> remain separate later changes before any real Codex, Hermes, or Pi adapter is
-> treated as usable.
+> runtime dependency now includes a reviewed Linux executable/admission-evidence
+> reader and a deny-by-default supervisor composition with a live per-admission
+> authorization port. Production authorization and launching still deny.
+> Process creation and transport remain separate later changes before any real
+> Codex, Hermes, or Pi adapter is treated as usable.
 >
 > Active delivery order and approval boundaries are tracked in `ROADMAP.md`.
 > `ventureos.site` is the public entry point; `staging.ventureos.site`,
@@ -578,10 +579,11 @@ phase deliverables. Current status:
    mock-only under the founder's 2026-07-14 decision; Phase 8 billing remains
    mock-only under ADR-010. Neither milestone is a release-readiness claim.
 2. Preserve the merged workspace/collaboration and Agent Control Plane
-   foundations through PR #84. The next runtime dependency is a reviewed
-   trusted executable/admission-evidence reader and deny-by-default supervisor
-   composition across the existing service-only bridge boundary. Actual process
-   creation and real adapters follow only after authenticated
+   foundations through PR #84. The runtime foundation now includes a reviewed
+   Linux executable/admission-evidence reader and deny-by-default supervisor
+   composition across the existing service-only bridge boundary. Its production
+   authorization source and launcher both deny. Actual process creation and real
+   adapters follow only after authenticated
    end-to-end evidence; Codex, Hermes, and Pi remain `NOT_CONFIGURED`.
 3. Keep running the sanitized five-image workflow against exact current `main`
    as scan evidence only. Image publication requires separate approval for that

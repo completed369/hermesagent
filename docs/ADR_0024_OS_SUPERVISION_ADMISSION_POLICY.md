@@ -92,9 +92,9 @@ namespace, no-breakaway, or launch-time identity enforcement.
 
 ## Next dependency
 
-ADR-0027 proposes a separately reviewed Linux trusted executable identity and test-authorization
-reader that still cannot launch; production authorization and Windows remain unsupported. The
-next process-related slice is a deny-by-default supervisor composition contract. Actual process
-creation requires atomic identity
+ADR-0027 adds a separately reviewed Linux trusted executable identity and test-authorization
+reader that still cannot launch. ADR-0029 composes it behind a live per-admission authorization
+port and issues only an in-process exact plan; production authorization and launching still deny,
+and Windows remains unsupported. Actual process creation requires atomic identity
 verification, isolation, cancellation, cleanup, and resource enforcement plus
 the existing bridge, broker, task/run, approval, audit, and secret boundaries.

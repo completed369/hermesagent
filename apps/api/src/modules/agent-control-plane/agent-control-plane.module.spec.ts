@@ -1,4 +1,11 @@
 import { Test } from '@nestjs/testing';
+import {
+  DenyRuntimeProcessLauncher,
+  DenyTrustedSupervisorAuthorizationSource,
+  RUNTIME_PROCESS_LAUNCHER,
+  TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE,
+  TrustedSupervisorComposition,
+} from '@ventureos/agent-bridge';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@ventureos/database', () => ({
@@ -10,8 +17,8 @@ vi.mock('@ventureos/database', () => ({
   },
 }));
 
-import { AcpTaskRunService } from './acp-task-run.service';
 import { AgentControlPlaneModule } from './agent-control-plane.module';
+import { AcpTaskRunService } from './acp-task-run.service';
 import { ConfigModule } from '../../config/config.module';
 import { ENV_TOKEN } from '../../config/env.provider';
 
@@ -25,6 +32,13 @@ describe('AgentControlPlaneModule', () => {
       .compile();
 
     expect(moduleRef.get(AcpTaskRunService)).toBeInstanceOf(AcpTaskRunService);
+    expect(moduleRef.get(TrustedSupervisorComposition)).toBeInstanceOf(
+      TrustedSupervisorComposition,
+    );
+    expect(moduleRef.get(TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE)).toBeInstanceOf(
+      DenyTrustedSupervisorAuthorizationSource,
+    );
+    expect(moduleRef.get(RUNTIME_PROCESS_LAUNCHER)).toBeInstanceOf(DenyRuntimeProcessLauncher);
     await moduleRef.close();
   });
 });

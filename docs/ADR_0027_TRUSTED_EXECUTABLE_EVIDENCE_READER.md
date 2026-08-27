@@ -59,7 +59,8 @@ authorization signer, runtime adapter, provider, deployment, publication, or sta
 
 ## Next dependency
 
-Compose this reader with the pure admission and lifecycle policies behind a production launcher
-that still denies, then add bounded deterministic-fixture JSONL transport. Actual runtime process
+The deny-by-default composition in ADR-0029 now performs a live per-admission authorization read,
+then binds this reader, the pure admission policy, and the lifecycle record into an in-process
+exact launch plan. Production authorization and launching still deny. Actual runtime process
 creation requires a separately reviewed native supervisor and complete authenticated round-trip
 evidence.
