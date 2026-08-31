@@ -8,6 +8,7 @@ const packageFiles = [
   'packages/agent-bridge/src/codec.ts',
   'packages/agent-bridge/src/codex-app-server-policy.ts',
   'packages/agent-bridge/src/codex-app-server-session.ts',
+  'packages/agent-bridge/src/codex-authenticated-registration.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
@@ -78,6 +79,23 @@ test('Codex app-server session is bounded, I/O-free, and cannot promote runtime 
   assert.match(session, /method: 'turn\/start'/u);
   assert.match(session, /method: 'turn\/interrupt'/u);
   assert.doesNotMatch(session, /experimentalApi:\s*true/u);
+});
+
+test('Codex registration translation hashes account evidence and grants no authority', () => {
+  const registration = readFileSync(
+    'packages/agent-bridge/src/codex-authenticated-registration.ts',
+    'utf8',
+  );
+  assert.doesNotMatch(
+    registration,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(registration, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.doesNotMatch(registration, /account\/login|accessToken|apiKey:\s*|Prisma|@Controller/u);
+  assert.match(registration, /method !== 'account\/read'/u);
+  assert.match(registration, /params\.refreshToken !== false/u);
+  assert.match(registration, /registrationAuthorization: 'NOT_CONFIGURED'/u);
+  assert.match(registration, /runtimeConnection: 'NOT_CONFIGURED'/u);
 });
 
 test('production secret resolution is deny-only and has no ambient credential source', () => {

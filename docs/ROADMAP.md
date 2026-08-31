@@ -84,6 +84,12 @@ published and current `main` has not been deployed to private staging.
   retains no task or result text, rejects out-of-order and unreviewed shapes,
   exposes no transport or provider operation, and leaves runtime truth
   `NOT_CONFIGURED`.
+- Codex now has an inert authenticated-registration translation boundary. It
+  joins the revalidated command policy, pristine initialized protocol state,
+  authenticated VentureOS bridge identity, and a correlated non-refreshing
+  account-state declaration, while hashing and discarding account details. It
+  grants no durable registration or provider authority and keeps Codex
+  `NOT_CONFIGURED`.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
