@@ -958,8 +958,7 @@ export class AcpBridgeAdmissionService
               idempotencyKey: `${input.idempotencyKey}:event`,
               correlationId: candidate.sessionId,
               facts: {
-                status: 'NOT_CONFIGURED',
-                runtimeId: candidate.runtimeId,
+                connectionId: candidate.connectionId,
                 health: candidate.health,
                 sequence: candidate.sequence,
               },

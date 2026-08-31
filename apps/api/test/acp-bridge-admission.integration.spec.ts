@@ -635,8 +635,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       },
     });
     expect(heartbeatAudit.after).toEqual({
-      status: 'NOT_CONFIGURED',
-      runtimeId: candidate.runtimeId,
+      connectionId: candidate.connectionId,
       health: 'HEALTHY',
       sequence: 1,
     });
