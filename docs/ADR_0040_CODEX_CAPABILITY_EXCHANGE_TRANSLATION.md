@@ -39,12 +39,12 @@ source denies by default. This authorization is necessary but not sufficient
 for any future durable acceptance and grants no provider or execution
 authority. Codex, Hermes, and Pi remain `NOT_CONFIGURED`.
 
-## Next safe slice
+## Follow-on
 
-Add a tenant-scoped immutable durable acceptance boundary bound to the exact
-ADR-0039 registration row and an independently verified capability policy.
-It must leave connection status `NOT_CONFIGURED` and must not admit heartbeat,
-dispatch, result, artifact, usage, or connected-state evidence.
+ADR-0041 adds the separately reviewed tenant-scoped immutable durable
+acceptance boundary. This translator remains I/O-free and non-authorizing;
+durable acceptance does not retroactively make a catalog observation a
+provider or runtime connection.
 
 ## Source
 

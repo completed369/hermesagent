@@ -17,7 +17,9 @@ import {
   CODEX_APP_SERVER_ARGUMENT_POLICY,
   CODEX_APP_SERVER_ARGV,
   BridgeProtocolError,
+  codexCapabilityExchangeAuthorizationRequestHash,
   codexRegistrationAuthorizationRequestHash,
+  createCodexCapabilityExchangeCandidate,
   createCodexAuthenticatedRegistrationCandidate,
   deriveBridgeKeys,
   DenyBridgeSecretLeaseResolver,
@@ -30,6 +32,8 @@ import {
   verifyBridgeEnvelope,
   type BridgeSecretLeaseRequest,
   type BridgeSecretLeaseResolver,
+  type CodexCapabilityExchangeAuthorizationRequest,
+  type CodexCapabilityExchangeAuthorizationSource,
   type CodexRegistrationAuthorizationRequest,
   type CodexRegistrationAuthorizationSource,
 } from '@ventureos/agent-bridge';
@@ -101,6 +105,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     brokerVerifier: { verify: AcpBrokerReservationService['verify'] } = brokerReservations,
     auditService: AuditService = new AuditService(),
     codexAuthorizations?: CodexRegistrationAuthorizationSource,
+    codexCapabilityAuthorizations?: CodexCapabilityExchangeAuthorizationSource,
   ) {
     return new AcpBridgeAdmissionService(
       auditService,
@@ -109,7 +114,9 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       {
         async verify(_workspace, _runtime, policyHash, codes) {
           return (
-            policyHash === capabilityPolicyHash && codes.join(',') === 'health.read,quality.verify'
+            policyHash === capabilityPolicyHash &&
+            (codes.join(',') === 'health.read,quality.verify' ||
+              (codes.length > 0 && codes.every((code) => code.startsWith('codex.catalog.'))))
           );
         },
       },
@@ -125,6 +132,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       },
       costGovernance,
       codexAuthorizations,
+      codexCapabilityAuthorizations,
     );
   }
 
@@ -358,19 +366,44 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     const authorizationExpiresAt = new Date(authorizationIssuedAt.getTime() + 4 * 60_000);
     const authorizationId = `authorization-${registrationSuffix}`;
     const requests: Readonly<CodexRegistrationAuthorizationRequest>[] = [];
-    const authorizedBridge = testBridge(undefined, undefined, undefined, {
-      async read(request) {
-        requests.push(request);
-        return {
-          schemaVersion: 1,
-          authorizationId,
-          requestHash: codexRegistrationAuthorizationRequestHash(request),
-          authorizedByReference: 'control-plane:codex-registration-policy-v1',
-          issuedAt: authorizationIssuedAt.toISOString(),
-          expiresAt: authorizationExpiresAt.toISOString(),
-        };
+    const capabilityObservedAt = new Date(observedAt.getTime() + 2_000);
+    const capabilityAuthorizationIssuedAt = new Date(observedAt.getTime() + 3_000);
+    const capabilityAuthorizationExpiresAt = new Date(
+      capabilityAuthorizationIssuedAt.getTime() + 4 * 60_000,
+    );
+    const capabilityAuthorizationId = `capability-authorization-${registrationSuffix}`;
+    const capabilityRequests: Readonly<CodexCapabilityExchangeAuthorizationRequest>[] = [];
+    const authorizedBridge = testBridge(
+      undefined,
+      undefined,
+      undefined,
+      {
+        async read(request) {
+          requests.push(request);
+          return {
+            schemaVersion: 1,
+            authorizationId,
+            requestHash: codexRegistrationAuthorizationRequestHash(request),
+            authorizedByReference: 'control-plane:codex-registration-policy-v1',
+            issuedAt: authorizationIssuedAt.toISOString(),
+            expiresAt: authorizationExpiresAt.toISOString(),
+          };
+        },
       },
-    });
+      {
+        async read(request) {
+          capabilityRequests.push(request);
+          return {
+            schemaVersion: 1,
+            authorizationId: capabilityAuthorizationId,
+            requestHash: codexCapabilityExchangeAuthorizationRequestHash(request),
+            authorizedByReference: 'control-plane:codex-capability-policy-v1',
+            issuedAt: capabilityAuthorizationIssuedAt.toISOString(),
+            expiresAt: capabilityAuthorizationExpiresAt.toISOString(),
+          };
+        },
+      },
+    );
     const input = {
       candidate,
       environment: 'LOCAL_CONTROLLED',
@@ -418,6 +451,130 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     ).toBe(true);
     expect(requests).toHaveLength(2);
 
+    const capabilityCandidate = createCodexCapabilityExchangeCandidate({
+      registration: candidate,
+      exchange: {
+        request: { method: 'model/list', id: 42, params: { limit: 20, includeHidden: false } },
+        response: {
+          id: 42,
+          result: {
+            data: [
+              {
+                id: 'gpt-5.6-sol',
+                model: 'gpt-5.6-sol',
+                displayName: 'GPT 5.6 Sol',
+                hidden: false,
+                defaultReasoningEffort: 'low',
+                supportedReasoningEfforts: [
+                  { reasoningEffort: 'low', description: 'Fast' },
+                  { reasoningEffort: 'high', description: 'Thorough' },
+                ],
+                inputModalities: ['text', 'image'],
+                supportsPersonality: true,
+                isDefault: true,
+              },
+            ],
+            nextCursor: null,
+          },
+        },
+        observedAt: capabilityObservedAt.toISOString(),
+      },
+    });
+    const capabilityInput = {
+      candidate: capabilityCandidate,
+      capabilityPolicyHash,
+      idempotencyKey: `capability-${registrationSuffix}`,
+    };
+    await expect(
+      bridge.acceptCodexCapabilityExchange(
+        capability,
+        { workspaceId, principalId },
+        capabilityInput,
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    const acceptedCapability = await authorizedBridge.acceptCodexCapabilityExchange(
+      capability,
+      { workspaceId, principalId },
+      capabilityInput,
+    );
+    expect(acceptedCapability.replayed).toBe(false);
+    expect(acceptedCapability.runtime.status).toBe('NOT_CONFIGURED');
+    expect(acceptedCapability.connection).toMatchObject({
+      status: 'NOT_CONFIGURED',
+      capabilityCodes: [],
+      capabilityDigest: null,
+    });
+    expect(acceptedCapability.evidence).toMatchObject({
+      capabilityCandidateHash: capabilityCandidate.capabilityCandidateHash,
+      registrationCandidateHash: candidate.registrationCandidateHash,
+      capabilityCodes: capabilityCandidate.capabilityCodes,
+      authorizationId: capabilityAuthorizationId,
+    });
+    expect(JSON.stringify(acceptedCapability.evidence)).not.toMatch(
+      /gpt-5\.6-sol|GPT 5\.6 Sol|Fast|Thorough|accessToken|apiKey/u,
+    );
+    const [durableCapability] = await prisma.$queryRaw<
+      Array<{
+        capabilityCandidateHash: string;
+        capabilityCodes: string[];
+        authorizationId: string;
+      }>
+    >(Prisma.sql`
+      SELECT "capabilityCandidateHash", "capabilityCodes", "authorizationId"
+      FROM "acp_runtime_capability_evidence"
+      WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+        AND "capabilityCandidateHash" = ${capabilityCandidate.capabilityCandidateHash}
+    `);
+    expect(durableCapability).toEqual({
+      capabilityCandidateHash: capabilityCandidate.capabilityCandidateHash,
+      capabilityCodes: capabilityCandidate.capabilityCodes,
+      authorizationId: capabilityAuthorizationId,
+    });
+    const capabilityAudit = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        workspaceReference: workspaceId,
+        source: 'CONTROL_PLANE',
+        entityType: 'AcpRuntimeCapabilityEvidence',
+        entityId: capabilityCandidate.capabilityCandidateHash,
+      },
+    });
+    expect(capabilityAudit.after).toEqual({
+      status: 'NOT_CONFIGURED',
+      runtimeId: candidate.runtimeId,
+    });
+    expect(
+      (
+        await authorizedBridge.acceptCodexCapabilityExchange(
+          capability,
+          { workspaceId, principalId },
+          capabilityInput,
+        )
+      ).replayed,
+    ).toBe(true);
+    expect(capabilityRequests).toHaveLength(2);
+    await expect(
+      authorizedBridge.acceptCodexCapabilityExchange(
+        capability,
+        { workspaceId, principalId },
+        { ...capabilityInput, idempotencyKey: `capability-drift-${registrationSuffix}` },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "acp_runtime_capability_evidence"
+        SET "modelCount" = 2
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "capabilityCandidateHash" = ${capabilityCandidate.capabilityCandidateHash}
+      `),
+    ).rejects.toThrow();
+    await expect(
+      authorizedBridge.acceptCodexCapabilityExchange(
+        capability,
+        { workspaceId, principalId },
+        { ...capabilityInput, capabilityPolicyHash: 'b'.repeat(64) },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+
     const mismatchedSecretReference = `vault-codex-mismatch-${suffix}`;
     trustedSecrets.set(mismatchedSecretReference, new Uint8Array(32).fill(5));
     await expect(
@@ -452,6 +609,43 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           ...input,
           candidate: otherCandidate,
           idempotencyKey: `register-tenant-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    const otherCapabilityCandidate = createCodexCapabilityExchangeCandidate({
+      registration: otherCandidate,
+      exchange: {
+        request: { method: 'model/list', id: 7, params: { limit: 1, includeHidden: false } },
+        response: {
+          id: 7,
+          result: {
+            data: [
+              {
+                id: 'tenant-model',
+                model: 'tenant-model',
+                displayName: 'Tenant model',
+                hidden: false,
+                defaultReasoningEffort: 'low',
+                supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }],
+                inputModalities: ['text'],
+                supportsPersonality: false,
+                isDefault: true,
+              },
+            ],
+            nextCursor: null,
+          },
+        },
+        observedAt: new Date(Date.now() - 2_000).toISOString(),
+      },
+    });
+    await expect(
+      authorizedBridge.acceptCodexCapabilityExchange(
+        capability,
+        { workspaceId, principalId },
+        {
+          candidate: otherCapabilityCandidate,
+          capabilityPolicyHash,
+          idempotencyKey: `capability-tenant-${suffix}`,
         },
       ),
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);

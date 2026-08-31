@@ -8,6 +8,7 @@ import {
   BRIDGE_TEST_ONLY_GATE,
   BRIDGE_PROTOCOL_VERSION,
   CODEX_APP_SERVER_ADAPTER_KIND,
+  CODEX_CAPABILITY_EXCHANGE_AUTHORIZATION_SOURCE,
   CODEX_REGISTRATION_AUTHORIZATION_SOURCE,
   BridgeProtocolError,
   canonicalJson,
@@ -22,8 +23,13 @@ import {
   signBridgeEnvelope,
   BridgeSecretLeaseError,
   codexRegistrationAuthorizationRequestHash,
+  codexCapabilityExchangeAuthorizationRequestHash,
+  createCodexCapabilityExchangeAuthorizationRequest,
   createCodexRegistrationAuthorizationRequest,
+  DenyCodexCapabilityExchangeAuthorizationSource,
   DenyCodexRegistrationAuthorizationSource,
+  validateCodexCapabilityExchangeAuthorizationDecision,
+  validateCodexCapabilityExchangeCandidate,
   validateCodexAuthenticatedRegistrationCandidate,
   validateCodexRegistrationAuthorizationDecision,
   type BridgeArtifactContentVerifier,
@@ -34,6 +40,8 @@ import {
   type BridgeSecretLeaseResolver,
   type BridgeTestOnlyGate,
   type CodexAuthenticatedRegistrationCandidate,
+  type CodexCapabilityExchangeAuthorizationSource,
+  type CodexCapabilityExchangeCandidate,
   type CodexRegistrationAuthorizationSource,
   type TrustedBridgeBrokerEvidence,
 } from '@ventureos/agent-bridge';
@@ -56,6 +64,33 @@ export class AcpBridgeAdmissionError extends Error {}
 export class AcpBridgeAdmissionDeniedError extends AcpBridgeAdmissionError {}
 export class AcpBridgeAdmissionConflictError extends AcpBridgeAdmissionError {}
 export class AcpBridgeAdmissionNotFoundError extends AcpBridgeAdmissionError {}
+
+interface CodexCapabilityEvidenceRow {
+  readonly workspaceId: string;
+  readonly capabilityCandidateHash: string;
+  readonly registrationCandidateHash: string;
+  readonly runtimeId: string;
+  readonly connectionId: string;
+  readonly sessionId: string;
+  readonly principalReference: string;
+  readonly adapterKind: string;
+  readonly authGeneration: number;
+  readonly bridgeIdentityHash: string;
+  readonly accountEvidenceHash: string;
+  readonly modelCatalogHash: string;
+  readonly capabilityCodes: string[];
+  readonly capabilityDigest: string;
+  readonly modelCount: number;
+  readonly observedAt: Date;
+  readonly authorizationId: string;
+  readonly authorizationRequestHash: string;
+  readonly authorizedByReference: string;
+  readonly authorizationIssuedAt: Date;
+  readonly authorizationExpiresAt: Date;
+  readonly capabilityPolicyHash: string;
+  readonly capabilityIdempotencyKey: string;
+  readonly createdAt: Date;
+}
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
@@ -169,6 +204,12 @@ export interface RegisterCodexRuntimeInput {
   readonly idempotencyKey: string;
 }
 
+export interface AcceptCodexCapabilityExchangeInput {
+  readonly candidate: Readonly<CodexCapabilityExchangeCandidate>;
+  readonly capabilityPolicyHash: string;
+  readonly idempotencyKey: string;
+}
+
 export interface PrepareBridgeDispatchInput {
   readonly dispatchId: string;
   readonly agentId: string;
@@ -233,6 +274,8 @@ export class AcpBridgeAdmissionService
     private readonly costGovernance: AcpCostGovernanceService,
     @Inject(CODEX_REGISTRATION_AUTHORIZATION_SOURCE)
     private readonly codexRegistrationAuthorizations: CodexRegistrationAuthorizationSource = new DenyCodexRegistrationAuthorizationSource(),
+    @Inject(CODEX_CAPABILITY_EXCHANGE_AUTHORIZATION_SOURCE)
+    private readonly codexCapabilityAuthorizations: CodexCapabilityExchangeAuthorizationSource = new DenyCodexCapabilityExchangeAuthorizationSource(),
   ) {}
 
   async registerCodexRuntime(
@@ -456,6 +499,239 @@ export class AcpBridgeAdmissionService
       )
         throw new AcpBridgeAdmissionConflictError(
           'Concurrent Codex registration conflict; retry with current durable state',
+        );
+      throw error;
+    }
+  }
+
+  async acceptCodexCapabilityExchange(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: AcceptCodexCapabilityExchangeInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    reference(input.idempotencyKey, 'idempotencyKey');
+    digest(input.capabilityPolicyHash, 'capabilityPolicyHash');
+    let candidate: Readonly<CodexCapabilityExchangeCandidate>;
+    try {
+      candidate = validateCodexCapabilityExchangeCandidate(input.candidate);
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Invalid Codex capability evidence');
+    }
+    if (
+      candidate.workspaceId !== context.workspaceId ||
+      candidate.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+      candidate.authGeneration !== 1
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex capability identity is not admissible');
+    if (
+      !(await this.capabilityPolicy.verify(
+        context.workspaceId,
+        candidate.runtimeId,
+        input.capabilityPolicyHash,
+        candidate.capabilityCodes,
+      ))
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex catalog claims are not policy-authorized');
+
+    const authorizationRequest = createCodexCapabilityExchangeAuthorizationRequest(
+      candidate,
+      input.capabilityPolicyHash,
+      input.idempotencyKey,
+    );
+    const authorizationRequestHash =
+      codexCapabilityExchangeAuthorizationRequestHash(authorizationRequest);
+    let authorization: ReturnType<typeof validateCodexCapabilityExchangeAuthorizationDecision>;
+    try {
+      authorization = validateCodexCapabilityExchangeAuthorizationDecision(
+        await this.codexCapabilityAuthorizations.read(authorizationRequest),
+        authorizationRequestHash,
+      );
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Codex capability authorization denied');
+    }
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const now = await databaseNow(tx);
+          const observedAt = new Date(candidate.observedAt);
+          const authorizationIssuedAt = new Date(authorization.issuedAt);
+          const authorizationExpiresAt = new Date(authorization.expiresAt);
+          if (
+            observedAt > now ||
+            now.getTime() - observedAt.getTime() > 5 * 60_000 ||
+            authorizationIssuedAt < observedAt ||
+            authorizationIssuedAt > now ||
+            authorizationExpiresAt <= now
+          )
+            throw new AcpBridgeAdmissionDeniedError('Codex capability evidence expired');
+
+          const [existingRows, registration] = await Promise.all([
+            tx.$queryRaw<CodexCapabilityEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_runtime_capability_evidence"
+              WHERE "workspaceId" = CAST(${context.workspaceId} AS uuid)
+                AND (
+                  "capabilityCandidateHash" = ${candidate.capabilityCandidateHash}
+                  OR "capabilityIdempotencyKey" = ${input.idempotencyKey}
+                  OR "authorizationId" = ${authorization.authorizationId}
+                )
+              FOR SHARE
+            `),
+            tx.acpRuntimeRegistrationEvidence.findUnique({
+              where: {
+                workspaceId_registrationCandidateHash: {
+                  workspaceId: context.workspaceId,
+                  registrationCandidateHash: candidate.registrationCandidateHash,
+                },
+              },
+              include: { connection: { include: { runtime: true } } },
+            }),
+          ]);
+          const existingByCandidate = existingRows.find(
+            (row) => row.capabilityCandidateHash === candidate.capabilityCandidateHash,
+          );
+          const existingByKey = existingRows.find(
+            (row) => row.capabilityIdempotencyKey === input.idempotencyKey,
+          );
+          const existingAuthorization = existingRows.find(
+            (row) => row.authorizationId === authorization.authorizationId,
+          );
+          const existingEvidence = existingByCandidate ?? existingByKey;
+          if (existingEvidence) {
+            if (!registration)
+              throw new AcpBridgeAdmissionConflictError('Codex capability registration missing');
+            const connection = registration.connection;
+            const runtime = connection.runtime;
+            if (
+              existingByCandidate?.capabilityIdempotencyKey !== input.idempotencyKey ||
+              existingByKey?.capabilityCandidateHash !== candidate.capabilityCandidateHash ||
+              existingEvidence.registrationCandidateHash !== candidate.registrationCandidateHash ||
+              existingEvidence.runtimeId !== candidate.runtimeId ||
+              existingEvidence.connectionId !== candidate.connectionId ||
+              existingEvidence.sessionId !== candidate.sessionId ||
+              existingEvidence.principalReference !== candidate.principalReference ||
+              existingEvidence.bridgeIdentityHash !== candidate.bridgeIdentityHash ||
+              existingEvidence.accountEvidenceHash !== candidate.accountEvidenceHash ||
+              existingEvidence.modelCatalogHash !== candidate.modelCatalogHash ||
+              JSON.stringify(existingEvidence.capabilityCodes) !==
+                JSON.stringify(candidate.capabilityCodes) ||
+              existingEvidence.capabilityDigest !== candidate.capabilityDigest ||
+              existingEvidence.modelCount !== candidate.modelCount ||
+              existingEvidence.observedAt.getTime() !== observedAt.getTime() ||
+              existingEvidence.authorizationId !== authorization.authorizationId ||
+              existingEvidence.authorizationRequestHash !== authorizationRequestHash ||
+              existingEvidence.authorizedByReference !== authorization.authorizedByReference ||
+              existingEvidence.authorizationIssuedAt.getTime() !==
+                authorizationIssuedAt.getTime() ||
+              existingEvidence.authorizationExpiresAt.getTime() !==
+                authorizationExpiresAt.getTime() ||
+              existingEvidence.capabilityPolicyHash !== input.capabilityPolicyHash ||
+              runtime.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+              runtime.status !== 'NOT_CONFIGURED' ||
+              runtime.capabilityPolicyHash !== input.capabilityPolicyHash ||
+              connection.status !== 'NOT_CONFIGURED' ||
+              connection.authGeneration !== candidate.authGeneration ||
+              connection.capabilityCodes.length !== 0 ||
+              connection.capabilityDigest !== null
+            )
+              throw new AcpBridgeAdmissionConflictError('Codex capability replay drifted');
+            return { runtime, connection, evidence: existingEvidence, replayed: true };
+          }
+          if (existingAuthorization)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex capability authorization already used',
+            );
+          if (!registration)
+            throw new AcpBridgeAdmissionNotFoundError('Codex registration evidence not found');
+
+          const connection = registration.connection;
+          const runtime = connection.runtime;
+          const registrationObservedAt = registration.observedAt;
+          if (
+            registration.runtimeId !== candidate.runtimeId ||
+            registration.connectionId !== candidate.connectionId ||
+            registration.sessionId !== candidate.sessionId ||
+            registration.principalReference !== candidate.principalReference ||
+            registration.adapterKind !== candidate.adapterKind ||
+            registration.authGeneration !== candidate.authGeneration ||
+            registration.bridgeIdentityHash !== candidate.bridgeIdentityHash ||
+            registration.accountEvidenceHash !== candidate.accountEvidenceHash ||
+            observedAt < registrationObservedAt ||
+            observedAt.getTime() - registrationObservedAt.getTime() > 5 * 60_000 ||
+            runtime.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+            runtime.status !== 'NOT_CONFIGURED' ||
+            runtime.capabilityPolicyHash !== input.capabilityPolicyHash ||
+            connection.status !== 'NOT_CONFIGURED' ||
+            connection.authGeneration !== candidate.authGeneration ||
+            connection.capabilityCodes.length !== 0 ||
+            connection.capabilityDigest !== null
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex capability evidence does not match durable registration',
+            );
+
+          const [evidence] = await tx.$queryRaw<CodexCapabilityEvidenceRow[]>(Prisma.sql`
+            INSERT INTO "acp_runtime_capability_evidence" (
+              "workspaceId", "capabilityCandidateHash", "registrationCandidateHash",
+              "runtimeId", "connectionId", "sessionId", "principalReference", "adapterKind",
+              "authGeneration", "bridgeIdentityHash", "accountEvidenceHash", "modelCatalogHash",
+              "capabilityCodes", "capabilityDigest", "modelCount", "observedAt",
+              "authorizationId", "authorizationRequestHash", "authorizedByReference",
+              "authorizationIssuedAt", "authorizationExpiresAt", "capabilityPolicyHash",
+              "capabilityIdempotencyKey"
+            ) VALUES (
+              CAST(${context.workspaceId} AS uuid), ${candidate.capabilityCandidateHash},
+              ${candidate.registrationCandidateHash}, ${candidate.runtimeId},
+              ${candidate.connectionId}, ${candidate.sessionId}, ${candidate.principalReference},
+              ${candidate.adapterKind}, ${candidate.authGeneration}, ${candidate.bridgeIdentityHash},
+              ${candidate.accountEvidenceHash}, ${candidate.modelCatalogHash},
+              ARRAY[${Prisma.join(candidate.capabilityCodes)}]::text[],
+              ${candidate.capabilityDigest}, ${candidate.modelCount}, ${observedAt},
+              ${authorization.authorizationId}, ${authorizationRequestHash},
+              ${authorization.authorizedByReference}, ${authorizationIssuedAt},
+              ${authorizationExpiresAt}, ${input.capabilityPolicyHash}, ${input.idempotencyKey}
+            )
+            RETURNING *
+          `);
+          if (!evidence)
+            throw new AcpBridgeAdmissionConflictError('Codex capability evidence was not stored');
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'runtime.connection.updated',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpRuntimeCapabilityEvidence',
+              subjectId: candidate.capabilityCandidateHash,
+              occurredAt: now.toISOString(),
+              idempotencyKey: `${input.idempotencyKey}:event`,
+              correlationId: candidate.sessionId,
+              facts: {
+                status: 'NOT_CONFIGURED',
+                runtimeId: candidate.runtimeId,
+              },
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          return { runtime, connection, evidence, replayed: false };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && error.meta?.code === '23505'))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex capability conflict; retry with current durable state',
         );
       throw error;
     }
