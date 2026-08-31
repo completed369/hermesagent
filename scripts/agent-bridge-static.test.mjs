@@ -6,6 +6,7 @@ const packageFiles = [
   'packages/agent-bridge/src/authenticated-jsonl-session.ts',
   'packages/agent-bridge/src/auth.ts',
   'packages/agent-bridge/src/codec.ts',
+  'packages/agent-bridge/src/codex-app-server-policy.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
@@ -32,6 +33,33 @@ test('Agent Bridge foundation contains no transport, network, or process executi
   );
   assert.doesNotMatch(source, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
   assert.doesNotMatch(source, /@Controller\s*\(/u);
+});
+
+test('Codex app-server policy is exact, inert, and cannot promote runtime truth', () => {
+  const policy = readFileSync('packages/agent-bridge/src/codex-app-server-policy.ts', 'utf8');
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const runtimeMigration = readFileSync(
+    'packages/database/prisma/migrations/20260825190000_durable_agent_bridge_foundation/migration.sql',
+    'utf8',
+  );
+  assert.doesNotMatch(
+    policy,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(policy, /\bprocess\.(?:env|cwd|platform)\b|@Controller\s*\(|Prisma/u);
+  assert.doesNotMatch(policy, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.match(policy, /'app-server',[\s\S]*'--listen',[\s\S]*'stdio:\/\/'/u);
+  assert.match(policy, /launchAuthorization: 'NOT_CONFIGURED'/u);
+  assert.match(policy, /providerAccess: 'NOT_CONFIGURED'/u);
+  assert.match(policy, /manifest\.network/u);
+  assert.match(index, /codex-app-server-policy/u);
+  assert.match(module, /new DenyTrustedSupervisorAuthorizationSource\(\)/u);
+  assert.match(module, /new DenyRuntimeProcessLauncher\(\)/u);
+  assert.doesNotMatch(runtimeMigration, /CODEX_APP_SERVER_STDIO_V1/u);
 });
 
 test('production secret resolution is deny-only and has no ambient credential source', () => {
