@@ -93,6 +93,13 @@
 > reads no Codex authentication, and grants no provider or runtime status.
 > Production authorization and launching remain deny-only and Codex remains
 > **NOT_CONFIGURED**.
+>
+> The Codex protocol layer is also currently an I/O-free state machine. It can
+> construct and validate one bounded initialize/thread/turn/interrupt lifecycle,
+> but it has no transport, process, authentication, registration, capability,
+> heartbeat, dispatch, artifact, usage, audit, or provider integration. It
+> retains hashes and correlation identifiers rather than task or result text and
+> cannot promote runtime status. Codex remains **NOT_CONFIGURED**.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
