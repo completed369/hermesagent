@@ -74,6 +74,21 @@ function exact(value: unknown, keys: readonly string[]): JsonRecord {
   return result;
 }
 
+function exactVariant(value: unknown, variants: readonly (readonly string[])[]): JsonRecord {
+  const result = record(value);
+  const actual = Object.keys(result).sort();
+  if (
+    !variants.some((keys) => {
+      const expected = [...keys].sort();
+      return (
+        actual.length === expected.length && actual.every((key, index) => key === expected[index])
+      );
+    })
+  )
+    throw new CodexAppServerSessionError('INVALID_MESSAGE');
+  return result;
+}
+
 function reference(value: unknown): string {
   if (typeof value !== 'string' || !REFERENCE.test(value))
     throw new CodexAppServerSessionError('INVALID_MESSAGE');
@@ -124,6 +139,7 @@ export class CodexAppServerProtocolSession {
   #threadId: string | null = null;
   #turnId: string | null = null;
   #terminalStatus: 'completed' | 'interrupted' | 'failed' | null = null;
+  #validationRestrictionsAccepted = false;
   #acceptedEvents = 0;
   #acceptedBytes = 0;
 
@@ -137,6 +153,10 @@ export class CodexAppServerProtocolSession {
       acceptedBytes: this.#acceptedBytes,
       runtimeConnection: 'NOT_CONFIGURED',
     });
+  }
+
+  validationRestrictionsAccepted(): boolean {
+    return this.#validationRestrictionsAccepted;
   }
 
   initialize(): Readonly<JsonRecord> {
@@ -153,13 +173,25 @@ export class CodexAppServerProtocolSession {
   acceptInitializeResponse(input: unknown): void {
     this.#admit(() => {
       this.#require('INITIALIZE_PENDING');
+      byteLength(input);
       const response = this.#response(input);
-      const result = exact(response.result, ['userAgent', 'platformFamily', 'platformOs']);
+      const result = exactVariant(response.result, [
+        ['userAgent', 'platformFamily', 'platformOs'],
+        ['userAgent', 'codexHome', 'platformFamily', 'platformOs'],
+      ]);
       if (
         typeof result.userAgent !== 'string' ||
         result.userAgent.length === 0 ||
         result.userAgent.length > 256 ||
         CONTROL.test(result.userAgent)
+      )
+        return this.#deny('INVALID_MESSAGE');
+      if (
+        Object.hasOwn(result, 'codexHome') &&
+        (typeof result.codexHome !== 'string' ||
+          result.codexHome.length === 0 ||
+          result.codexHome.length > 4_096 ||
+          CONTROL.test(result.codexHome))
       )
         return this.#deny('INVALID_MESSAGE');
       reference(result.platformFamily);
@@ -177,7 +209,11 @@ export class CodexAppServerProtocolSession {
 
   startThread(): Readonly<JsonRecord> {
     this.#require('INITIALIZED');
-    const message = { method: 'thread/start', id: this.#allocateId(), params: {} };
+    const message = {
+      method: 'thread/start',
+      id: this.#allocateId(),
+      params: { approvalPolicy: 'never', ephemeral: true, sandbox: 'read-only' },
+    };
     this.#state = 'THREAD_PENDING';
     return freeze(message);
   }
@@ -185,9 +221,64 @@ export class CodexAppServerProtocolSession {
   acceptThreadResponse(input: unknown): void {
     this.#admit(() => {
       this.#require('THREAD_PENDING');
+      byteLength(input);
       const response = this.#response(input);
-      const result = exact(response.result, ['thread']);
+      const result = exactVariant(response.result, [
+        ['thread'],
+        [
+          'thread',
+          'model',
+          'modelProvider',
+          'serviceTier',
+          'cwd',
+          'instructionSources',
+          'approvalPolicy',
+          'approvalsReviewer',
+          'sandbox',
+          'reasoningEffort',
+        ],
+      ]);
       const thread = record(result.thread);
+      if (Object.hasOwn(result, 'model')) {
+        exact(thread, [
+          'id',
+          'sessionId',
+          'forkedFromId',
+          'parentThreadId',
+          'preview',
+          'ephemeral',
+          'section',
+          'sectionEnteredAt',
+          'projectId',
+          'historyMode',
+          'modelProvider',
+          'createdAt',
+          'updatedAt',
+          'recencyAt',
+          'status',
+          'path',
+          'cwd',
+          'cliVersion',
+          'source',
+          'threadSource',
+          'agentNickname',
+          'agentRole',
+          'gitInfo',
+          'name',
+          'turns',
+        ]);
+        const sandbox = exact(result.sandbox, ['type', 'networkAccess']);
+        if (
+          result.approvalPolicy !== 'never' ||
+          sandbox.type !== 'readOnly' ||
+          sandbox.networkAccess !== false ||
+          thread.ephemeral !== true ||
+          !Array.isArray(thread.turns) ||
+          thread.turns.length !== 0
+        )
+          return this.#deny('INVALID_MESSAGE');
+        this.#validationRestrictionsAccepted = true;
+      }
       this.#threadId = reference(thread.id);
       this.#pendingId = null;
       this.#state = 'THREAD_READY';
@@ -206,7 +297,12 @@ export class CodexAppServerProtocolSession {
     const message = {
       method: 'turn/start',
       id: this.#allocateId(),
-      params: { threadId: this.#threadId, input: [{ type: 'text', text }] },
+      params: {
+        threadId: this.#threadId,
+        input: [{ type: 'text', text }],
+        approvalPolicy: 'never',
+        sandboxPolicy: { type: 'readOnly', networkAccess: false },
+      },
     };
     this.#state = 'TURN_PENDING';
     return freeze(message);
@@ -215,9 +311,13 @@ export class CodexAppServerProtocolSession {
   acceptTurnResponse(input: unknown): void {
     this.#admit(() => {
       this.#require('TURN_PENDING');
+      byteLength(input);
       const response = this.#response(input);
       const result = exact(response.result, ['turn']);
-      const turn = exact(result.turn, ['id', 'status', 'items', 'error']);
+      const turn = exactVariant(result.turn, [
+        ['id', 'status', 'items', 'error'],
+        ['id', 'items', 'itemsView', 'status', 'error', 'startedAt', 'completedAt', 'durationMs'],
+      ]);
       if (turn.status !== 'inProgress' || !Array.isArray(turn.items) || turn.items.length !== 0)
         return this.#deny('INVALID_MESSAGE');
       if (turn.error !== null) return this.#deny('REMOTE_ERROR');
@@ -256,7 +356,10 @@ export class CodexAppServerProtocolSession {
       if (notification.method !== 'turn/completed') return this.#deny('INVALID_MESSAGE');
       const params = exact(notification.params, ['threadId', 'turn']);
       if (reference(params.threadId) !== this.#threadId) return this.#deny('CORRELATION_MISMATCH');
-      const turn = exact(params.turn, ['id', 'status', 'items', 'error']);
+      const turn = exactVariant(params.turn, [
+        ['id', 'status', 'items', 'error'],
+        ['id', 'items', 'itemsView', 'status', 'error', 'startedAt', 'completedAt', 'durationMs'],
+      ]);
       if (reference(turn.id) !== this.#turnId) return this.#deny('CORRELATION_MISMATCH');
       if (!['completed', 'interrupted', 'failed'].includes(turn.status as string))
         return this.#deny('INVALID_MESSAGE');

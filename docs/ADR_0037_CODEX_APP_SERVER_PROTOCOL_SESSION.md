@@ -11,11 +11,12 @@ transport or starting a process. The state machine constructs only:
 
 1. one `initialize` request with fixed VentureOS client metadata;
 2. one `initialized` notification after a correlated successful response;
-3. one `thread/start` request;
-4. one bounded text-only `turn/start` request; and
+3. one ephemeral, approval-denied, read-only `thread/start` request;
+4. one bounded text-only `turn/start` request with an explicit read-only,
+   no-network sandbox override; and
 5. at most one correlated `turn/interrupt` request.
 
-It accepts exact correlated response shapes and one terminal
+It accepts the exact correlated minimal and reviewed current stable response shapes and one terminal
 `turn/completed` notification. Request IDs, thread IDs, and turn IDs must match
 the active state. Pre-handshake, repeated, out-of-order, experimental, unknown,
 and uncorrelated messages fail the session closed.

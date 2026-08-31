@@ -20,7 +20,11 @@ function initialize(session: CodexAppServerProtocolSession): void {
 }
 
 function startThread(session: CodexAppServerProtocolSession): void {
-  expect(session.startThread()).toEqual({ method: 'thread/start', id: 2, params: {} });
+  expect(session.startThread()).toEqual({
+    method: 'thread/start',
+    id: 2,
+    params: { approvalPolicy: 'never', ephemeral: true, sandbox: 'read-only' },
+  });
   session.acceptThreadResponse({ id: 2, result: { thread: { id: 'thr_123' } } });
 }
 
@@ -28,7 +32,12 @@ function startTurn(session: CodexAppServerProtocolSession, text = 'Run the appro
   expect(session.startTurn(text)).toEqual({
     method: 'turn/start',
     id: 3,
-    params: { threadId: 'thr_123', input: [{ type: 'text', text }] },
+    params: {
+      threadId: 'thr_123',
+      input: [{ type: 'text', text }],
+      approvalPolicy: 'never',
+      sandboxPolicy: { type: 'readOnly', networkAccess: false },
+    },
   });
   session.acceptTurnResponse({
     id: 3,
@@ -37,6 +46,97 @@ function startTurn(session: CodexAppServerProtocolSession, text = 'Run the appro
 }
 
 describe('Codex app-server protocol session', () => {
+  it('admits the reviewed current stable additive response profile without retaining it', () => {
+    const session = new CodexAppServerProtocolSession();
+    session.initialize();
+    session.acceptInitializeResponse({
+      id: 1,
+      result: {
+        userAgent: 'codex-cli/1',
+        codexHome: '/tmp/codex-home',
+        platformFamily: 'unix',
+        platformOs: 'linux',
+      },
+    });
+    session.initialized();
+    session.startThread();
+    session.acceptThreadResponse({
+      id: 2,
+      result: {
+        thread: {
+          id: 'thr_123',
+          sessionId: 'session_123',
+          forkedFromId: null,
+          parentThreadId: null,
+          preview: '',
+          ephemeral: true,
+          section: null,
+          sectionEnteredAt: null,
+          projectId: null,
+          historyMode: 'legacy',
+          modelProvider: 'openai',
+          createdAt: 1,
+          updatedAt: 1,
+          recencyAt: 1,
+          status: { type: 'idle' },
+          path: null,
+          cwd: '/tmp/workspace',
+          cliVersion: '1.0.0',
+          source: 'appServer',
+          threadSource: null,
+          agentNickname: null,
+          agentRole: null,
+          gitInfo: null,
+          name: null,
+          turns: [],
+        },
+        model: 'model-1',
+        modelProvider: 'openai',
+        serviceTier: null,
+        cwd: '/tmp/workspace',
+        instructionSources: [],
+        approvalPolicy: 'never',
+        approvalsReviewer: 'user',
+        sandbox: { type: 'readOnly', networkAccess: false },
+        reasoningEffort: 'low',
+      },
+    });
+    session.startTurn('validation');
+    session.acceptTurnResponse({
+      id: 3,
+      result: {
+        turn: {
+          id: 'turn_456',
+          items: [],
+          itemsView: 'notLoaded',
+          status: 'inProgress',
+          error: null,
+          startedAt: 1,
+          completedAt: null,
+          durationMs: null,
+        },
+      },
+    });
+    expect(
+      session.acceptTurnCompleted({
+        method: 'turn/completed',
+        params: {
+          threadId: 'thr_123',
+          turn: {
+            id: 'turn_456',
+            items: [{ type: 'agentMessage', id: 'item-1', text: 'validated' }],
+            itemsView: 'full',
+            status: 'completed',
+            error: null,
+            startedAt: 1,
+            completedAt: 2,
+            durationMs: 1_000,
+          },
+        },
+      }),
+    ).toMatchObject({ status: 'completed', runtimeConnection: 'NOT_CONFIGURED' });
+  });
+
   it('models one exact bounded lifecycle without promoting runtime truth', () => {
     const session = new CodexAppServerProtocolSession();
     initialize(session);

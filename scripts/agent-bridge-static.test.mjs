@@ -14,6 +14,7 @@ const packageFiles = [
   'packages/agent-bridge/src/codex-heartbeat.ts',
   'packages/agent-bridge/src/codex-validation-dispatch.ts',
   'packages/agent-bridge/src/codex-validation-egress-controller.ts',
+  'packages/agent-bridge/src/codex-validation-protocol-runner.ts',
   'packages/agent-bridge/src/codex-validation-round-trip.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
@@ -108,6 +109,33 @@ test('Codex app-server session is bounded, I/O-free, and cannot promote runtime 
   assert.match(session, /method: 'turn\/start'/u);
   assert.match(session, /method: 'turn\/interrupt'/u);
   assert.doesNotMatch(session, /experimentalApi:\s*true/u);
+});
+
+test('Codex validation runner is dispatch-bound, side-effect denied, and uncomposed', () => {
+  const runner = readFileSync(
+    'packages/agent-bridge/src/codex-validation-protocol-runner.ts',
+    'utf8',
+  );
+  const session = readFileSync('packages/agent-bridge/src/codex-app-server-session.ts', 'utf8');
+  assert.doesNotMatch(
+    runner,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(runner, /\bprocess\.(?:env|cwd|platform)\b|@Controller\s*\(|Prisma/u);
+  assert.doesNotMatch(runner, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.match(runner, /MAX_PROGRESS_EVENTS = 128/u);
+  assert.match(runner, /MAX_RUN_MS = 15_000/u);
+  assert.match(runner, /ventureos-validation:\$\{dispatchId\}/u);
+  assert.match(runner, /validationRestrictionsAccepted\(\)/u);
+  assert.match(
+    runner,
+    /SAFE_ITEM_TYPES = new Set\(\['userMessage', 'agentMessage', 'reasoning'\]\)/u,
+  );
+  assert.match(session, /approvalPolicy: 'never'/u);
+  assert.match(session, /ephemeral: true/u);
+  assert.match(session, /sandbox: 'read-only'/u);
+  assert.match(session, /sandboxPolicy: \{ type: 'readOnly', networkAccess: false \}/u);
+  assert.doesNotMatch(runner, /runtimeConnection:\s*'(?:CONNECTED|HEALTHY)'/u);
 });
 
 test('Codex registration translation hashes account evidence and grants no authority', () => {
