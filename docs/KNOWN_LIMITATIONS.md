@@ -94,12 +94,14 @@
 > Production authorization and launching remain deny-only and Codex remains
 > **NOT_CONFIGURED**.
 >
-> The Codex protocol layer is also currently an I/O-free state machine. It can
-> construct and validate one bounded initialize/thread/turn/interrupt lifecycle,
-> but it has no transport, process, authentication, registration, capability,
-> heartbeat, dispatch, artifact, usage, audit, or provider integration. It
-> retains hashes and correlation identifiers rather than task or result text and
-> cannot promote runtime status. Codex remains **NOT_CONFIGURED**.
+> The Codex protocol state machine can construct and validate one bounded
+> initialize/thread/turn/interrupt lifecycle. A separate JSONL transport now
+> provides bounded reads and writes over already-open Node streams, including
+> framing, timeout, cancellation, malformed-output, and byte-limit enforcement.
+> The two are not composed, and no production source supplies a process or
+> streams. There is still no process launch, credential access, provider call,
+> authenticated status/result admission, artifact, usage, audit, or runtime
+> promotion. Codex remains **NOT_CONFIGURED**.
 >
 > Authenticated Codex registration now has a dedicated durable evidence path.
 > It requires an exact inert candidate, a separately trusted authorization of
@@ -134,9 +136,11 @@
 > an injected local byte-write port for at most five seconds. The controller
 > defaults to denial, burns an attempted claim instead of retrying an ambiguous
 > write, and treats local byte acceptance as neither delivery nor
-> acknowledgement. There is still no production transport, Codex process
-> controller, authenticated dispatch status/result exchange, provider round
-> trip, or connected-state transition; Codex remains **NOT_CONFIGURED**.
+> acknowledgement. The separate already-open-stream JSONL transport is not
+> wired to this controller and has no positive production composition. There
+> is still no Codex process controller, authenticated dispatch status/result
+> exchange, provider round trip, or connected-state transition; Codex remains
+> **NOT_CONFIGURED**.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

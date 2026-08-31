@@ -13,6 +13,7 @@ export * from './authenticated-jsonl-session';
 export * from './egress-controller';
 export * from './codex-app-server-policy';
 export * from './codex-app-server-session';
+export * from './codex-app-server-stdio-transport';
 export * from './codex-authenticated-registration';
 export * from './codex-capability-exchange';
 export * from './codex-heartbeat';

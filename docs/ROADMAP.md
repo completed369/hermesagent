@@ -114,9 +114,10 @@ published and current `main` has not been deployed to private staging.
   challenge tied to an exact ready/unassigned durable validation run and the
   immutable heartbeat precursor. Only digests and safe references persist; the
   frame remains ephemeral and `NOT_SENT`, production authorization and secrets
-  remain deny-only, and no task/run/connection truth changes. A bounded local
-  controller/transport and authenticated status/result admission are the next
-  separately reviewed adapter boundaries.
+  remain deny-only, and no task/run/connection truth changes. A one-shot
+  controller and bounded JSONL transport over already-open Codex app-server
+  streams now exist as separate, uncomposed boundaries. Authenticated
+  status/result admission remains the next reviewed adapter boundary.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
@@ -190,9 +191,11 @@ published and current `main` has not been deployed to private staging.
    broker routing, assignment, delivery, or truth promotion. A separate
    one-shot claim can bind that exact frame to a five-second bounded local
    controller, but its production transport remains deny-only and local byte
-   acceptance is not delivery evidence. A real bounded Codex app-server
-   transport and authenticated status/result evidence remain the next safe
-   adapter slices.
+   acceptance is not delivery evidence. A bounded JSONL implementation now
+   owns framing, backpressure completion, timeouts, cancellation, and limits
+   for already-open Codex app-server streams, but no production composition
+   supplies those streams. Composed validation and authenticated status/result
+   evidence remain the next safe adapter slices.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
