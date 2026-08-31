@@ -392,6 +392,39 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
   );
 });
 
+test('bounded egress controller remains single-frame, local-only, and deny-wired', () => {
+  const controller = readFileSync('packages/agent-bridge/src/egress-controller.ts', 'utf8');
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  assert.doesNotMatch(
+    controller,
+    /from\s+['"]node:(?:child_process|cluster|net|http|https|tls|dgram|worker_threads|fs)['"]/u,
+  );
+  assert.doesNotMatch(
+    controller,
+    /\b(?:fetch|spawn|spawnSync|exec|execFile|fork|connect|createConnection|createServer)\s*\(/u,
+  );
+  assert.doesNotMatch(controller, /@Controller\s*\(|\bprocess\.(?:env|cwd|platform)\b/u);
+  assert.match(controller, /class DenyBridgeEgressTransport implements BridgeEgressTransport/u);
+  assert.equal((controller.match(/implements BridgeEgressTransport/gu) ?? []).length, 1);
+  assert.match(controller, /MAX_BRIDGE_EGRESS_WRITE_TIMEOUT_MS = 5_000/u);
+  assert.match(controller, /Promise\.race\(\[this\.transport\.write\(request\), interruption\]\)/u);
+  assert.match(controller, /payload\.schemaVersion !== 1/u);
+  assert.match(controller, /signedEnvelopeDigest/u);
+  assert.match(controller, /authenticationTagDigest/u);
+  assert.match(controller, /encoded\.fill\(0\)/u);
+  assert.match(controller, /line\.fill\(0\)/u);
+  assert.doesNotMatch(
+    controller,
+    /\b(?:SENT|DELIVERED|ACKNOWLEDGED|CONNECTED|delivery|acknowledged|connected):\s*(?:true|['"])/u,
+  );
+  assert.match(index, /export \* from ['"]\.\/egress-controller['"]/u);
+  assert.doesNotMatch(module, /BoundedBridgeEgressController|BridgeEgressTransport/u);
+});
+
 test('trusted executable evidence is Linux-only, opened-file bound, and cannot launch', () => {
   const reader = readFileSync('packages/agent-bridge/src/supervision-evidence-reader.ts', 'utf8');
   const authorization = readFileSync(
