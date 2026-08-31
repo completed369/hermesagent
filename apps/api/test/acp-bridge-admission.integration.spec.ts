@@ -732,7 +732,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           stopConditions: ['policy-denial'],
           retryPolicy: {
             maximumAttempts: 1,
-            retryableFailureCodes: [],
+            retryableFailureCodes: ['TRANSIENT'],
             stopAfterFailureCodes: ['POLICY_DENIED'],
           },
           agentPolicy: {
