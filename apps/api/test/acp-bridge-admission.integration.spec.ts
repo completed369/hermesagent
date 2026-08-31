@@ -684,6 +684,113 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       expect.arrayContaining(['mac', 'payload', 'rawLine', 'principalReference']),
     );
     expect(JSON.stringify(durableCapsule)).not.toContain(preparedAuthorization.frame.mac);
+    // Keep database-clock/time-zone proofs adjacent to the freshly prepared outbox.
+    // Later adversarial claim checks must not turn this into an expiry test.
+    const timezoneAttemptData = {
+      id: `egress-timezone-${suffix}`,
+      workspaceId,
+      outboxId: durableCapsule.id,
+      ownerReference: principalId,
+      ownerActorKind: 'SYSTEM',
+      claimIdempotencyKey: `egress-timezone-${suffix}`,
+      generation: 1,
+    };
+    const insertTimezoneAttempt = (tx: Prisma.TransactionClient) =>
+      tx.$executeRaw(Prisma.sql`
+        WITH db_clock AS (SELECT clock_timestamp() AS claimed_at)
+        INSERT INTO "acp_bridge_egress_handoff_attempts" (
+          "id", "workspaceId", "outboxId", "ownerReference", "ownerActorKind",
+          "claimIdempotencyKey", "generation", "runtimeId", "connectionId", "sessionId",
+          "dispatchId", "taskId", "runId", "agentId", "authorityLevel", "outboundSequence",
+          "messageId", "messageType", "protocolVersion", "outboxState", "brokerEvidenceId",
+          "brokerEvidenceHash", "assignmentEvidenceId", "assignmentEvidenceHash",
+          "dispatchEnvelopeHash", "policyHash", "capabilityPolicyHash", "capabilityDigest",
+          "payloadDigest", "unsignedEnvelopeDigest", "signedEnvelopeDigest",
+          "authenticationTagDigest", "outboxIdempotencyKey", "outboxIssuedAt", "outboxExpiresAt",
+          "outboxPreparedAt", "claimedAt", "expiresAt"
+        )
+        SELECT
+          ${timezoneAttemptData.id}, source."workspaceId", source."id", ${timezoneAttemptData.ownerReference},
+          ${timezoneAttemptData.ownerActorKind}, ${timezoneAttemptData.claimIdempotencyKey},
+          ${timezoneAttemptData.generation}, source."runtimeId", source."connectionId", source."sessionId",
+          source."dispatchId", source."taskId", source."runId", source."agentId",
+          source."authorityLevel", source."outboundSequence", source."messageId", source."messageType",
+          source."protocolVersion", source."state", source."brokerEvidenceId", source."brokerEvidenceHash",
+          source."assignmentEvidenceId", source."assignmentEvidenceHash", source."dispatchEnvelopeHash",
+          source."policyHash", source."capabilityPolicyHash", source."capabilityDigest",
+          source."payloadDigest", source."unsignedEnvelopeDigest", source."signedEnvelopeDigest",
+          source."authenticationTagDigest", source."idempotencyKey", source."issuedAt", source."expiresAt",
+          source."preparedAt", db_clock.claimed_at,
+          LEAST(db_clock.claimed_at + INTERVAL '10 seconds', source."expiresAt")
+        FROM db_clock
+        JOIN "acp_bridge_dispatch_outbox" source
+          ON source."workspaceId" = ${timezoneAttemptData.workspaceId}::uuid
+         AND source."id" = ${timezoneAttemptData.outboxId}
+      `);
+    const setStaleTimezoneHeartbeat = (tx: Prisma.TransactionClient) =>
+      tx.$executeRaw(Prisma.sql`
+        UPDATE "acp_runtime_connections"
+        SET "lastHeartbeatAt" = (clock_timestamp() - INTERVAL '61 seconds') AT TIME ZONE 'UTC',
+            "version" = "version" + 1
+        WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId}
+      `);
+    const setFreshTimezoneHeartbeat = (tx: Prisma.TransactionClient) =>
+      tx.$executeRaw(Prisma.sql`
+        UPDATE "acp_runtime_connections"
+        SET "lastHeartbeatAt" = clock_timestamp() AT TIME ZONE 'UTC',
+            "version" = "version" + 1
+        WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId}
+      `);
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
+        expect(await setStaleTimezoneHeartbeat(tx)).toBe(1);
+        return insertTimezoneAttempt(tx);
+      }),
+    ).rejects.toThrow(/live prepared durable authority/iu);
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
+        expect(await setStaleTimezoneHeartbeat(tx)).toBe(1);
+        return insertTimezoneAttempt(tx);
+      }),
+    ).rejects.toThrow(/live prepared durable authority/iu);
+    const directWriterAuditCount = await prisma.auditEvent.count({
+      where: {
+        workspaceReference: workspaceId,
+        entityType: 'AcpBridgeEgressHandoffAttempt',
+      },
+    });
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
+        expect(await setFreshTimezoneHeartbeat(tx)).toBe(1);
+        expect(await insertTimezoneAttempt(tx)).toBe(1);
+        throw new Error('rollback fresh Adak timezone proof');
+      }),
+    ).rejects.toThrow('rollback fresh Adak timezone proof');
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
+      expect(await setFreshTimezoneHeartbeat(tx)).toBe(1);
+      expect(await insertTimezoneAttempt(tx)).toBe(1);
+    });
+    expect(
+      await prisma.auditEvent.count({
+        where: {
+          workspaceReference: workspaceId,
+          entityType: 'AcpBridgeEgressHandoffAttempt',
+        },
+      }),
+    ).toBe(directWriterAuditCount);
+    await bridge.releaseDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        releaseId: `egress-timezone-release-${suffix}`,
+        attemptId: timezoneAttemptData.id,
+        idempotencyKey: `egress-timezone-release-${suffix}`,
+      },
+    );
     const handoffId = `egress-handoff-${suffix}`;
     const handoff = await bridge.claimDispatchEgressHandoff(
       capability,
@@ -701,7 +808,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       outboxId: capsuleId,
       ownerReference: principalId,
       ownerActorKind: 'SYSTEM',
-      generation: 1,
+      generation: 2,
       dispatchId,
       outboxState: 'PREPARED',
     });
@@ -854,7 +961,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           id: `forged-handoff-${suffix}`,
           claimIdempotencyKey: `forged-handoff-${suffix}`,
           ownerReference: `forged-owner-${suffix}`,
-          generation: 2,
+          generation: 3,
           payloadDigest: '0'.repeat(64),
           claimedAt: new Date(),
           expiresAt: new Date(Date.now() + 5_000),
@@ -907,113 +1014,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         data: { releasedAt: new Date() },
       }),
     ).rejects.toThrow(/immutable/iu);
-    // Keep database-clock/time-zone proofs adjacent to the freshly prepared outbox.
-    // Later adversarial lease and lock waits must not turn this into an expiry test.
-    const timezoneAttemptData = {
-      id: `egress-timezone-${suffix}`,
-      workspaceId,
-      outboxId: durableHandoff.outboxId,
-      ownerReference: principalId,
-      ownerActorKind: durableHandoff.ownerActorKind,
-      claimIdempotencyKey: `egress-timezone-${suffix}`,
-      generation: 2,
-    };
-    const insertTimezoneAttempt = (tx: Prisma.TransactionClient) =>
-      tx.$executeRaw(Prisma.sql`
-        WITH db_clock AS (SELECT clock_timestamp() AS claimed_at)
-        INSERT INTO "acp_bridge_egress_handoff_attempts" (
-          "id", "workspaceId", "outboxId", "ownerReference", "ownerActorKind",
-          "claimIdempotencyKey", "generation", "runtimeId", "connectionId", "sessionId",
-          "dispatchId", "taskId", "runId", "agentId", "authorityLevel", "outboundSequence",
-          "messageId", "messageType", "protocolVersion", "outboxState", "brokerEvidenceId",
-          "brokerEvidenceHash", "assignmentEvidenceId", "assignmentEvidenceHash",
-          "dispatchEnvelopeHash", "policyHash", "capabilityPolicyHash", "capabilityDigest",
-          "payloadDigest", "unsignedEnvelopeDigest", "signedEnvelopeDigest",
-          "authenticationTagDigest", "outboxIdempotencyKey", "outboxIssuedAt", "outboxExpiresAt",
-          "outboxPreparedAt", "claimedAt", "expiresAt"
-        )
-        SELECT
-          ${timezoneAttemptData.id}, source."workspaceId", source."id", ${timezoneAttemptData.ownerReference},
-          ${timezoneAttemptData.ownerActorKind}, ${timezoneAttemptData.claimIdempotencyKey},
-          ${timezoneAttemptData.generation}, source."runtimeId", source."connectionId", source."sessionId",
-          source."dispatchId", source."taskId", source."runId", source."agentId",
-          source."authorityLevel", source."outboundSequence", source."messageId", source."messageType",
-          source."protocolVersion", source."state", source."brokerEvidenceId", source."brokerEvidenceHash",
-          source."assignmentEvidenceId", source."assignmentEvidenceHash", source."dispatchEnvelopeHash",
-          source."policyHash", source."capabilityPolicyHash", source."capabilityDigest",
-          source."payloadDigest", source."unsignedEnvelopeDigest", source."signedEnvelopeDigest",
-          source."authenticationTagDigest", source."idempotencyKey", source."issuedAt", source."expiresAt",
-          source."preparedAt", db_clock.claimed_at,
-          LEAST(db_clock.claimed_at + INTERVAL '10 seconds', source."expiresAt")
-        FROM db_clock
-        JOIN "acp_bridge_dispatch_outbox" source
-          ON source."workspaceId" = ${timezoneAttemptData.workspaceId}::uuid
-         AND source."id" = ${timezoneAttemptData.outboxId}
-      `);
-    const setStaleTimezoneHeartbeat = (tx: Prisma.TransactionClient) =>
-      tx.$executeRaw(Prisma.sql`
-        UPDATE "acp_runtime_connections"
-        SET "lastHeartbeatAt" = (clock_timestamp() - INTERVAL '61 seconds') AT TIME ZONE 'UTC',
-            "version" = "version" + 1
-        WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId}
-      `);
-    const setFreshTimezoneHeartbeat = (tx: Prisma.TransactionClient) =>
-      tx.$executeRaw(Prisma.sql`
-        UPDATE "acp_runtime_connections"
-        SET "lastHeartbeatAt" = clock_timestamp() AT TIME ZONE 'UTC',
-            "version" = "version" + 1
-        WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId}
-      `);
-    await expect(
-      prisma.$transaction(async (tx) => {
-        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
-        expect(await setStaleTimezoneHeartbeat(tx)).toBe(1);
-        return insertTimezoneAttempt(tx);
-      }),
-    ).rejects.toThrow(/live prepared durable authority/iu);
-    await expect(
-      prisma.$transaction(async (tx) => {
-        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
-        expect(await setStaleTimezoneHeartbeat(tx)).toBe(1);
-        return insertTimezoneAttempt(tx);
-      }),
-    ).rejects.toThrow(/live prepared durable authority/iu);
-    const directWriterAuditCount = await prisma.auditEvent.count({
-      where: {
-        workspaceReference: workspaceId,
-        entityType: 'AcpBridgeEgressHandoffAttempt',
-      },
-    });
-    await expect(
-      prisma.$transaction(async (tx) => {
-        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
-        expect(await setFreshTimezoneHeartbeat(tx)).toBe(1);
-        expect(await insertTimezoneAttempt(tx)).toBe(1);
-        throw new Error('rollback fresh Adak timezone proof');
-      }),
-    ).rejects.toThrow('rollback fresh Adak timezone proof');
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
-      expect(await setFreshTimezoneHeartbeat(tx)).toBe(1);
-      expect(await insertTimezoneAttempt(tx)).toBe(1);
-    });
-    expect(
-      await prisma.auditEvent.count({
-        where: {
-          workspaceReference: workspaceId,
-          entityType: 'AcpBridgeEgressHandoffAttempt',
-        },
-      }),
-    ).toBe(directWriterAuditCount);
-    await bridge.releaseDispatchEgressHandoff(
-      capability,
-      { workspaceId, principalId },
-      {
-        releaseId: `egress-timezone-release-${suffix}`,
-        attemptId: timezoneAttemptData.id,
-        idempotencyKey: `egress-timezone-release-${suffix}`,
-      },
-    );
     const shortClaimedAt = new Date();
     const shortAttemptData = {
       ...durableHandoff,
