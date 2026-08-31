@@ -19,8 +19,11 @@ import {
   BridgeProtocolError,
   codexCapabilityExchangeAuthorizationRequestHash,
   codexRegistrationAuthorizationRequestHash,
+  codexValidationDispatchAuthorizationRequestHash,
   createCodexCapabilityExchangeCandidate,
   createCodexAuthenticatedRegistrationCandidate,
+  createCodexHeartbeatEvidenceCandidate,
+  createCodexValidationDispatchCandidate,
   deriveBridgeKeys,
   DenyBridgeSecretLeaseResolver,
   digestBridgePayload,
@@ -36,6 +39,8 @@ import {
   type CodexCapabilityExchangeAuthorizationSource,
   type CodexRegistrationAuthorizationRequest,
   type CodexRegistrationAuthorizationSource,
+  type CodexValidationDispatchAuthorizationRequest,
+  type CodexValidationDispatchAuthorizationSource,
 } from '@ventureos/agent-bridge';
 import { DeterministicFakeRuntime } from '../../../packages/agent-bridge/src/__tests__/fixtures/deterministic-fake';
 import { deterministicLinuxAdmission } from '../../../packages/agent-bridge/src/__tests__/fixtures/deterministic-supervision';
@@ -106,6 +111,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     auditService: AuditService = new AuditService(),
     codexAuthorizations?: CodexRegistrationAuthorizationSource,
     codexCapabilityAuthorizations?: CodexCapabilityExchangeAuthorizationSource,
+    codexValidationDispatchAuthorizations?: CodexValidationDispatchAuthorizationSource,
   ) {
     return new AcpBridgeAdmissionService(
       auditService,
@@ -133,6 +139,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       costGovernance,
       codexAuthorizations,
       codexCapabilityAuthorizations,
+      codexValidationDispatchAuthorizations,
     );
   }
 
@@ -373,6 +380,8 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     );
     const capabilityAuthorizationId = `capability-authorization-${registrationSuffix}`;
     const capabilityRequests: Readonly<CodexCapabilityExchangeAuthorizationRequest>[] = [];
+    const validationDispatchRequests: Readonly<CodexValidationDispatchAuthorizationRequest>[] = [];
+    let validationAuthorizationIssuedAt: Date | undefined;
     const authorizedBridge = testBridge(
       undefined,
       undefined,
@@ -400,6 +409,20 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             authorizedByReference: 'control-plane:codex-capability-policy-v1',
             issuedAt: capabilityAuthorizationIssuedAt.toISOString(),
             expiresAt: capabilityAuthorizationExpiresAt.toISOString(),
+          };
+        },
+      },
+      {
+        async read(request) {
+          validationDispatchRequests.push(request);
+          validationAuthorizationIssuedAt ??= new Date();
+          return {
+            schemaVersion: 1,
+            authorizationId: `validation-authorization-${registrationSuffix}`,
+            requestHash: codexValidationDispatchAuthorizationRequestHash(request),
+            authorizedByReference: 'control-plane:codex-validation-policy-v1',
+            issuedAt: validationAuthorizationIssuedAt.toISOString(),
+            expiresAt: new Date(validationAuthorizationIssuedAt.getTime() + 60_000).toISOString(),
           };
         },
       },
@@ -671,6 +694,164 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         SET "health" = 'DEGRADED'
         WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
           AND "heartbeatCandidateHash" = ${acceptedHeartbeat.evidence.heartbeatCandidateHash}
+      `),
+    ).rejects.toThrow();
+
+    const validationPlan: DurableObjectivePlanInput = {
+      workspaceId,
+      idempotencyKey: `codex-validation-plan-${registrationSuffix}`,
+      policyVersion: 'codex-validation-v1',
+      objective: {
+        id: `codex-validation-objective-${registrationSuffix}`,
+        title: 'Validate Codex runtime round trip',
+        desiredOutcome: 'Retain a bounded authenticated runtime result',
+        maximumAuthority: 3,
+        costLimit: { currency: 'EUR', maximumMinorUnits: 0, maximumComputeUnits: 10 },
+        acceptanceCriteria: ['authenticated-result'],
+        verificationCriteria: ['exact-correlation'],
+        stopConditions: ['policy-denial'],
+      },
+      projects: [
+        {
+          id: `codex-validation-project-${registrationSuffix}`,
+          title: 'Codex runtime validation',
+        },
+      ],
+      tasks: [
+        {
+          id: `codex-validation-task-${registrationSuffix}`,
+          projectId: `codex-validation-project-${registrationSuffix}`,
+          title: 'Perform zero-spend runtime validation',
+          kind: 'runtime.verify',
+          dependencyIds: [],
+          requiredAuthority: 3,
+          costLimit: { currency: 'EUR', maximumMinorUnits: 0, maximumComputeUnits: 10 },
+          estimatedDurationMs: 30_000,
+          acceptanceCriteria: ['authenticated-result'],
+          verificationCriteria: ['exact-correlation'],
+          stopConditions: ['policy-denial'],
+          retryPolicy: {
+            maximumAttempts: 1,
+            retryableFailureCodes: [],
+            stopAfterFailureCodes: ['POLICY_DENIED'],
+          },
+          agentPolicy: {
+            templateId: 'codex-runtime-validator',
+            scopes: ['codex.runtime.round-trip.v1'],
+          },
+          routingPolicy: {
+            capabilityId: 'codex.runtime.round-trip.v1',
+            maximumLatencyMs: 30_000,
+          },
+        },
+      ],
+    };
+    const validationObjective = await taskRuns.createPlan(
+      plannerCapability,
+      { workspaceId, principalId },
+      validationPlan,
+    );
+    const validationTask = validationObjective.objective.tasks[0]!;
+    const validationRun = validationTask.runs[0]!;
+    const heartbeatCandidate = createCodexHeartbeatEvidenceCandidate({
+      registration: candidate,
+      capability: capabilityCandidate,
+      bridge: heartbeatContext,
+      envelope: heartbeatEnvelope,
+    });
+    const validationIssuedAt = new Date();
+    const validationCandidate = createCodexValidationDispatchCandidate({
+      heartbeat: heartbeatCandidate,
+      dispatchId: `codex-validation-dispatch-${registrationSuffix}`,
+      taskId: validationTask.id,
+      runId: validationRun.id,
+      agentId: `agent:codex-validator-${registrationSuffix}`,
+      authorityLevel: 3,
+      taskPolicyHash: validationRun.policyHash,
+      maximumCostMinorUnits: 0,
+      maximumComputeUnits: 10,
+      maximumDurationMs: 30_000,
+      issuedAt: validationIssuedAt.toISOString(),
+      expiresAt: new Date(validationIssuedAt.getTime() + 30_000).toISOString(),
+    });
+    const validationInput = {
+      candidate: validationCandidate,
+      bridge: heartbeatContext,
+      idempotencyKey: `codex-validation-dispatch-${registrationSuffix}`,
+    };
+    await expect(
+      bridge.prepareCodexValidationDispatch(
+        capability,
+        { workspaceId, principalId },
+        validationInput,
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    const preparedValidation = await authorizedBridge.prepareCodexValidationDispatch(
+      capability,
+      { workspaceId, principalId },
+      validationInput,
+    );
+    expect(preparedValidation.replayed).toBe(false);
+    expect(preparedValidation.runtime.status).toBe('NOT_CONFIGURED');
+    expect(preparedValidation.connection.status).toBe('NOT_CONFIGURED');
+    expect(preparedValidation.run).toMatchObject({
+      status: 'PREPARED',
+      assignedAgentId: null,
+      assignedRuntimeId: null,
+      assignedConnectionId: null,
+    });
+    expect(preparedValidation.evidence).toMatchObject({
+      validationDispatchCandidateHash: validationCandidate.validationDispatchCandidateHash,
+      heartbeatCandidateHash: heartbeatCandidate.heartbeatCandidateHash,
+      dispatchId: validationCandidate.dispatchId,
+      challengeCode: 'codex.runtime.round-trip.v1',
+      maximumCostMinorUnits: 0,
+      outboundSequence: 1,
+    });
+    expect(JSON.stringify(preparedValidation.evidence)).not.toContain(preparedValidation.frame.mac);
+    expect(secretLeaseRequests.at(-1)?.purpose).toBe('SIGN_FRAME');
+    expect(() =>
+      verifyBridgeEnvelope(
+        preparedValidation.frame,
+        deriveBridgeKeys(codexSecret, heartbeatContext).parentToRuntime,
+        heartbeatContext,
+        validationIssuedAt,
+      ),
+    ).not.toThrow();
+    expect(validationDispatchRequests).toHaveLength(1);
+    expect(
+      (
+        await authorizedBridge.prepareCodexValidationDispatch(
+          capability,
+          { workspaceId, principalId },
+          validationInput,
+        )
+      ).replayed,
+    ).toBe(true);
+    expect(validationDispatchRequests).toHaveLength(2);
+    await expect(
+      authorizedBridge.prepareCodexValidationDispatch(
+        capability,
+        { workspaceId, principalId },
+        { ...validationInput, idempotencyKey: `validation-drift-${registrationSuffix}` },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      authorizedBridge.prepareCodexValidationDispatch(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...validationInput,
+          bridge: { ...heartbeatContext, runtimeNonce: 'runtime-nonce-drifted' },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "acp_codex_validation_dispatch_evidence"
+        SET "maximumComputeUnits" = 11
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "validationDispatchCandidateHash" = ${validationCandidate.validationDispatchCandidateHash}
       `),
     ).rejects.toThrow();
     await expect(

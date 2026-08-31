@@ -10,6 +10,8 @@ import {
   CODEX_APP_SERVER_ADAPTER_KIND,
   CODEX_CAPABILITY_EXCHANGE_AUTHORIZATION_SOURCE,
   CODEX_REGISTRATION_AUTHORIZATION_SOURCE,
+  CODEX_VALIDATION_CHALLENGE,
+  CODEX_VALIDATION_DISPATCH_AUTHORIZATION_SOURCE,
   BridgeProtocolError,
   canonicalJson,
   decodeBridgeBatch,
@@ -24,15 +26,21 @@ import {
   BridgeSecretLeaseError,
   codexRegistrationAuthorizationRequestHash,
   codexCapabilityExchangeAuthorizationRequestHash,
+  codexValidationDispatchAuthorizationRequestHash,
+  codexValidationDispatchUnsignedEnvelope,
   createCodexCapabilityExchangeAuthorizationRequest,
   createCodexHeartbeatEvidenceCandidate,
   createCodexRegistrationAuthorizationRequest,
+  createCodexValidationDispatchAuthorizationRequest,
   DenyCodexCapabilityExchangeAuthorizationSource,
   DenyCodexRegistrationAuthorizationSource,
+  DenyCodexValidationDispatchAuthorizationSource,
   validateCodexCapabilityExchangeAuthorizationDecision,
   validateCodexCapabilityExchangeCandidate,
   validateCodexAuthenticatedRegistrationCandidate,
   validateCodexRegistrationAuthorizationDecision,
+  validateCodexValidationDispatchAuthorizationDecision,
+  validateCodexValidationDispatchCandidate,
   validateCodexHeartbeatEvidenceCandidate,
   type AuthenticatedJsonlSessionContext,
   type BridgeArtifactContentVerifier,
@@ -47,6 +55,8 @@ import {
   type CodexCapabilityExchangeCandidate,
   type CodexRegistrationAuthorizationSource,
   type CodexHeartbeatEvidenceCandidate,
+  type CodexValidationDispatchAuthorizationSource,
+  type CodexValidationDispatchCandidate,
   type TrustedBridgeBrokerEvidence,
 } from '@ventureos/agent-bridge';
 import {
@@ -118,6 +128,48 @@ interface CodexHeartbeatEvidenceRow {
   readonly issuedAt: Date;
   readonly expiresAt: Date;
   readonly heartbeatIdempotencyKey: string;
+  readonly createdAt: Date;
+}
+
+interface CodexValidationDispatchEvidenceRow {
+  readonly workspaceId: string;
+  readonly validationDispatchCandidateHash: string;
+  readonly heartbeatCandidateHash: string;
+  readonly registrationCandidateHash: string;
+  readonly capabilityCandidateHash: string;
+  readonly runtimeId: string;
+  readonly connectionId: string;
+  readonly sessionId: string;
+  readonly principalReference: string;
+  readonly adapterKind: string;
+  readonly authGeneration: number;
+  readonly bridgeIdentityHash: string;
+  readonly secretBindingHash: string;
+  readonly capabilityDigest: string;
+  readonly dispatchId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly authorityLevel: number;
+  readonly taskPolicyHash: string;
+  readonly maximumCostMinorUnits: number;
+  readonly maximumComputeUnits: number;
+  readonly maximumDurationMs: number;
+  readonly outboundSequence: number;
+  readonly messageId: string;
+  readonly challengeCode: string;
+  readonly payloadDigest: string;
+  readonly unsignedEnvelopeDigest: string;
+  readonly signedEnvelopeDigest: string;
+  readonly authenticationTagDigest: string;
+  readonly issuedAt: Date;
+  readonly expiresAt: Date;
+  readonly authorizationId: string;
+  readonly authorizationRequestHash: string;
+  readonly authorizedByReference: string;
+  readonly authorizationIssuedAt: Date;
+  readonly authorizationExpiresAt: Date;
+  readonly dispatchIdempotencyKey: string;
   readonly createdAt: Date;
 }
 
@@ -247,6 +299,12 @@ export interface AcceptCodexHeartbeatEvidenceInput {
   readonly idempotencyKey: string;
 }
 
+export interface PrepareCodexValidationDispatchInput {
+  readonly candidate: Readonly<CodexValidationDispatchCandidate>;
+  readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
+  readonly idempotencyKey: string;
+}
+
 export interface PrepareBridgeDispatchInput {
   readonly dispatchId: string;
   readonly agentId: string;
@@ -313,6 +371,8 @@ export class AcpBridgeAdmissionService
     private readonly codexRegistrationAuthorizations: CodexRegistrationAuthorizationSource = new DenyCodexRegistrationAuthorizationSource(),
     @Inject(CODEX_CAPABILITY_EXCHANGE_AUTHORIZATION_SOURCE)
     private readonly codexCapabilityAuthorizations: CodexCapabilityExchangeAuthorizationSource = new DenyCodexCapabilityExchangeAuthorizationSource(),
+    @Inject(CODEX_VALIDATION_DISPATCH_AUTHORIZATION_SOURCE)
+    private readonly codexValidationDispatchAuthorizations: CodexValidationDispatchAuthorizationSource = new DenyCodexValidationDispatchAuthorizationSource(),
   ) {}
 
   async registerCodexRuntime(
@@ -979,6 +1039,441 @@ export class AcpBridgeAdmissionService
       )
         throw new AcpBridgeAdmissionConflictError(
           'Concurrent Codex heartbeat conflict; retry with current durable state',
+        );
+      throw error;
+    }
+  }
+
+  async prepareCodexValidationDispatch(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: PrepareCodexValidationDispatchInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    reference(input.idempotencyKey, 'idempotencyKey');
+    let candidate: Readonly<CodexValidationDispatchCandidate>;
+    try {
+      candidate = validateCodexValidationDispatchCandidate(input.candidate);
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Invalid Codex validation dispatch evidence');
+    }
+    if (
+      candidate.workspaceId !== context.workspaceId ||
+      candidate.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+      candidate.authGeneration !== 1 ||
+      candidate.maximumCostMinorUnits !== 0
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex validation dispatch is not admissible');
+
+    for (const [field, value] of Object.entries({
+      workspaceId: input.bridge.workspaceId,
+      runtimeId: input.bridge.runtimeId,
+      connectionId: input.bridge.connectionId,
+      sessionId: input.bridge.sessionId,
+      principalReference: input.bridge.principalReference,
+      parentNonce: input.bridge.parentNonce,
+      runtimeNonce: input.bridge.runtimeNonce,
+      secretReference: input.bridge.secretReference,
+    }))
+      reference(value, field);
+    digest(input.bridge.expectedSecretDigest, 'expectedSecretDigest');
+    if (
+      input.bridge.schemaVersion !== 1 ||
+      !Number.isSafeInteger(input.bridge.authGeneration) ||
+      input.bridge.authGeneration !== candidate.authGeneration
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex validation bridge identity is invalid');
+    const authenticatedAt = new Date(input.bridge.authenticatedAt);
+    const bridgeExpiresAt = new Date(input.bridge.expiresAt);
+    if (
+      !Number.isFinite(authenticatedAt.getTime()) ||
+      authenticatedAt.toISOString() !== input.bridge.authenticatedAt ||
+      !Number.isFinite(bridgeExpiresAt.getTime()) ||
+      bridgeExpiresAt.toISOString() !== input.bridge.expiresAt
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex validation bridge window is invalid');
+    const bridgeIdentityHash = sha256({
+      authGeneration: input.bridge.authGeneration,
+      authenticatedAt: input.bridge.authenticatedAt,
+      connectionId: input.bridge.connectionId,
+      expectedSecretDigest: input.bridge.expectedSecretDigest,
+      expiresAt: input.bridge.expiresAt,
+      parentNonce: input.bridge.parentNonce,
+      principalReference: input.bridge.principalReference,
+      runtimeNonce: input.bridge.runtimeNonce,
+      runtimeId: input.bridge.runtimeId,
+      secretReference: input.bridge.secretReference,
+      sessionId: input.bridge.sessionId,
+      workspaceId: input.bridge.workspaceId,
+    });
+    const secretBindingHash = sha256({
+      expectedSecretDigest: input.bridge.expectedSecretDigest,
+      secretReference: input.bridge.secretReference,
+    });
+    if (
+      candidate.workspaceId !== input.bridge.workspaceId ||
+      candidate.runtimeId !== input.bridge.runtimeId ||
+      candidate.connectionId !== input.bridge.connectionId ||
+      candidate.sessionId !== input.bridge.sessionId ||
+      candidate.principalReference !== input.bridge.principalReference ||
+      candidate.bridgeIdentityHash !== bridgeIdentityHash ||
+      candidate.secretBindingHash !== secretBindingHash ||
+      new Date(candidate.expiresAt) > bridgeExpiresAt
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex validation bridge identity drifted');
+
+    const authorizationRequest = createCodexValidationDispatchAuthorizationRequest(
+      candidate,
+      input.idempotencyKey,
+    );
+    const authorizationRequestHash =
+      codexValidationDispatchAuthorizationRequestHash(authorizationRequest);
+    let authorization: ReturnType<typeof validateCodexValidationDispatchAuthorizationDecision>;
+    try {
+      authorization = validateCodexValidationDispatchAuthorizationDecision(
+        await this.codexValidationDispatchAuthorizations.read(authorizationRequest),
+        authorizationRequestHash,
+      );
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Codex validation dispatch authorization denied');
+    }
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const now = await databaseNow(tx);
+          const issuedAt = new Date(candidate.issuedAt);
+          const expiresAt = new Date(candidate.expiresAt);
+          const authorizationIssuedAt = new Date(authorization.issuedAt);
+          const authorizationExpiresAt = new Date(authorization.expiresAt);
+          if (
+            issuedAt > now ||
+            now.getTime() - issuedAt.getTime() > 60_000 ||
+            expiresAt <= now ||
+            authorizationIssuedAt < issuedAt ||
+            authorizationIssuedAt > now ||
+            authorizationExpiresAt <= now
+          )
+            throw new AcpBridgeAdmissionDeniedError('Codex validation dispatch expired');
+
+          await Promise.all([
+            tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId"=${context.workspaceId}::uuid AND "id"=${candidate.runId} FOR UPDATE`,
+            ),
+            tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId"=${context.workspaceId}::uuid AND "id"=${candidate.taskId} FOR UPDATE`,
+            ),
+            tx.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId"=${context.workspaceId}::uuid AND "id"=${candidate.connectionId} FOR SHARE`,
+            ),
+          ]);
+          const [registration, capabilityRows, heartbeatRows, run, existingRows] =
+            await Promise.all([
+              tx.acpRuntimeRegistrationEvidence.findUnique({
+                where: {
+                  workspaceId_registrationCandidateHash: {
+                    workspaceId: context.workspaceId,
+                    registrationCandidateHash: candidate.registrationCandidateHash,
+                  },
+                },
+                include: { connection: { include: { runtime: true } } },
+              }),
+              tx.$queryRaw<CodexCapabilityEvidenceRow[]>(Prisma.sql`
+                SELECT * FROM "acp_runtime_capability_evidence"
+                WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                  AND "capabilityCandidateHash"=${candidate.capabilityCandidateHash}
+                FOR SHARE
+              `),
+              tx.$queryRaw<CodexHeartbeatEvidenceRow[]>(Prisma.sql`
+                SELECT * FROM "acp_runtime_heartbeat_evidence"
+                WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                  AND "heartbeatCandidateHash"=${candidate.heartbeatCandidateHash}
+                FOR SHARE
+              `),
+              tx.acpRun.findUnique({
+                where: {
+                  workspaceId_id: { workspaceId: context.workspaceId, id: candidate.runId },
+                },
+                include: { task: { include: { objective: true } } },
+              }),
+              tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
+                SELECT * FROM "acp_codex_validation_dispatch_evidence"
+                WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                  AND (
+                    "validationDispatchCandidateHash"=${candidate.validationDispatchCandidateHash}
+                    OR "dispatchIdempotencyKey"=${input.idempotencyKey}
+                    OR "authorizationId"=${authorization.authorizationId}
+                    OR "dispatchId"=${candidate.dispatchId}
+                    OR "messageId"=${candidate.messageId}
+                    OR "heartbeatCandidateHash"=${candidate.heartbeatCandidateHash}
+                    OR "runId"=${candidate.runId}
+                  )
+                FOR SHARE
+              `),
+            ]);
+          const capabilityEvidence = capabilityRows[0];
+          const heartbeatEvidence = heartbeatRows[0];
+          if (!registration || !capabilityEvidence || !heartbeatEvidence || !run)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex validation dispatch precursor evidence not found',
+            );
+          const connection = registration.connection;
+          const runtime = connection.runtime;
+          const routingPolicy = run.task.routingPolicy as Record<string, unknown>;
+          const agentPolicy = run.task.agentPolicy as Record<string, unknown>;
+          if (
+            !routingPolicy ||
+            typeof routingPolicy !== 'object' ||
+            Array.isArray(routingPolicy) ||
+            JSON.stringify(Object.keys(routingPolicy).sort()) !==
+              JSON.stringify(['capabilityId', 'maximumLatencyMs']) ||
+            routingPolicy.capabilityId !== CODEX_VALIDATION_CHALLENGE ||
+            routingPolicy.maximumLatencyMs !== candidate.maximumDurationMs ||
+            !agentPolicy ||
+            typeof agentPolicy !== 'object' ||
+            Array.isArray(agentPolicy) ||
+            JSON.stringify(Object.keys(agentPolicy).sort()) !==
+              JSON.stringify(['scopes', 'templateId']) ||
+            agentPolicy.templateId !== 'codex-runtime-validator' ||
+            !Array.isArray(agentPolicy.scopes) ||
+            JSON.stringify(agentPolicy.scopes) !== JSON.stringify([CODEX_VALIDATION_CHALLENGE])
+          )
+            throw new AcpBridgeAdmissionDeniedError('Codex validation task policy is not exact');
+          if (
+            run.taskId !== candidate.taskId ||
+            run.workspaceId !== context.workspaceId ||
+            run.objectiveId !== run.task.objectiveId ||
+            run.status !== 'PREPARED' ||
+            run.task.status !== 'READY' ||
+            run.requiredAuthority !== candidate.authorityLevel ||
+            run.task.requiredAuthority !== candidate.authorityLevel ||
+            run.requiredAuthority >= 4 ||
+            run.policyHash !== candidate.taskPolicyHash ||
+            run.task.policyHash !== candidate.taskPolicyHash ||
+            run.policyVersion !== run.task.policyVersion ||
+            run.task.kind !== 'runtime.verify' ||
+            run.task.maximumCostMinorUnits !== 0n ||
+            run.task.maximumComputeUnits !== BigInt(candidate.maximumComputeUnits) ||
+            run.task.estimatedDurationMs !== BigInt(candidate.maximumDurationMs) ||
+            run.task.objective.status !== 'ACTIVE' ||
+            run.task.objective.maximumAuthority < candidate.authorityLevel ||
+            run.task.objective.maximumCostMinorUnits !== 0n ||
+            run.task.objective.maximumComputeUnits < BigInt(candidate.maximumComputeUnits) ||
+            run.assignedAgentId !== null ||
+            run.assignedRuntimeId !== null ||
+            run.assignedConnectionId !== null ||
+            run.task.assignedAgentId !== null ||
+            run.task.assignedRuntimeId !== null ||
+            run.task.assignedConnectionId !== null
+          )
+            throw new AcpBridgeAdmissionDeniedError('Codex validation run is not admissible');
+          if (
+            registration.runtimeId !== candidate.runtimeId ||
+            registration.connectionId !== candidate.connectionId ||
+            registration.sessionId !== candidate.sessionId ||
+            registration.principalReference !== candidate.principalReference ||
+            registration.bridgeIdentityHash !== candidate.bridgeIdentityHash ||
+            registration.secretBindingHash !== candidate.secretBindingHash ||
+            capabilityEvidence.registrationCandidateHash !== candidate.registrationCandidateHash ||
+            capabilityEvidence.runtimeId !== candidate.runtimeId ||
+            capabilityEvidence.connectionId !== candidate.connectionId ||
+            capabilityEvidence.sessionId !== candidate.sessionId ||
+            capabilityEvidence.principalReference !== candidate.principalReference ||
+            capabilityEvidence.bridgeIdentityHash !== candidate.bridgeIdentityHash ||
+            capabilityEvidence.capabilityDigest !== candidate.capabilityDigest ||
+            heartbeatEvidence.registrationCandidateHash !== candidate.registrationCandidateHash ||
+            heartbeatEvidence.capabilityCandidateHash !== candidate.capabilityCandidateHash ||
+            heartbeatEvidence.runtimeId !== candidate.runtimeId ||
+            heartbeatEvidence.connectionId !== candidate.connectionId ||
+            heartbeatEvidence.sessionId !== candidate.sessionId ||
+            heartbeatEvidence.principalReference !== candidate.principalReference ||
+            heartbeatEvidence.bridgeIdentityHash !== candidate.bridgeIdentityHash ||
+            heartbeatEvidence.secretBindingHash !== candidate.secretBindingHash ||
+            heartbeatEvidence.capabilityDigest !== candidate.capabilityDigest ||
+            issuedAt < heartbeatEvidence.issuedAt ||
+            issuedAt.getTime() - heartbeatEvidence.issuedAt.getTime() > 60_000 ||
+            expiresAt > heartbeatEvidence.expiresAt ||
+            runtime.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+            runtime.status !== 'NOT_CONFIGURED' ||
+            runtime.secretReference !== input.bridge.secretReference ||
+            runtime.secretDigest !== input.bridge.expectedSecretDigest ||
+            connection.status !== 'NOT_CONFIGURED' ||
+            connection.authGeneration !== candidate.authGeneration ||
+            connection.capabilityCodes.length !== 0 ||
+            connection.capabilityDigest !== null ||
+            connection.lastHeartbeatAt !== null ||
+            connection.lastHeartbeatHealth !== null ||
+            connection.lastHeartbeatSequence !== null
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation dispatch does not match durable precursor evidence',
+            );
+
+          return this.withSecretLease(
+            {
+              workspaceId: context.workspaceId,
+              runtimeId: candidate.runtimeId,
+              connectionId: candidate.connectionId,
+              secretReference: input.bridge.secretReference,
+              expectedDigest: input.bridge.expectedSecretDigest,
+              authGeneration: candidate.authGeneration,
+              purpose: 'SIGN_FRAME',
+            },
+            async (secret) => {
+              const keys = deriveBridgeKeys(secret, input.bridge);
+              try {
+                const unsigned = codexValidationDispatchUnsignedEnvelope(candidate);
+                const frame = signBridgeEnvelope(unsigned, keys.parentToRuntime);
+                const signedEnvelopeDigest = sha256(frame);
+                const authenticationTagDigest = createHash('sha256')
+                  .update(frame.mac)
+                  .digest('hex');
+                const existingByCandidate = existingRows.find(
+                  (row) =>
+                    row.validationDispatchCandidateHash ===
+                    candidate.validationDispatchCandidateHash,
+                );
+                const existingByKey = existingRows.find(
+                  (row) => row.dispatchIdempotencyKey === input.idempotencyKey,
+                );
+                const existingAuthorization = existingRows.find(
+                  (row) => row.authorizationId === authorization.authorizationId,
+                );
+                const existingDispatch = existingRows.find(
+                  (row) => row.dispatchId === candidate.dispatchId,
+                );
+                const existingHeartbeat = existingRows.find(
+                  (row) => row.heartbeatCandidateHash === candidate.heartbeatCandidateHash,
+                );
+                const existingRun = existingRows.find((row) => row.runId === candidate.runId);
+                const existingEvidence = existingByCandidate ?? existingByKey;
+                if (existingEvidence) {
+                  if (
+                    existingByCandidate?.dispatchIdempotencyKey !== input.idempotencyKey ||
+                    existingByKey?.validationDispatchCandidateHash !==
+                      candidate.validationDispatchCandidateHash ||
+                    existingAuthorization?.validationDispatchCandidateHash !==
+                      candidate.validationDispatchCandidateHash ||
+                    existingDispatch?.validationDispatchCandidateHash !==
+                      candidate.validationDispatchCandidateHash ||
+                    existingHeartbeat?.validationDispatchCandidateHash !==
+                      candidate.validationDispatchCandidateHash ||
+                    existingRun?.validationDispatchCandidateHash !==
+                      candidate.validationDispatchCandidateHash ||
+                    existingEvidence.authorizationRequestHash !== authorizationRequestHash ||
+                    existingEvidence.authorizedByReference !==
+                      authorization.authorizedByReference ||
+                    existingEvidence.authorizationIssuedAt.getTime() !==
+                      authorizationIssuedAt.getTime() ||
+                    existingEvidence.authorizationExpiresAt.getTime() !==
+                      authorizationExpiresAt.getTime() ||
+                    existingEvidence.signedEnvelopeDigest !== signedEnvelopeDigest ||
+                    existingEvidence.authenticationTagDigest !== authenticationTagDigest
+                  )
+                    throw new AcpBridgeAdmissionConflictError(
+                      'Codex validation dispatch replay drifted',
+                    );
+                  return {
+                    runtime,
+                    connection,
+                    run,
+                    evidence: existingEvidence,
+                    frame: Object.freeze(frame),
+                    replayed: true,
+                  };
+                }
+                if (existingAuthorization || existingDispatch || existingHeartbeat || existingRun)
+                  throw new AcpBridgeAdmissionConflictError(
+                    'Codex validation dispatch identity already used',
+                  );
+                const [evidence] = await tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(
+                  Prisma.sql`
+                    INSERT INTO "acp_codex_validation_dispatch_evidence" (
+                      "workspaceId", "validationDispatchCandidateHash", "heartbeatCandidateHash",
+                      "registrationCandidateHash", "capabilityCandidateHash", "runtimeId",
+                      "connectionId", "sessionId", "principalReference", "adapterKind",
+                      "authGeneration", "bridgeIdentityHash", "secretBindingHash",
+                      "capabilityDigest", "dispatchId", "taskId", "runId", "agentId",
+                      "authorityLevel", "taskPolicyHash", "maximumComputeUnits",
+                      "maximumCostMinorUnits", "maximumDurationMs", "outboundSequence",
+                      "messageId", "challengeCode",
+                      "payloadDigest", "unsignedEnvelopeDigest", "signedEnvelopeDigest",
+                      "authenticationTagDigest", "issuedAt", "expiresAt", "authorizationId",
+                      "authorizationRequestHash", "authorizedByReference",
+                      "authorizationIssuedAt", "authorizationExpiresAt", "dispatchIdempotencyKey"
+                    ) VALUES (
+                      CAST(${context.workspaceId} AS uuid),
+                      ${candidate.validationDispatchCandidateHash},
+                      ${candidate.heartbeatCandidateHash}, ${candidate.registrationCandidateHash},
+                      ${candidate.capabilityCandidateHash}, ${candidate.runtimeId},
+                      ${candidate.connectionId}, ${candidate.sessionId},
+                      ${candidate.principalReference}, ${candidate.adapterKind},
+                      ${candidate.authGeneration}, ${candidate.bridgeIdentityHash},
+                      ${candidate.secretBindingHash}, ${candidate.capabilityDigest},
+                      ${candidate.dispatchId}, ${candidate.taskId}, ${candidate.runId},
+                      ${candidate.agentId}, ${candidate.authorityLevel},
+                      ${candidate.taskPolicyHash}, ${candidate.maximumComputeUnits},
+                      ${candidate.maximumCostMinorUnits},
+                      ${candidate.maximumDurationMs}, ${candidate.outboundSequence},
+                      ${candidate.messageId}, ${candidate.challengeCode},
+                      ${candidate.payloadDigest}, ${candidate.unsignedEnvelopeDigest},
+                      ${signedEnvelopeDigest}, ${authenticationTagDigest}, ${issuedAt}, ${expiresAt},
+                      ${authorization.authorizationId}, ${authorizationRequestHash},
+                      ${authorization.authorizedByReference}, ${authorizationIssuedAt},
+                      ${authorizationExpiresAt}, ${input.idempotencyKey}
+                    ) RETURNING *
+                  `,
+                );
+                if (!evidence)
+                  throw new AcpBridgeAdmissionConflictError(
+                    'Codex validation dispatch evidence was not stored',
+                  );
+                await this.auditService.recordOperationalEvent(
+                  capability,
+                  context,
+                  {
+                    id: randomUUID(),
+                    workspaceId: context.workspaceId,
+                    type: 'run.progress',
+                    source: 'CONTROL_PLANE',
+                    actorKind,
+                    actorId: context.principalId,
+                    subjectType: 'AcpCodexValidationDispatchEvidence',
+                    subjectId: candidate.validationDispatchCandidateHash,
+                    occurredAt: now.toISOString(),
+                    idempotencyKey: `${input.idempotencyKey}:event`,
+                    correlationId: candidate.runId,
+                    facts: { payloadFieldCount: 0, payloadBytes: 0 },
+                  },
+                  actorKind === 'HUMAN' ? context.principalId : undefined,
+                  tx,
+                );
+                return {
+                  runtime,
+                  connection,
+                  run,
+                  evidence,
+                  frame: Object.freeze(frame),
+                  replayed: false,
+                };
+              } finally {
+                keys.parentToRuntime.fill(0);
+                keys.runtimeToParent.fill(0);
+              }
+            },
+          );
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && error.meta?.code === '23505'))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex validation dispatch conflict; retry with current durable state',
         );
       throw error;
     }

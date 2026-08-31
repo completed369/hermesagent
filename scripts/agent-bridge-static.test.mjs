@@ -11,6 +11,7 @@ const packageFiles = [
   'packages/agent-bridge/src/codex-authenticated-registration.ts',
   'packages/agent-bridge/src/codex-capability-exchange.ts',
   'packages/agent-bridge/src/codex-heartbeat.ts',
+  'packages/agent-bridge/src/codex-validation-dispatch.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
@@ -212,6 +213,54 @@ test('durable Codex heartbeat evidence is MAC-verified, immutable, and truth-pre
   assert.match(migration, /acp_runtime_capability_evidence_heartbeat_binding_key/u);
   assert.match(migration, /ventureos_reject_heartbeat_evidence_update/u);
   assert.doesNotMatch(migration, /\bmac\b|rawPayload|credential|accessToken|apiKey/u);
+});
+
+test('Codex validation dispatch is zero-spend, signed, immutable, and not delivered', () => {
+  const dispatch = readFileSync('packages/agent-bridge/src/codex-validation-dispatch.ts', 'utf8');
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260831210000_codex_validation_dispatch_evidence/migration.sql',
+    'utf8',
+  );
+  const acceptance = service.slice(
+    service.indexOf('async prepareCodexValidationDispatch('),
+    service.indexOf('async provisionRuntime('),
+  );
+  assert.doesNotMatch(
+    dispatch,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(dispatch, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.match(dispatch, /maximumCostMinorUnits !== 0/u);
+  assert.match(dispatch, /assignmentState: 'NOT_CONFIGURED'/u);
+  assert.match(dispatch, /deliveryState: 'NOT_SENT'/u);
+  assert.match(dispatch, /providerAccess: 'NOT_CONFIGURED'/u);
+  assert.match(dispatch, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(dispatch, /class DenyCodexValidationDispatchAuthorizationSource/u);
+  assert.match(module, /new DenyCodexValidationDispatchAuthorizationSource\(\)/u);
+  assert.match(acceptance, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(acceptance, /purpose: 'SIGN_FRAME'/u);
+  assert.match(acceptance, /signBridgeEnvelope\(unsigned, keys\.parentToRuntime\)/u);
+  assert.match(acceptance, /run\.task\.maximumCostMinorUnits !== 0n/u);
+  assert.match(acceptance, /connection\.status !== 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(
+    acceptance,
+    /acp(?:Run|Task|Runtime|RuntimeConnection)\.(?:create|update|upsert)/u,
+  );
+  assert.match(migration, /acp_codex_validation_dispatch_heartbeat_fkey/u);
+  assert.match(migration, /acp_runtime_heartbeat_evidence_dispatch_binding_key/u);
+  assert.match(migration, /ventureos_reject_codex_validation_dispatch_update/u);
+  assert.doesNotMatch(
+    migration,
+    /\bmac\b|rawPayload|prompt|transcript|credential|accessToken|apiKey/u,
+  );
 });
 
 test('production secret resolution is deny-only and has no ambient credential source', () => {

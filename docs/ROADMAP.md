@@ -108,8 +108,15 @@ published and current `main` has not been deployed to private staging.
   the scoped secret lease, and binds tenant, identity, generation, sequence,
   message, and idempotency evidence. It retains no MAC, nonce, secret, or raw
   frame and deliberately leaves connection heartbeat and status fields
-  untouched. A bounded authenticated task dispatch and status/result round trip
-  is the next separately reviewed adapter boundary.
+  untouched.
+- Codex now has a separately authorized validation-dispatch preparation path.
+  It signs one zero-cost, resource-bounded `codex.runtime.round-trip.v1`
+  challenge tied to an exact ready/unassigned durable validation run and the
+  immutable heartbeat precursor. Only digests and safe references persist; the
+  frame remains ephemeral and `NOT_SENT`, production authorization and secrets
+  remain deny-only, and no task/run/connection truth changes. A bounded local
+  controller/transport and authenticated status/result admission are the next
+  separately reviewed adapter boundaries.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
@@ -179,8 +186,10 @@ published and current `main` has not been deployed to private staging.
    separate deny-by-default authorization. It does not contact a provider or
    promote runtime truth. The successor immutable heartbeat path verifies one
    fresh runtime-to-parent signed observation without updating runtime truth.
-   Bounded task dispatch and status/result evidence remain the next safe adapter
-   slice.
+   A zero-spend validation dispatch can now be prepared and signed without
+   broker routing, assignment, delivery, or truth promotion. A bounded local
+   controller/transport and authenticated status/result evidence remain the
+   next safe adapter slices.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
