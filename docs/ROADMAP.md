@@ -187,9 +187,12 @@ published and current `main` has not been deployed to private staging.
    promote runtime truth. The successor immutable heartbeat path verifies one
    fresh runtime-to-parent signed observation without updating runtime truth.
    A zero-spend validation dispatch can now be prepared and signed without
-   broker routing, assignment, delivery, or truth promotion. A bounded local
-   controller/transport and authenticated status/result evidence remain the
-   next safe adapter slices.
+   broker routing, assignment, delivery, or truth promotion. A separate
+   one-shot claim can bind that exact frame to a five-second bounded local
+   controller, but its production transport remains deny-only and local byte
+   acceptance is not delivery evidence. A real bounded Codex app-server
+   transport and authenticated status/result evidence remain the next safe
+   adapter slices.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

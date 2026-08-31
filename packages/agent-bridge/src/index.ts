@@ -17,3 +17,4 @@ export * from './codex-authenticated-registration';
 export * from './codex-capability-exchange';
 export * from './codex-heartbeat';
 export * from './codex-validation-dispatch';
+export * from './codex-validation-egress-controller';

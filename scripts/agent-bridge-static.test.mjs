@@ -12,6 +12,7 @@ const packageFiles = [
   'packages/agent-bridge/src/codex-capability-exchange.ts',
   'packages/agent-bridge/src/codex-heartbeat.ts',
   'packages/agent-bridge/src/codex-validation-dispatch.ts',
+  'packages/agent-bridge/src/codex-validation-egress-controller.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
@@ -260,6 +261,57 @@ test('Codex validation dispatch is zero-spend, signed, immutable, and not delive
   assert.doesNotMatch(
     migration,
     /\bmac\b|rawPayload|prompt|transcript|credential|accessToken|apiKey/u,
+  );
+});
+
+test('Codex validation egress is one-shot, bounded, local-only, and truth preserving', () => {
+  const controller = readFileSync(
+    'packages/agent-bridge/src/codex-validation-egress-controller.ts',
+    'utf8',
+  );
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260831220000_codex_validation_egress_handoff/migration.sql',
+    'utf8',
+  );
+  const claim = service.slice(
+    service.indexOf('async claimCodexValidationEgressHandoff('),
+    service.indexOf('async provisionRuntime('),
+  );
+  assert.doesNotMatch(
+    controller,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(
+    controller,
+    /\b(?:fetch|spawn|spawnSync|exec|execFile|fork|connect|createConnection|createServer)\s*\(/u,
+  );
+  assert.match(controller, /new DenyBridgeEgressTransport\(\)/u);
+  assert.match(controller, /MAX_CLAIM_MS = 15_000/u);
+  assert.match(controller, /MAX_WRITE_MS = 5_000/u);
+  assert.match(controller, /Promise\.race/u);
+  assert.match(controller, /USED_HANDOFF/u);
+  assert.match(controller, /TRANSPORT_MUTATED_FRAME/u);
+  assert.match(controller, /encoded\.fill\(0\)/u);
+  assert.match(controller, /line\.fill\(0\)/u);
+  assert.doesNotMatch(
+    controller,
+    /\b(?:SENT|DELIVERED|ACKNOWLEDGED|CONNECTED|delivery|acknowledged|connected):\s*(?:true|['"])/u,
+  );
+  assert.match(claim, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(claim, /purpose: 'SIGN_FRAME'/u);
+  assert.match(claim, /connection\.status !== 'NOT_CONFIGURED'/u);
+  assert.match(claim, /run\.assignedAgentId !== null/u);
+  assert.match(migration, /generation" = 1/u);
+  assert.match(migration, /state" = 'CLAIMED'/u);
+  assert.match(migration, /INTERVAL '15 seconds'/u);
+  assert.match(migration, /ventureos_reject_codex_validation_egress_handoff_change/u);
+  assert.doesNotMatch(
+    migration,
+    /^\s+"(?:mac|rawPayload|prompt|transcript|credential|accessToken|apiKey)"\s+/mu,
   );
 });
 
@@ -538,7 +590,7 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
   );
   assert.equal(
     (service.match(/auditSubjectReference\(input\.attemptId, 'attemptId'\)/gu) ?? []).length,
-    2,
+    3,
   );
   assert.match(service, /auditSubjectReference\(input\.releaseId, 'releaseId'\)/u);
   assert.match(
