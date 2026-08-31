@@ -14,7 +14,7 @@ bootstrap round trip is needed before Codex can become a broker candidate.
 ## Decision
 
 Add a separate validation-dispatch preparation boundary. It accepts only a Level 0-3 durable
-`runtime.verify` task whose exact policy selects `codex.runtime.round-trip.v1`, whose maximum cost
+`quality.verify` task whose exact policy selects `codex.runtime.round-trip.v1`, whose maximum cost
 is zero minor units, whose compute limit is at most 100 units, and whose duration is at most 60
 seconds. The run and task must remain ready, prepared, and unassigned.
 

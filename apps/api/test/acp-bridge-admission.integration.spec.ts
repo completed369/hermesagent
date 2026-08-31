@@ -722,7 +722,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           id: `codex-validation-task-${registrationSuffix}`,
           projectId: `codex-validation-project-${registrationSuffix}`,
           title: 'Perform zero-spend runtime validation',
-          kind: 'runtime.verify',
+          kind: 'quality.verify',
           dependencyIds: [],
           requiredAuthority: 3,
           costLimit: { currency: 'EUR', maximumMinorUnits: 0, maximumComputeUnits: 10 },

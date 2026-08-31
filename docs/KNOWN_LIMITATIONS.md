@@ -127,7 +127,7 @@
 > references. It is not a native Codex app-server heartbeat, controller, or
 > transport; it intentionally does not update connection heartbeat/status
 > fields. One separately authorized zero-spend validation `DISPATCH` can now be
-> prepared and signed against an exact ready/unassigned `runtime.verify` run.
+> prepared and signed against an exact ready/unassigned `quality.verify` run.
 > Its frame is ephemeral and explicitly `NOT_SENT`; it creates no assignment,
 > broker reservation, provider call, task/run mutation, or connection claim.
 > There is not yet a controller/transport, authenticated dispatch status/result

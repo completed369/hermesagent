@@ -1251,7 +1251,7 @@ export class AcpBridgeAdmissionService
             run.policyHash !== candidate.taskPolicyHash ||
             run.task.policyHash !== candidate.taskPolicyHash ||
             run.policyVersion !== run.task.policyVersion ||
-            run.task.kind !== 'runtime.verify' ||
+            run.task.kind !== 'quality.verify' ||
             run.task.maximumCostMinorUnits !== 0n ||
             run.task.maximumComputeUnits !== BigInt(candidate.maximumComputeUnits) ||
             run.task.estimatedDurationMs !== BigInt(candidate.maximumDurationMs) ||
