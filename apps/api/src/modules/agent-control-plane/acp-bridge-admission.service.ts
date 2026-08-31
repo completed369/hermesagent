@@ -173,6 +173,42 @@ interface CodexValidationDispatchEvidenceRow {
   readonly createdAt: Date;
 }
 
+interface CodexValidationEgressHandoffRow {
+  readonly workspaceId: string;
+  readonly id: string;
+  readonly validationDispatchCandidateHash: string;
+  readonly heartbeatCandidateHash: string;
+  readonly ownerReference: string;
+  readonly ownerActorKind: 'HUMAN' | 'AGENT' | 'SYSTEM';
+  readonly claimIdempotencyKey: string;
+  readonly generation: number;
+  readonly state: string;
+  readonly runtimeId: string;
+  readonly connectionId: string;
+  readonly sessionId: string;
+  readonly dispatchId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly authorityLevel: number;
+  readonly taskPolicyHash: string;
+  readonly maximumComputeUnits: number;
+  readonly maximumCostMinorUnits: number;
+  readonly maximumDurationMs: number;
+  readonly outboundSequence: number;
+  readonly messageId: string;
+  readonly challengeCode: string;
+  readonly payloadDigest: string;
+  readonly unsignedEnvelopeDigest: string;
+  readonly signedEnvelopeDigest: string;
+  readonly authenticationTagDigest: string;
+  readonly validationIssuedAt: Date;
+  readonly validationExpiresAt: Date;
+  readonly claimedAt: Date;
+  readonly expiresAt: Date;
+  readonly createdAt: Date;
+}
+
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
 const CAPABILITY_OWNER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
@@ -301,6 +337,13 @@ export interface AcceptCodexHeartbeatEvidenceInput {
 
 export interface PrepareCodexValidationDispatchInput {
   readonly candidate: Readonly<CodexValidationDispatchCandidate>;
+  readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
+  readonly idempotencyKey: string;
+}
+
+export interface ClaimCodexValidationEgressHandoffInput {
+  readonly attemptId: string;
+  readonly validationDispatchCandidateHash: string;
   readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
   readonly idempotencyKey: string;
 }
@@ -1474,6 +1517,386 @@ export class AcpBridgeAdmissionService
       )
         throw new AcpBridgeAdmissionConflictError(
           'Concurrent Codex validation dispatch conflict; retry with current durable state',
+        );
+      throw error;
+    }
+  }
+
+  /**
+   * Claims the only local-write opportunity for one prepared Codex validation
+   * frame. The claim is one-shot because a failed or timed-out local write can
+   * be ambiguous; callers must prepare a new validation run instead of retrying.
+   */
+  async claimCodexValidationEgressHandoff(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: ClaimCodexValidationEgressHandoffInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    auditSubjectReference(input.attemptId, 'attemptId');
+    digest(input.validationDispatchCandidateHash, 'validationDispatchCandidateHash');
+    publicReference(input.idempotencyKey, 'idempotencyKey');
+    for (const [field, value] of Object.entries({
+      workspaceId: input.bridge.workspaceId,
+      runtimeId: input.bridge.runtimeId,
+      connectionId: input.bridge.connectionId,
+      sessionId: input.bridge.sessionId,
+      principalReference: input.bridge.principalReference,
+      parentNonce: input.bridge.parentNonce,
+      runtimeNonce: input.bridge.runtimeNonce,
+      secretReference: input.bridge.secretReference,
+    }))
+      reference(value, field);
+    digest(input.bridge.expectedSecretDigest, 'expectedSecretDigest');
+    if (input.bridge.schemaVersion !== 1 || input.bridge.authGeneration !== 1)
+      throw new AcpBridgeAdmissionDeniedError('Codex validation egress bridge is invalid');
+    const authenticatedAt = new Date(input.bridge.authenticatedAt);
+    const bridgeExpiresAt = new Date(input.bridge.expiresAt);
+    if (
+      !Number.isFinite(authenticatedAt.getTime()) ||
+      authenticatedAt.toISOString() !== input.bridge.authenticatedAt ||
+      !Number.isFinite(bridgeExpiresAt.getTime()) ||
+      bridgeExpiresAt.toISOString() !== input.bridge.expiresAt
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex validation egress bridge window is invalid');
+    const bridgeIdentityHash = sha256({
+      authGeneration: input.bridge.authGeneration,
+      authenticatedAt: input.bridge.authenticatedAt,
+      connectionId: input.bridge.connectionId,
+      expectedSecretDigest: input.bridge.expectedSecretDigest,
+      expiresAt: input.bridge.expiresAt,
+      parentNonce: input.bridge.parentNonce,
+      principalReference: input.bridge.principalReference,
+      runtimeNonce: input.bridge.runtimeNonce,
+      runtimeId: input.bridge.runtimeId,
+      secretReference: input.bridge.secretReference,
+      sessionId: input.bridge.sessionId,
+      workspaceId: input.bridge.workspaceId,
+    });
+    const secretBindingHash = sha256({
+      expectedSecretDigest: input.bridge.expectedSecretDigest,
+      secretReference: input.bridge.secretReference,
+    });
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "validationDispatchCandidateHash" FROM "acp_codex_validation_dispatch_evidence" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "validationDispatchCandidateHash"=${input.validationDispatchCandidateHash} FOR UPDATE`,
+          );
+          const [evidenceRows, existingRows] = await Promise.all([
+            tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_dispatch_evidence"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "validationDispatchCandidateHash"=${input.validationDispatchCandidateHash}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_egress_handoff_attempts"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND (
+                  "id"=${input.attemptId}
+                  OR "validationDispatchCandidateHash"=${input.validationDispatchCandidateHash}
+                  OR "claimIdempotencyKey"=${input.idempotencyKey}
+                )
+              FOR SHARE
+            `),
+          ]);
+          const evidence = evidenceRows[0];
+          if (!evidence)
+            throw new AcpBridgeAdmissionNotFoundError('Codex validation dispatch not found');
+          const [connection, run, now] = await Promise.all([
+            tx.acpRuntimeConnection.findUnique({
+              where: {
+                workspaceId_id: { workspaceId: context.workspaceId, id: evidence.connectionId },
+              },
+              include: { runtime: true },
+            }),
+            tx.acpRun.findUnique({
+              where: { workspaceId_id: { workspaceId: context.workspaceId, id: evidence.runId } },
+              include: { task: { include: { objective: true } } },
+            }),
+            databaseNow(tx),
+          ]);
+          if (!connection || !run)
+            throw new AcpBridgeAdmissionNotFoundError('Codex validation egress state not found');
+          const existingById = existingRows.find((row) => row.id === input.attemptId);
+          const existingByCandidate = existingRows.find(
+            (row) => row.validationDispatchCandidateHash === input.validationDispatchCandidateHash,
+          );
+          const existingByKey = existingRows.find(
+            (row) => row.claimIdempotencyKey === input.idempotencyKey,
+          );
+          const existing = existingById ?? existingByCandidate ?? existingByKey;
+          if (
+            existing &&
+            (existing.id !== input.attemptId ||
+              existing.validationDispatchCandidateHash !== input.validationDispatchCandidateHash ||
+              existing.claimIdempotencyKey !== input.idempotencyKey ||
+              existing.ownerReference !== context.principalId ||
+              existing.ownerActorKind !== actorKind)
+          )
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation egress handoff replay drifted',
+            );
+          if (existing)
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation egress handoff is one-shot and cannot be replayed',
+            );
+          const routingPolicy = run.task.routingPolicy as Record<string, unknown>;
+          const agentPolicy = run.task.agentPolicy as Record<string, unknown>;
+          if (
+            !routingPolicy ||
+            typeof routingPolicy !== 'object' ||
+            Array.isArray(routingPolicy) ||
+            JSON.stringify(Object.keys(routingPolicy).sort()) !==
+              JSON.stringify(['capabilityId', 'maximumLatencyMs']) ||
+            !agentPolicy ||
+            typeof agentPolicy !== 'object' ||
+            Array.isArray(agentPolicy) ||
+            JSON.stringify(Object.keys(agentPolicy).sort()) !==
+              JSON.stringify(['scopes', 'templateId']) ||
+            evidence.workspaceId !== context.workspaceId ||
+            evidence.runtimeId !== input.bridge.runtimeId ||
+            evidence.connectionId !== input.bridge.connectionId ||
+            evidence.sessionId !== input.bridge.sessionId ||
+            evidence.principalReference !== input.bridge.principalReference ||
+            evidence.authGeneration !== input.bridge.authGeneration ||
+            evidence.bridgeIdentityHash !== bridgeIdentityHash ||
+            evidence.secretBindingHash !== secretBindingHash ||
+            evidence.expiresAt <= now ||
+            evidence.authorizationExpiresAt <= now ||
+            evidence.maximumCostMinorUnits !== 0 ||
+            evidence.authorityLevel >= 4 ||
+            evidence.outboundSequence !== 1 ||
+            evidence.messageId !== evidence.dispatchId ||
+            evidence.challengeCode !== CODEX_VALIDATION_CHALLENGE ||
+            connection.runtimeId !== evidence.runtimeId ||
+            connection.runtime.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+            connection.runtime.status !== 'NOT_CONFIGURED' ||
+            connection.runtime.secretReference !== input.bridge.secretReference ||
+            connection.runtime.secretDigest !== input.bridge.expectedSecretDigest ||
+            connection.status !== 'NOT_CONFIGURED' ||
+            connection.authGeneration !== 1 ||
+            connection.capabilityCodes.length !== 0 ||
+            connection.capabilityDigest !== null ||
+            connection.lastHeartbeatAt !== null ||
+            connection.lastHeartbeatHealth !== null ||
+            connection.lastHeartbeatSequence !== null ||
+            run.id !== evidence.runId ||
+            run.workspaceId !== context.workspaceId ||
+            run.taskId !== evidence.taskId ||
+            run.objectiveId !== run.task.objectiveId ||
+            run.status !== 'PREPARED' ||
+            run.task.status !== 'READY' ||
+            run.task.kind !== 'quality.verify' ||
+            run.requiredAuthority !== evidence.authorityLevel ||
+            run.task.requiredAuthority !== evidence.authorityLevel ||
+            run.policyHash !== evidence.taskPolicyHash ||
+            run.task.policyHash !== evidence.taskPolicyHash ||
+            run.policyVersion !== run.task.policyVersion ||
+            run.task.maximumCostMinorUnits !== 0n ||
+            run.task.maximumComputeUnits !== BigInt(evidence.maximumComputeUnits) ||
+            run.task.estimatedDurationMs !== BigInt(evidence.maximumDurationMs) ||
+            run.task.objective.status !== 'ACTIVE' ||
+            run.task.objective.maximumAuthority < evidence.authorityLevel ||
+            run.task.objective.maximumCostMinorUnits !== 0n ||
+            run.task.objective.maximumComputeUnits < BigInt(evidence.maximumComputeUnits) ||
+            run.assignedAgentId !== null ||
+            run.assignedRuntimeId !== null ||
+            run.assignedConnectionId !== null ||
+            run.task.assignedAgentId !== null ||
+            run.task.assignedRuntimeId !== null ||
+            run.task.assignedConnectionId !== null ||
+            routingPolicy.capabilityId !== CODEX_VALIDATION_CHALLENGE ||
+            routingPolicy.maximumLatencyMs !== evidence.maximumDurationMs ||
+            agentPolicy.templateId !== 'codex-runtime-validator' ||
+            !Array.isArray(agentPolicy.scopes) ||
+            JSON.stringify(agentPolicy.scopes) !== JSON.stringify([CODEX_VALIDATION_CHALLENGE])
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation egress durable authority is not live',
+            );
+          const candidate = validateCodexValidationDispatchCandidate({
+            schemaVersion: 1,
+            adapterKind: evidence.adapterKind,
+            workspaceId: evidence.workspaceId,
+            runtimeId: evidence.runtimeId,
+            connectionId: evidence.connectionId,
+            sessionId: evidence.sessionId,
+            principalReference: evidence.principalReference,
+            authGeneration: evidence.authGeneration,
+            registrationCandidateHash: evidence.registrationCandidateHash,
+            capabilityCandidateHash: evidence.capabilityCandidateHash,
+            heartbeatCandidateHash: evidence.heartbeatCandidateHash,
+            capabilityDigest: evidence.capabilityDigest,
+            bridgeIdentityHash: evidence.bridgeIdentityHash,
+            secretBindingHash: evidence.secretBindingHash,
+            dispatchId: evidence.dispatchId,
+            taskId: evidence.taskId,
+            runId: evidence.runId,
+            agentId: evidence.agentId,
+            authorityLevel: evidence.authorityLevel,
+            taskPolicyHash: evidence.taskPolicyHash,
+            maximumCostMinorUnits: evidence.maximumCostMinorUnits,
+            maximumComputeUnits: evidence.maximumComputeUnits,
+            maximumDurationMs: evidence.maximumDurationMs,
+            outboundSequence: evidence.outboundSequence,
+            messageId: evidence.messageId,
+            challengeCode: evidence.challengeCode,
+            payloadDigest: evidence.payloadDigest,
+            unsignedEnvelopeDigest: evidence.unsignedEnvelopeDigest,
+            issuedAt: evidence.issuedAt.toISOString(),
+            expiresAt: evidence.expiresAt.toISOString(),
+            assignmentState: 'NOT_CONFIGURED',
+            deliveryState: 'NOT_SENT',
+            providerAccess: 'NOT_CONFIGURED',
+            runtimeConnection: 'NOT_CONFIGURED',
+            validationDispatchCandidateHash: evidence.validationDispatchCandidateHash,
+          });
+          return this.withSecretLease(
+            {
+              workspaceId: context.workspaceId,
+              runtimeId: evidence.runtimeId,
+              connectionId: evidence.connectionId,
+              secretReference: input.bridge.secretReference,
+              expectedDigest: input.bridge.expectedSecretDigest,
+              authGeneration: 1,
+              purpose: 'SIGN_FRAME',
+            },
+            async (secret) => {
+              const keys = deriveBridgeKeys(secret, input.bridge);
+              try {
+                const frame = signBridgeEnvelope(
+                  codexValidationDispatchUnsignedEnvelope(candidate),
+                  keys.parentToRuntime,
+                );
+                const signedEnvelopeDigest = sha256(frame);
+                const authenticationTagDigest = createHash('sha256')
+                  .update(frame.mac)
+                  .digest('hex');
+                if (
+                  signedEnvelopeDigest !== evidence.signedEnvelopeDigest ||
+                  authenticationTagDigest !== evidence.authenticationTagDigest
+                )
+                  throw new AcpBridgeAdmissionConflictError(
+                    'Codex validation egress frame drifted',
+                  );
+                const claimedAt = now;
+                const expiresAt = new Date(
+                  Math.min(evidence.expiresAt.getTime(), now.getTime() + 15_000),
+                );
+                if (expiresAt <= now)
+                  throw new AcpBridgeAdmissionDeniedError(
+                    'Codex validation egress authority expired',
+                  );
+                const values = {
+                  id: input.attemptId,
+                  validationDispatchCandidateHash: evidence.validationDispatchCandidateHash,
+                  heartbeatCandidateHash: evidence.heartbeatCandidateHash,
+                  ownerReference: context.principalId,
+                  ownerActorKind: actorKind,
+                  claimIdempotencyKey: input.idempotencyKey,
+                  generation: 1,
+                  state: 'CLAIMED',
+                  runtimeId: evidence.runtimeId,
+                  connectionId: evidence.connectionId,
+                  sessionId: evidence.sessionId,
+                  dispatchId: evidence.dispatchId,
+                  taskId: evidence.taskId,
+                  runId: evidence.runId,
+                  agentId: evidence.agentId,
+                  authorityLevel: evidence.authorityLevel,
+                  taskPolicyHash: evidence.taskPolicyHash,
+                  maximumComputeUnits: evidence.maximumComputeUnits,
+                  maximumCostMinorUnits: evidence.maximumCostMinorUnits,
+                  maximumDurationMs: evidence.maximumDurationMs,
+                  outboundSequence: evidence.outboundSequence,
+                  messageId: evidence.messageId,
+                  challengeCode: evidence.challengeCode,
+                  payloadDigest: evidence.payloadDigest,
+                  unsignedEnvelopeDigest: evidence.unsignedEnvelopeDigest,
+                  signedEnvelopeDigest,
+                  authenticationTagDigest,
+                  validationIssuedAt: evidence.issuedAt,
+                  validationExpiresAt: evidence.expiresAt,
+                  claimedAt,
+                  expiresAt,
+                };
+                const [attempt] = await tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
+                    INSERT INTO "acp_codex_validation_egress_handoff_attempts" (
+                      "workspaceId", "id", "validationDispatchCandidateHash",
+                      "heartbeatCandidateHash", "ownerReference", "ownerActorKind",
+                      "claimIdempotencyKey", "generation", "state", "runtimeId",
+                      "connectionId", "sessionId", "dispatchId", "taskId", "runId", "agentId",
+                      "authorityLevel", "taskPolicyHash", "maximumComputeUnits",
+                      "maximumCostMinorUnits", "maximumDurationMs", "outboundSequence",
+                      "messageId", "challengeCode", "payloadDigest", "unsignedEnvelopeDigest",
+                      "signedEnvelopeDigest", "authenticationTagDigest", "validationIssuedAt",
+                      "validationExpiresAt", "claimedAt", "expiresAt"
+                    ) VALUES (
+                      CAST(${context.workspaceId} AS uuid), ${values.id},
+                      ${values.validationDispatchCandidateHash}, ${values.heartbeatCandidateHash},
+                      ${values.ownerReference}, ${values.ownerActorKind},
+                      ${values.claimIdempotencyKey}, ${values.generation}, ${values.state},
+                      ${values.runtimeId}, ${values.connectionId}, ${values.sessionId},
+                      ${values.dispatchId}, ${values.taskId}, ${values.runId}, ${values.agentId},
+                      ${values.authorityLevel}, ${values.taskPolicyHash},
+                      ${values.maximumComputeUnits}, ${values.maximumCostMinorUnits},
+                      ${values.maximumDurationMs}, ${values.outboundSequence},
+                      ${values.messageId}, ${values.challengeCode}, ${values.payloadDigest},
+                      ${values.unsignedEnvelopeDigest}, ${values.signedEnvelopeDigest},
+                      ${values.authenticationTagDigest}, ${values.validationIssuedAt},
+                      ${values.validationExpiresAt}, ${values.claimedAt}, ${values.expiresAt}
+                    ) RETURNING *
+                  `);
+                if (!attempt)
+                  throw new AcpBridgeAdmissionConflictError(
+                    'Codex validation egress handoff was not stored',
+                  );
+                await this.auditService.recordOperationalEvent(
+                  capability,
+                  context,
+                  {
+                    id: randomUUID(),
+                    workspaceId: context.workspaceId,
+                    type: 'run.progress',
+                    source: 'CONTROL_PLANE',
+                    actorKind,
+                    actorId: context.principalId,
+                    subjectType: 'AcpCodexValidationEgressHandoffAttempt',
+                    subjectId: attempt.id,
+                    occurredAt: claimedAt.toISOString(),
+                    idempotencyKey: `${input.idempotencyKey}:event`,
+                    correlationId: evidence.runId,
+                    facts: { payloadFieldCount: 0, payloadBytes: 0 },
+                  },
+                  actorKind === 'HUMAN' ? context.principalId : undefined,
+                  tx,
+                );
+                return Object.freeze({
+                  attempt: Object.freeze({ ...attempt, schemaVersion: 1 as const }),
+                  frame: Object.freeze(frame),
+                  replayed: false,
+                });
+              } finally {
+                keys.parentToRuntime.fill(0);
+                keys.runtimeToParent.fill(0);
+              }
+            },
+          );
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && error.meta?.code === '23505'))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex validation egress handoff conflict',
         );
       throw error;
     }

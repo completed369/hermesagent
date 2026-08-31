@@ -829,6 +829,64 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       ).replayed,
     ).toBe(true);
     expect(validationDispatchRequests).toHaveLength(2);
+    const validationHandoffInput = {
+      attemptId: `codex-validation-egress-${registrationSuffix}`,
+      validationDispatchCandidateHash: validationCandidate.validationDispatchCandidateHash,
+      bridge: heartbeatContext,
+      idempotencyKey: `codex-validation-egress-${registrationSuffix}`,
+    };
+    const claimedValidation = await authorizedBridge.claimCodexValidationEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      validationHandoffInput,
+    );
+    expect(claimedValidation.replayed).toBe(false);
+    expect(claimedValidation.attempt).toMatchObject({
+      schemaVersion: 1,
+      validationDispatchCandidateHash: validationCandidate.validationDispatchCandidateHash,
+      heartbeatCandidateHash: heartbeatCandidate.heartbeatCandidateHash,
+      generation: 1,
+      state: 'CLAIMED',
+      maximumCostMinorUnits: 0,
+      outboundSequence: 1,
+    });
+    expect(claimedValidation.attempt.expiresAt.getTime()).toBeLessThanOrEqual(
+      claimedValidation.attempt.claimedAt.getTime() + 15_000,
+    );
+    expect(claimedValidation.frame).toEqual(preparedValidation.frame);
+    await expect(
+      authorizedBridge.claimCodexValidationEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        validationHandoffInput,
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      authorizedBridge.claimCodexValidationEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...validationHandoffInput,
+          attemptId: `codex-validation-egress-other-${registrationSuffix}`,
+          idempotencyKey: `codex-validation-egress-other-${registrationSuffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "acp_codex_validation_egress_handoff_attempts"
+        SET "state" = 'RELEASED'
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "id" = ${validationHandoffInput.attemptId}
+      `),
+    ).rejects.toThrow();
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        DELETE FROM "acp_codex_validation_egress_handoff_attempts"
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "id" = ${validationHandoffInput.attemptId}
+      `),
+    ).rejects.toThrow();
     await expect(
       authorizedBridge.prepareCodexValidationDispatch(
         capability,

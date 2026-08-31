@@ -130,9 +130,13 @@
 > prepared and signed against an exact ready/unassigned `quality.verify` run.
 > Its frame is ephemeral and explicitly `NOT_SENT`; it creates no assignment,
 > broker reservation, provider call, task/run mutation, or connection claim.
-> There is not yet a controller/transport, authenticated dispatch status/result
-> exchange, provider round trip, or connected-state transition; Codex remains
-> **NOT_CONFIGURED**.
+> A separate immutable one-shot egress claim can now expose that exact frame to
+> an injected local byte-write port for at most five seconds. The controller
+> defaults to denial, burns an attempted claim instead of retrying an ambiguous
+> write, and treats local byte acceptance as neither delivery nor
+> acknowledgement. There is still no production transport, Codex process
+> controller, authenticated dispatch status/result exchange, provider round
+> trip, or connected-state transition; Codex remains **NOT_CONFIGURED**.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

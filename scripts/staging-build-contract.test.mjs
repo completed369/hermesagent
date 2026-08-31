@@ -174,6 +174,7 @@ test('the immutable migration chain matches the reviewed sequence', () => {
     '20260831170000_durable_codex_capability_evidence',
     '20260831203000_durable_codex_heartbeat_evidence',
     '20260831210000_codex_validation_dispatch_evidence',
+    '20260831220000_codex_validation_egress_handoff',
   ]);
   const unsafeRestoreReference =
     /(?:password|passwd|secret|token|cookie|authorization|chain[-_.:/ ]?of[-_.:/ ]?thought)/u;
