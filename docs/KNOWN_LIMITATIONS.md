@@ -61,6 +61,15 @@
 > becomes configured or connected. The database row is correlation metadata,
 > not cryptographic authorization: its trigger cannot verify an HMAC, and any
 > future consumer must re-sign or reverify through the trusted service boundary.
+> A bounded internal egress-handoff claim can exclusively lease the ephemeral
+> re-signed frame to the exact authenticated principal and actor kind for at
+> most fifteen seconds; owner authority is not caller-authored. Its attempt and
+> optional early release are append-only correlation metadata; natural expiry
+> and later generations never rewrite history. Atomic audit applies to the
+> authenticated service path only. A trigger-valid direct-writer row is
+> unauthenticated correlation metadata without an automatic audit and must be
+> re-signed/reverified before any future use. There is still no sender, delivery
+> worker, transport, acknowledgement, or runtime-status promotion.
 >
 > Secret material remains unavailable in production. The scoped bridge lease
 > interface is deny-only in the production composition root and has no file,

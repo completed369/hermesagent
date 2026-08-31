@@ -684,6 +684,878 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       expect.arrayContaining(['mac', 'payload', 'rawLine', 'principalReference']),
     );
     expect(JSON.stringify(durableCapsule)).not.toContain(preparedAuthorization.frame.mac);
+    const handoffId = `egress-handoff-${suffix}`;
+    const handoff = await bridge.claimDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        attemptId: handoffId,
+        outboxId: capsuleId,
+        idempotencyKey: `egress-handoff-${suffix}`,
+      },
+    );
+    expect(handoff.replayed).toBe(false);
+    expect(handoff.attempt).toMatchObject({
+      id: handoffId,
+      workspaceId,
+      outboxId: capsuleId,
+      ownerReference: principalId,
+      ownerActorKind: 'SYSTEM',
+      generation: 1,
+      dispatchId,
+      outboxState: 'PREPARED',
+    });
+    expect(handoff.frame).toEqual(preparedAuthorization.frame);
+    expect(handoff.attempt.expiresAt.getTime()).toBeLessThanOrEqual(
+      handoff.attempt.claimedAt.getTime() + 15_000,
+    );
+    const durableHandoff = await prisma.acpBridgeEgressHandoffAttempt.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId, id: handoffId } },
+    });
+    expect(Object.keys(durableHandoff)).not.toEqual(
+      expect.arrayContaining([
+        'mac',
+        'payload',
+        'rawLine',
+        'principalReference',
+        'secretReference',
+      ]),
+    );
+    expect(JSON.stringify(durableHandoff)).not.toContain(handoff.frame.mac);
+    expect(
+      (
+        await bridge.claimDispatchEgressHandoff(
+          capability,
+          { workspaceId, principalId },
+          {
+            attemptId: handoffId,
+            outboxId: capsuleId,
+            idempotencyKey: `egress-handoff-${suffix}`,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+    const copiedOwnerPrincipalId = `bridge-copy-${suffix}`;
+    const copiedOwnerCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      {
+        workspaceId,
+        principalId: copiedOwnerPrincipalId,
+        actorKind: 'SYSTEM',
+        authorityLevel: 3,
+      },
+    ]);
+    const secretRequestsBeforeCopiedOwner = secretLeaseRequests.length;
+    await expect(
+      bridge.claimDispatchEgressHandoff(
+        copiedOwnerCapability,
+        { workspaceId, principalId: copiedOwnerPrincipalId },
+        {
+          attemptId: handoffId,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-handoff-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      bridge.releaseDispatchEgressHandoff(
+        copiedOwnerCapability,
+        { workspaceId, principalId: copiedOwnerPrincipalId },
+        {
+          releaseId: `egress-copied-release-${suffix}`,
+          attemptId: handoffId,
+          idempotencyKey: `egress-copied-release-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    const actorDriftCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'AGENT', authorityLevel: 3 },
+    ]);
+    await expect(
+      bridge.claimDispatchEgressHandoff(
+        actorDriftCapability,
+        { workspaceId, principalId },
+        {
+          attemptId: handoffId,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-handoff-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    expect(secretLeaseRequests).toHaveLength(secretRequestsBeforeCopiedOwner);
+    expect(
+      await prisma.acpBridgeEgressHandoffRelease.count({
+        where: { workspaceId, attemptId: handoffId },
+      }),
+    ).toBe(0);
+    await expect(
+      bridge.claimDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          attemptId: `egress-competitor-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-competitor-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      bridge.claimDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          attemptId: `egress-private-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: 'token-reference',
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    const auditSubjectSecretRequests = secretLeaseRequests.length;
+    let auditSubjectSourceCalls = 0;
+    const auditSubjectBridge = testBridge(testSecretLease(), {
+      async verify() {
+        auditSubjectSourceCalls += 1;
+        throw new Error('audit subject validation reached the evidence source');
+      },
+    });
+    await expect(
+      auditSubjectBridge.claimDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          attemptId: `egress@attempt-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-valid-idempotency-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      auditSubjectBridge.releaseDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          releaseId: `egress@release-${suffix}`,
+          attemptId: handoffId,
+          idempotencyKey: `egress-valid-release-idempotency-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(auditSubjectSourceCalls).toBe(0);
+    expect(secretLeaseRequests).toHaveLength(auditSubjectSecretRequests);
+    await expect(
+      prisma.acpBridgeEgressHandoffAttempt.update({
+        where: { workspaceId_id: { workspaceId, id: handoffId } },
+        data: { ownerReference: `changed-owner-${suffix}` },
+      }),
+    ).rejects.toThrow(/immutable/iu);
+    await expect(
+      prisma.acpBridgeEgressHandoffAttempt.create({
+        data: {
+          ...durableHandoff,
+          id: `forged-handoff-${suffix}`,
+          claimIdempotencyKey: `forged-handoff-${suffix}`,
+          ownerReference: `forged-owner-${suffix}`,
+          generation: 2,
+          payloadDigest: '0'.repeat(64),
+          claimedAt: new Date(),
+          expiresAt: new Date(Date.now() + 5_000),
+        },
+      }),
+    ).rejects.toThrow(/durable binding mismatch/iu);
+    await expect(
+      prisma.acpBridgeEgressHandoffRelease.create({
+        data: {
+          id: `egress@release-sql-${suffix}`,
+          workspaceId,
+          attemptId: handoffId,
+          outboxId: durableHandoff.outboxId,
+          ownerReference: durableHandoff.ownerReference,
+          ownerActorKind: durableHandoff.ownerActorKind,
+          generation: durableHandoff.generation,
+          releaseIdempotencyKey: `egress-release-sql-${suffix}`,
+          releasedAt: new Date(),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
+    const released = await bridge.releaseDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        releaseId: `egress-release-${suffix}`,
+        attemptId: handoffId,
+        idempotencyKey: `egress-release-${suffix}`,
+      },
+    );
+    expect(released.replayed).toBe(false);
+    expect(
+      (
+        await bridge.releaseDispatchEgressHandoff(
+          capability,
+          { workspaceId, principalId },
+          {
+            releaseId: `egress-release-${suffix}`,
+            attemptId: handoffId,
+            idempotencyKey: `egress-release-${suffix}`,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+    await expect(
+      prisma.acpBridgeEgressHandoffRelease.update({
+        where: {
+          workspaceId_id: { workspaceId, id: `egress-release-${suffix}` },
+        },
+        data: { releasedAt: new Date() },
+      }),
+    ).rejects.toThrow(/immutable/iu);
+    // Keep database-clock/time-zone proofs adjacent to the freshly prepared outbox.
+    // Later adversarial lease and lock waits must not turn this into an expiry test.
+    const timezoneAttemptData = {
+      id: `egress-timezone-${suffix}`,
+      workspaceId,
+      outboxId: durableHandoff.outboxId,
+      ownerReference: principalId,
+      ownerActorKind: durableHandoff.ownerActorKind,
+      claimIdempotencyKey: `egress-timezone-${suffix}`,
+      generation: 2,
+    };
+    const insertTimezoneAttempt = (tx: Prisma.TransactionClient) =>
+      tx.$executeRaw(Prisma.sql`
+        WITH db_clock AS (SELECT clock_timestamp() AS claimed_at)
+        INSERT INTO "acp_bridge_egress_handoff_attempts" (
+          "id", "workspaceId", "outboxId", "ownerReference", "ownerActorKind",
+          "claimIdempotencyKey", "generation", "runtimeId", "connectionId", "sessionId",
+          "dispatchId", "taskId", "runId", "agentId", "authorityLevel", "outboundSequence",
+          "messageId", "messageType", "protocolVersion", "outboxState", "brokerEvidenceId",
+          "brokerEvidenceHash", "assignmentEvidenceId", "assignmentEvidenceHash",
+          "dispatchEnvelopeHash", "policyHash", "capabilityPolicyHash", "capabilityDigest",
+          "payloadDigest", "unsignedEnvelopeDigest", "signedEnvelopeDigest",
+          "authenticationTagDigest", "outboxIdempotencyKey", "outboxIssuedAt", "outboxExpiresAt",
+          "outboxPreparedAt", "claimedAt", "expiresAt"
+        )
+        SELECT
+          ${timezoneAttemptData.id}, source."workspaceId", source."id", ${timezoneAttemptData.ownerReference},
+          ${timezoneAttemptData.ownerActorKind}, ${timezoneAttemptData.claimIdempotencyKey},
+          ${timezoneAttemptData.generation}, source."runtimeId", source."connectionId", source."sessionId",
+          source."dispatchId", source."taskId", source."runId", source."agentId",
+          source."authorityLevel", source."outboundSequence", source."messageId", source."messageType",
+          source."protocolVersion", source."state", source."brokerEvidenceId", source."brokerEvidenceHash",
+          source."assignmentEvidenceId", source."assignmentEvidenceHash", source."dispatchEnvelopeHash",
+          source."policyHash", source."capabilityPolicyHash", source."capabilityDigest",
+          source."payloadDigest", source."unsignedEnvelopeDigest", source."signedEnvelopeDigest",
+          source."authenticationTagDigest", source."idempotencyKey", source."issuedAt", source."expiresAt",
+          source."preparedAt", db_clock.claimed_at,
+          LEAST(db_clock.claimed_at + INTERVAL '10 seconds', source."expiresAt")
+        FROM db_clock
+        JOIN "acp_bridge_dispatch_outbox" source
+          ON source."workspaceId" = ${timezoneAttemptData.workspaceId}::uuid
+         AND source."id" = ${timezoneAttemptData.outboxId}
+      `);
+    const setStaleTimezoneHeartbeat = (tx: Prisma.TransactionClient) =>
+      tx.$executeRaw(Prisma.sql`
+        UPDATE "acp_runtime_connections"
+        SET "lastHeartbeatAt" = (clock_timestamp() - INTERVAL '61 seconds') AT TIME ZONE 'UTC',
+            "version" = "version" + 1
+        WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId}
+      `);
+    const setFreshTimezoneHeartbeat = (tx: Prisma.TransactionClient) =>
+      tx.$executeRaw(Prisma.sql`
+        UPDATE "acp_runtime_connections"
+        SET "lastHeartbeatAt" = clock_timestamp() AT TIME ZONE 'UTC',
+            "version" = "version" + 1
+        WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId}
+      `);
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
+        expect(await setStaleTimezoneHeartbeat(tx)).toBe(1);
+        return insertTimezoneAttempt(tx);
+      }),
+    ).rejects.toThrow(/live prepared durable authority/iu);
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
+        expect(await setStaleTimezoneHeartbeat(tx)).toBe(1);
+        return insertTimezoneAttempt(tx);
+      }),
+    ).rejects.toThrow(/live prepared durable authority/iu);
+    const directWriterAuditCount = await prisma.auditEvent.count({
+      where: {
+        workspaceReference: workspaceId,
+        entityType: 'AcpBridgeEgressHandoffAttempt',
+      },
+    });
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
+        expect(await setFreshTimezoneHeartbeat(tx)).toBe(1);
+        expect(await insertTimezoneAttempt(tx)).toBe(1);
+        throw new Error('rollback fresh Adak timezone proof');
+      }),
+    ).rejects.toThrow('rollback fresh Adak timezone proof');
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
+      expect(await setFreshTimezoneHeartbeat(tx)).toBe(1);
+      expect(await insertTimezoneAttempt(tx)).toBe(1);
+    });
+    expect(
+      await prisma.auditEvent.count({
+        where: {
+          workspaceReference: workspaceId,
+          entityType: 'AcpBridgeEgressHandoffAttempt',
+        },
+      }),
+    ).toBe(directWriterAuditCount);
+    await bridge.releaseDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        releaseId: `egress-timezone-release-${suffix}`,
+        attemptId: timezoneAttemptData.id,
+        idempotencyKey: `egress-timezone-release-${suffix}`,
+      },
+    );
+    const shortClaimedAt = new Date();
+    const shortAttemptData = {
+      ...durableHandoff,
+      id: `egress-short-${suffix}`,
+      ownerReference: principalId,
+      claimIdempotencyKey: `egress-short-${suffix}`,
+      generation: 3,
+      claimedAt: shortClaimedAt,
+      expiresAt: new Date(
+        Math.min(shortClaimedAt.getTime() + 1_500, durableCapsule.expiresAt.getTime()),
+      ),
+    };
+    await prisma.acpBridgeEgressHandoffAttempt.create({ data: shortAttemptData });
+    let reportClaimExpiryLock!: () => void;
+    let releaseClaimExpiryLock!: () => void;
+    const claimExpiryLocked = new Promise<void>((resolve) => {
+      reportClaimExpiryLock = resolve;
+    });
+    const claimExpiryRelease = new Promise<void>((resolve) => {
+      releaseClaimExpiryLock = resolve;
+    });
+    const claimExpiryBlocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${sessionId} FOR UPDATE`,
+      );
+      reportClaimExpiryLock();
+      await claimExpiryRelease;
+    });
+    await claimExpiryLocked;
+    const secretRequestsBeforeExpiryWait = secretLeaseRequests.length;
+    const expiredReplay = bridge.claimDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        attemptId: shortAttemptData.id,
+        outboxId: capsuleId,
+        idempotencyKey: shortAttemptData.claimIdempotencyKey,
+      },
+    );
+    expect(
+      await Promise.race([
+        expiredReplay.then(
+          () => 'settled',
+          () => 'settled',
+        ),
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 100)),
+      ]),
+    ).toBe('pending');
+    await new Promise<void>((resolve) => setTimeout(resolve, 1_600));
+    releaseClaimExpiryLock();
+    await claimExpiryBlocker;
+    await expect(expiredReplay).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(secretLeaseRequests).toHaveLength(secretRequestsBeforeExpiryWait);
+    const reclaimed = await bridge.claimDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        attemptId: `egress-reclaim-${suffix}`,
+        outboxId: capsuleId,
+        idempotencyKey: `egress-reclaim-${suffix}`,
+      },
+    );
+    expect(reclaimed.attempt.generation).toBe(4);
+    expect(reclaimed.replayed).toBe(false);
+    await expect(
+      prisma.acpBridgeEgressHandoffRelease.create({
+        data: {
+          id: `egress-private-release-${suffix}`,
+          workspaceId,
+          attemptId: reclaimed.attempt.id,
+          outboxId: reclaimed.attempt.outboxId,
+          ownerReference: principalId,
+          ownerActorKind: 'SYSTEM',
+          generation: reclaimed.attempt.generation,
+          releaseIdempotencyKey: 'github_pat_1234567890abcdef',
+          releasedAt: new Date(),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
+    let reportHandoffLease!: () => void;
+    let releaseHandoffLease!: () => void;
+    const handoffLeaseReached = new Promise<void>((resolve) => {
+      reportHandoffLease = resolve;
+    });
+    const handoffLeaseRelease = new Promise<void>((resolve) => {
+      releaseHandoffLease = resolve;
+    });
+    const crossingBridge = testBridge(
+      testSecretLease(async (request) => {
+        reportHandoffLease();
+        await handoffLeaseRelease;
+        const material = trustedSecrets.get(request.secretReference);
+        if (!material) throw new Error('synthetic source unavailable');
+        return material;
+      }),
+    );
+    const crossingClaim = crossingBridge.claimDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        attemptId: `egress-reclaim-${suffix}`,
+        outboxId: capsuleId,
+        idempotencyKey: `egress-reclaim-${suffix}`,
+      },
+    );
+    await handoffLeaseReached;
+    const crossingInbound = bridge.acceptRuntimeMessage(
+      capability,
+      { workspaceId, principalId },
+      fake.emitAt(4, 'PROGRESS', { dispatchId, progressCode: 'EARLY_CROSSING' }),
+    );
+    expect(
+      await Promise.race([
+        crossingInbound.then(
+          () => 'settled',
+          () => 'settled',
+        ),
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 100)),
+      ]),
+    ).toBe('pending');
+    releaseHandoffLease();
+    expect((await crossingClaim).replayed).toBe(true);
+    await expect(crossingInbound).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(
+      await prisma.acpBridgeReceipt.count({ where: { workspaceId, sessionId, sequence: 4 } }),
+    ).toBe(0);
+    await bridge.releaseDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        releaseId: `egress-reclaim-release-${suffix}`,
+        attemptId: `egress-reclaim-${suffix}`,
+        idempotencyKey: `egress-reclaim-release-${suffix}`,
+      },
+    );
+    const privacyClaimedAt = new Date();
+    await expect(
+      prisma.acpBridgeEgressHandoffAttempt.create({
+        data: {
+          ...durableHandoff,
+          id: `egress@attempt-sql-${suffix}`,
+          claimIdempotencyKey: `egress-attempt-sql-${suffix}`,
+          generation: 5,
+          claimedAt: privacyClaimedAt,
+          expiresAt: new Date(
+            Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
+          ),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
+    await expect(
+      prisma.acpBridgeEgressHandoffAttempt.create({
+        data: {
+          ...durableHandoff,
+          id: `egress-at-owner-sql-${suffix}`,
+          ownerReference: 'principal@domain.example',
+          ownerActorKind: 'SYSTEM',
+          claimIdempotencyKey: `egress-at-owner-sql-${suffix}`,
+          generation: 5,
+          claimedAt: privacyClaimedAt,
+          expiresAt: new Date(
+            Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
+          ),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
+    await expect(
+      prisma.acpBridgeEgressHandoffAttempt.create({
+        data: {
+          ...durableHandoff,
+          id: `egress-oversized-owner-sql-${suffix}`,
+          ownerReference: `7${'a'.repeat(256)}`,
+          ownerActorKind: 'SYSTEM',
+          claimIdempotencyKey: `egress-oversized-owner-sql-${suffix}`,
+          generation: 5,
+          claimedAt: privacyClaimedAt,
+          expiresAt: new Date(
+            Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
+          ),
+        },
+      }),
+    ).rejects.toThrow(/reference_check|check constraint/iu);
+    for (const [index, privateReference] of [
+      'token-reference',
+      'github_pat_1234567890abcdef',
+      'npm_1234567890abcdef',
+      'hf_1234567890abcdef',
+      'AKIA1234567890ABCDEF',
+      'AIza1234567890abcdefghijklmnop',
+      'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJwcml2YXRlIn0.signature123456',
+      'alice:opaquevalue@host.example',
+    ].entries()) {
+      await expect(
+        prisma.acpBridgeEgressHandoffAttempt.create({
+          data: {
+            ...durableHandoff,
+            id: `egress-private-sql-${index}-${suffix}`,
+            ownerReference: privateReference,
+            ownerActorKind: 'SYSTEM',
+            claimIdempotencyKey: `egress-private-sql-${index}-${suffix}`,
+            generation: 5,
+            claimedAt: privacyClaimedAt,
+            expiresAt: new Date(
+              Math.min(privacyClaimedAt.getTime() + 5_000, durableCapsule.expiresAt.getTime()),
+            ),
+          },
+        }),
+      ).rejects.toThrow(/reference_check|check constraint/iu);
+    }
+    const concurrentClaims = await Promise.allSettled(
+      ['a', 'b'].map((candidate) =>
+        bridge.claimDispatchEgressHandoff(
+          capability,
+          { workspaceId, principalId },
+          {
+            attemptId: `egress-race-${candidate}-${suffix}`,
+            outboxId: capsuleId,
+            idempotencyKey: `egress-race-${candidate}-${suffix}`,
+          },
+        ),
+      ),
+    );
+    expect(concurrentClaims.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(concurrentClaims.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const raceWinnerResult = concurrentClaims.find((result) => result.status === 'fulfilled');
+    if (!raceWinnerResult || raceWinnerResult.status !== 'fulfilled') {
+      throw new Error('expected one exclusive egress handoff winner');
+    }
+    const raceWinner = raceWinnerResult.value;
+    expect(raceWinner.attempt.generation).toBe(5);
+    await bridge.releaseDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        releaseId: `egress-race-release-${suffix}`,
+        attemptId: raceWinner.attempt.id,
+        idempotencyKey: `egress-race-release-${suffix}`,
+      },
+    );
+    const digitLeadingPrincipalId = `7${randomUUID().slice(1)}`;
+    const digitLeadingCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      {
+        workspaceId,
+        principalId: digitLeadingPrincipalId,
+        actorKind: 'SYSTEM',
+        authorityLevel: 3,
+      },
+    ]);
+    const digitLeadingClaim = await bridge.claimDispatchEgressHandoff(
+      digitLeadingCapability,
+      { workspaceId, principalId: digitLeadingPrincipalId },
+      {
+        attemptId: `egress-digit-owner-${suffix}`,
+        outboxId: capsuleId,
+        idempotencyKey: `egress-digit-owner-${suffix}`,
+      },
+    );
+    expect(digitLeadingClaim.attempt).toMatchObject({
+      ownerReference: digitLeadingPrincipalId,
+      ownerActorKind: 'SYSTEM',
+      generation: 6,
+    });
+    await bridge.releaseDispatchEgressHandoff(
+      digitLeadingCapability,
+      { workspaceId, principalId: digitLeadingPrincipalId },
+      {
+        releaseId: `egress-digit-release-${suffix}`,
+        attemptId: digitLeadingClaim.attempt.id,
+        idempotencyKey: `egress-digit-release-${suffix}`,
+      },
+    );
+    const punctuatedPrincipalId = `7/:${'a'.repeat(253)}`;
+    expect(punctuatedPrincipalId).toHaveLength(256);
+    const punctuatedCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      {
+        workspaceId,
+        principalId: punctuatedPrincipalId,
+        actorKind: 'SYSTEM',
+        authorityLevel: 3,
+      },
+    ]);
+    const punctuatedClaimIdempotencyKey = `egress-punctuated@owner-${suffix}`;
+    const punctuatedReleaseIdempotencyKey = `egress-punctuated@release-${suffix}`;
+    const punctuatedClaim = await bridge.claimDispatchEgressHandoff(
+      punctuatedCapability,
+      { workspaceId, principalId: punctuatedPrincipalId },
+      {
+        attemptId: `egress-punctuated-owner-${suffix}`,
+        outboxId: capsuleId,
+        idempotencyKey: punctuatedClaimIdempotencyKey,
+      },
+    );
+    expect(punctuatedClaim.attempt).toMatchObject({
+      ownerReference: punctuatedPrincipalId,
+      ownerActorKind: 'SYSTEM',
+      generation: 7,
+    });
+    expect(
+      (
+        await bridge.claimDispatchEgressHandoff(
+          punctuatedCapability,
+          { workspaceId, principalId: punctuatedPrincipalId },
+          {
+            attemptId: punctuatedClaim.attempt.id,
+            outboxId: capsuleId,
+            idempotencyKey: punctuatedClaimIdempotencyKey,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+    const punctuatedRelease = await bridge.releaseDispatchEgressHandoff(
+      punctuatedCapability,
+      { workspaceId, principalId: punctuatedPrincipalId },
+      {
+        releaseId: `egress-punctuated-release-${suffix}`,
+        attemptId: punctuatedClaim.attempt.id,
+        idempotencyKey: punctuatedReleaseIdempotencyKey,
+      },
+    );
+    expect(punctuatedRelease.replayed).toBe(false);
+    expect(
+      (
+        await bridge.releaseDispatchEgressHandoff(
+          punctuatedCapability,
+          { workspaceId, principalId: punctuatedPrincipalId },
+          {
+            releaseId: punctuatedRelease.release.id,
+            attemptId: punctuatedClaim.attempt.id,
+            idempotencyKey: punctuatedReleaseIdempotencyKey,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+    const punctuatedClaimAuditKey = `bridge-egress-claim:${sha256Canonical({
+      domain: 'ventureos.bridge.egress.claim.audit.v1',
+      workspaceId,
+      attemptId: punctuatedClaim.attempt.id,
+      outboxId: punctuatedClaim.attempt.outboxId,
+      ownerReference: punctuatedClaim.attempt.ownerReference,
+      ownerActorKind: punctuatedClaim.attempt.ownerActorKind,
+      claimIdempotencyKey: punctuatedClaimIdempotencyKey,
+    })}`;
+    const punctuatedReleaseAuditKey = `bridge-egress-release:${sha256Canonical({
+      domain: 'ventureos.bridge.egress.release.audit.v1',
+      workspaceId,
+      releaseId: punctuatedRelease.release.id,
+      attemptId: punctuatedRelease.release.attemptId,
+      outboxId: punctuatedRelease.release.outboxId,
+      ownerReference: punctuatedRelease.release.ownerReference,
+      ownerActorKind: punctuatedRelease.release.ownerActorKind,
+      releaseIdempotencyKey: punctuatedReleaseIdempotencyKey,
+    })}`;
+    const punctuatedAuditRows = await prisma.auditEvent.findMany({
+      where: {
+        workspaceReference: workspaceId,
+        idempotencyKey: { in: [punctuatedClaimAuditKey, punctuatedReleaseAuditKey] },
+      },
+      orderBy: { idempotencyKey: 'asc' },
+    });
+    expect(punctuatedAuditRows).toHaveLength(2);
+    expect(punctuatedAuditRows.map((row) => row.idempotencyKey).sort()).toEqual(
+      [punctuatedClaimAuditKey, punctuatedReleaseAuditKey].sort(),
+    );
+    expect(punctuatedClaimAuditKey).not.toBe(punctuatedReleaseAuditKey);
+    expect(JSON.stringify(punctuatedAuditRows)).not.toContain(punctuatedClaimIdempotencyKey);
+    expect(JSON.stringify(punctuatedAuditRows)).not.toContain(punctuatedReleaseIdempotencyKey);
+    const secretRequestsBeforeAtOwner = secretLeaseRequests.length;
+    expect(() =>
+      OperationalEventCapability.issue('CONTROL_PLANE', [
+        {
+          workspaceId,
+          principalId: `principal@domain-${suffix}`,
+          actorKind: 'SYSTEM',
+          authorityLevel: 3,
+        },
+      ]),
+    ).toThrow();
+    expect(secretLeaseRequests).toHaveLength(secretRequestsBeforeAtOwner);
+    const oversizedPrincipalId = `7${'a'.repeat(256)}`;
+    const secretRequestsBeforeOversizedOwner = secretLeaseRequests.length;
+    expect(() =>
+      OperationalEventCapability.issue('CONTROL_PLANE', [
+        {
+          workspaceId,
+          principalId: oversizedPrincipalId,
+          actorKind: 'SYSTEM',
+          authorityLevel: 3,
+        },
+      ]),
+    ).toThrow();
+    expect(secretLeaseRequests).toHaveLength(secretRequestsBeforeOversizedOwner);
+    const leaseRequestsBeforePreflightDenials = secretLeaseRequests.length;
+    const level2Capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 2 },
+    ]);
+    await expect(
+      bridge.claimDispatchEgressHandoff(
+        level2Capability,
+        { workspaceId, principalId },
+        {
+          attemptId: `egress-level2-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-level2-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      bridge.claimDispatchEgressHandoff(
+        capability,
+        { workspaceId: otherWorkspaceId, principalId },
+        {
+          attemptId: `egress-other-workspace-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-other-workspace-${suffix}`,
+        },
+      ),
+    ).rejects.toThrow();
+    expect(secretLeaseRequests).toHaveLength(leaseRequestsBeforePreflightDenials);
+
+    const beforeLeaseDenial = {
+      attempts: await prisma.acpBridgeEgressHandoffAttempt.count({ where: { workspaceId } }),
+      audit: await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } }),
+    };
+    await expect(
+      testBridge(new DenyBridgeSecretLeaseResolver()).claimDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          attemptId: `egress-denied-lease-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-denied-lease-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(await prisma.acpBridgeEgressHandoffAttempt.count({ where: { workspaceId } })).toBe(
+      beforeLeaseDenial.attempts,
+    );
+    expect(await prisma.auditEvent.count({ where: { workspaceReference: workspaceId } })).toBe(
+      beforeLeaseDenial.audit,
+    );
+
+    const failingAudit = new AuditService();
+    failingAudit.recordOperationalEvent = async () => {
+      throw new Error('synthetic audit failure');
+    };
+    await expect(
+      testBridge(testSecretLease(), brokerReservations, failingAudit).claimDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          attemptId: `egress-audit-rollback-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-audit-rollback-${suffix}`,
+        },
+      ),
+    ).rejects.toThrow(/synthetic audit failure/iu);
+    expect(await prisma.acpBridgeEgressHandoffAttempt.count({ where: { workspaceId } })).toBe(
+      beforeLeaseDenial.attempts,
+    );
+
+    await prisma.acpRuntimeConnection.update({
+      where: { workspaceId_id: { workspaceId, id: connectionId } },
+      data: { lastHeartbeatAt: new Date(Date.now() - 59_250), version: { increment: 1 } },
+    });
+    const delayedClaim = testBridge(
+      testSecretLease(async (request) => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+        const material = trustedSecrets.get(request.secretReference);
+        if (!material) throw new Error('synthetic source unavailable');
+        return material;
+      }),
+    ).claimDispatchEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        attemptId: `egress-post-lease-expiry-${suffix}`,
+        outboxId: capsuleId,
+        idempotencyKey: `egress-post-lease-expiry-${suffix}`,
+      },
+    );
+    await expect(delayedClaim).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(await prisma.acpBridgeEgressHandoffAttempt.count({ where: { workspaceId } })).toBe(
+      beforeLeaseDenial.attempts,
+    );
+    await prisma.acpRuntimeConnection.update({
+      where: { workspaceId_id: { workspaceId, id: connectionId } },
+      data: { lastHeartbeatAt: new Date(), version: { increment: 1 } },
+    });
+    const attemptsBeforeResolverMisbehavior = await prisma.acpBridgeEgressHandoffAttempt.count({
+      where: { workspaceId },
+    });
+    const skippingResolver: BridgeSecretLeaseResolver = {
+      async withSecret<T>() {
+        return undefined as T;
+      },
+    };
+    await expect(
+      testBridge(skippingResolver).claimDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          attemptId: `egress-skipped-consumer-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-skipped-consumer-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    const swallowingResolver: BridgeSecretLeaseResolver = {
+      async withSecret<T>(_request, consumer) {
+        try {
+          return await consumer(Buffer.from('incorrect-synthetic-material-32bytes'));
+        } catch {
+          return undefined as T;
+        }
+      },
+    };
+    await expect(
+      testBridge(swallowingResolver).claimDispatchEgressHandoff(
+        capability,
+        { workspaceId, principalId },
+        {
+          attemptId: `egress-swallowed-consumer-${suffix}`,
+          outboxId: capsuleId,
+          idempotencyKey: `egress-swallowed-consumer-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(await prisma.acpBridgeEgressHandoffAttempt.count({ where: { workspaceId } })).toBe(
+      attemptsBeforeResolverMisbehavior,
+    );
+    expect(
+      await prisma.acpRuntimeConnection.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: connectionId } },
+        select: { status: true },
+      }),
+    ).toEqual({ status: 'PARTIAL' });
+    expect(
+      await prisma.acpBridgeDispatch.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId, id: dispatchId } },
+        select: { state: true },
+      }),
+    ).toEqual({ state: 'PREPARED' });
     expect(
       (
         await bridge.prepareDispatchAuthorization(

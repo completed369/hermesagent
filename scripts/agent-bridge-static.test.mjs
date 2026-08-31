@@ -148,7 +148,7 @@ test('dispatch authorization outbox is metadata-only, directional, and has no de
   );
   const outbox = schema.slice(
     schema.indexOf('model AcpBridgeDispatchOutbox'),
-    schema.indexOf('model AcpRunUsage'),
+    schema.indexOf('model AcpBridgeEgressHandoffAttempt'),
   );
   const preparation = service.slice(
     service.indexOf('async prepareDispatchAuthorization'),
@@ -198,6 +198,198 @@ test('dispatch authorization outbox is metadata-only, directional, and has no de
   assert.match(service, /existing\.signedEnvelopeDigest, signedEnvelopeDigest/u);
   assert.match(service, /existing\.authenticationTagDigest/u);
   assert.doesNotMatch(service, /@Controller\s*\(|\bfetch\s*\(|\b(?:spawn|exec|fork)\s*\(/u);
+});
+
+test('egress handoff claims are exclusive metadata and cannot send or promote status', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260827140000_acp_egress_handoff_claims/migration.sql',
+    'utf8',
+  );
+  const integration = readFileSync(
+    'apps/api/test/acp-bridge-admission.integration.spec.ts',
+    'utf8',
+  );
+  const approvalReferencePolicy = readFileSync(
+    'packages/agent-control-plane/src/approval-bridge.ts',
+    'utf8',
+  );
+  const capabilityEventPolicy = readFileSync('packages/agent-control-plane/src/events.ts', 'utf8');
+  const model = schema.slice(
+    schema.indexOf('model AcpBridgeEgressHandoffAttempt'),
+    schema.indexOf('model AcpRunUsage'),
+  );
+  const claim = service.slice(
+    service.indexOf('async claimDispatchEgressHandoff'),
+    service.indexOf('async requestCancellation'),
+  );
+  assert.match(claim, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(claim, /const ownerReference = context\.principalId/u);
+  assert.match(claim, /ownerActorKind: actorKind/u);
+  assert.doesNotMatch(claim, /input\.ownerReference/u);
+  assert.match(claim, /purpose: 'SIGN_FRAME'/u);
+  assert.match(claim, /signBridgeEnvelope\(unsigned, keys\.parentToRuntime\)/u);
+  assert.match(claim, /keys\.parentToRuntime\.fill\(0\)/u);
+  assert.match(claim, /keys\.runtimeToParent\.fill\(0\)/u);
+  assert.match(claim, /let handoffCompleted = false/u);
+  assert.match(claim, /handoffCompleted = true/u);
+  assert.match(claim, /if \(!handoffCompleted \|\| !result\)/u);
+  assert.match(claim, /Prisma\.TransactionIsolationLevel\.Serializable/u);
+  assert.match(claim, /error\.code === 'P2034'[\s\S]*error\.code === 'P2002'/u);
+  assert.match(
+    claim,
+    /acp_bridge_sessions[\s\S]*FOR UPDATE[\s\S]*acp_runtime_connections[\s\S]*FOR UPDATE[\s\S]*acp_bridge_dispatches[\s\S]*FOR UPDATE[\s\S]*acp_runs[\s\S]*FOR UPDATE[\s\S]*acp_tasks[\s\S]*FOR UPDATE[\s\S]*acp_runtimes[\s\S]*FOR UPDATE[\s\S]*acp_broker_reservations[\s\S]*FOR UPDATE[\s\S]*acp_bridge_dispatch_outbox[\s\S]*FOR UPDATE/u,
+  );
+  assert.match(claim, /outbox\.signedEnvelopeDigest, signedDigest/u);
+  assert.match(claim, /outbox\.authenticationTagDigest/u);
+  assert.match(
+    claim,
+    /existing\.signedEnvelopeDigest,[\s\S]{0,100}attemptData\.signedEnvelopeDigest/u,
+  );
+  assert.match(
+    claim,
+    /existing\.authenticationTagDigest,[\s\S]{0,100}attemptData\.authenticationTagDigest/u,
+  );
+  assert.doesNotMatch(
+    claim,
+    /SENT|DELIVERED|ACKNOWLEDGED|@Controller\s*\(|\bfetch\s*\(|\b(?:spawn|exec|fork)\s*\(/u,
+  );
+  assert.doesNotMatch(
+    claim,
+    /costGovernance|maximumCost|maximumCompute|approval|Approval|data:\s*\{\s*(?:status|state):\s*'(?:CONNECTED|SENT|DELIVERED)'/u,
+  );
+  assert.doesNotMatch(
+    model,
+    /\b(?:mac|payload|rawLine|taskText|prompt|transcript|secret)\s+String\b/iu,
+  );
+  assert.doesNotMatch(model, /SENT|DELIVERED|ACKNOWLEDGED/u);
+  assert.match(migration, /egress handoff attempt metadata is immutable/u);
+  assert.match(migration, /acp_bridge_egress_handoff_releases/u);
+  assert.match(service, /async releaseDispatchEgressHandoff/u);
+  assert.match(service, /AcpBridgeEgressHandoffRelease/u);
+  assert.match(migration, /already exclusively claimed/u);
+  assert.doesNotMatch(migration, /db_utc/u);
+  assert.match(migration, /session_expires TIMESTAMPTZ/u);
+  assert.match(migration, /heartbeat_at TIMESTAMPTZ/u);
+  assert.match(migration, /s\."expiresAt" AT TIME ZONE 'UTC'/u);
+  assert.match(migration, /c\."lastHeartbeatAt" AT TIME ZONE 'UTC'/u);
+  assert.match(migration, /session_expires <= db_now/u);
+  assert.match(migration, /heartbeat_at < db_now - INTERVAL '60 seconds'/u);
+  assert.match(
+    integration,
+    /WITH db_clock AS \(SELECT clock_timestamp\(\) AS claimed_at\)[\s\S]*JOIN "acp_bridge_dispatch_outbox" source/u,
+  );
+  assert.match(
+    integration,
+    /"lastHeartbeatAt" = \(clock_timestamp\(\) - INTERVAL '61 seconds'\) AT TIME ZONE 'UTC'/u,
+  );
+  assert.match(integration, /"lastHeartbeatAt" = clock_timestamp\(\) AT TIME ZONE 'UTC'/u);
+  assert.match(migration, /source_row "acp_bridge_dispatch_outbox"%ROWTYPE/u);
+  assert.match(migration, /ventureos_egress_safe_reference/u);
+  assert.match(
+    approvalReferencePolicy,
+    /const SAFE_REFERENCE = \/\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/@-\]\{0,255\}\$\/u/u,
+  );
+  assert.match(migration, /value ~ '\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/@-\]\{0,255\}\$'/u);
+  assert.match(
+    capabilityEventPolicy,
+    /const SAFE_REFERENCE = \/\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/-\]\{0,255\}\$\/u/u,
+  );
+  assert.match(
+    service,
+    /const CAPABILITY_OWNER_REFERENCE = \/\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/-\]\{0,255\}\$\/u/u,
+  );
+  assert.match(
+    service,
+    /function auditSubjectReference[\s\S]*CAPABILITY_OWNER_REFERENCE\.test\(value\)/u,
+  );
+  assert.equal(
+    (service.match(/auditSubjectReference\(input\.attemptId, 'attemptId'\)/gu) ?? []).length,
+    2,
+  );
+  assert.match(service, /auditSubjectReference\(input\.releaseId, 'releaseId'\)/u);
+  assert.match(
+    migration,
+    /ventureos_egress_safe_owner_reference[\s\S]*value ~ '\^\[A-Za-z0-9\]\[A-Za-z0-9:\._\/-\]\{0,255\}\$'/u,
+  );
+  assert.match(migration, /ventureos_egress_safe_owner_reference\("ownerReference"\)/u);
+  assert.match(
+    migration,
+    /acp_bridge_egress_handoff_reference_check[\s\S]*ventureos_egress_safe_owner_reference\("id"\)/u,
+  );
+  assert.match(
+    migration,
+    /acp_bridge_egress_handoff_release_reference_check[\s\S]*ventureos_egress_safe_owner_reference\("id"\)[\s\S]*ventureos_egress_safe_owner_reference\("attemptId"\)/u,
+  );
+  assert.doesNotMatch(service, /PRIVATE_REFERENCE/u);
+  for (const secretFamily of [
+    'github_pat',
+    'npm',
+    'glpat',
+    'xox[baprs]',
+    'hf',
+    'AKIA',
+    'AIza',
+    'eyJ',
+  ]) {
+    assert.ok(approvalReferencePolicy.includes(secretFamily));
+    assert.ok(migration.includes(secretFamily));
+  }
+  for (const exactPolicyFragment of [
+    'chain[-_. ]?of[-_. ]?thought',
+    'private[-_. ]?reasoning',
+    '[A-Za-z0-9_-]{12,}',
+    'AKIA[0-9A-Z]{16}',
+    'AIza[A-Za-z0-9_-]{20,}',
+    'eyJ[A-Za-z0-9_-]{5,}\\.eyJ[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{8,}',
+  ]) {
+    assert.ok(approvalReferencePolicy.includes(exactPolicyFragment));
+    assert.ok(migration.includes(exactPolicyFragment));
+  }
+  assert.match(
+    approvalReferencePolicy,
+    /\^\[A-Za-z0-9\._-\]\+:\[A-Za-z0-9\._-\]\+@\[A-Za-z0-9\.-\]\+\$/u,
+  );
+  assert.match(migration, /\^\[A-Za-z0-9\._-\]\+:\[A-Za-z0-9\._-\]\+@\[A-Za-z0-9\.-\]\+\$/u);
+  assert.match(model, /ownerActorKind\s+String/u);
+  const handoffAdr = readFileSync('docs/ADR_0034_DURABLE_EGRESS_HANDOFF_CLAIMS.md', 'utf8');
+  assert.match(
+    handoffAdr,
+    /Only service-created attempts and releases\s+carry the atomic audit guarantee/u,
+  );
+  assert.match(
+    handoffAdr,
+    /trigger-valid but unauthenticated correlation row without an audit event/u,
+  );
+  assert.doesNotMatch(migration, /INSERT INTO "audit_events"|auditService/u);
+  assert.match(
+    service,
+    /function egressAuditIdempotencyKey[\s\S]*`bridge-egress-\$\{kind\}:\$\{sha256\(\{[\s\S]*ventureos\.bridge\.egress\.\$\{kind\}\.audit\.v1/u,
+  );
+  assert.match(service, /egressAuditIdempotencyKey\('claim'/u);
+  assert.match(service, /egressAuditIdempotencyKey\('release'/u);
+  assert.doesNotMatch(
+    service,
+    /idempotencyKey:\s*`bridge-egress-(?:handoff|release):\$\{input\.idempotencyKey\}`/u,
+  );
+  for (const indexName of [
+    'acp_egress_handoff_claim_key',
+    'acp_egress_handoff_generation_key',
+    'acp_bridge_egress_handoff_active_idx',
+    'acp_egress_release_attempt_key',
+    'acp_egress_release_idempotency_key',
+  ]) {
+    assert.match(model, new RegExp(`map: "${indexName}"`, 'u'));
+    assert.match(migration, new RegExp(`"${indexName}"`, 'u'));
+  }
+  assert.match(
+    migration,
+    /acp_bridge_sessions[\s\S]*FOR UPDATE;[\s\S]*acp_runtime_connections[\s\S]*FOR UPDATE;[\s\S]*acp_bridge_dispatches[\s\S]*FOR UPDATE;[\s\S]*acp_runs[\s\S]*FOR UPDATE;[\s\S]*acp_tasks[\s\S]*FOR UPDATE;[\s\S]*acp_runtimes[\s\S]*FOR UPDATE;[\s\S]*acp_broker_reservations[\s\S]*FOR UPDATE;[\s\S]*acp_bridge_dispatch_outbox[\s\S]*FOR UPDATE/u,
+  );
 });
 
 test('trusted executable evidence is Linux-only, opened-file bound, and cannot launch', () => {
