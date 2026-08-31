@@ -9,6 +9,7 @@ const packageFiles = [
   'packages/agent-bridge/src/codex-app-server-policy.ts',
   'packages/agent-bridge/src/codex-app-server-session.ts',
   'packages/agent-bridge/src/codex-authenticated-registration.ts',
+  'packages/agent-bridge/src/codex-capability-exchange.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
@@ -96,6 +97,24 @@ test('Codex registration translation hashes account evidence and grants no autho
   assert.match(registration, /params\.refreshToken !== false/u);
   assert.match(registration, /registrationAuthorization: 'NOT_CONFIGURED'/u);
   assert.match(registration, /runtimeConnection: 'NOT_CONFIGURED'/u);
+});
+
+test('Codex capability exchange is complete, stable-surface, hashed, and non-authorizing', () => {
+  const exchange = readFileSync('packages/agent-bridge/src/codex-capability-exchange.ts', 'utf8');
+  assert.doesNotMatch(
+    exchange,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(exchange, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.doesNotMatch(exchange, /experimentalApi|experimentalFeature|Prisma|@Controller/u);
+  assert.match(exchange, /request\.method !== 'model\/list'/u);
+  assert.match(exchange, /params\.includeHidden !== false/u);
+  assert.match(exchange, /result\.nextCursor !== null/u);
+  assert.match(exchange, /modelCatalogHash = sha256/u);
+  assert.match(exchange, /capabilityAuthorization: 'NOT_CONFIGURED'/u);
+  assert.match(exchange, /providerAccess: 'NOT_CONFIGURED'/u);
+  assert.match(exchange, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(exchange, /class DenyCodexCapabilityExchangeAuthorizationSource/u);
 });
 
 test('durable Codex registration is explicit, normalized, and production-denied', () => {
