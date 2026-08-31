@@ -22,6 +22,7 @@ import {
   deriveBridgeKeys,
   DenyBridgeSecretLeaseResolver,
   digestBridgePayload,
+  digestSecretReference,
   encodeBridgeLine,
   ScopedBridgeSecretLeaseResolver,
   signBridgeEnvelope,
