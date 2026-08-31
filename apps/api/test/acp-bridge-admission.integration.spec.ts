@@ -981,7 +981,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     const directWriterAuditCount = await prisma.auditEvent.count({
       where: {
         workspaceReference: workspaceId,
-        subjectType: 'AcpBridgeEgressHandoffAttempt',
+        entityType: 'AcpBridgeEgressHandoffAttempt',
       },
     });
     await expect(
@@ -1001,7 +1001,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       await prisma.auditEvent.count({
         where: {
           workspaceReference: workspaceId,
-          subjectType: 'AcpBridgeEgressHandoffAttempt',
+          entityType: 'AcpBridgeEgressHandoffAttempt',
         },
       }),
     ).toBe(directWriterAuditCount);
