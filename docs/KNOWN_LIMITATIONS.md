@@ -99,9 +99,12 @@
 > provides bounded reads and writes over already-open Node streams, including
 > framing, timeout, cancellation, malformed-output, and byte-limit enforcement.
 > The two are not composed, and no production source supplies a process or
-> streams. There is still no process launch, credential access, provider call,
-> authenticated status/result admission, artifact, usage, audit, or runtime
-> promotion. Codex remains **NOT_CONFIGURED**.
+> streams. A separate evidence-only path now MAC-verifies and immutably retains
+> one exact correlated accepted-status/result pair without assigning the run or
+> promoting connection truth. Synthetic or caller-supplied evidence is not a
+> live provider round trip. There is still no production process launch,
+> credential source, provider call, artifact/usage admission for this path, or
+> runtime promotion. Codex remains **NOT_CONFIGURED**.
 >
 > Authenticated Codex registration now has a dedicated durable evidence path.
 > It requires an exact inert candidate, a separately trusted authorization of
@@ -137,10 +140,13 @@
 > defaults to denial, burns an attempted claim instead of retrying an ambiguous
 > write, and treats local byte acceptance as neither delivery nor
 > acknowledgement. The separate already-open-stream JSONL transport is not
-> wired to this controller and has no positive production composition. There
-> is still no Codex process controller, authenticated dispatch status/result
-> exchange, provider round trip, or connected-state transition; Codex remains
-> **NOT_CONFIGURED**.
+> wired to this controller and has no positive production composition. An
+> immutable evidence operation now verifies the exact runtime-to-parent MACs
+> for a sequence-2 accepted status and sequence-3 terminal validation result,
+> binds them to the claimed handoff, and deliberately leaves the ready run
+> unassigned and all runtime truth unchanged. There is still no Codex process
+> controller, real authenticated provider round trip, or connected-state
+> transition; Codex remains **NOT_CONFIGURED**.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

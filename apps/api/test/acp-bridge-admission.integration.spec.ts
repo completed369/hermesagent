@@ -887,6 +887,166 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           AND "id" = ${validationHandoffInput.attemptId}
       `),
     ).rejects.toThrow();
+    const statusIssuedAt = new Date(claimedValidation.attempt.claimedAt.getTime() + 1);
+    const terminalIssuedAt = new Date(statusIssuedAt.getTime() + 1);
+    const resultExpiresAt = new Date(
+      Math.min(
+        validationCandidate.expiresAt ? Date.parse(validationCandidate.expiresAt) : Infinity,
+        terminalIssuedAt.getTime() + 5_000,
+      ),
+    );
+    const terminalEvidence = {
+      threadId: `codex-thread-${registrationSuffix}`,
+      turnId: `codex-turn-${registrationSuffix}`,
+      status: 'completed' as const,
+      messageHash: 'b'.repeat(64),
+      runtimeConnection: 'NOT_CONFIGURED' as const,
+    };
+    const runtimeKeys = deriveBridgeKeys(codexSecret, heartbeatContext);
+    const statusEnvelope = signBridgeEnvelope(
+      {
+        protocolVersion: BRIDGE_PROTOCOL_VERSION,
+        type: 'DISPATCH_ACCEPTED',
+        workspaceId,
+        runtimeId: heartbeatContext.runtimeId,
+        connectionId: heartbeatContext.connectionId,
+        sessionId: heartbeatContext.sessionId,
+        principalReference: heartbeatContext.principalReference,
+        sequence: 2,
+        messageId: `codex-validation-status-${registrationSuffix}`,
+        issuedAt: statusIssuedAt.toISOString(),
+        expiresAt: resultExpiresAt.toISOString(),
+        payload: {
+          challengeCode: 'codex.runtime.round-trip.v1',
+          dispatchId: validationCandidate.dispatchId,
+          taskId: validationCandidate.taskId,
+          runId: validationCandidate.runId,
+        },
+        payloadDigest: digestBridgePayload({
+          challengeCode: 'codex.runtime.round-trip.v1',
+          dispatchId: validationCandidate.dispatchId,
+          taskId: validationCandidate.taskId,
+          runId: validationCandidate.runId,
+        }),
+      },
+      runtimeKeys.runtimeToParent,
+    );
+    const terminalPayload = {
+      challengeCode: 'codex.runtime.round-trip.v1',
+      dispatchId: validationCandidate.dispatchId,
+      taskId: validationCandidate.taskId,
+      runId: validationCandidate.runId,
+      resultCode: 'VALIDATION_COMPLETED',
+      terminalStatus: 'completed',
+      terminalThreadId: terminalEvidence.threadId,
+      terminalTurnId: terminalEvidence.turnId,
+      terminalMessageHash: terminalEvidence.messageHash,
+    };
+    const terminalEnvelope = signBridgeEnvelope(
+      {
+        protocolVersion: BRIDGE_PROTOCOL_VERSION,
+        type: 'RESULT',
+        workspaceId,
+        runtimeId: heartbeatContext.runtimeId,
+        connectionId: heartbeatContext.connectionId,
+        sessionId: heartbeatContext.sessionId,
+        principalReference: heartbeatContext.principalReference,
+        sequence: 3,
+        messageId: `codex-validation-result-${registrationSuffix}`,
+        issuedAt: terminalIssuedAt.toISOString(),
+        expiresAt: resultExpiresAt.toISOString(),
+        payload: terminalPayload,
+        payloadDigest: digestBridgePayload(terminalPayload),
+      },
+      runtimeKeys.runtimeToParent,
+    );
+    runtimeKeys.parentToRuntime.fill(0);
+    runtimeKeys.runtimeToParent.fill(0);
+    const roundTripInput = {
+      handoffAttemptId: validationHandoffInput.attemptId,
+      dispatch: validationCandidate,
+      bridge: heartbeatContext,
+      terminal: terminalEvidence,
+      statusEnvelope,
+      terminalEnvelope,
+      idempotencyKey: `codex-validation-round-trip-${registrationSuffix}`,
+    };
+    const acceptedRoundTrip = await authorizedBridge.acceptCodexValidationRoundTripEvidence(
+      capability,
+      { workspaceId, principalId },
+      roundTripInput,
+    );
+    expect(acceptedRoundTrip.replayed).toBe(false);
+    expect(acceptedRoundTrip.runtime.status).toBe('NOT_CONFIGURED');
+    expect(acceptedRoundTrip.connection.status).toBe('NOT_CONFIGURED');
+    expect(acceptedRoundTrip.run).toMatchObject({
+      status: 'PREPARED',
+      assignedAgentId: null,
+      assignedRuntimeId: null,
+      assignedConnectionId: null,
+    });
+    expect(acceptedRoundTrip.evidence).toMatchObject({
+      handoffAttemptId: validationHandoffInput.attemptId,
+      validationDispatchCandidateHash: validationCandidate.validationDispatchCandidateHash,
+      heartbeatCandidateHash: heartbeatCandidate.heartbeatCandidateHash,
+      statusSequence: 2,
+      terminalSequence: 3,
+      resultCode: 'VALIDATION_COMPLETED',
+      providerAccess: 'NOT_CONFIGURED',
+      runtimeConnection: 'NOT_CONFIGURED',
+      connectionTransition: 'NOT_APPLIED',
+      maximumCostMinorUnits: 0,
+    });
+    expect(JSON.stringify(acceptedRoundTrip.evidence)).not.toContain(statusEnvelope.mac);
+    expect(JSON.stringify(acceptedRoundTrip.evidence)).not.toContain(terminalEnvelope.mac);
+    expect(secretLeaseRequests.at(-1)?.purpose).toBe('VERIFY_FRAME');
+    expect(
+      (
+        await authorizedBridge.acceptCodexValidationRoundTripEvidence(
+          capability,
+          { workspaceId, principalId },
+          roundTripInput,
+        )
+      ).replayed,
+    ).toBe(true);
+    await expect(
+      authorizedBridge.acceptCodexValidationRoundTripEvidence(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...roundTripInput,
+          idempotencyKey: `codex-validation-round-trip-drift-${registrationSuffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      authorizedBridge.acceptCodexValidationRoundTripEvidence(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...roundTripInput,
+          terminalEnvelope: {
+            ...terminalEnvelope,
+            payload: { ...terminalPayload, terminalMessageHash: 'c'.repeat(64) },
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "acp_codex_validation_round_trip_evidence"
+        SET "connectionTransition" = 'APPLIED'
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "roundTripCandidateHash" = ${acceptedRoundTrip.evidence.roundTripCandidateHash}
+      `),
+    ).rejects.toThrow();
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        DELETE FROM "acp_codex_validation_round_trip_evidence"
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "roundTripCandidateHash" = ${acceptedRoundTrip.evidence.roundTripCandidateHash}
+      `),
+    ).rejects.toThrow();
     await expect(
       authorizedBridge.prepareCodexValidationDispatch(
         capability,
