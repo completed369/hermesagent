@@ -3848,6 +3848,29 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         FROM (SELECT clock_timestamp() AS "now") AS db_clock
       `);
     };
+    const lockDirectAuthority = async (tx: Prisma.TransactionClient) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_bridge_sessions" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${sessionId} FOR UPDATE`,
+      );
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_runtime_connections" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${connectionId} FOR UPDATE`,
+      );
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_bridge_dispatches" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${directDispatch.id} FOR UPDATE`,
+      );
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_runs" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${directDispatch.runId} FOR UPDATE`,
+      );
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_tasks" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${directDispatch.taskId} FOR UPDATE`,
+      );
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_runtimes" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${runtimeId} FOR UPDATE`,
+      );
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "acp_broker_reservations" WHERE "workspaceId" = ${workspaceId}::uuid AND "id" = ${directDispatch.brokerEvidenceId} FOR UPDATE`,
+      );
+    };
     await expect(
       prisma.acpBridgeDispatchOutbox.create({ data: directData(new Date(), 99) }),
     ).rejects.toThrow(/outbound sequence mismatch/iu);
@@ -3906,6 +3929,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     await expect(
       prisma.$transaction(async (tx) => {
         await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'America/Adak'`);
+        await lockDirectAuthority(tx);
         await insertDirectWithDatabaseClock(tx, sequenceBaseline + 3);
       }),
     ).rejects.toThrow(/fresh partial bridge evidence/iu);
@@ -3923,6 +3947,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     await expect(
       prisma.$transaction(async (tx) => {
         await tx.$executeRaw(Prisma.sql`SET LOCAL TIME ZONE 'Pacific/Kiritimati'`);
+        await lockDirectAuthority(tx);
         await insertDirectWithDatabaseClock(tx, sequenceBaseline + 3);
         throw new Error('rollback timezone proof');
       }),
