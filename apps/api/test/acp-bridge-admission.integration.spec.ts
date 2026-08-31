@@ -132,6 +132,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     candidateWorkspaceId: string,
     candidateSuffix: string,
     observed = new Date(),
+    secretReference = `secret:codex-${candidateSuffix}`,
     expectedSecretDigest = 'd'.repeat(64),
   ) {
     const base = deterministicLinuxAdmission().manifest;
@@ -173,7 +174,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         principalReference: `principal:codex-${candidateSuffix}`,
         parentNonce: `parent-nonce-${candidateSuffix}`,
         runtimeNonce: `runtime-nonce-${candidateSuffix}`,
-        secretReference: `secret:codex-${candidateSuffix}`,
+        secretReference,
         expectedSecretDigest,
         authGeneration: 1,
         authenticatedAt: authenticatedAt.toISOString(),
@@ -317,6 +318,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       workspaceId,
       registrationSuffix,
       new Date(Date.now() - 5_000),
+      deniedSecretReference,
       digestSecretReference(deniedSecret),
     );
     await expect(
@@ -349,6 +351,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       workspaceId,
       registrationSuffix,
       observedAt,
+      codexSecretReference,
       digestSecretReference(codexSecret),
     );
     const authorizationIssuedAt = new Date(observedAt.getTime() + 1_000);
@@ -415,6 +418,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
             workspaceId,
             `mismatch-${suffix}`,
             new Date(Date.now() - 5_000),
+            codexSecretReference,
             digestSecretReference(codexSecret),
           ),
           secretReference: mismatchedSecretReference,
