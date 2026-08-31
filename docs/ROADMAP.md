@@ -116,7 +116,9 @@ published and current `main` has not been deployed to private staging.
   frame remains ephemeral and `NOT_SENT`, production authorization and secrets
   remain deny-only, and no task/run/connection truth changes. A one-shot
   controller and bounded JSONL transport over already-open Codex app-server
-  streams now exist as separate, uncomposed boundaries. An immutable admission
+  streams now exist. A bounded, still-uncomposed protocol coordinator forces
+  an ephemeral read-only/no-network turn, rejects tool and approval activity,
+  and requires an exact dispatch-bound terminal token. An immutable admission
   path now verifies and retains the exact runtime-signed sequence-2 accepted
   status and sequence-3 terminal result against that claimed dispatch while
   leaving runtime, connection, task, and run truth unchanged. Production
@@ -197,8 +199,10 @@ published and current `main` has not been deployed to private staging.
    controller, but its production transport remains deny-only and local byte
    acceptance is not delivery evidence. A bounded JSONL implementation now
    owns framing, backpressure completion, timeouts, cancellation, and limits
-   for already-open Codex app-server streams, but no production composition
-   supplies those streams. Authenticated status/result evidence can now be
+   for already-open Codex app-server streams. A coordinator over that injected
+   boundary now enforces ephemeral read-only/no-network execution, bounded
+   correlated safe progress, and exact dispatch-bound terminal output, but no
+   production composition supplies those streams. Authenticated status/result evidence can now be
    admitted immutably without promoting runtime truth; composed validation
    against a real authenticated process remains the next safe adapter slice.
    Merged contracts are not runtime-connectivity evidence.

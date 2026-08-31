@@ -20,3 +20,4 @@ export * from './codex-heartbeat';
 export * from './codex-validation-dispatch';
 export * from './codex-validation-egress-controller';
 export * from './codex-validation-round-trip';
+export * from './codex-validation-protocol-runner';

@@ -407,3 +407,10 @@ signed `DISPATCH` line and bound an injected local write. The default transport
 denies every write, and no API composition, socket, pipe, queue, process,
 provider adapter, acknowledgement, or delivery/status authority exists. Local
 write completion must not be presented as runtime receipt or connectivity.
+
+The injected Codex protocol coordinator can require an ephemeral
+read-only/no-network turn and an exact dispatch-bound terminal token while
+rejecting observed tool or approval activity. It still receives no production
+streams, launcher, credentials, provider access, runtime-side bridge signer, or
+durable writer. Because no real authenticated process round trip exists, this
+must not be presented as configured Codex or runtime connectivity.
