@@ -95,8 +95,14 @@ published and current `main` has not been deployed to private staging.
   authorization, and a scoped secret lease that reproduces the candidate's
   one-way secret binding. The production authorization and secret sources deny
   by default; retained evidence excludes account details and credentials, and
-  both runtime and connection remain `NOT_CONFIGURED`. Capability exchange is
-  the next separately reviewed boundary.
+  both runtime and connection remain `NOT_CONFIGURED`.
+- Codex now has a dedicated immutable capability-evidence operation. It accepts
+  only the normalized complete `model/list` candidate bound to the exact
+  tenant-scoped durable registration, capability policy, idempotency key, and
+  a separate five-minute authorization. It stores no model identity or raw
+  protocol payload, production authorization denies by default, and it leaves
+  runtime and connection capability/status truth `NOT_CONFIGURED`. A bounded
+  authenticated heartbeat is the next separately reviewed adapter boundary.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
@@ -160,11 +166,12 @@ published and current `main` has not been deployed to private staging.
    authorization, secrets, and launching remain deny-only and all real runtimes remain
    **NOT_CONFIGURED**.
    Codex now also has an I/O-free, exact stable `model/list` capability
-   translator bound to authenticated registration. It accepts only a complete
-   non-hidden catalog, retains hashes and normalized catalog claims rather than
-   model identity, and requires a separate deny-by-default authorization. It
-   does not write durable evidence, contact a provider, or promote runtime
-   truth. Durable capability acceptance remains the next safe adapter slice.
+   translator and immutable durable acceptance bound to authenticated durable
+   registration. It accepts only a complete non-hidden catalog, retains hashes
+   and normalized catalog claims rather than model identity, and requires a
+   separate deny-by-default authorization. It does not contact a provider or
+   promote runtime truth. A bounded authenticated heartbeat remains the next
+   safe adapter slice.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

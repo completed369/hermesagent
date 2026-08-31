@@ -115,10 +115,13 @@
 > translator. It accepts only a complete non-hidden first page, rejects
 > unknown or experimental catalog claims, hashes away model identity and raw
 > catalog content, and produces catalog claims with capability, provider, and
-> runtime truth all `NOT_CONFIGURED`. The production authorization source is
-> deny-only. There is not yet a durable capability-evidence write, heartbeat,
-> task/status/result exchange, provider round trip, or connected-state
-> transition; Codex remains **NOT_CONFIGURED**.
+> runtime truth all `NOT_CONFIGURED`. An immutable tenant-scoped durable
+> acceptance path now binds that normalized candidate to the exact durable
+> registration row, capability policy, idempotency key, and a separate
+> five-minute authorization. The production authorization source is deny-only,
+> and neither runtime nor connection capability/status fields are promoted.
+> There is not yet a heartbeat, task/status/result exchange, provider round
+> trip, or connected-state transition; Codex remains **NOT_CONFIGURED**.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

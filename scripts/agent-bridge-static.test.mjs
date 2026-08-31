@@ -143,6 +143,40 @@ test('durable Codex registration is explicit, normalized, and production-denied'
   assert.doesNotMatch(migration, /email|planType|rawPayload|credential|accessToken|apiKey/u);
 });
 
+test('durable Codex capability evidence is immutable, tenant-bound, and production-denied', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260831170000_durable_codex_capability_evidence/migration.sql',
+    'utf8',
+  );
+  const acceptance = service.slice(
+    service.indexOf('async acceptCodexCapabilityExchange('),
+    service.indexOf('async provisionRuntime('),
+  );
+  assert.match(module, /new DenyCodexCapabilityExchangeAuthorizationSource\(\)/u);
+  assert.match(acceptance, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(acceptance, /this\.capabilityPolicy\.verify/u);
+  assert.match(acceptance, /createCodexCapabilityExchangeAuthorizationRequest/u);
+  assert.match(acceptance, /"acp_runtime_capability_evidence"/u);
+  assert.match(acceptance, /status !== 'NOT_CONFIGURED'/u);
+  assert.match(acceptance, /connection\.capabilityCodes\.length !== 0/u);
+  assert.doesNotMatch(acceptance, /acpRuntimeConnection\.(?:create|update|upsert)/u);
+  assert.match(migration, /acp_runtime_capability_evidence_registration_fkey/u);
+  assert.match(migration, /acp_runtime_capability_evidence_connection_fkey/u);
+  assert.match(migration, /ventureos_reject_capability_evidence_update/u);
+  assert.doesNotMatch(
+    migration,
+    /displayName|modelIdentifier|description|rawPayload|credential|accessToken|apiKey/u,
+  );
+});
+
 test('production secret resolution is deny-only and has no ambient credential source', () => {
   const source = serviceFiles
     .filter((file) => !file.endsWith('supervision-evidence-reader.ts'))
