@@ -218,7 +218,10 @@ export class BoundedCodexValidationProtocolRunner {
       if (message.method === 'turn/completed') {
         if (finalText(message) !== terminalToken(dispatch.dispatchId))
           throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
-        return session.acceptTurnCompleted(message);
+        const evidence = session.acceptTurnCompleted(message);
+        if (evidence.status !== 'completed')
+          throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
+        return evidence;
       }
       admitProgress(message, snapshot.threadId, snapshot.turnId);
     }

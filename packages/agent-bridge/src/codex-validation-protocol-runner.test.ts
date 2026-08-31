@@ -212,6 +212,16 @@ describe('BoundedCodexValidationProtocolRunner', () => {
         () => new Date('2026-08-31T11:03:16.000Z'),
       ).run(dispatch()),
     ).rejects.toMatchObject({ code: 'RESULT_MISMATCH' });
+
+    const failed = messages();
+    const failedParams = failed[5]!.params as Record<string, unknown>;
+    (failedParams.turn as Record<string, unknown>).status = 'failed';
+    await expect(
+      new BoundedCodexValidationProtocolRunner(
+        new FixtureTransport(failed),
+        () => new Date('2026-08-31T11:03:16.000Z'),
+      ).run(dispatch()),
+    ).rejects.toMatchObject({ code: 'RESULT_MISMATCH' });
   });
 
   it('rejects observed tool activity', async () => {
