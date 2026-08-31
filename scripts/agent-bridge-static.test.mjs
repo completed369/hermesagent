@@ -7,6 +7,7 @@ const packageFiles = [
   'packages/agent-bridge/src/auth.ts',
   'packages/agent-bridge/src/codec.ts',
   'packages/agent-bridge/src/codex-app-server-policy.ts',
+  'packages/agent-bridge/src/codex-app-server-session.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
@@ -60,6 +61,23 @@ test('Codex app-server policy is exact, inert, and cannot promote runtime truth'
   assert.match(module, /new DenyTrustedSupervisorAuthorizationSource\(\)/u);
   assert.match(module, /new DenyRuntimeProcessLauncher\(\)/u);
   assert.doesNotMatch(runtimeMigration, /CODEX_APP_SERVER_STDIO_V1/u);
+});
+
+test('Codex app-server session is bounded, I/O-free, and cannot promote runtime truth', () => {
+  const session = readFileSync('packages/agent-bridge/src/codex-app-server-session.ts', 'utf8');
+  assert.doesNotMatch(
+    session,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(session, /\bprocess\.(?:env|cwd|platform)\b|@Controller\s*\(|Prisma/u);
+  assert.doesNotMatch(session, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.match(session, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(session, /method: 'initialize'/u);
+  assert.match(session, /method: 'initialized'/u);
+  assert.match(session, /method: 'thread\/start'/u);
+  assert.match(session, /method: 'turn\/start'/u);
+  assert.match(session, /method: 'turn\/interrupt'/u);
+  assert.doesNotMatch(session, /experimentalApi:\s*true/u);
 });
 
 test('production secret resolution is deny-only and has no ambient credential source', () => {

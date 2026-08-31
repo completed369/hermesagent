@@ -78,6 +78,12 @@ published and current `main` has not been deployed to private staging.
   transports, arguments, wrappers, environment, secret handles, and network.
   Production executable authority and launching remain deny-only, no process or
   provider is contacted, and Codex remains `NOT_CONFIGURED`.
+- The reviewed Codex interface now has an I/O-free, single-task protocol state
+  machine for exact initialization, thread creation, turn creation, optional
+  interruption, and terminal correlation. It bounds message size and structure,
+  retains no task or result text, rejects out-of-order and unreviewed shapes,
+  exposes no transport or provider operation, and leaves runtime truth
+  `NOT_CONFIGURED`.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database

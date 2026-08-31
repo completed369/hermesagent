@@ -12,3 +12,4 @@ export * from './supervisor-composition';
 export * from './authenticated-jsonl-session';
 export * from './egress-controller';
 export * from './codex-app-server-policy';
+export * from './codex-app-server-session';
