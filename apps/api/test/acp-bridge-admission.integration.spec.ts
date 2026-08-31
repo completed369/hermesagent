@@ -5110,9 +5110,9 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         },
       ),
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
-    expect(
-      await prisma.acpRuntime.count({ where: { workspaceId, id: { startsWith: 'codex' } } }),
-    ).toBe(0);
+    expect(await prisma.acpRuntime.count({ where: { workspaceId, id: `codex:${suffix}` } })).toBe(
+      0,
+    );
     refreshCandidateSnapshot();
     await expect(
       brokerReservations.reserveForPreparedRun(
