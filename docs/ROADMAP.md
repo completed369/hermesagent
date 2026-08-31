@@ -116,8 +116,12 @@ published and current `main` has not been deployed to private staging.
   frame remains ephemeral and `NOT_SENT`, production authorization and secrets
   remain deny-only, and no task/run/connection truth changes. A one-shot
   controller and bounded JSONL transport over already-open Codex app-server
-  streams now exist as separate, uncomposed boundaries. Authenticated
-  status/result admission remains the next reviewed adapter boundary.
+  streams now exist as separate, uncomposed boundaries. An immutable admission
+  path now verifies and retains the exact runtime-signed sequence-2 accepted
+  status and sequence-3 terminal result against that claimed dispatch while
+  leaving runtime, connection, task, and run truth unchanged. Production
+  composition with an authenticated real process remains the next reviewed
+  adapter boundary.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
@@ -194,8 +198,9 @@ published and current `main` has not been deployed to private staging.
    acceptance is not delivery evidence. A bounded JSONL implementation now
    owns framing, backpressure completion, timeouts, cancellation, and limits
    for already-open Codex app-server streams, but no production composition
-   supplies those streams. Composed validation and authenticated status/result
-   evidence remain the next safe adapter slices.
+   supplies those streams. Authenticated status/result evidence can now be
+   admitted immutably without promoting runtime truth; composed validation
+   against a real authenticated process remains the next safe adapter slice.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

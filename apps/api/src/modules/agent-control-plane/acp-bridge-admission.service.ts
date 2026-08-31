@@ -30,6 +30,7 @@ import {
   codexValidationDispatchUnsignedEnvelope,
   createCodexCapabilityExchangeAuthorizationRequest,
   createCodexHeartbeatEvidenceCandidate,
+  createCodexValidationRoundTripCandidate,
   createCodexRegistrationAuthorizationRequest,
   createCodexValidationDispatchAuthorizationRequest,
   DenyCodexCapabilityExchangeAuthorizationSource,
@@ -42,6 +43,7 @@ import {
   validateCodexValidationDispatchAuthorizationDecision,
   validateCodexValidationDispatchCandidate,
   validateCodexHeartbeatEvidenceCandidate,
+  validateCodexValidationRoundTripCandidate,
   type AuthenticatedJsonlSessionContext,
   type BridgeArtifactContentVerifier,
   type BridgeBrokerEvidenceVerifier,
@@ -57,6 +59,8 @@ import {
   type CodexHeartbeatEvidenceCandidate,
   type CodexValidationDispatchAuthorizationSource,
   type CodexValidationDispatchCandidate,
+  type CodexTerminalEvidence,
+  type CodexValidationRoundTripCandidate,
   type TrustedBridgeBrokerEvidence,
 } from '@ventureos/agent-bridge';
 import {
@@ -209,6 +213,52 @@ interface CodexValidationEgressHandoffRow {
   readonly createdAt: Date;
 }
 
+interface CodexValidationRoundTripEvidenceRow {
+  readonly workspaceId: string;
+  readonly roundTripCandidateHash: string;
+  readonly handoffAttemptId: string;
+  readonly validationDispatchCandidateHash: string;
+  readonly heartbeatCandidateHash: string;
+  readonly runtimeId: string;
+  readonly connectionId: string;
+  readonly sessionId: string;
+  readonly principalReference: string;
+  readonly adapterKind: string;
+  readonly authGeneration: number;
+  readonly dispatchId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly authorityLevel: number;
+  readonly taskPolicyHash: string;
+  readonly maximumCostMinorUnits: number;
+  readonly statusSequence: number;
+  readonly statusMessageId: string;
+  readonly statusPayloadDigest: string;
+  readonly statusEnvelopeDigest: string;
+  readonly statusAuthenticationTagDigest: string;
+  readonly statusIssuedAt: Date;
+  readonly statusExpiresAt: Date;
+  readonly terminalSequence: number;
+  readonly terminalMessageId: string;
+  readonly terminalThreadId: string;
+  readonly terminalTurnId: string;
+  readonly terminalMessageHash: string;
+  readonly terminalPayloadDigest: string;
+  readonly terminalEnvelopeDigest: string;
+  readonly terminalAuthenticationTagDigest: string;
+  readonly terminalIssuedAt: Date;
+  readonly terminalExpiresAt: Date;
+  readonly resultCode: string;
+  readonly statusState: string;
+  readonly terminalState: string;
+  readonly providerAccess: string;
+  readonly runtimeConnection: string;
+  readonly connectionTransition: string;
+  readonly roundTripIdempotencyKey: string;
+  readonly createdAt: Date;
+}
+
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
 const CAPABILITY_OWNER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
@@ -345,6 +395,16 @@ export interface ClaimCodexValidationEgressHandoffInput {
   readonly attemptId: string;
   readonly validationDispatchCandidateHash: string;
   readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
+  readonly idempotencyKey: string;
+}
+
+export interface AcceptCodexValidationRoundTripEvidenceInput {
+  readonly handoffAttemptId: string;
+  readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
+  readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
+  readonly terminal: Readonly<CodexTerminalEvidence>;
+  readonly statusEnvelope: Readonly<BridgeEnvelope>;
+  readonly terminalEnvelope: Readonly<BridgeEnvelope>;
   readonly idempotencyKey: string;
 }
 
@@ -1897,6 +1957,347 @@ export class AcpBridgeAdmissionService
       )
         throw new AcpBridgeAdmissionConflictError(
           'Concurrent Codex validation egress handoff conflict',
+        );
+      throw error;
+    }
+  }
+
+  /**
+   * Admits the authenticated status/result pair for a claimed validation handoff.
+   * This is evidence only: it deliberately does not assign the prepared run or
+   * transition runtime/connection truth.
+   */
+  async acceptCodexValidationRoundTripEvidence(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: AcceptCodexValidationRoundTripEvidenceInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    auditSubjectReference(input.handoffAttemptId, 'handoffAttemptId');
+    publicReference(input.idempotencyKey, 'idempotencyKey');
+    let candidate: Readonly<CodexValidationRoundTripCandidate>;
+    try {
+      candidate = validateCodexValidationRoundTripCandidate(
+        createCodexValidationRoundTripCandidate({
+          dispatch: input.dispatch,
+          bridge: input.bridge,
+          terminal: input.terminal,
+          statusEnvelope: input.statusEnvelope,
+          terminalEnvelope: input.terminalEnvelope,
+        }),
+      );
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Codex validation round-trip evidence is invalid');
+    }
+    if (candidate.workspaceId !== context.workspaceId)
+      throw new AcpBridgeAdmissionDeniedError('Codex validation round trip crossed workspace');
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "acp_codex_validation_egress_handoff_attempts" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.handoffAttemptId} FOR UPDATE`,
+          );
+          const [handoffRows, dispatchRows, existingRows] = await Promise.all([
+            tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_egress_handoff_attempts"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "id"=${input.handoffAttemptId}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_dispatch_evidence"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "validationDispatchCandidateHash"=${candidate.validationDispatchCandidateHash}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationRoundTripEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_round_trip_evidence"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND (
+                  "roundTripCandidateHash"=${candidate.roundTripCandidateHash}
+                  OR "handoffAttemptId"=${input.handoffAttemptId}
+                  OR "roundTripIdempotencyKey"=${input.idempotencyKey}
+                  OR "statusMessageId" IN (${candidate.statusMessageId}, ${candidate.terminalMessageId})
+                  OR "terminalMessageId" IN (${candidate.statusMessageId}, ${candidate.terminalMessageId})
+                )
+              FOR SHARE
+            `),
+          ]);
+          const handoff = handoffRows[0];
+          const dispatch = dispatchRows[0];
+          if (!handoff || !dispatch)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex validation handoff or dispatch evidence not found',
+            );
+          const [connection, run, now] = await Promise.all([
+            tx.acpRuntimeConnection.findUnique({
+              where: {
+                workspaceId_id: { workspaceId: context.workspaceId, id: candidate.connectionId },
+              },
+              include: { runtime: true },
+            }),
+            tx.acpRun.findUnique({
+              where: { workspaceId_id: { workspaceId: context.workspaceId, id: candidate.runId } },
+              include: { task: { include: { objective: true } } },
+            }),
+            databaseNow(tx),
+          ]);
+          if (!connection || !run)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex validation round-trip durable state not found',
+            );
+          const routingPolicy = run.task.routingPolicy as Record<string, unknown>;
+          const agentPolicy = run.task.agentPolicy as Record<string, unknown>;
+          if (
+            !routingPolicy ||
+            typeof routingPolicy !== 'object' ||
+            Array.isArray(routingPolicy) ||
+            JSON.stringify(Object.keys(routingPolicy).sort()) !==
+              JSON.stringify(['capabilityId', 'maximumLatencyMs']) ||
+            !agentPolicy ||
+            typeof agentPolicy !== 'object' ||
+            Array.isArray(agentPolicy) ||
+            JSON.stringify(Object.keys(agentPolicy).sort()) !==
+              JSON.stringify(['scopes', 'templateId']) ||
+            handoff.validationDispatchCandidateHash !== candidate.validationDispatchCandidateHash ||
+            handoff.heartbeatCandidateHash !== candidate.heartbeatCandidateHash ||
+            handoff.ownerReference !== context.principalId ||
+            handoff.ownerActorKind !== actorKind ||
+            handoff.generation !== 1 ||
+            handoff.state !== 'CLAIMED' ||
+            handoff.runtimeId !== candidate.runtimeId ||
+            handoff.connectionId !== candidate.connectionId ||
+            handoff.sessionId !== candidate.sessionId ||
+            handoff.dispatchId !== candidate.dispatchId ||
+            handoff.taskId !== candidate.taskId ||
+            handoff.runId !== candidate.runId ||
+            handoff.agentId !== candidate.agentId ||
+            handoff.authorityLevel !== candidate.authorityLevel ||
+            handoff.taskPolicyHash !== candidate.taskPolicyHash ||
+            handoff.maximumCostMinorUnits !== 0 ||
+            handoff.outboundSequence !== 1 ||
+            handoff.validationIssuedAt.toISOString() !== input.dispatch.issuedAt ||
+            handoff.validationExpiresAt.toISOString() !== input.dispatch.expiresAt ||
+            candidate.statusIssuedAt < handoff.claimedAt.toISOString() ||
+            candidate.statusIssuedAt > handoff.expiresAt.toISOString() ||
+            candidate.terminalExpiresAt > handoff.validationExpiresAt.toISOString() ||
+            dispatch.validationDispatchCandidateHash !==
+              candidate.validationDispatchCandidateHash ||
+            dispatch.heartbeatCandidateHash !== candidate.heartbeatCandidateHash ||
+            dispatch.runtimeId !== candidate.runtimeId ||
+            dispatch.connectionId !== candidate.connectionId ||
+            dispatch.sessionId !== candidate.sessionId ||
+            dispatch.principalReference !== candidate.principalReference ||
+            dispatch.authGeneration !== candidate.authGeneration ||
+            dispatch.dispatchId !== candidate.dispatchId ||
+            dispatch.taskId !== candidate.taskId ||
+            dispatch.runId !== candidate.runId ||
+            dispatch.agentId !== candidate.agentId ||
+            dispatch.authorityLevel !== candidate.authorityLevel ||
+            dispatch.taskPolicyHash !== candidate.taskPolicyHash ||
+            dispatch.maximumCostMinorUnits !== 0 ||
+            dispatch.challengeCode !== CODEX_VALIDATION_CHALLENGE ||
+            dispatch.expiresAt <= now ||
+            connection.runtimeId !== candidate.runtimeId ||
+            connection.runtime.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+            connection.runtime.status !== 'NOT_CONFIGURED' ||
+            connection.runtime.secretReference !== input.bridge.secretReference ||
+            connection.runtime.secretDigest !== input.bridge.expectedSecretDigest ||
+            connection.status !== 'NOT_CONFIGURED' ||
+            connection.authGeneration !== 1 ||
+            connection.capabilityCodes.length !== 0 ||
+            connection.capabilityDigest !== null ||
+            connection.lastHeartbeatAt !== null ||
+            connection.lastHeartbeatHealth !== null ||
+            connection.lastHeartbeatSequence !== null ||
+            run.taskId !== candidate.taskId ||
+            run.objectiveId !== run.task.objectiveId ||
+            run.status !== 'PREPARED' ||
+            run.task.status !== 'READY' ||
+            run.task.kind !== 'quality.verify' ||
+            run.requiredAuthority !== candidate.authorityLevel ||
+            run.task.requiredAuthority !== candidate.authorityLevel ||
+            run.policyHash !== candidate.taskPolicyHash ||
+            run.task.policyHash !== candidate.taskPolicyHash ||
+            run.policyVersion !== run.task.policyVersion ||
+            run.task.maximumCostMinorUnits !== 0n ||
+            run.task.maximumComputeUnits !== BigInt(dispatch.maximumComputeUnits) ||
+            run.task.estimatedDurationMs !== BigInt(dispatch.maximumDurationMs) ||
+            run.task.objective.status !== 'ACTIVE' ||
+            run.task.objective.maximumAuthority < candidate.authorityLevel ||
+            run.task.objective.maximumCostMinorUnits !== 0n ||
+            run.task.objective.maximumComputeUnits < BigInt(dispatch.maximumComputeUnits) ||
+            run.assignedAgentId !== null ||
+            run.assignedRuntimeId !== null ||
+            run.assignedConnectionId !== null ||
+            run.task.assignedAgentId !== null ||
+            run.task.assignedRuntimeId !== null ||
+            run.task.assignedConnectionId !== null ||
+            routingPolicy.capabilityId !== CODEX_VALIDATION_CHALLENGE ||
+            routingPolicy.maximumLatencyMs !== dispatch.maximumDurationMs ||
+            agentPolicy.templateId !== 'codex-runtime-validator' ||
+            !Array.isArray(agentPolicy.scopes) ||
+            JSON.stringify(agentPolicy.scopes) !== JSON.stringify([CODEX_VALIDATION_CHALLENGE])
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation round-trip durable authority is not live',
+            );
+
+          await this.withSecretLease(
+            {
+              workspaceId: context.workspaceId,
+              runtimeId: candidate.runtimeId,
+              connectionId: candidate.connectionId,
+              secretReference: input.bridge.secretReference,
+              expectedDigest: input.bridge.expectedSecretDigest,
+              authGeneration: 1,
+              purpose: 'VERIFY_FRAME',
+            },
+            (secret) => {
+              const keys = deriveBridgeKeys(secret, input.bridge);
+              try {
+                verifyBridgeEnvelope(input.statusEnvelope, keys.runtimeToParent, input.bridge, now);
+                verifyBridgeEnvelope(
+                  input.terminalEnvelope,
+                  keys.runtimeToParent,
+                  input.bridge,
+                  now,
+                );
+              } catch {
+                throw new AcpBridgeAdmissionDeniedError(
+                  'Codex validation round-trip frame authentication failed',
+                );
+              } finally {
+                keys.parentToRuntime.fill(0);
+                keys.runtimeToParent.fill(0);
+              }
+            },
+          );
+
+          const existingByCandidate = existingRows.find(
+            (row) => row.roundTripCandidateHash === candidate.roundTripCandidateHash,
+          );
+          const existingByHandoff = existingRows.find(
+            (row) => row.handoffAttemptId === input.handoffAttemptId,
+          );
+          const existingByKey = existingRows.find(
+            (row) => row.roundTripIdempotencyKey === input.idempotencyKey,
+          );
+          const existing = existingByCandidate ?? existingByHandoff ?? existingByKey;
+          if (existing) {
+            if (
+              existingByCandidate?.roundTripIdempotencyKey !== input.idempotencyKey ||
+              existingByHandoff?.roundTripCandidateHash !== candidate.roundTripCandidateHash ||
+              existingByKey?.roundTripCandidateHash !== candidate.roundTripCandidateHash ||
+              existing.handoffAttemptId !== input.handoffAttemptId
+            )
+              throw new AcpBridgeAdmissionConflictError(
+                'Codex validation round-trip replay drifted',
+              );
+            return Object.freeze({
+              runtime: connection.runtime,
+              connection,
+              run,
+              evidence: Object.freeze({ ...existing, schemaVersion: 1 as const }),
+              replayed: true,
+            });
+          }
+          if (existingRows.length > 0)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation round-trip message identity was already used',
+            );
+
+          const [evidence] = await tx.$queryRaw<CodexValidationRoundTripEvidenceRow[]>(Prisma.sql`
+            INSERT INTO "acp_codex_validation_round_trip_evidence" (
+              "workspaceId", "roundTripCandidateHash", "handoffAttemptId",
+              "validationDispatchCandidateHash", "heartbeatCandidateHash", "runtimeId",
+              "connectionId", "sessionId", "principalReference", "adapterKind",
+              "authGeneration", "dispatchId", "taskId", "runId", "agentId",
+              "authorityLevel", "taskPolicyHash", "maximumCostMinorUnits",
+              "statusSequence", "statusMessageId", "statusPayloadDigest",
+              "statusEnvelopeDigest", "statusAuthenticationTagDigest", "statusIssuedAt",
+              "statusExpiresAt", "terminalSequence", "terminalMessageId",
+              "terminalThreadId", "terminalTurnId", "terminalMessageHash",
+              "terminalPayloadDigest", "terminalEnvelopeDigest",
+              "terminalAuthenticationTagDigest", "terminalIssuedAt", "terminalExpiresAt",
+              "resultCode", "statusState", "terminalState", "providerAccess",
+              "runtimeConnection", "connectionTransition", "roundTripIdempotencyKey"
+            ) VALUES (
+              CAST(${context.workspaceId} AS uuid), ${candidate.roundTripCandidateHash},
+              ${input.handoffAttemptId}, ${candidate.validationDispatchCandidateHash},
+              ${candidate.heartbeatCandidateHash}, ${candidate.runtimeId},
+              ${candidate.connectionId}, ${candidate.sessionId}, ${candidate.principalReference},
+              ${candidate.adapterKind}, ${candidate.authGeneration}, ${candidate.dispatchId},
+              ${candidate.taskId}, ${candidate.runId}, ${candidate.agentId},
+              ${candidate.authorityLevel}, ${candidate.taskPolicyHash},
+              ${candidate.maximumCostMinorUnits}, ${candidate.statusSequence},
+              ${candidate.statusMessageId}, ${candidate.statusPayloadDigest},
+              ${candidate.statusEnvelopeDigest}, ${candidate.statusAuthenticationTagDigest},
+              ${new Date(candidate.statusIssuedAt)}, ${new Date(candidate.statusExpiresAt)},
+              ${candidate.terminalSequence}, ${candidate.terminalMessageId},
+              ${candidate.terminalThreadId}, ${candidate.terminalTurnId},
+              ${candidate.terminalMessageHash}, ${candidate.terminalPayloadDigest},
+              ${candidate.terminalEnvelopeDigest},
+              ${candidate.terminalAuthenticationTagDigest},
+              ${new Date(candidate.terminalIssuedAt)}, ${new Date(candidate.terminalExpiresAt)},
+              ${candidate.resultCode}, ${candidate.statusState}, ${candidate.terminalState},
+              ${candidate.providerAccess}, ${candidate.runtimeConnection},
+              ${candidate.connectionTransition}, ${input.idempotencyKey}
+            ) RETURNING *
+          `);
+          if (!evidence)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation round-trip evidence was not stored',
+            );
+          await tx.$executeRaw(Prisma.sql`
+            INSERT INTO "acp_codex_validation_round_trip_messages" (
+              "workspaceId", "sessionId", "messageId", "roundTripCandidateHash", "messageRole"
+            ) VALUES
+              (CAST(${context.workspaceId} AS uuid), ${candidate.sessionId},
+                ${candidate.statusMessageId}, ${candidate.roundTripCandidateHash}, 'STATUS'),
+              (CAST(${context.workspaceId} AS uuid), ${candidate.sessionId},
+                ${candidate.terminalMessageId}, ${candidate.roundTripCandidateHash}, 'TERMINAL')
+          `);
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'run.progress',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpCodexValidationRoundTripEvidence',
+              subjectId: evidence.roundTripCandidateHash,
+              occurredAt: now.toISOString(),
+              idempotencyKey: `${input.idempotencyKey}:event`,
+              correlationId: candidate.runId,
+              facts: { payloadFieldCount: 0, payloadBytes: 0 },
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          return Object.freeze({
+            runtime: connection.runtime,
+            connection,
+            run,
+            evidence: Object.freeze({ ...evidence, schemaVersion: 1 as const }),
+            replayed: false,
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && error.meta?.code === '23505'))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex validation round-trip conflict',
         );
       throw error;
     }

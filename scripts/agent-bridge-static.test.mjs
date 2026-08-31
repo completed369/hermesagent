@@ -14,6 +14,7 @@ const packageFiles = [
   'packages/agent-bridge/src/codex-heartbeat.ts',
   'packages/agent-bridge/src/codex-validation-dispatch.ts',
   'packages/agent-bridge/src/codex-validation-egress-controller.ts',
+  'packages/agent-bridge/src/codex-validation-round-trip.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
@@ -333,6 +334,65 @@ test('Codex validation egress is one-shot, bounded, local-only, and truth preser
   assert.match(migration, /state" = 'CLAIMED'/u);
   assert.match(migration, /INTERVAL '15 seconds'/u);
   assert.match(migration, /ventureos_reject_codex_validation_egress_handoff_change/u);
+  assert.match(
+    migration,
+    /TG_OP = 'DELETE'[\s\S]*NOT EXISTS[\s\S]*FROM "workspaces"[\s\S]*RETURN OLD/u,
+  );
+  assert.doesNotMatch(
+    migration,
+    /^\s+"(?:mac|rawPayload|prompt|transcript|credential|accessToken|apiKey)"\s+/mu,
+  );
+});
+
+test('Codex validation round-trip evidence is authenticated, immutable, and truth preserving', () => {
+  const roundTrip = readFileSync(
+    'packages/agent-bridge/src/codex-validation-round-trip.ts',
+    'utf8',
+  );
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260901013000_codex_validation_round_trip_evidence/migration.sql',
+    'utf8',
+  );
+  const acceptance = service.slice(
+    service.indexOf('async acceptCodexValidationRoundTripEvidence('),
+    service.indexOf('async provisionRuntime('),
+  );
+  assert.doesNotMatch(
+    roundTrip,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(
+    roundTrip,
+    /\b(?:fetch|spawn|spawnSync|exec|execFile|fork|connect|createConnection|createServer)\s*\(/u,
+  );
+  assert.match(roundTrip, /statusEnvelope\.type !== 'DISPATCH_ACCEPTED'/u);
+  assert.match(roundTrip, /statusEnvelope\.sequence !== 2/u);
+  assert.match(roundTrip, /terminalEnvelope\.type !== 'RESULT'/u);
+  assert.match(roundTrip, /terminalEnvelope\.sequence !== 3/u);
+  assert.match(roundTrip, /maximumCostMinorUnits: 0 as const/u);
+  assert.match(roundTrip, /providerAccess: 'NOT_CONFIGURED'/u);
+  assert.match(roundTrip, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(roundTrip, /connectionTransition: 'NOT_APPLIED'/u);
+  assert.match(acceptance, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(acceptance, /purpose: 'VERIFY_FRAME'/u);
+  assert.match(acceptance, /verifyBridgeEnvelope\([\s\S]*keys\.runtimeToParent/u);
+  assert.match(acceptance, /connection\.status !== 'NOT_CONFIGURED'/u);
+  assert.match(acceptance, /run\.status !== 'PREPARED'/u);
+  assert.doesNotMatch(
+    acceptance,
+    /acp(?:Run|Task|Runtime|RuntimeConnection)\.(?:create|update|upsert)/u,
+  );
+  assert.match(migration, /maximumCostMinorUnits" = 0/u);
+  assert.match(migration, /runtimeConnection" = 'NOT_CONFIGURED'/u);
+  assert.match(migration, /connectionTransition" = 'NOT_APPLIED'/u);
+  assert.match(migration, /acp_codex_validation_round_trip_handoff_fkey/u);
+  assert.match(migration, /acp_codex_validation_round_trip_messages_pkey/u);
+  assert.match(migration, /acp_codex_validation_round_trip_messages_immutable/u);
+  assert.match(migration, /ventureos_reject_codex_validation_round_trip_change/u);
   assert.match(
     migration,
     /TG_OP = 'DELETE'[\s\S]*NOT EXISTS[\s\S]*FROM "workspaces"[\s\S]*RETURN OLD/u,
