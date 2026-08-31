@@ -334,3 +334,11 @@ experiment, billing, and marketplace modules now exist. Real-provider/live
 publication and commercial readiness remain intentionally blocked by the
 controls and residual risks above; see `ROADMAP.md` and
 `APPLICATION_SECURITY_BASELINE.md`.
+
+## Bounded egress controller has no configured transport
+
+The Agent Bridge can validate one durable egress claim against one canonical
+signed `DISPATCH` line and bound an injected local write. The default transport
+denies every write, and no API composition, socket, pipe, queue, process,
+provider adapter, acknowledgement, or delivery/status authority exists. Local
+write completion must not be presented as runtime receipt or connectivity.

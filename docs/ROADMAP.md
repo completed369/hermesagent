@@ -66,6 +66,11 @@ published and current `main` has not been deployed to private staging.
   unauthenticated correlation metadata requiring re-signing/reverification.
   This is still no sender, queue, socket, process, provider, delivery,
   acknowledgement, `SENT`, or connectivity path.
+- A bounded single-frame egress controller now exact-binds one claimed
+  `DISPATCH` to its canonical JSONL bytes and an injected, abortable local write
+  port. The only production-ready transport implementation denies every write;
+  there is no API wiring, socket, pipe, queue, process, provider, acknowledgement,
+  delivery state, or runtime-status promotion.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
