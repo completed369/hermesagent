@@ -100,6 +100,13 @@
 > heartbeat, dispatch, artifact, usage, audit, or provider integration. It
 > retains hashes and correlation identifiers rather than task or result text and
 > cannot promote runtime status. Codex remains **NOT_CONFIGURED**.
+>
+> Authenticated Codex registration is currently only an inert translation
+> candidate. It revalidates local policy, initialized protocol state, the
+> VentureOS bridge identity, and a non-refreshing account-state response, but it
+> neither sends `account/read` nor proves provider access. Account details are
+> not retained. Durable provisioning still rejects named Codex runtimes, and no
+> adapter, connection, capability, heartbeat, or task status is promoted.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
