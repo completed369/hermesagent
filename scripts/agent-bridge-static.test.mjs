@@ -8,6 +8,7 @@ const packageFiles = [
   'packages/agent-bridge/src/codec.ts',
   'packages/agent-bridge/src/codex-app-server-policy.ts',
   'packages/agent-bridge/src/codex-app-server-session.ts',
+  'packages/agent-bridge/src/codex-app-server-stdio-transport.ts',
   'packages/agent-bridge/src/codex-authenticated-registration.ts',
   'packages/agent-bridge/src/codex-capability-exchange.ts',
   'packages/agent-bridge/src/codex-heartbeat.ts',
@@ -66,6 +67,29 @@ test('Codex app-server policy is exact, inert, and cannot promote runtime truth'
   assert.match(module, /new DenyTrustedSupervisorAuthorizationSource\(\)/u);
   assert.match(module, /new DenyRuntimeProcessLauncher\(\)/u);
   assert.doesNotMatch(runtimeMigration, /CODEX_APP_SERVER_STDIO_V1/u);
+});
+
+test('Codex app-server stdio transport is bounded and cannot launch or promote truth', () => {
+  const transport = readFileSync(
+    'packages/agent-bridge/src/codex-app-server-stdio-transport.ts',
+    'utf8',
+  );
+  assert.doesNotMatch(
+    transport,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(
+    transport,
+    /\b(?:fetch|spawn|spawnSync|exec|execFile|fork|connect|createConnection|createServer)\s*\(/u,
+  );
+  assert.doesNotMatch(transport, /process\.(?:env|stdin|stdout)/u);
+  assert.match(transport, /MAX_CODEX_STDIO_LINE_BYTES = 65_536/u);
+  assert.match(transport, /MAX_CODEX_STDIO_BUFFER_BYTES = 131_072/u);
+  assert.match(transport, /MAX_CODEX_STDIO_SESSION_BYTES = 8 \* 1_024 \* 1_024/u);
+  assert.match(transport, /MAX_CODEX_STDIO_OPERATION_TIMEOUT_MS = 5_000/u);
+  assert.match(transport, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(transport, /this\.stdin\.destroy\(\)/u);
+  assert.match(transport, /this\.stdout\.destroy\(\)/u);
 });
 
 test('Codex app-server session is bounded, I/O-free, and cannot promote runtime truth', () => {
