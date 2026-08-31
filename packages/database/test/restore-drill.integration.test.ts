@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 import {
   completeDisposablePostgresRestoreDrill,
@@ -143,7 +143,7 @@ describe.runIf(onOwnedGitHubRunner)('real disposable PostgreSQL dump/restore evi
     const backupReference = `ci-pgdump-${suffix}`;
     const dumpPath = `/tmp/${backupReference}.dump`;
     const admin = new Pool({ connectionString: databaseUrl });
-    let targetPool: Pool | undefined;
+    let targetClient: Client | undefined;
     let targetCreated = false;
     const backupCreatedAt = new Date();
     try {
@@ -187,19 +187,20 @@ describe.runIf(onOwnedGitHubRunner)('real disposable PostgreSQL dump/restore evi
       const targetUrl = new URL(databaseUrl!);
       targetUrl.pathname = `/${target}`;
       targetUrl.search = '';
-      targetPool = new Pool({ connectionString: targetUrl.toString(), max: 1 });
-      const restoredSentinel = await targetPool.query<{ digest: string }>(
+      targetClient = new Client({ connectionString: targetUrl.toString() });
+      await targetClient.connect();
+      const restoredSentinel = await targetClient.query<{ digest: string }>(
         `SELECT digest FROM "${sentinelTable}"`,
       );
-      const restoredMigration = await targetPool.query<{ migration_name: string }>(
+      const restoredMigration = await targetClient.query<{ migration_name: string }>(
         'SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at DESC, migration_name DESC LIMIT 1',
       );
-      expect((await targetPool.query<{ ready: number }>('SELECT 1 AS ready')).rows[0]?.ready).toBe(
-        1,
-      );
+      expect(
+        (await targetClient.query<{ ready: number }>('SELECT 1 AS ready')).rows[0]?.ready,
+      ).toBe(1);
       const completedAt = new Date();
-      await targetPool.end();
-      targetPool = undefined;
+      await targetClient.end();
+      targetClient = undefined;
       await admin.query(`DROP DATABASE "${target}"`);
       targetCreated = false;
       const migrationDecision = createMigrationCompatibilityEvidence({
@@ -250,7 +251,7 @@ describe.runIf(onOwnedGitHubRunner)('real disposable PostgreSQL dump/restore evi
         ).rows[0]?.count,
       ).toBe('0');
     } finally {
-      await targetPool?.end().catch(() => undefined);
+      await targetClient?.end().catch(() => undefined);
       if (targetCreated)
         await admin.query(`DROP DATABASE IF EXISTS "${target}"`).catch(() => undefined);
       await admin.query(`DROP TABLE IF EXISTS "${sentinelTable}"`).catch(() => undefined);
