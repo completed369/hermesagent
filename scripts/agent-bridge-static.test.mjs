@@ -10,6 +10,7 @@ const packageFiles = [
   'packages/agent-bridge/src/codex-app-server-session.ts',
   'packages/agent-bridge/src/codex-authenticated-registration.ts',
   'packages/agent-bridge/src/codex-capability-exchange.ts',
+  'packages/agent-bridge/src/codex-heartbeat.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
@@ -158,7 +159,7 @@ test('durable Codex capability evidence is immutable, tenant-bound, and producti
   );
   const acceptance = service.slice(
     service.indexOf('async acceptCodexCapabilityExchange('),
-    service.indexOf('async provisionRuntime('),
+    service.indexOf('async acceptCodexHeartbeatEvidence('),
   );
   assert.match(module, /new DenyCodexCapabilityExchangeAuthorizationSource\(\)/u);
   assert.match(acceptance, /assertControlPlane\(capability, context, 3\)/u);
@@ -175,6 +176,42 @@ test('durable Codex capability evidence is immutable, tenant-bound, and producti
     migration,
     /displayName|modelIdentifier|description|rawPayload|credential|accessToken|apiKey/u,
   );
+});
+
+test('durable Codex heartbeat evidence is MAC-verified, immutable, and truth-preserving', () => {
+  const heartbeat = readFileSync('packages/agent-bridge/src/codex-heartbeat.ts', 'utf8');
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260831203000_durable_codex_heartbeat_evidence/migration.sql',
+    'utf8',
+  );
+  const acceptance = service.slice(
+    service.indexOf('async acceptCodexHeartbeatEvidence('),
+    service.indexOf('async provisionRuntime('),
+  );
+  assert.doesNotMatch(
+    heartbeat,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(heartbeat, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.match(heartbeat, /envelope\.type !== 'HEARTBEAT'/u);
+  assert.match(heartbeat, /envelope\.sequence !== 1/u);
+  assert.match(heartbeat, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(acceptance, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(acceptance, /purpose: 'VERIFY_FRAME'/u);
+  assert.match(acceptance, /verifyBridgeEnvelope\(input\.envelope, keys\.runtimeToParent/u);
+  assert.match(acceptance, /"acp_runtime_heartbeat_evidence"/u);
+  assert.match(acceptance, /connection\.lastHeartbeatAt !== null/u);
+  assert.doesNotMatch(acceptance, /acpRuntimeConnection\.(?:create|update|upsert)/u);
+  assert.match(migration, /acp_runtime_heartbeat_evidence_registration_fkey/u);
+  assert.match(migration, /acp_runtime_heartbeat_evidence_capability_fkey/u);
+  assert.match(migration, /acp_runtime_registration_evidence_heartbeat_binding_key/u);
+  assert.match(migration, /acp_runtime_capability_evidence_heartbeat_binding_key/u);
+  assert.match(migration, /ventureos_reject_heartbeat_evidence_update/u);
+  assert.doesNotMatch(migration, /\bmac\b|rawPayload|credential|accessToken|apiKey/u);
 });
 
 test('production secret resolution is deny-only and has no ambient credential source', () => {

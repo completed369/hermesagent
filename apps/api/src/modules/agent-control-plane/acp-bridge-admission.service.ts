@@ -25,6 +25,7 @@ import {
   codexRegistrationAuthorizationRequestHash,
   codexCapabilityExchangeAuthorizationRequestHash,
   createCodexCapabilityExchangeAuthorizationRequest,
+  createCodexHeartbeatEvidenceCandidate,
   createCodexRegistrationAuthorizationRequest,
   DenyCodexCapabilityExchangeAuthorizationSource,
   DenyCodexRegistrationAuthorizationSource,
@@ -32,6 +33,8 @@ import {
   validateCodexCapabilityExchangeCandidate,
   validateCodexAuthenticatedRegistrationCandidate,
   validateCodexRegistrationAuthorizationDecision,
+  validateCodexHeartbeatEvidenceCandidate,
+  type AuthenticatedJsonlSessionContext,
   type BridgeArtifactContentVerifier,
   type BridgeBrokerEvidenceVerifier,
   type BridgeCapabilityPolicyVerifier,
@@ -43,6 +46,7 @@ import {
   type CodexCapabilityExchangeAuthorizationSource,
   type CodexCapabilityExchangeCandidate,
   type CodexRegistrationAuthorizationSource,
+  type CodexHeartbeatEvidenceCandidate,
   type TrustedBridgeBrokerEvidence,
 } from '@ventureos/agent-bridge';
 import {
@@ -89,6 +93,31 @@ interface CodexCapabilityEvidenceRow {
   readonly authorizationExpiresAt: Date;
   readonly capabilityPolicyHash: string;
   readonly capabilityIdempotencyKey: string;
+  readonly createdAt: Date;
+}
+
+interface CodexHeartbeatEvidenceRow {
+  readonly workspaceId: string;
+  readonly heartbeatCandidateHash: string;
+  readonly registrationCandidateHash: string;
+  readonly capabilityCandidateHash: string;
+  readonly runtimeId: string;
+  readonly connectionId: string;
+  readonly sessionId: string;
+  readonly principalReference: string;
+  readonly adapterKind: string;
+  readonly authGeneration: number;
+  readonly bridgeIdentityHash: string;
+  readonly secretBindingHash: string;
+  readonly capabilityDigest: string;
+  readonly sequence: number;
+  readonly messageId: string;
+  readonly health: string;
+  readonly payloadDigest: string;
+  readonly envelopeDigest: string;
+  readonly issuedAt: Date;
+  readonly expiresAt: Date;
+  readonly heartbeatIdempotencyKey: string;
   readonly createdAt: Date;
 }
 
@@ -207,6 +236,14 @@ export interface RegisterCodexRuntimeInput {
 export interface AcceptCodexCapabilityExchangeInput {
   readonly candidate: Readonly<CodexCapabilityExchangeCandidate>;
   readonly capabilityPolicyHash: string;
+  readonly idempotencyKey: string;
+}
+
+export interface AcceptCodexHeartbeatEvidenceInput {
+  readonly registration: Readonly<CodexAuthenticatedRegistrationCandidate>;
+  readonly capability: Readonly<CodexCapabilityExchangeCandidate>;
+  readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
+  readonly envelope: Readonly<BridgeEnvelope>;
   readonly idempotencyKey: string;
 }
 
@@ -732,6 +769,217 @@ export class AcpBridgeAdmissionService
       )
         throw new AcpBridgeAdmissionConflictError(
           'Concurrent Codex capability conflict; retry with current durable state',
+        );
+      throw error;
+    }
+  }
+
+  async acceptCodexHeartbeatEvidence(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: AcceptCodexHeartbeatEvidenceInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    reference(input.idempotencyKey, 'idempotencyKey');
+    let candidate: Readonly<CodexHeartbeatEvidenceCandidate>;
+    try {
+      candidate = validateCodexHeartbeatEvidenceCandidate(
+        createCodexHeartbeatEvidenceCandidate(input),
+      );
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Invalid Codex heartbeat evidence');
+    }
+    if (
+      candidate.workspaceId !== context.workspaceId ||
+      candidate.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+      candidate.authGeneration !== 1
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex heartbeat identity is not admissible');
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const now = await databaseNow(tx);
+          const issuedAt = new Date(candidate.issuedAt);
+          const expiresAt = new Date(candidate.expiresAt);
+          if (issuedAt > now || now.getTime() - issuedAt.getTime() > 60_000 || expiresAt <= now)
+            throw new AcpBridgeAdmissionDeniedError('Codex heartbeat evidence expired');
+
+          const [registration, capabilityRows, existingRows] = await Promise.all([
+            tx.acpRuntimeRegistrationEvidence.findUnique({
+              where: {
+                workspaceId_registrationCandidateHash: {
+                  workspaceId: context.workspaceId,
+                  registrationCandidateHash: candidate.registrationCandidateHash,
+                },
+              },
+              include: { connection: { include: { runtime: true } } },
+            }),
+            tx.$queryRaw<CodexCapabilityEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_runtime_capability_evidence"
+              WHERE "workspaceId" = CAST(${context.workspaceId} AS uuid)
+                AND "capabilityCandidateHash" = ${candidate.capabilityCandidateHash}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexHeartbeatEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_runtime_heartbeat_evidence"
+              WHERE "workspaceId" = CAST(${context.workspaceId} AS uuid)
+                AND (
+                  "heartbeatCandidateHash" = ${candidate.heartbeatCandidateHash}
+                  OR "heartbeatIdempotencyKey" = ${input.idempotencyKey}
+                  OR "messageId" = ${candidate.messageId}
+                  OR ("connectionId" = ${candidate.connectionId} AND "sequence" = ${candidate.sequence})
+                )
+              FOR SHARE
+            `),
+          ]);
+          const capabilityEvidence = capabilityRows[0];
+          if (!registration || !capabilityEvidence)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex registration or capability evidence not found',
+            );
+          const connection = registration.connection;
+          const runtime = connection.runtime;
+          if (
+            registration.runtimeId !== candidate.runtimeId ||
+            registration.connectionId !== candidate.connectionId ||
+            registration.sessionId !== candidate.sessionId ||
+            registration.principalReference !== candidate.principalReference ||
+            registration.bridgeIdentityHash !== candidate.bridgeIdentityHash ||
+            registration.secretBindingHash !== candidate.secretBindingHash ||
+            capabilityEvidence.registrationCandidateHash !== candidate.registrationCandidateHash ||
+            capabilityEvidence.runtimeId !== candidate.runtimeId ||
+            capabilityEvidence.connectionId !== candidate.connectionId ||
+            capabilityEvidence.sessionId !== candidate.sessionId ||
+            capabilityEvidence.principalReference !== candidate.principalReference ||
+            capabilityEvidence.bridgeIdentityHash !== candidate.bridgeIdentityHash ||
+            capabilityEvidence.capabilityDigest !== candidate.capabilityDigest ||
+            runtime.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+            runtime.status !== 'NOT_CONFIGURED' ||
+            runtime.secretReference !== input.bridge.secretReference ||
+            runtime.secretDigest !== input.bridge.expectedSecretDigest ||
+            connection.status !== 'NOT_CONFIGURED' ||
+            connection.authGeneration !== candidate.authGeneration ||
+            connection.capabilityCodes.length !== 0 ||
+            connection.capabilityDigest !== null ||
+            connection.lastHeartbeatAt !== null ||
+            connection.lastHeartbeatHealth !== null ||
+            connection.lastHeartbeatSequence !== null
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex heartbeat does not match durable precursor evidence',
+            );
+
+          await this.withSecretLease(
+            {
+              workspaceId: context.workspaceId,
+              runtimeId: candidate.runtimeId,
+              connectionId: candidate.connectionId,
+              secretReference: input.bridge.secretReference,
+              expectedDigest: input.bridge.expectedSecretDigest,
+              authGeneration: candidate.authGeneration,
+              purpose: 'VERIFY_FRAME',
+            },
+            (secret) => {
+              const keys = deriveBridgeKeys(secret, input.bridge);
+              try {
+                verifyBridgeEnvelope(input.envelope, keys.runtimeToParent, input.bridge, now);
+              } catch {
+                throw new AcpBridgeAdmissionDeniedError(
+                  'Codex heartbeat frame authentication failed',
+                );
+              }
+            },
+          );
+
+          const existingByCandidate = existingRows.find(
+            (row) => row.heartbeatCandidateHash === candidate.heartbeatCandidateHash,
+          );
+          const existingByKey = existingRows.find(
+            (row) => row.heartbeatIdempotencyKey === input.idempotencyKey,
+          );
+          const existingByMessage = existingRows.find(
+            (row) => row.messageId === candidate.messageId,
+          );
+          const existingBySequence = existingRows.find(
+            (row) =>
+              row.connectionId === candidate.connectionId && row.sequence === candidate.sequence,
+          );
+          const existingEvidence = existingByCandidate ?? existingByKey;
+          if (existingEvidence) {
+            if (
+              existingByCandidate?.heartbeatIdempotencyKey !== input.idempotencyKey ||
+              existingByKey?.heartbeatCandidateHash !== candidate.heartbeatCandidateHash ||
+              existingByMessage?.heartbeatCandidateHash !== candidate.heartbeatCandidateHash ||
+              existingBySequence?.heartbeatCandidateHash !== candidate.heartbeatCandidateHash
+            )
+              throw new AcpBridgeAdmissionConflictError('Codex heartbeat replay drifted');
+            return { runtime, connection, evidence: existingEvidence, replayed: true };
+          }
+          if (existingByMessage || existingBySequence)
+            throw new AcpBridgeAdmissionConflictError('Codex heartbeat replay drifted');
+
+          const [evidence] = await tx.$queryRaw<CodexHeartbeatEvidenceRow[]>(Prisma.sql`
+            INSERT INTO "acp_runtime_heartbeat_evidence" (
+              "workspaceId", "heartbeatCandidateHash", "registrationCandidateHash",
+              "capabilityCandidateHash", "runtimeId", "connectionId", "sessionId",
+              "principalReference", "adapterKind", "authGeneration", "bridgeIdentityHash",
+              "secretBindingHash", "capabilityDigest", "sequence", "messageId", "health",
+              "payloadDigest", "envelopeDigest", "issuedAt", "expiresAt",
+              "heartbeatIdempotencyKey"
+            ) VALUES (
+              CAST(${context.workspaceId} AS uuid), ${candidate.heartbeatCandidateHash},
+              ${candidate.registrationCandidateHash}, ${candidate.capabilityCandidateHash},
+              ${candidate.runtimeId}, ${candidate.connectionId}, ${candidate.sessionId},
+              ${candidate.principalReference}, ${candidate.adapterKind},
+              ${candidate.authGeneration}, ${candidate.bridgeIdentityHash},
+              ${candidate.secretBindingHash}, ${candidate.capabilityDigest},
+              ${candidate.sequence}, ${candidate.messageId}, ${candidate.health},
+              ${candidate.payloadDigest}, ${candidate.envelopeDigest}, ${issuedAt}, ${expiresAt},
+              ${input.idempotencyKey}
+            )
+            RETURNING *
+          `);
+          if (!evidence)
+            throw new AcpBridgeAdmissionConflictError('Codex heartbeat evidence was not stored');
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'runtime.heartbeat.recorded',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpRuntimeHeartbeatEvidence',
+              subjectId: candidate.heartbeatCandidateHash,
+              occurredAt: now.toISOString(),
+              idempotencyKey: `${input.idempotencyKey}:event`,
+              correlationId: candidate.sessionId,
+              facts: {
+                status: 'NOT_CONFIGURED',
+                runtimeId: candidate.runtimeId,
+                health: candidate.health,
+                sequence: candidate.sequence,
+              },
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          return { runtime, connection, evidence, replayed: false };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && error.meta?.code === '23505'))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex heartbeat conflict; retry with current durable state',
         );
       throw error;
     }
