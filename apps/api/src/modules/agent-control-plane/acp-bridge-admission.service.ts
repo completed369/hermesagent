@@ -440,8 +440,6 @@ export class AcpBridgeAdmissionService
               facts: {
                 status: 'NOT_CONFIGURED',
                 runtimeId: candidate.runtimeId,
-                connectionId: candidate.connectionId,
-                registrationCandidateHash: candidate.registrationCandidateHash,
               },
             },
             actorKind === 'HUMAN' ? context.principalId : undefined,

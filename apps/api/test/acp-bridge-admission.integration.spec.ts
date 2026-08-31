@@ -400,6 +400,18 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     expect(JSON.stringify(registered.evidence)).not.toMatch(
       /must-not-persist@example\.com|plus|accessToken|apiKey/u,
     );
+    const registrationAudit = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        workspaceReference: workspaceId,
+        source: 'CONTROL_PLANE',
+        entityType: 'AcpRuntimeRegistrationEvidence',
+        entityId: candidate.registrationCandidateHash,
+      },
+    });
+    expect(registrationAudit.after).toEqual({
+      status: 'NOT_CONFIGURED',
+      runtimeId: candidate.runtimeId,
+    });
     expect(
       (await authorizedBridge.registerCodexRuntime(capability, { workspaceId, principalId }, input))
         .replayed,
