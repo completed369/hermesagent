@@ -133,6 +133,7 @@ model Workspace {
   acpArtifacts             AcpArtifact[]
   acpRuntimes              AcpRuntime[]
   acpRuntimeConnections    AcpRuntimeConnection[]
+  acpRuntimeRegistrations  AcpRuntimeRegistrationEvidence[]
   acpBridgeSessions        AcpBridgeSession[]
   acpBridgeReceipts        AcpBridgeReceipt[]
   acpBridgeDispatches      AcpBridgeDispatch[]
@@ -1099,19 +1100,56 @@ model AcpRuntimeConnection {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  workspace          Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  runtime            AcpRuntime                @relation(fields: [workspaceId, runtimeId], references: [workspaceId, id], onDelete: Cascade)
-  sessions           AcpBridgeSession[]
-  dispatches         AcpBridgeDispatch[]
-  brokerReservations AcpBrokerReservation[]
-  costLedgerEntries  AcpCostLedgerEntry[]
-  dispatchOutbox     AcpBridgeDispatchOutbox[]
+  workspace            Workspace                        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runtime              AcpRuntime                       @relation(fields: [workspaceId, runtimeId], references: [workspaceId, id], onDelete: Cascade)
+  sessions             AcpBridgeSession[]
+  dispatches           AcpBridgeDispatch[]
+  brokerReservations   AcpBrokerReservation[]
+  costLedgerEntries    AcpCostLedgerEntry[]
+  dispatchOutbox       AcpBridgeDispatchOutbox[]
+  registrationEvidence AcpRuntimeRegistrationEvidence[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, runtimeId, environment])
   @@unique([workspaceId, id, runtimeId], map: "acp_runtime_connections_broker_binding_key")
   @@index([workspaceId, runtimeId, status])
   @@map("acp_runtime_connections")
+}
+
+/// Immutable, normalized evidence for an explicitly authorized Codex registration.
+/// No account identifiers, credentials, raw protocol frames, or provider payloads are retained.
+model AcpRuntimeRegistrationEvidence {
+  workspaceId                String   @db.Uuid
+  registrationCandidateHash  String
+  runtimeId                  String
+  connectionId               String
+  sessionId                  String
+  principalReference         String
+  adapterKind                String
+  authGeneration             Int
+  accountAuthMode            String
+  manifestHash               String
+  adapterPolicyHash          String
+  bridgeIdentityHash         String
+  secretBindingHash          String
+  accountEvidenceHash        String
+  observedAt                 DateTime
+  authorizationId            String
+  authorizationRequestHash   String
+  authorizedByReference      String
+  authorizationIssuedAt      DateTime
+  authorizationExpiresAt     DateTime
+  registrationIdempotencyKey String
+  createdAt                  DateTime @default(now())
+
+  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection AcpRuntimeConnection @relation(fields: [workspaceId, connectionId, runtimeId], references: [workspaceId, id, runtimeId], onDelete: Cascade)
+
+  @@id([workspaceId, registrationCandidateHash])
+  @@unique([workspaceId, registrationIdempotencyKey])
+  @@unique([workspaceId, authorizationId])
+  @@index([workspaceId, runtimeId, connectionId])
+  @@map("acp_runtime_registration_evidence")
 }
 
 model AcpBridgeSession {

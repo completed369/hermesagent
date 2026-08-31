@@ -98,6 +98,32 @@ test('Codex registration translation hashes account evidence and grants no autho
   assert.match(registration, /runtimeConnection: 'NOT_CONFIGURED'/u);
 });
 
+test('durable Codex registration is explicit, normalized, and production-denied', () => {
+  const registration = readFileSync(
+    'packages/agent-bridge/src/codex-authenticated-registration.ts',
+    'utf8',
+  );
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260831142000_durable_codex_registration/migration.sql',
+    'utf8',
+  );
+  assert.match(registration, /class DenyCodexRegistrationAuthorizationSource/u);
+  assert.match(module, /new DenyCodexRegistrationAuthorizationSource\(\)/u);
+  assert.match(service, /status: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(service, /account\/login|accessToken|apiKey:\s*/u);
+  assert.match(migration, /CODEX_APP_SERVER_STDIO_V1/u);
+  assert.match(migration, /acp_runtime_registration_evidence/u);
+  assert.doesNotMatch(migration, /email|planType|rawPayload|credential|accessToken|apiKey/u);
+});
+
 test('production secret resolution is deny-only and has no ambient credential source', () => {
   const source = serviceFiles
     .filter((file) => !file.endsWith('supervision-evidence-reader.ts'))
@@ -345,7 +371,7 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
   assert.match(migration, /heartbeat_at < db_now - INTERVAL '60 seconds'/u);
   assert.match(
     integration,
-    /WITH db_clock AS \(SELECT clock_timestamp\(\) AS claimed_at\)[\s\S]*JOIN "acp_bridge_dispatch_outbox" source/u,
+    /WITH db_clock AS \([\s\S]*date_trunc\('milliseconds', clock_timestamp\(\)\) AS claimed_at[\s\S]*JOIN "acp_bridge_dispatch_outbox" source/u,
   );
   assert.match(
     integration,

@@ -38,19 +38,18 @@ runtime, write the database, launch a process, open a transport, contact a
 provider, dispatch a task, or change status.
 
 Every candidate says `registrationAuthorization: NOT_CONFIGURED` and
-`runtimeConnection: NOT_CONFIGURED`. Durable provisioning still rejects named
-Codex runtimes, the database adapter allowlist remains unchanged, and the
-production secret source and process launcher remain deny-only. Codex, Hermes,
-and Pi remain `NOT_CONFIGURED`.
+`runtimeConnection: NOT_CONFIGURED`. ADR-0039 subsequently added the only
+durable Codex registration path, requiring a separately trusted short-lived
+authorization and an exact scoped-secret binding. Production authorization,
+secret resolution, and process launching remain deny-only. Codex, Hermes, and
+Pi remain `NOT_CONFIGURED`.
 
 ## Next safe slice
 
-Add a separately reviewed, control-plane-only durable Codex registration
-operation that consumes the exact candidate hash, retains only normalized
-evidence, and remains `NOT_CONFIGURED`. It must preserve idempotency, tenant
-isolation, secret-reference handling, audit correlation, and the existing
-prohibition on capability, heartbeat, dispatch, or connection promotion until
-their own evidence is accepted.
+See ADR-0039 for the separately reviewed control-plane-only durable
+registration operation. The next safe slice is exact authenticated capability
+exchange bound to that durable evidence, without heartbeat, dispatch, or
+connection promotion.
 
 ## Source
 

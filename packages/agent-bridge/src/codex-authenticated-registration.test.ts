@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { deterministicLinuxAdmission } from './__tests__/fixtures/deterministic-supervision';
 import type { AuthenticatedJsonlSessionContext } from './authenticated-jsonl-session';
 import {
+  codexRegistrationAuthorizationRequestHash,
   createCodexAuthenticatedRegistrationCandidate,
+  createCodexRegistrationAuthorizationRequest,
+  DenyCodexRegistrationAuthorizationSource,
+  validateCodexAuthenticatedRegistrationCandidate,
+  validateCodexRegistrationAuthorizationDecision,
   type CodexAccountReadEvidence,
 } from './codex-authenticated-registration';
 import {
@@ -190,5 +195,70 @@ describe('Codex authenticated registration translation', () => {
     const managed = candidate();
     const apiKey = candidate({ account: account({ type: 'apiKey' }) });
     expect(apiKey.registrationCandidateHash).not.toBe(managed.registrationCandidateHash);
+  });
+
+  it('binds the candidate to the authenticated secret reference and digest without retaining either', () => {
+    const first = candidate();
+    const changed = candidate({
+      bridge: { ...bridge(), expectedSecretDigest: 'b'.repeat(64) },
+    });
+    expect(first.secretBindingHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(changed.secretBindingHash).not.toBe(first.secretBindingHash);
+    expect(JSON.stringify(first)).not.toContain('secret:codex-runtime-1');
+    expect(JSON.stringify(first)).not.toContain('a'.repeat(64));
+  });
+
+  it('revalidates candidate hashes and exact normalized shape at the durable boundary', () => {
+    const valid = candidate();
+    expect(validateCodexAuthenticatedRegistrationCandidate(valid)).toEqual(valid);
+    expect(() =>
+      validateCodexAuthenticatedRegistrationCandidate({
+        ...valid,
+        accountEvidenceHash: 'f'.repeat(64),
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_EVIDENCE' }));
+    expect(() =>
+      validateCodexAuthenticatedRegistrationCandidate({ ...valid, rawAccount: 'forbidden' }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_EVIDENCE' }));
+  });
+
+  it('binds a short-lived external authorization to the exact candidate and idempotency key', () => {
+    const request = createCodexRegistrationAuthorizationRequest(
+      candidate(),
+      'LOCAL_CONTROLLED',
+      'c'.repeat(64),
+      'register-codex-1',
+    );
+    const requestHash = codexRegistrationAuthorizationRequestHash(request);
+    const decision = validateCodexRegistrationAuthorizationDecision(
+      {
+        schemaVersion: 1,
+        authorizationId: 'codex-registration-authorization-1',
+        requestHash,
+        authorizedByReference: 'control-plane:registration-policy-v1',
+        issuedAt: '2026-08-31T11:01:01.000Z',
+        expiresAt: '2026-08-31T11:04:01.000Z',
+      },
+      requestHash,
+    );
+    expect(decision.requestHash).toBe(requestHash);
+    expect(() =>
+      validateCodexRegistrationAuthorizationDecision(
+        { ...decision, requestHash: '0'.repeat(64) },
+        requestHash,
+      ),
+    ).toThrow(expect.objectContaining({ code: 'REGISTRATION_NOT_AUTHORIZED' }));
+  });
+
+  it('keeps the production registration authorization source deny-only', async () => {
+    const request = createCodexRegistrationAuthorizationRequest(
+      candidate(),
+      'LOCAL_CONTROLLED',
+      'c'.repeat(64),
+      'register-codex-1',
+    );
+    await expect(
+      new DenyCodexRegistrationAuthorizationSource().read(request),
+    ).rejects.toMatchObject({ code: 'REGISTRATION_NOT_AUTHORIZED' });
   });
 });

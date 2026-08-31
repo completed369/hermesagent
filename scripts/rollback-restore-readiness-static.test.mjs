@@ -39,6 +39,7 @@ test('positive PostgreSQL implementation is confined to the CI integration fixtu
   assert.match(integrationSource, /parsed\.hostname !== 'localhost'/u);
   assert.match(integrationSource, /FIXTURE_LABEL/u);
   assert.match(integrationSource, /ventureos_restore_drill_/u);
+  assert.doesNotMatch(integrationSource, /DROP DATABASE[^`]*WITH \(FORCE\)/u);
   assert.doesNotMatch(integrationSource, /private-staging|production|customer|VPS_|CLOUDFLARE/iu);
 });
 
