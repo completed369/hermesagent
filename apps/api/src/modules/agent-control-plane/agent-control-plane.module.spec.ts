@@ -1,5 +1,7 @@
 import { Test } from '@nestjs/testing';
 import {
+  CODEX_REGISTRATION_AUTHORIZATION_SOURCE,
+  DenyCodexRegistrationAuthorizationSource,
   DenyRuntimeProcessLauncher,
   DenyTrustedSupervisorAuthorizationSource,
   RUNTIME_PROCESS_LAUNCHER,
@@ -39,6 +41,9 @@ describe('AgentControlPlaneModule', () => {
       DenyTrustedSupervisorAuthorizationSource,
     );
     expect(moduleRef.get(RUNTIME_PROCESS_LAUNCHER)).toBeInstanceOf(DenyRuntimeProcessLauncher);
+    expect(moduleRef.get(CODEX_REGISTRATION_AUTHORIZATION_SOURCE)).toBeInstanceOf(
+      DenyCodexRegistrationAuthorizationSource,
+    );
     await moduleRef.close();
   });
 });

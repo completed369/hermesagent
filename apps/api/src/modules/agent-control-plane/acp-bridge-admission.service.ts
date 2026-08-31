@@ -7,6 +7,8 @@ import {
   BRIDGE_SECRET_LEASE_RESOLVER,
   BRIDGE_TEST_ONLY_GATE,
   BRIDGE_PROTOCOL_VERSION,
+  CODEX_APP_SERVER_ADAPTER_KIND,
+  CODEX_REGISTRATION_AUTHORIZATION_SOURCE,
   BridgeProtocolError,
   canonicalJson,
   decodeBridgeBatch,
@@ -19,6 +21,11 @@ import {
   verifyBridgeEnvelope,
   signBridgeEnvelope,
   BridgeSecretLeaseError,
+  codexRegistrationAuthorizationRequestHash,
+  createCodexRegistrationAuthorizationRequest,
+  DenyCodexRegistrationAuthorizationSource,
+  validateCodexAuthenticatedRegistrationCandidate,
+  validateCodexRegistrationAuthorizationDecision,
   type BridgeArtifactContentVerifier,
   type BridgeBrokerEvidenceVerifier,
   type BridgeCapabilityPolicyVerifier,
@@ -26,6 +33,8 @@ import {
   type BridgeSecretLeaseRequest,
   type BridgeSecretLeaseResolver,
   type BridgeTestOnlyGate,
+  type CodexAuthenticatedRegistrationCandidate,
+  type CodexRegistrationAuthorizationSource,
   type TrustedBridgeBrokerEvidence,
 } from '@ventureos/agent-bridge';
 import {
@@ -152,6 +161,14 @@ export interface ProvisionBridgeRuntimeInput {
   readonly idempotencyKey: string;
 }
 
+export interface RegisterCodexRuntimeInput {
+  readonly candidate: Readonly<CodexAuthenticatedRegistrationCandidate>;
+  readonly environment: string;
+  readonly secretReference: string;
+  readonly capabilityPolicyHash: string;
+  readonly idempotencyKey: string;
+}
+
 export interface PrepareBridgeDispatchInput {
   readonly dispatchId: string;
   readonly agentId: string;
@@ -212,8 +229,239 @@ export class AcpBridgeAdmissionService
     @Inject(BRIDGE_ARTIFACT_CONTENT_VERIFIER)
     private readonly artifactContent: BridgeArtifactContentVerifier,
     @Inject(BRIDGE_TEST_ONLY_GATE) private readonly testOnlyGate: BridgeTestOnlyGate,
+    @Inject(AcpCostGovernanceService)
     private readonly costGovernance: AcpCostGovernanceService,
+    @Inject(CODEX_REGISTRATION_AUTHORIZATION_SOURCE)
+    private readonly codexRegistrationAuthorizations: CodexRegistrationAuthorizationSource = new DenyCodexRegistrationAuthorizationSource(),
   ) {}
+
+  async registerCodexRuntime(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: RegisterCodexRuntimeInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    reference(input.environment, 'environment');
+    reference(input.secretReference, 'secretReference');
+    reference(input.idempotencyKey, 'idempotencyKey');
+    digest(input.capabilityPolicyHash, 'capabilityPolicyHash');
+    let candidate: Readonly<CodexAuthenticatedRegistrationCandidate>;
+    try {
+      candidate = validateCodexAuthenticatedRegistrationCandidate(input.candidate);
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Invalid Codex registration evidence');
+    }
+    if (
+      candidate.workspaceId !== context.workspaceId ||
+      candidate.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+      candidate.authGeneration !== 1
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex registration identity is not admissible');
+
+    const authorizationRequest = createCodexRegistrationAuthorizationRequest(
+      candidate,
+      input.environment,
+      input.capabilityPolicyHash,
+      input.idempotencyKey,
+    );
+    const authorizationRequestHash =
+      codexRegistrationAuthorizationRequestHash(authorizationRequest);
+    let authorization: ReturnType<typeof validateCodexRegistrationAuthorizationDecision>;
+    try {
+      authorization = validateCodexRegistrationAuthorizationDecision(
+        await this.codexRegistrationAuthorizations.read(authorizationRequest),
+        authorizationRequestHash,
+      );
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Codex registration authorization denied');
+    }
+    const secretDigest = await this.withSecretLease(
+      {
+        workspaceId: context.workspaceId,
+        runtimeId: candidate.runtimeId,
+        connectionId: candidate.connectionId,
+        secretReference: input.secretReference,
+        authGeneration: candidate.authGeneration,
+        purpose: 'PROVISION',
+      },
+      (secret) => digestSecretReference(secret),
+    );
+    if (
+      candidate.secretBindingHash !==
+      sha256({ expectedSecretDigest: secretDigest, secretReference: input.secretReference })
+    )
+      throw new AcpBridgeAdmissionDeniedError('Codex registration secret binding mismatch');
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const now = await databaseNow(tx);
+          const observedAt = new Date(candidate.observedAt);
+          const authorizationIssuedAt = new Date(authorization.issuedAt);
+          const authorizationExpiresAt = new Date(authorization.expiresAt);
+          if (
+            observedAt > now ||
+            now.getTime() - observedAt.getTime() > 5 * 60_000 ||
+            authorizationIssuedAt < observedAt ||
+            authorizationIssuedAt > now ||
+            authorizationExpiresAt <= now
+          )
+            throw new AcpBridgeAdmissionDeniedError('Codex registration evidence expired');
+
+          const [existingByCandidate, existingByKey, existingRuntime, existingAuthorization] =
+            await Promise.all([
+              tx.acpRuntimeRegistrationEvidence.findUnique({
+                where: {
+                  workspaceId_registrationCandidateHash: {
+                    workspaceId: context.workspaceId,
+                    registrationCandidateHash: candidate.registrationCandidateHash,
+                  },
+                },
+                include: { connection: { include: { runtime: true } } },
+              }),
+              tx.acpRuntimeRegistrationEvidence.findUnique({
+                where: {
+                  workspaceId_registrationIdempotencyKey: {
+                    workspaceId: context.workspaceId,
+                    registrationIdempotencyKey: input.idempotencyKey,
+                  },
+                },
+                include: { connection: { include: { runtime: true } } },
+              }),
+              tx.acpRuntime.findUnique({
+                where: {
+                  workspaceId_id: { workspaceId: context.workspaceId, id: candidate.runtimeId },
+                },
+                include: { connections: true },
+              }),
+              tx.acpRuntimeRegistrationEvidence.findUnique({
+                where: {
+                  workspaceId_authorizationId: {
+                    workspaceId: context.workspaceId,
+                    authorizationId: authorization.authorizationId,
+                  },
+                },
+              }),
+            ]);
+          const existingEvidence = existingByCandidate ?? existingByKey;
+          if (existingEvidence) {
+            const runtime = existingEvidence.connection.runtime;
+            const connection = existingEvidence.connection;
+            if (
+              existingByCandidate?.registrationIdempotencyKey !== input.idempotencyKey ||
+              existingByKey?.registrationCandidateHash !== candidate.registrationCandidateHash ||
+              existingEvidence.runtimeId !== candidate.runtimeId ||
+              existingEvidence.connectionId !== candidate.connectionId ||
+              existingEvidence.sessionId !== candidate.sessionId ||
+              existingEvidence.principalReference !== candidate.principalReference ||
+              existingEvidence.authorizationId !== authorization.authorizationId ||
+              existingEvidence.authorizationRequestHash !== authorizationRequestHash ||
+              existingEvidence.authorizedByReference !== authorization.authorizedByReference ||
+              existingEvidence.authorizationIssuedAt.getTime() !==
+                authorizationIssuedAt.getTime() ||
+              existingEvidence.authorizationExpiresAt.getTime() !==
+                authorizationExpiresAt.getTime() ||
+              runtime.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+              runtime.status !== 'NOT_CONFIGURED' ||
+              runtime.secretReference !== input.secretReference ||
+              runtime.secretDigest !== secretDigest ||
+              runtime.capabilityPolicyHash !== input.capabilityPolicyHash ||
+              connection.environment !== input.environment ||
+              connection.status !== 'NOT_CONFIGURED' ||
+              connection.authGeneration !== candidate.authGeneration
+            )
+              throw new AcpBridgeAdmissionConflictError('Codex registration replay drifted');
+            return { runtime, connection, evidence: existingEvidence, replayed: true };
+          }
+          if (existingRuntime || existingAuthorization)
+            throw new AcpBridgeAdmissionConflictError('Codex registration identity already exists');
+
+          const runtime = await tx.acpRuntime.create({
+            data: {
+              id: candidate.runtimeId,
+              workspaceId: context.workspaceId,
+              adapterKind: CODEX_APP_SERVER_ADAPTER_KIND,
+              principalReference: candidate.principalReference,
+              secretReference: input.secretReference,
+              secretDigest,
+              capabilityPolicyHash: input.capabilityPolicyHash,
+              provisioningIdempotencyKey: input.idempotencyKey,
+            },
+          });
+          const connection = await tx.acpRuntimeConnection.create({
+            data: {
+              id: candidate.connectionId,
+              workspaceId: context.workspaceId,
+              runtimeId: candidate.runtimeId,
+              environment: input.environment,
+              authGeneration: candidate.authGeneration,
+            },
+          });
+          const evidence = await tx.acpRuntimeRegistrationEvidence.create({
+            data: {
+              workspaceId: context.workspaceId,
+              registrationCandidateHash: candidate.registrationCandidateHash,
+              runtimeId: candidate.runtimeId,
+              connectionId: candidate.connectionId,
+              sessionId: candidate.sessionId,
+              principalReference: candidate.principalReference,
+              adapterKind: candidate.adapterKind,
+              authGeneration: candidate.authGeneration,
+              accountAuthMode: candidate.accountAuthMode,
+              manifestHash: candidate.manifestHash,
+              adapterPolicyHash: candidate.adapterPolicyHash,
+              bridgeIdentityHash: candidate.bridgeIdentityHash,
+              secretBindingHash: candidate.secretBindingHash,
+              accountEvidenceHash: candidate.accountEvidenceHash,
+              observedAt,
+              authorizationId: authorization.authorizationId,
+              authorizationRequestHash,
+              authorizedByReference: authorization.authorizedByReference,
+              authorizationIssuedAt,
+              authorizationExpiresAt,
+              registrationIdempotencyKey: input.idempotencyKey,
+            },
+          });
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'runtime.connection.updated',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpRuntimeRegistrationEvidence',
+              subjectId: candidate.registrationCandidateHash,
+              occurredAt: now.toISOString(),
+              idempotencyKey: `${input.idempotencyKey}:event`,
+              correlationId: candidate.sessionId,
+              facts: {
+                status: 'NOT_CONFIGURED',
+                runtimeId: candidate.runtimeId,
+                connectionId: candidate.connectionId,
+                registrationCandidateHash: candidate.registrationCandidateHash,
+              },
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          return { runtime, connection, evidence, replayed: false };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' || error.code === 'P2034')
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex registration conflict; retry with current durable state',
+        );
+      throw error;
+    }
+  }
 
   async provisionRuntime(
     capability: OperationalEventCapability,

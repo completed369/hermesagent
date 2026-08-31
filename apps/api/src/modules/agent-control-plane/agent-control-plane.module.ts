@@ -15,6 +15,8 @@ import {
   BRIDGE_SECRET_LEASE_RESOLVER,
   DenyBridgeSecretLeaseResolver,
   BRIDGE_TEST_ONLY_GATE,
+  CODEX_REGISTRATION_AUTHORIZATION_SOURCE,
+  DenyCodexRegistrationAuthorizationSource,
   DenyRuntimeProcessLauncher,
   DenyTrustedSupervisorAuthorizationSource,
   PerAdmissionLinuxExecutableEvidenceReader,
@@ -32,6 +34,7 @@ import { AcpTaskRunService } from './acp-task-run.service';
 import { AcpCostGovernanceService, AcpCostLedgerQueryService } from './acp-cost-governance.service';
 
 const denySecrets = new DenyBridgeSecretLeaseResolver();
+const denyCodexRegistrationAuthorization = new DenyCodexRegistrationAuthorizationSource();
 const denySupervisorAuthorization = new DenyTrustedSupervisorAuthorizationSource();
 const denyRuntimeProcessLauncher = new DenyRuntimeProcessLauncher();
 const trustedSupervisorComposition = new TrustedSupervisorComposition(
@@ -83,6 +86,10 @@ const denyTestOnlyGate: BridgeTestOnlyGate = {
     AcpCostGovernanceService,
     AcpCostLedgerQueryService,
     { provide: BRIDGE_SECRET_LEASE_RESOLVER, useValue: denySecrets },
+    {
+      provide: CODEX_REGISTRATION_AUTHORIZATION_SOURCE,
+      useValue: denyCodexRegistrationAuthorization,
+    },
     {
       provide: TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE,
       useValue: denySupervisorAuthorization,

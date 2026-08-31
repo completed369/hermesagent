@@ -13,18 +13,27 @@ import {
 import { Prisma, prisma } from '@ventureos/database';
 import {
   BRIDGE_PROTOCOL_VERSION,
+  CODEX_APP_SERVER_ADAPTER_KIND,
+  CODEX_APP_SERVER_ARGUMENT_POLICY,
+  CODEX_APP_SERVER_ARGV,
   BridgeProtocolError,
+  codexRegistrationAuthorizationRequestHash,
+  createCodexAuthenticatedRegistrationCandidate,
   deriveBridgeKeys,
   DenyBridgeSecretLeaseResolver,
   digestBridgePayload,
   encodeBridgeLine,
   ScopedBridgeSecretLeaseResolver,
   signBridgeEnvelope,
+  validateCodexAppServerManifest,
   verifyBridgeEnvelope,
   type BridgeSecretLeaseRequest,
   type BridgeSecretLeaseResolver,
+  type CodexRegistrationAuthorizationRequest,
+  type CodexRegistrationAuthorizationSource,
 } from '@ventureos/agent-bridge';
 import { DeterministicFakeRuntime } from '../../../packages/agent-bridge/src/__tests__/fixtures/deterministic-fake';
+import { deterministicLinuxAdmission } from '../../../packages/agent-bridge/src/__tests__/fixtures/deterministic-supervision';
 import { AuditService } from '../src/modules/audit/audit.service';
 import {
   AcpBridgeAdmissionDeniedError,
@@ -90,6 +99,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     secretResolver: BridgeSecretLeaseResolver = testSecretLease(),
     brokerVerifier: { verify: AcpBrokerReservationService['verify'] } = brokerReservations,
     auditService: AuditService = new AuditService(),
+    codexAuthorizations?: CodexRegistrationAuthorizationSource,
   ) {
     return new AcpBridgeAdmissionService(
       auditService,
@@ -113,7 +123,73 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         },
       },
       costGovernance,
+      codexAuthorizations,
     );
+  }
+
+  function codexCandidate(
+    candidateWorkspaceId: string,
+    candidateSuffix: string,
+    observed = new Date(),
+    expectedSecretDigest = 'd'.repeat(64),
+  ) {
+    const base = deterministicLinuxAdmission().manifest;
+    const authenticatedAt = new Date(observed.getTime() - 1_000);
+    const expiresAt = new Date(observed.getTime() + 4 * 60_000);
+    return createCodexAuthenticatedRegistrationCandidate({
+      manifest: validateCodexAppServerManifest({
+        ...base,
+        workspaceId: candidateWorkspaceId,
+        runtimeId: `codex.runtime-${candidateSuffix}`,
+        connectionId: `codex-connection-${candidateSuffix}`,
+        manifestId: `codex-manifest-${candidateSuffix}`,
+        adapterKind: CODEX_APP_SERVER_ADAPTER_KIND,
+        testOnly: false,
+        executable: {
+          canonicalPath: '/opt/ventureos/runtimes/codex/codex',
+          sha256: '8'.repeat(64),
+          identityReference: `device-8:inode-${candidateSuffix}`,
+        },
+        argv: [...CODEX_APP_SERVER_ARGV],
+        argumentPolicyReference: CODEX_APP_SERVER_ARGUMENT_POLICY,
+        secretTransport: 'NONE',
+      }),
+      protocol: {
+        state: 'INITIALIZED',
+        threadId: null,
+        turnId: null,
+        terminalStatus: null,
+        acceptedEvents: 0,
+        acceptedBytes: 0,
+        runtimeConnection: 'NOT_CONFIGURED',
+      },
+      bridge: {
+        schemaVersion: 1,
+        workspaceId: candidateWorkspaceId,
+        runtimeId: `codex.runtime-${candidateSuffix}`,
+        connectionId: `codex-connection-${candidateSuffix}`,
+        sessionId: `codex-session-${candidateSuffix}`,
+        principalReference: `principal:codex-${candidateSuffix}`,
+        parentNonce: `parent-nonce-${candidateSuffix}`,
+        runtimeNonce: `runtime-nonce-${candidateSuffix}`,
+        secretReference: `secret:codex-${candidateSuffix}`,
+        expectedSecretDigest,
+        authGeneration: 1,
+        authenticatedAt: authenticatedAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      },
+      account: {
+        request: { method: 'account/read', id: 1, params: { refreshToken: false } },
+        response: {
+          id: 1,
+          result: {
+            account: { type: 'chatgpt', email: 'must-not-persist@example.com', planType: 'plus' },
+            requiresOpenaiAuth: true,
+          },
+        },
+        observedAt: observed.toISOString(),
+      },
+    });
   }
 
   function refreshCandidateSnapshot(overrides: Partial<RuntimeRoutingCandidate> = {}): void {
@@ -229,6 +305,139 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
   afterAll(async () => {
     if (workspaceId)
       await prisma.workspace.deleteMany({ where: { id: { in: [workspaceId, otherWorkspaceId] } } });
+  });
+
+  it('keeps Codex durable registration unavailable with the production-style deny source', async () => {
+    const registrationSuffix = `denied-${suffix}`;
+    const deniedSecretReference = `vault-codex-${registrationSuffix}`;
+    const deniedSecret = new Uint8Array(32).fill(7);
+    trustedSecrets.set(deniedSecretReference, deniedSecret);
+    const candidate = codexCandidate(
+      workspaceId,
+      registrationSuffix,
+      new Date(Date.now() - 5_000),
+      digestSecretReference(deniedSecret),
+    );
+    await expect(
+      bridge.registerCodexRuntime(
+        capability,
+        { workspaceId, principalId },
+        {
+          candidate,
+          environment: 'LOCAL_CONTROLLED',
+          secretReference: deniedSecretReference,
+          capabilityPolicyHash,
+          idempotencyKey: `register-${registrationSuffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(
+      await prisma.acpRuntime.findUnique({
+        where: { workspaceId_id: { workspaceId, id: candidate.runtimeId } },
+      }),
+    ).toBeNull();
+  });
+
+  it('persists only normalized, authorized Codex registration evidence without promoting truth', async () => {
+    const registrationSuffix = `authorized-${suffix}`;
+    const observedAt = new Date(Date.now() - 5_000);
+    const codexSecretReference = `vault-codex-${registrationSuffix}`;
+    const codexSecret = new Uint8Array(32).fill(6);
+    trustedSecrets.set(codexSecretReference, codexSecret);
+    const candidate = codexCandidate(
+      workspaceId,
+      registrationSuffix,
+      observedAt,
+      digestSecretReference(codexSecret),
+    );
+    const authorizationIssuedAt = new Date(observedAt.getTime() + 1_000);
+    const authorizationExpiresAt = new Date(authorizationIssuedAt.getTime() + 4 * 60_000);
+    const authorizationId = `authorization-${registrationSuffix}`;
+    const requests: Readonly<CodexRegistrationAuthorizationRequest>[] = [];
+    const authorizedBridge = testBridge(undefined, undefined, undefined, {
+      async read(request) {
+        requests.push(request);
+        return {
+          schemaVersion: 1,
+          authorizationId,
+          requestHash: codexRegistrationAuthorizationRequestHash(request),
+          authorizedByReference: 'control-plane:codex-registration-policy-v1',
+          issuedAt: authorizationIssuedAt.toISOString(),
+          expiresAt: authorizationExpiresAt.toISOString(),
+        };
+      },
+    });
+    const input = {
+      candidate,
+      environment: 'LOCAL_CONTROLLED',
+      secretReference: codexSecretReference,
+      capabilityPolicyHash,
+      idempotencyKey: `register-${registrationSuffix}`,
+    };
+    const registered = await authorizedBridge.registerCodexRuntime(
+      capability,
+      { workspaceId, principalId },
+      input,
+    );
+    expect(registered.replayed).toBe(false);
+    expect(registered.runtime).toMatchObject({
+      adapterKind: CODEX_APP_SERVER_ADAPTER_KIND,
+      status: 'NOT_CONFIGURED',
+    });
+    expect(registered.connection).toMatchObject({
+      status: 'NOT_CONFIGURED',
+      authGeneration: 1,
+    });
+    expect(registered.evidence).toMatchObject({
+      registrationCandidateHash: candidate.registrationCandidateHash,
+      accountAuthMode: 'CHATGPT',
+      authorizationId,
+    });
+    expect(JSON.stringify(registered.evidence)).not.toMatch(
+      /must-not-persist@example\.com|plus|accessToken|apiKey/u,
+    );
+    expect(
+      (await authorizedBridge.registerCodexRuntime(capability, { workspaceId, principalId }, input))
+        .replayed,
+    ).toBe(true);
+    expect(requests).toHaveLength(2);
+
+    const mismatchedSecretReference = `vault-codex-mismatch-${suffix}`;
+    trustedSecrets.set(mismatchedSecretReference, new Uint8Array(32).fill(5));
+    await expect(
+      authorizedBridge.registerCodexRuntime(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...input,
+          candidate: codexCandidate(
+            workspaceId,
+            `mismatch-${suffix}`,
+            new Date(Date.now() - 5_000),
+            digestSecretReference(codexSecret),
+          ),
+          secretReference: mismatchedSecretReference,
+          idempotencyKey: `register-mismatch-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+
+    const otherCandidate = codexCandidate(
+      otherWorkspaceId,
+      `tenant-${suffix}`,
+      new Date(Date.now() - 5_000),
+    );
+    await expect(
+      authorizedBridge.registerCodexRuntime(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...input,
+          candidate: otherCandidate,
+          idempotencyKey: `register-tenant-${suffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
   });
 
   it('persists a fake-only authenticated admission round trip without promoting runtime truth', async () => {

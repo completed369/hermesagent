@@ -90,6 +90,13 @@ published and current `main` has not been deployed to private staging.
   account-state declaration, while hashing and discarding account details. It
   grants no durable registration or provider authority and keeps Codex
   `NOT_CONFIGURED`.
+- Codex now has a dedicated durable registration-evidence operation. It admits
+  only an exact revalidated candidate, a separately trusted five-minute
+  authorization, and a scoped secret lease that reproduces the candidate's
+  one-way secret binding. The production authorization and secret sources deny
+  by default; retained evidence excludes account details and credentials, and
+  both runtime and connection remain `NOT_CONFIGURED`. Capability exchange is
+  the next separately reviewed boundary.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database

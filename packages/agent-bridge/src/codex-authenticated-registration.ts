@@ -20,7 +20,8 @@ export type CodexAuthenticatedRegistrationErrorCode =
   | 'PROTOCOL_NOT_READY'
   | 'BRIDGE_IDENTITY_MISMATCH'
   | 'ACCOUNT_NOT_AUTHENTICATED'
-  | 'EVIDENCE_EXPIRED';
+  | 'EVIDENCE_EXPIRED'
+  | 'REGISTRATION_NOT_AUTHORIZED';
 
 export class CodexAuthenticatedRegistrationError extends Error {
   constructor(readonly code: CodexAuthenticatedRegistrationErrorCode) {
@@ -47,11 +48,47 @@ export interface CodexAuthenticatedRegistrationCandidate {
   readonly manifestHash: string;
   readonly adapterPolicyHash: string;
   readonly bridgeIdentityHash: string;
+  readonly secretBindingHash: string;
   readonly accountEvidenceHash: string;
   readonly registrationCandidateHash: string;
   readonly observedAt: string;
   readonly registrationAuthorization: 'NOT_CONFIGURED';
   readonly runtimeConnection: 'NOT_CONFIGURED';
+}
+
+export const CODEX_REGISTRATION_AUTHORIZATION_SOURCE = Symbol(
+  'CODEX_REGISTRATION_AUTHORIZATION_SOURCE',
+);
+
+export interface CodexRegistrationAuthorizationRequest {
+  readonly schemaVersion: 1;
+  readonly workspaceId: string;
+  readonly runtimeId: string;
+  readonly connectionId: string;
+  readonly principalReference: string;
+  readonly registrationCandidateHash: string;
+  readonly environment: string;
+  readonly capabilityPolicyHash: string;
+  readonly idempotencyKey: string;
+}
+
+export interface CodexRegistrationAuthorizationDecision {
+  readonly schemaVersion: 1;
+  readonly authorizationId: string;
+  readonly requestHash: string;
+  readonly authorizedByReference: string;
+  readonly issuedAt: string;
+  readonly expiresAt: string;
+}
+
+export interface CodexRegistrationAuthorizationSource {
+  read(request: Readonly<CodexRegistrationAuthorizationRequest>): Promise<unknown>;
+}
+
+export class DenyCodexRegistrationAuthorizationSource implements CodexRegistrationAuthorizationSource {
+  async read(_request: Readonly<CodexRegistrationAuthorizationRequest>): Promise<never> {
+    throw new CodexAuthenticatedRegistrationError('REGISTRATION_NOT_AUTHORIZED');
+  }
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -84,6 +121,12 @@ function timestamp(value: unknown): string {
   if (typeof value !== 'string') throw new CodexAuthenticatedRegistrationError('INVALID_EVIDENCE');
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value)
+    throw new CodexAuthenticatedRegistrationError('INVALID_EVIDENCE');
+  return value;
+}
+
+function sha256Digest(value: unknown): string {
+  if (typeof value !== 'string' || !SHA256.test(value))
     throw new CodexAuthenticatedRegistrationError('INVALID_EVIDENCE');
   return value;
 }
@@ -263,6 +306,10 @@ export function createCodexAuthenticatedRegistrationCandidate(input: {
     sessionId,
     workspaceId,
   });
+  const secretBindingHash = sha256({
+    expectedSecretDigest: bridgeRecord.expectedSecretDigest,
+    secretReference,
+  });
   const candidate = {
     schemaVersion: 1 as const,
     adapterKind: CODEX_APP_SERVER_ADAPTER_KIND as typeof CODEX_APP_SERVER_ADAPTER_KIND,
@@ -276,10 +323,140 @@ export function createCodexAuthenticatedRegistrationCandidate(input: {
     manifestHash: manifest.manifestHash,
     adapterPolicyHash: manifest.adapterPolicyHash,
     bridgeIdentityHash,
+    secretBindingHash,
     accountEvidenceHash,
     observedAt,
     registrationAuthorization: 'NOT_CONFIGURED' as const,
     runtimeConnection: 'NOT_CONFIGURED' as const,
   };
   return freeze({ ...candidate, registrationCandidateHash: sha256(candidate) });
+}
+
+/** Revalidates the normalized candidate at a trust boundary without raw account data. */
+export function validateCodexAuthenticatedRegistrationCandidate(
+  input: unknown,
+): Readonly<CodexAuthenticatedRegistrationCandidate> {
+  const candidate = exact(input, [
+    'accountAuthMode',
+    'accountEvidenceHash',
+    'adapterKind',
+    'adapterPolicyHash',
+    'authGeneration',
+    'bridgeIdentityHash',
+    'connectionId',
+    'manifestHash',
+    'observedAt',
+    'principalReference',
+    'registrationAuthorization',
+    'registrationCandidateHash',
+    'runtimeConnection',
+    'runtimeId',
+    'schemaVersion',
+    'secretBindingHash',
+    'sessionId',
+    'workspaceId',
+  ]);
+  if (
+    candidate.schemaVersion !== 1 ||
+    candidate.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+    candidate.registrationAuthorization !== 'NOT_CONFIGURED' ||
+    candidate.runtimeConnection !== 'NOT_CONFIGURED' ||
+    (candidate.accountAuthMode !== 'KEY' && candidate.accountAuthMode !== 'CHATGPT') ||
+    !Number.isSafeInteger(candidate.authGeneration) ||
+    (candidate.authGeneration as number) < 1
+  )
+    throw new CodexAuthenticatedRegistrationError('INVALID_EVIDENCE');
+  const manifestHash = sha256Digest(candidate.manifestHash);
+  const adapterPolicyHash = sha256Digest(candidate.adapterPolicyHash);
+  const bridgeIdentityHash = sha256Digest(candidate.bridgeIdentityHash);
+  const secretBindingHash = sha256Digest(candidate.secretBindingHash);
+  const accountEvidenceHash = sha256Digest(candidate.accountEvidenceHash);
+  const registrationCandidateHash = sha256Digest(candidate.registrationCandidateHash);
+  const normalized = {
+    schemaVersion: 1 as const,
+    adapterKind: CODEX_APP_SERVER_ADAPTER_KIND as typeof CODEX_APP_SERVER_ADAPTER_KIND,
+    workspaceId: reference(candidate.workspaceId),
+    runtimeId: reference(candidate.runtimeId),
+    connectionId: reference(candidate.connectionId),
+    sessionId: reference(candidate.sessionId),
+    principalReference: reference(candidate.principalReference),
+    authGeneration: candidate.authGeneration as number,
+    accountAuthMode: candidate.accountAuthMode as 'KEY' | 'CHATGPT',
+    manifestHash,
+    adapterPolicyHash,
+    bridgeIdentityHash,
+    secretBindingHash,
+    accountEvidenceHash,
+    observedAt: timestamp(candidate.observedAt),
+    registrationAuthorization: 'NOT_CONFIGURED' as const,
+    runtimeConnection: 'NOT_CONFIGURED' as const,
+  };
+  if (!CODEX_RUNTIME.test(normalized.runtimeId))
+    throw new CodexAuthenticatedRegistrationError('BRIDGE_IDENTITY_MISMATCH');
+  const expectedHash = sha256(normalized);
+  if (registrationCandidateHash !== expectedHash)
+    throw new CodexAuthenticatedRegistrationError('INVALID_EVIDENCE');
+  return freeze({ ...normalized, registrationCandidateHash: expectedHash });
+}
+
+export function createCodexRegistrationAuthorizationRequest(
+  candidateInput: unknown,
+  environmentInput: unknown,
+  capabilityPolicyHashInput: unknown,
+  idempotencyKeyInput: unknown,
+): Readonly<CodexRegistrationAuthorizationRequest> {
+  const candidate = validateCodexAuthenticatedRegistrationCandidate(candidateInput);
+  return freeze({
+    schemaVersion: 1 as const,
+    workspaceId: candidate.workspaceId,
+    runtimeId: candidate.runtimeId,
+    connectionId: candidate.connectionId,
+    principalReference: candidate.principalReference,
+    registrationCandidateHash: candidate.registrationCandidateHash,
+    environment: reference(environmentInput),
+    capabilityPolicyHash: sha256Digest(capabilityPolicyHashInput),
+    idempotencyKey: reference(idempotencyKeyInput),
+  });
+}
+
+export function codexRegistrationAuthorizationRequestHash(
+  request: Readonly<CodexRegistrationAuthorizationRequest>,
+): string {
+  return sha256(request);
+}
+
+export function validateCodexRegistrationAuthorizationDecision(
+  input: unknown,
+  expectedRequestHash: string,
+): Readonly<CodexRegistrationAuthorizationDecision> {
+  const decision = exact(input, [
+    'authorizationId',
+    'authorizedByReference',
+    'expiresAt',
+    'issuedAt',
+    'requestHash',
+    'schemaVersion',
+  ]);
+  if (
+    decision.schemaVersion !== 1 ||
+    typeof decision.requestHash !== 'string' ||
+    !SHA256.test(decision.requestHash) ||
+    decision.requestHash !== expectedRequestHash
+  )
+    throw new CodexAuthenticatedRegistrationError('REGISTRATION_NOT_AUTHORIZED');
+  const issuedAt = timestamp(decision.issuedAt);
+  const expiresAt = timestamp(decision.expiresAt);
+  if (
+    Date.parse(expiresAt) <= Date.parse(issuedAt) ||
+    Date.parse(expiresAt) - Date.parse(issuedAt) > 5 * 60_000
+  )
+    throw new CodexAuthenticatedRegistrationError('REGISTRATION_NOT_AUTHORIZED');
+  return freeze({
+    schemaVersion: 1,
+    authorizationId: reference(decision.authorizationId),
+    requestHash: expectedRequestHash,
+    authorizedByReference: reference(decision.authorizedByReference),
+    issuedAt,
+    expiresAt,
+  });
 }
