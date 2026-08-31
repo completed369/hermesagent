@@ -110,6 +110,15 @@
 > successful authorized write still leaves runtime and connection
 > `NOT_CONFIGURED`; capability, heartbeat, task, and connected status are not
 > promoted.
+>
+> Codex capability exchange now has an I/O-free stable `model/list`
+> translator. It accepts only a complete non-hidden first page, rejects
+> unknown or experimental catalog claims, hashes away model identity and raw
+> catalog content, and produces catalog claims with capability, provider, and
+> runtime truth all `NOT_CONFIGURED`. The production authorization source is
+> deny-only. There is not yet a durable capability-evidence write, heartbeat,
+> task/status/result exchange, provider round trip, or connected-state
+> transition; Codex remains **NOT_CONFIGURED**.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

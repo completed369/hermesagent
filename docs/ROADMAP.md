@@ -159,6 +159,12 @@ published and current `main` has not been deployed to private staging.
    cleanup. This is CI evidence only, not a runtime connection or production transport; production
    authorization, secrets, and launching remain deny-only and all real runtimes remain
    **NOT_CONFIGURED**.
+   Codex now also has an I/O-free, exact stable `model/list` capability
+   translator bound to authenticated registration. It accepts only a complete
+   non-hidden catalog, retains hashes and normalized catalog claims rather than
+   model identity, and requires a separate deny-by-default authorization. It
+   does not write durable evidence, contact a provider, or promote runtime
+   truth. Durable capability acceptance remains the next safe adapter slice.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
