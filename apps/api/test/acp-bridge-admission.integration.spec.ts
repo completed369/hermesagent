@@ -881,6 +881,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       `),
     ).rejects.toThrow();
     await expect(
+      prisma.$executeRaw(Prisma.sql`
+        DELETE FROM "acp_codex_validation_egress_handoff_attempts"
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "id" = ${validationHandoffInput.attemptId}
+      `),
+    ).rejects.toThrow();
+    await expect(
       authorizedBridge.prepareCodexValidationDispatch(
         capability,
         { workspaceId, principalId },

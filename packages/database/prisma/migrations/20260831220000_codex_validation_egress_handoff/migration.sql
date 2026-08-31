@@ -92,6 +92,11 @@ ALTER TABLE "acp_codex_validation_egress_handoff_attempts"
 CREATE OR REPLACE FUNCTION ventureos_reject_codex_validation_egress_handoff_change()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  IF TG_OP = 'DELETE' AND NOT EXISTS (
+    SELECT 1 FROM "workspaces" WHERE "id" = OLD."workspaceId"
+  ) THEN
+    RETURN OLD;
+  END IF;
   RAISE EXCEPTION 'Codex validation egress handoff evidence is immutable';
 END;
 $$;

@@ -309,6 +309,10 @@ test('Codex validation egress is one-shot, bounded, local-only, and truth preser
   assert.match(migration, /state" = 'CLAIMED'/u);
   assert.match(migration, /INTERVAL '15 seconds'/u);
   assert.match(migration, /ventureos_reject_codex_validation_egress_handoff_change/u);
+  assert.match(
+    migration,
+    /TG_OP = 'DELETE'[\s\S]*NOT EXISTS[\s\S]*FROM "workspaces"[\s\S]*RETURN OLD/u,
+  );
   assert.doesNotMatch(
     migration,
     /^\s+"(?:mac|rawPayload|prompt|transcript|credential|accessToken|apiKey)"\s+/mu,
