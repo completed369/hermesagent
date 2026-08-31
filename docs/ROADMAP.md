@@ -71,6 +71,13 @@ published and current `main` has not been deployed to private staging.
   port. The only production-ready transport implementation denies every write;
   there is no API wiring, socket, pipe, queue, process, provider, acknowledgement,
   delivery state, or runtime-status promotion.
+- Codex is selected as the first reviewed real-runtime interface behind an inert
+  Linux-only app-server policy. It accepts only a supervisor-manifest candidate
+  for `codex app-server --listen stdio://` and requires the separate
+  opened-file/signed-evidence flow before any future launch; it rejects alternate
+  transports, arguments, wrappers, environment, secret handles, and network.
+  Production executable authority and launching remain deny-only, no process or
+  provider is contacted, and Codex remains `NOT_CONFIGURED`.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database

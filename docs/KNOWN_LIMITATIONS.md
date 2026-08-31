@@ -82,6 +82,17 @@
 > executable discovery or filesystem inspection and cannot close path-swap or
 > executable-replacement TOCTOU. Its validated output is inert; the production
 > launcher still always denies.
+>
+> Codex is the first selected real-runtime interface, but only as an inert
+> Linux app-server manifest policy. The policy admits the exact argument shape
+> `app-server --listen stdio://` as a supervisor-manifest candidate; the
+> general opened-file identity, digest, owner, worktree, resource, and signed
+> authorization bindings remain separate prerequisites for any future launch. It
+> rejects alternate listeners, wrappers, environment variables, secret
+> handles, and network. It launches nothing, adds no database adapter kind,
+> reads no Codex authentication, and grants no provider or runtime status.
+> Production authorization and launching remain deny-only and Codex remains
+> **NOT_CONFIGURED**.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
