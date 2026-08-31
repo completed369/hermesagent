@@ -120,8 +120,14 @@
 > registration row, capability policy, idempotency key, and a separate
 > five-minute authorization. The production authorization source is deny-only,
 > and neither runtime nor connection capability/status fields are promoted.
-> There is not yet a heartbeat, task/status/result exchange, provider round
-> trip, or connected-state transition; Codex remains **NOT_CONFIGURED**.
+> One Codex-specific immutable heartbeat evidence path now accepts a fresh,
+> canonical VentureOS bridge-signed `HEARTBEAT` after the exact durable
+> registration and capability rows. It verifies the runtime-to-parent MAC
+> through a scoped secret lease and stores only normalized hashes and safe
+> references. It is not a native Codex app-server heartbeat, controller, or
+> transport; it intentionally does not update connection heartbeat/status
+> fields. There is not yet a task/status/result exchange, provider round trip,
+> or connected-state transition; Codex remains **NOT_CONFIGURED**.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

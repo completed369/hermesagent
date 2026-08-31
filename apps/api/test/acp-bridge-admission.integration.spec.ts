@@ -559,6 +559,120 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         { ...capabilityInput, idempotencyKey: `capability-drift-${registrationSuffix}` },
       ),
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+
+    const heartbeatContext = {
+      schemaVersion: 1 as const,
+      workspaceId,
+      runtimeId: candidate.runtimeId,
+      connectionId: candidate.connectionId,
+      sessionId: candidate.sessionId,
+      principalReference: candidate.principalReference,
+      parentNonce: `parent-nonce-${registrationSuffix}`,
+      runtimeNonce: `runtime-nonce-${registrationSuffix}`,
+      secretReference: codexSecretReference,
+      expectedSecretDigest: digestSecretReference(codexSecret),
+      authGeneration: 1,
+      authenticatedAt: new Date(observedAt.getTime() - 1_000).toISOString(),
+      expiresAt: new Date(observedAt.getTime() + 4 * 60_000).toISOString(),
+    };
+    const heartbeatPayload = { health: 'HEALTHY' };
+    const heartbeatIssuedAt = new Date();
+    const heartbeatEnvelope = signBridgeEnvelope(
+      {
+        protocolVersion: BRIDGE_PROTOCOL_VERSION,
+        workspaceId,
+        runtimeId: candidate.runtimeId,
+        connectionId: candidate.connectionId,
+        sessionId: candidate.sessionId,
+        principalReference: candidate.principalReference,
+        sequence: 1,
+        messageId: `heartbeat-${registrationSuffix}`,
+        type: 'HEARTBEAT',
+        issuedAt: heartbeatIssuedAt.toISOString(),
+        expiresAt: new Date(heartbeatIssuedAt.getTime() + 60_000).toISOString(),
+        payloadDigest: digestBridgePayload(heartbeatPayload),
+        payload: heartbeatPayload,
+      },
+      deriveBridgeKeys(codexSecret, heartbeatContext).runtimeToParent,
+    );
+    const heartbeatInput = {
+      registration: candidate,
+      capability: capabilityCandidate,
+      bridge: heartbeatContext,
+      envelope: heartbeatEnvelope,
+      idempotencyKey: `heartbeat-${registrationSuffix}`,
+    };
+    const acceptedHeartbeat = await authorizedBridge.acceptCodexHeartbeatEvidence(
+      capability,
+      { workspaceId, principalId },
+      heartbeatInput,
+    );
+    expect(acceptedHeartbeat.replayed).toBe(false);
+    expect(acceptedHeartbeat.runtime.status).toBe('NOT_CONFIGURED');
+    expect(acceptedHeartbeat.connection).toMatchObject({
+      status: 'NOT_CONFIGURED',
+      capabilityCodes: [],
+      capabilityDigest: null,
+      lastHeartbeatAt: null,
+      lastHeartbeatHealth: null,
+      lastHeartbeatSequence: null,
+    });
+    expect(acceptedHeartbeat.evidence).toMatchObject({
+      registrationCandidateHash: candidate.registrationCandidateHash,
+      capabilityCandidateHash: capabilityCandidate.capabilityCandidateHash,
+      messageId: heartbeatEnvelope.messageId,
+      health: 'HEALTHY',
+      sequence: 1,
+    });
+    expect(JSON.stringify(acceptedHeartbeat.evidence)).not.toContain(heartbeatEnvelope.mac);
+    expect(secretLeaseRequests.at(-1)?.purpose).toBe('VERIFY_FRAME');
+    const heartbeatAudit = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        workspaceReference: workspaceId,
+        source: 'CONTROL_PLANE',
+        entityType: 'AcpRuntimeHeartbeatEvidence',
+        entityId: acceptedHeartbeat.evidence.heartbeatCandidateHash,
+      },
+    });
+    expect(heartbeatAudit.after).toEqual({
+      connectionId: candidate.connectionId,
+      health: 'HEALTHY',
+      sequence: 1,
+    });
+    expect(
+      (
+        await authorizedBridge.acceptCodexHeartbeatEvidence(
+          capability,
+          { workspaceId, principalId },
+          heartbeatInput,
+        )
+      ).replayed,
+    ).toBe(true);
+    await expect(
+      authorizedBridge.acceptCodexHeartbeatEvidence(
+        capability,
+        { workspaceId, principalId },
+        { ...heartbeatInput, idempotencyKey: `heartbeat-drift-${registrationSuffix}` },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      authorizedBridge.acceptCodexHeartbeatEvidence(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...heartbeatInput,
+          envelope: { ...heartbeatEnvelope, mac: 'A'.repeat(43) },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "acp_runtime_heartbeat_evidence"
+        SET "health" = 'DEGRADED'
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "heartbeatCandidateHash" = ${acceptedHeartbeat.evidence.heartbeatCandidateHash}
+      `),
+    ).rejects.toThrow();
     await expect(
       prisma.$executeRaw(Prisma.sql`
         UPDATE "acp_runtime_capability_evidence"

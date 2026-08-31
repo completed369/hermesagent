@@ -101,8 +101,15 @@ published and current `main` has not been deployed to private staging.
   tenant-scoped durable registration, capability policy, idempotency key, and
   a separate five-minute authorization. It stores no model identity or raw
   protocol payload, production authorization denies by default, and it leaves
-  runtime and connection capability/status truth `NOT_CONFIGURED`. A bounded
-  authenticated heartbeat is the next separately reviewed adapter boundary.
+  runtime and connection capability/status truth `NOT_CONFIGURED`.
+- Codex now has a dedicated immutable heartbeat-evidence operation. It accepts
+  one fresh canonical VentureOS bridge `HEARTBEAT` only after the exact durable
+  registration and capability rows, verifies its runtime-to-parent MAC through
+  the scoped secret lease, and binds tenant, identity, generation, sequence,
+  message, and idempotency evidence. It retains no MAC, nonce, secret, or raw
+  frame and deliberately leaves connection heartbeat and status fields
+  untouched. A bounded authenticated task dispatch and status/result round trip
+  is the next separately reviewed adapter boundary.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
@@ -170,8 +177,10 @@ published and current `main` has not been deployed to private staging.
    registration. It accepts only a complete non-hidden catalog, retains hashes
    and normalized catalog claims rather than model identity, and requires a
    separate deny-by-default authorization. It does not contact a provider or
-   promote runtime truth. A bounded authenticated heartbeat remains the next
-   safe adapter slice.
+   promote runtime truth. The successor immutable heartbeat path verifies one
+   fresh runtime-to-parent signed observation without updating runtime truth.
+   Bounded task dispatch and status/result evidence remain the next safe adapter
+   slice.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
