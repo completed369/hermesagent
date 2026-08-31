@@ -200,7 +200,7 @@ describe.runIf(onOwnedGitHubRunner)('real disposable PostgreSQL dump/restore evi
       const completedAt = new Date();
       await targetPool.end();
       targetPool = undefined;
-      await admin.query(`DROP DATABASE "${target}" WITH (FORCE)`);
+      await admin.query(`DROP DATABASE "${target}"`);
       targetCreated = false;
       const migrationDecision = createMigrationCompatibilityEvidence({
         decision: 'RESTORE_REQUIRED',
@@ -252,9 +252,7 @@ describe.runIf(onOwnedGitHubRunner)('real disposable PostgreSQL dump/restore evi
     } finally {
       await targetPool?.end().catch(() => undefined);
       if (targetCreated)
-        await admin
-          .query(`DROP DATABASE IF EXISTS "${target}" WITH (FORCE)`)
-          .catch(() => undefined);
+        await admin.query(`DROP DATABASE IF EXISTS "${target}"`).catch(() => undefined);
       await admin.query(`DROP TABLE IF EXISTS "${sentinelTable}"`).catch(() => undefined);
       docker('exec', containerId, 'rm', '-f', dumpPath);
       await admin.end();
