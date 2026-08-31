@@ -204,13 +204,17 @@ export class BoundedCodexAppServerStdioTransport {
             if (!(chunk instanceof Uint8Array) || chunk.byteLength === 0)
               throw new CodexAppServerStdioTransportError('INVALID_MESSAGE');
             const owned = Buffer.from(chunk);
-            if (this.#readBytes + owned.byteLength > MAX_CODEX_STDIO_SESSION_BYTES)
-              throw new CodexAppServerStdioTransportError('LIMIT_EXCEEDED');
-            this.#readBytes += owned.byteLength;
-            this.#buffer = Buffer.concat([this.#buffer, owned]);
-            owned.fill(0);
-            if (this.#buffer.byteLength > MAX_CODEX_STDIO_BUFFER_BYTES)
-              throw new CodexAppServerStdioTransportError('LIMIT_EXCEEDED');
+            try {
+              if (
+                this.#readBytes + owned.byteLength > MAX_CODEX_STDIO_SESSION_BYTES ||
+                owned.byteLength > MAX_CODEX_STDIO_BUFFER_BYTES - this.#buffer.byteLength
+              )
+                throw new CodexAppServerStdioTransportError('LIMIT_EXCEEDED');
+              this.#readBytes += owned.byteLength;
+              this.#buffer = Buffer.concat([this.#buffer, owned]);
+            } finally {
+              owned.fill(0);
+            }
             const candidate = this.#takeLine();
             if (candidate) {
               cleanup();

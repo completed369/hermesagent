@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BoundedCodexAppServerStdioTransport,
   CodexAppServerStdioTransportError,
+  MAX_CODEX_STDIO_BUFFER_BYTES,
   MAX_CODEX_STDIO_LINE_BYTES,
 } from './codex-app-server-stdio-transport';
 
@@ -60,6 +61,7 @@ describe('BoundedCodexAppServerStdioTransport', () => {
       Buffer.concat([Buffer.from('{"x":"'), Buffer.alloc(MAX_CODEX_STDIO_LINE_BYTES, 97)]),
       'LIMIT_EXCEEDED',
     ],
+    ['oversized chunk', Buffer.alloc(MAX_CODEX_STDIO_BUFFER_BYTES + 1, 97), 'LIMIT_EXCEEDED'],
   ])('fails closed for %s', async (_name, input, code) => {
     const { stdout, transport } = fixture();
     const pending = transport.read();
