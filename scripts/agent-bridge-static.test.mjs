@@ -371,7 +371,7 @@ test('egress handoff claims are exclusive metadata and cannot send or promote st
   assert.match(migration, /heartbeat_at < db_now - INTERVAL '60 seconds'/u);
   assert.match(
     integration,
-    /WITH db_clock AS \(SELECT clock_timestamp\(\) AS claimed_at\)[\s\S]*JOIN "acp_bridge_dispatch_outbox" source/u,
+    /WITH db_clock AS \([\s\S]*date_trunc\('milliseconds', clock_timestamp\(\)\) AS claimed_at[\s\S]*JOIN "acp_bridge_dispatch_outbox" source/u,
   );
   assert.match(
     integration,

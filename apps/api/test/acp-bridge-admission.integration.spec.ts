@@ -923,7 +923,9 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     };
     const insertTimezoneAttempt = (tx: Prisma.TransactionClient) =>
       tx.$executeRaw(Prisma.sql`
-        WITH db_clock AS (SELECT clock_timestamp() AS claimed_at)
+        WITH db_clock AS (
+          SELECT date_trunc('milliseconds', clock_timestamp()) AS claimed_at
+        )
         INSERT INTO "acp_bridge_egress_handoff_attempts" (
           "id", "workspaceId", "outboxId", "ownerReference", "ownerActorKind",
           "claimIdempotencyKey", "generation", "runtimeId", "connectionId", "sessionId",
