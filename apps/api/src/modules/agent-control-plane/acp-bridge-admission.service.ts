@@ -46,6 +46,7 @@ import {
   validateCodexHeartbeatEvidenceCandidate,
   validateCodexValidationCancellationCandidate,
   validateCodexValidationProcessCleanupEvidence,
+  validateCodexValidationProcessSessionRecoveryWorkItem,
   validateCodexValidationRoundTripCandidate,
   validateSupervisorProcessBinding,
   type AuthenticatedJsonlSessionContext,
@@ -2403,8 +2404,8 @@ export class AcpBridgeAdmissionService
           }
           const workItemFor = (
             lease: Readonly<CodexValidationProcessSessionRecoveryLeaseRow>,
-          ): Readonly<CodexValidationProcessSessionRecoveryWorkItem> =>
-            Object.freeze({
+          ): Readonly<CodexValidationProcessSessionRecoveryWorkItem> => {
+            const candidate = Object.freeze({
               schemaVersion: 1 as const,
               recoveryLeaseId: lease.id,
               recoveryGeneration: lease.generation,
@@ -2421,6 +2422,14 @@ export class AcpBridgeAdmissionService
               leaseExpiresAt: lease.expiresAt.toISOString(),
               runtimeConnection: 'NOT_CONFIGURED' as const,
             });
+            try {
+              return validateCodexValidationProcessSessionRecoveryWorkItem(candidate, now);
+            } catch {
+              throw new AcpBridgeAdmissionDeniedError(
+                'Codex validation process-session recovery work item is invalid',
+              );
+            }
+          };
 
           const existingById = existingRows.find((row) => row.id === input.recoveryLeaseId);
           const existingByKey = existingRows.find(

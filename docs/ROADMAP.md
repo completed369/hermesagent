@@ -272,6 +272,9 @@ published and current `main` has not been deployed to private staging.
    Active lease acquisition now returns an atomic, immutable supervisor/dispatch work item and
    expired replay returns none (ADR-0067). No PID, process handle, action, or status authority is
    added; a future owner must prove retained native identity independently.
+   The Agent Bridge now applies an exact active-only validator to that metadata envelope, including
+   supervisor binding, claim ordering, fixed lease duration, safe references, and database-clock
+   freshness (ADR-0068). It grants no process action or runtime truth.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
