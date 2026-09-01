@@ -406,6 +406,182 @@ describe('Codex validation process-session control-plane authority', () => {
     expect(executionFactory).not.toHaveBeenCalled();
   });
 
+  it('runs one bounded recovery page sequentially and skips active claims', async () => {
+    const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
+    const fixture = recoveryAuthorityFixture();
+    const expiredItem = recoveryInventoryItem(fixture.workItem, 'EXPIRED');
+    const activeItem = {
+      ...recoveryInventoryItem(fixture.workItem, 'ACTIVE'),
+      claimId: 'claim-recovery-worker-active-unit',
+    };
+    const page = {
+      schemaVersion: 1 as const,
+      items: [activeItem, expiredItem],
+      nextCursor: expiredItem.claimId,
+      observedAt: fixture.workItem.leaseClaimedAt,
+      runtimeConnection: 'NOT_CONFIGURED' as const,
+    };
+    const list = vi
+      .spyOn(service, 'listCodexValidationProcessSessionRecoveryInventory')
+      .mockResolvedValue(page);
+    const execute = vi
+      .spyOn(service, 'executeCodexValidationProcessSessionRecovery')
+      .mockResolvedValue({
+        lease: {
+          ...recoveryLease(fixture.workItem),
+          recoveryLeaseId: 'lease-recovery-worker-unit',
+        },
+        replayed: false,
+        execution: {
+          exitEvidence: fixture.exitEvidence,
+          completionState: 'RECORDED',
+          runtimeConnection: 'NOT_CONFIGURED',
+          connectionTransition: 'NOT_APPLIED',
+        },
+        recoveryState: 'RECORDED',
+        runtimeConnection: 'NOT_CONFIGURED',
+        connectionTransition: 'NOT_APPLIED',
+      });
+    const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+
+    const result = await service.executeCodexValidationProcessSessionRecoveryPage(
+      capability,
+      { workspaceId, principalId },
+      { limit: 2 },
+      {
+        issue: async (item, observedAt) => ({
+          schemaVersion: 1,
+          claimId: item.claimId,
+          recoveryLeaseId: 'lease-recovery-worker-unit',
+          leaseIdempotencyKey: `lease-idempotency-${observedAt}`,
+          completionIdempotencyKey: `completion-idempotency-${observedAt}`,
+        }),
+      },
+      { observe: async () => fixture.exitEvidence },
+    );
+
+    expect(list).toHaveBeenCalledWith(capability, { workspaceId, principalId }, { limit: 2 });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith(
+      capability,
+      { workspaceId, principalId },
+      {
+        recoveryLeaseId: 'lease-recovery-worker-unit',
+        claimId: expiredItem.claimId,
+        idempotencyKey: `lease-idempotency-${page.observedAt}`,
+        completionIdempotencyKey: `completion-idempotency-${page.observedAt}`,
+      },
+      expect.any(Object),
+      expect.any(Function),
+    );
+    expect(result).toMatchObject({
+      schemaVersion: 1,
+      outcomes: [
+        {
+          claimId: expiredItem.claimId,
+          recoveryState: 'RECORDED',
+          runtimeConnection: 'NOT_CONFIGURED',
+          connectionTransition: 'NOT_APPLIED',
+        },
+      ],
+      skippedActiveClaimIds: [activeItem.claimId],
+      nextCursor: expiredItem.claimId,
+      observedAt: page.observedAt,
+      runtimeConnection: 'NOT_CONFIGURED',
+      connectionTransition: 'NOT_APPLIED',
+    });
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(result.outcomes)).toBe(true);
+    expect(Object.isFrozen(result.skippedActiveClaimIds)).toBe(true);
+  });
+
+  it('denies a recovery page before lease mutation without an exact attempt identity', async () => {
+    const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
+    const fixture = recoveryAuthorityFixture();
+    const item = recoveryInventoryItem(fixture.workItem, 'EXPIRED');
+    vi.spyOn(service, 'listCodexValidationProcessSessionRecoveryInventory').mockResolvedValue({
+      schemaVersion: 1,
+      items: [item],
+      nextCursor: null,
+      observedAt: fixture.workItem.leaseClaimedAt,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    const execute = vi.spyOn(service, 'executeCodexValidationProcessSessionRecovery');
+    const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+
+    await expect(
+      service.executeCodexValidationProcessSessionRecoveryPage(
+        capability,
+        { workspaceId, principalId },
+        { limit: 1 },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      service.executeCodexValidationProcessSessionRecoveryPage(
+        capability,
+        { workspaceId, principalId },
+        { limit: 1 },
+        {
+          issue: async () => ({
+            schemaVersion: 1,
+            claimId: 'claim-recovery-worker-drift-unit',
+            recoveryLeaseId: 'lease-recovery-worker-drift-unit',
+            leaseIdempotencyKey: 'lease-idempotency-recovery-worker-drift-unit',
+            completionIdempotencyKey: 'completion-recovery-worker-drift-unit',
+          }),
+        },
+        { observe: async () => fixture.exitEvidence },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('denies recovery worker result drift before emitting a page outcome', async () => {
+    const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
+    const fixture = recoveryAuthorityFixture();
+    const item = recoveryInventoryItem(fixture.workItem, 'EXPIRED');
+    vi.spyOn(service, 'listCodexValidationProcessSessionRecoveryInventory').mockResolvedValue({
+      schemaVersion: 1,
+      items: [item],
+      nextCursor: null,
+      observedAt: fixture.workItem.leaseClaimedAt,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    vi.spyOn(service, 'executeCodexValidationProcessSessionRecovery').mockResolvedValue({
+      lease: { ...recoveryLease(fixture.workItem), claimId: 'claim-recovery-worker-foreign-unit' },
+      replayed: false,
+      execution: null,
+      recoveryState: 'LEASE_EXPIRED',
+      runtimeConnection: 'NOT_CONFIGURED',
+      connectionTransition: 'NOT_APPLIED',
+    });
+    const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+
+    await expect(
+      service.executeCodexValidationProcessSessionRecoveryPage(
+        capability,
+        { workspaceId, principalId },
+        { limit: 1 },
+        {
+          issue: async () => ({
+            schemaVersion: 1,
+            claimId: item.claimId,
+            recoveryLeaseId: 'lease-recovery-worker-result-unit',
+            leaseIdempotencyKey: 'lease-idempotency-recovery-worker-result-unit',
+            completionIdempotencyKey: 'completion-recovery-worker-result-unit',
+          }),
+        },
+        { observe: async () => fixture.exitEvidence },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+  });
+
   it('rejects recovery discovery without Level-3 authority or bounded input', async () => {
     const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
     const lowCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
@@ -1038,6 +1214,25 @@ function recoveryLease(workItem: ReturnType<typeof recoveryAuthorityFixture>['wo
     claimExpiresAt: workItem.processExpiresAt,
     claimedAt: workItem.leaseClaimedAt,
     expiresAt: workItem.leaseExpiresAt,
+    runtimeConnection: 'NOT_CONFIGURED' as const,
+  };
+}
+
+function recoveryInventoryItem(
+  workItem: ReturnType<typeof recoveryAuthorityFixture>['workItem'],
+  recoveryState: 'ACTIVE' | 'EXPIRED',
+) {
+  return {
+    schemaVersion: 1 as const,
+    claimId: workItem.claimId,
+    handoffAttemptId: workItem.handoffAttemptId,
+    validationDispatchCandidateHash: workItem.validationDispatchCandidateHash,
+    sessionId: workItem.sessionId,
+    dispatchId: workItem.dispatchId,
+    binding: workItem.binding,
+    recoveryState,
+    claimedAt: workItem.processClaimedAt,
+    expiresAt: workItem.processExpiresAt,
     runtimeConnection: 'NOT_CONFIGURED' as const,
   };
 }

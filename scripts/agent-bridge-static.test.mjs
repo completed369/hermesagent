@@ -1847,7 +1847,7 @@ test('control-plane Codex recovery claim and execution are one exact deny-defaul
   const start = service.indexOf('async executeCodexValidationProcessSessionRecovery(');
   const operation = service.slice(
     start,
-    service.indexOf('/**\n   * Lists a bounded owner-scoped snapshot', start),
+    service.indexOf('/**\n   * Executes one bounded owner-scoped inventory page', start),
   );
   assert.ok(start > 0);
   assert.match(operation, /assertControlPlane\(capability, context, 3\)/u);
@@ -1865,6 +1865,43 @@ test('control-plane Codex recovery claim and execution are one exact deny-defaul
   assert.doesNotMatch(
     operation,
     /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess|process\.kill|setInterval|setTimeout/iu,
+  );
+});
+
+test('control-plane Codex recovery worker is one-page, sequential, and preflight-denied', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const start = service.indexOf('async executeCodexValidationProcessSessionRecoveryPage(');
+  const worker = service.slice(
+    start,
+    service.indexOf('/**\n   * Lists a bounded owner-scoped snapshot', start),
+  );
+  assert.ok(start > 0);
+  assert.match(worker, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(
+    worker,
+    /attemptIdentitySource instanceof[\s\S]*DenyCodexValidationProcessSessionRecoveryAttemptIdentitySource/u,
+  );
+  assert.match(
+    worker,
+    /evidenceSource instanceof DenyCodexValidationProcessSessionRecoveryEvidenceSource/u,
+  );
+  assert.match(worker, /listCodexValidationProcessSessionRecoveryInventory/u);
+  assert.match(worker, /for \(const item of page\.items\)/u);
+  assert.match(worker, /item\.recoveryState === 'ACTIVE'/u);
+  assert.match(worker, /attemptIdentitySource\.issue\(item, page\.observedAt\)/u);
+  assert.match(worker, /const identity = Object\.freeze\(\{/u);
+  assert.match(worker, /identity\.claimId !== item\.claimId/u);
+  assert.match(worker, /executeCodexValidationProcessSessionRecovery/u);
+  assert.match(worker, /result\.lease\.claimId !== item\.claimId/u);
+  assert.match(worker, /result\.lease\.recoveryLeaseId !== identity\.recoveryLeaseId/u);
+  assert.match(worker, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(worker, /connectionTransition: 'NOT_APPLIED'/u);
+  assert.doesNotMatch(
+    worker,
+    /CONNECTED|Promise\.all|spawn\s*\(|exec\s*\(|node:child_process|providerAccess|process\.kill|setInterval|setTimeout/iu,
   );
 });
 

@@ -728,6 +728,52 @@ export interface CodexValidationProcessSessionRecoveryExecutionResult {
   readonly connectionTransition: 'NOT_APPLIED';
 }
 
+export interface CodexValidationProcessSessionRecoveryAttemptIdentity {
+  readonly schemaVersion: 1;
+  readonly claimId: string;
+  readonly recoveryLeaseId: string;
+  readonly leaseIdempotencyKey: string;
+  readonly completionIdempotencyKey: string;
+}
+
+export interface CodexValidationProcessSessionRecoveryAttemptIdentitySource {
+  issue(
+    item: Readonly<CodexValidationProcessSessionRecoveryItem>,
+    observedAt: string,
+  ): Promise<unknown>;
+}
+
+export class DenyCodexValidationProcessSessionRecoveryAttemptIdentitySource implements CodexValidationProcessSessionRecoveryAttemptIdentitySource {
+  async issue(
+    _item: Readonly<CodexValidationProcessSessionRecoveryItem>,
+    _observedAt: string,
+  ): Promise<never> {
+    throw new AcpBridgeAdmissionDeniedError(
+      'Codex validation process-session recovery worker identity is not configured',
+    );
+  }
+}
+
+export interface CodexValidationProcessSessionRecoveryWorkerOutcome {
+  readonly claimId: string;
+  readonly recoveryLeaseId: string;
+  readonly recoveryGeneration: number;
+  readonly replayed: boolean;
+  readonly recoveryState: 'RECORDED' | 'LEASE_EXPIRED';
+  readonly runtimeConnection: 'NOT_CONFIGURED';
+  readonly connectionTransition: 'NOT_APPLIED';
+}
+
+export interface CodexValidationProcessSessionRecoveryWorkerPageResult {
+  readonly schemaVersion: 1;
+  readonly outcomes: readonly Readonly<CodexValidationProcessSessionRecoveryWorkerOutcome>[];
+  readonly skippedActiveClaimIds: readonly string[];
+  readonly nextCursor: string | null;
+  readonly observedAt: string;
+  readonly runtimeConnection: 'NOT_CONFIGURED';
+  readonly connectionTransition: 'NOT_APPLIED';
+}
+
 export interface AcceptCodexValidationRoundTripEvidenceInput {
   readonly handoffAttemptId: string;
   readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
@@ -2552,6 +2598,128 @@ export class AcpBridgeAdmissionService
       replayed: bundle.replayed,
       execution,
       recoveryState: 'RECORDED' as const,
+      runtimeConnection: 'NOT_CONFIGURED' as const,
+      connectionTransition: 'NOT_APPLIED' as const,
+    });
+  }
+
+  /**
+   * Executes one bounded owner-scoped inventory page sequentially. Active
+   * claims are observation-only; an explicit attempt identity is required
+   * before an expired claim can acquire a lease.
+   */
+  async executeCodexValidationProcessSessionRecoveryPage(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: ListCodexValidationProcessSessionRecoveryInput,
+    attemptIdentitySource: CodexValidationProcessSessionRecoveryAttemptIdentitySource = new DenyCodexValidationProcessSessionRecoveryAttemptIdentitySource(),
+    evidenceSource: CodexValidationProcessSessionRecoveryEvidenceSource = new DenyCodexValidationProcessSessionRecoveryEvidenceSource(),
+    clock: () => Date = () => new Date(),
+  ): Promise<Readonly<CodexValidationProcessSessionRecoveryWorkerPageResult>> {
+    assertControlPlane(capability, context, 3);
+    if (
+      attemptIdentitySource instanceof
+        DenyCodexValidationProcessSessionRecoveryAttemptIdentitySource ||
+      evidenceSource instanceof DenyCodexValidationProcessSessionRecoveryEvidenceSource
+    )
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session recovery worker is not configured',
+      );
+    const page = await this.listCodexValidationProcessSessionRecoveryInventory(
+      capability,
+      context,
+      Object.freeze({
+        limit: input.limit,
+        ...(input.afterClaimId === undefined ? {} : { afterClaimId: input.afterClaimId }),
+      }),
+    );
+    const outcomes: Readonly<CodexValidationProcessSessionRecoveryWorkerOutcome>[] = [];
+    const skippedActiveClaimIds: string[] = [];
+    for (const item of page.items) {
+      if (item.recoveryState === 'ACTIVE') {
+        skippedActiveClaimIds.push(item.claimId);
+        continue;
+      }
+      let candidate: unknown;
+      try {
+        candidate = await attemptIdentitySource.issue(item, page.observedAt);
+      } catch {
+        throw new AcpBridgeAdmissionDeniedError(
+          'Codex validation process-session recovery worker identity was denied',
+        );
+      }
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate))
+        throw new AcpBridgeAdmissionDeniedError(
+          'Codex validation process-session recovery worker identity is invalid',
+        );
+      const identityCandidate = candidate as Readonly<Record<string, unknown>>;
+      exactPayload(identityCandidate, [
+        'claimId',
+        'completionIdempotencyKey',
+        'leaseIdempotencyKey',
+        'recoveryLeaseId',
+        'schemaVersion',
+      ]);
+      const identity = Object.freeze({
+        schemaVersion: identityCandidate.schemaVersion,
+        claimId: identityCandidate.claimId,
+        recoveryLeaseId: identityCandidate.recoveryLeaseId,
+        leaseIdempotencyKey: identityCandidate.leaseIdempotencyKey,
+        completionIdempotencyKey: identityCandidate.completionIdempotencyKey,
+      });
+      auditSubjectReference(identity.claimId, 'claimId');
+      auditSubjectReference(identity.recoveryLeaseId, 'recoveryLeaseId');
+      publicReference(identity.leaseIdempotencyKey, 'leaseIdempotencyKey');
+      publicReference(identity.completionIdempotencyKey, 'completionIdempotencyKey');
+      if (
+        identity.schemaVersion !== 1 ||
+        identity.claimId !== item.claimId ||
+        identity.recoveryLeaseId === identity.leaseIdempotencyKey ||
+        identity.recoveryLeaseId === identity.completionIdempotencyKey ||
+        identity.leaseIdempotencyKey === identity.completionIdempotencyKey
+      )
+        throw new AcpBridgeAdmissionDeniedError(
+          'Codex validation process-session recovery worker identity crossed its inventory item',
+        );
+      const result = await this.executeCodexValidationProcessSessionRecovery(
+        capability,
+        context,
+        {
+          recoveryLeaseId: identity.recoveryLeaseId,
+          claimId: item.claimId,
+          idempotencyKey: identity.leaseIdempotencyKey,
+          completionIdempotencyKey: identity.completionIdempotencyKey,
+        },
+        evidenceSource,
+        clock,
+      );
+      if (
+        result.lease.claimId !== item.claimId ||
+        result.lease.recoveryLeaseId !== identity.recoveryLeaseId ||
+        result.runtimeConnection !== 'NOT_CONFIGURED' ||
+        result.connectionTransition !== 'NOT_APPLIED'
+      )
+        throw new AcpBridgeAdmissionDeniedError(
+          'Codex validation process-session recovery worker result crossed its inventory item',
+        );
+      outcomes.push(
+        Object.freeze({
+          claimId: item.claimId,
+          recoveryLeaseId: result.lease.recoveryLeaseId,
+          recoveryGeneration: result.lease.generation,
+          replayed: result.replayed,
+          recoveryState: result.recoveryState,
+          runtimeConnection: 'NOT_CONFIGURED' as const,
+          connectionTransition: 'NOT_APPLIED' as const,
+        }),
+      );
+    }
+    return Object.freeze({
+      schemaVersion: 1 as const,
+      outcomes: Object.freeze(outcomes),
+      skippedActiveClaimIds: Object.freeze(skippedActiveClaimIds),
+      nextCursor: page.nextCursor,
+      observedAt: page.observedAt,
       runtimeConnection: 'NOT_CONFIGURED' as const,
       connectionTransition: 'NOT_APPLIED' as const,
     });
