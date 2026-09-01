@@ -1,6 +1,6 @@
 # ADR-0054: Test-only authenticated native dispatch round trip
 
-Status: Proposed (source authored; Linux execution pending authoritative Ubuntu CI)
+Status: Accepted as test-only evidence (compiled and executed by authoritative Ubuntu CI)
 
 ## Context
 
