@@ -175,7 +175,10 @@
 > resolver, or transport. A separate bounded Level-3 recovery inventory can list only that
 > workspace/principal/actor owner's claims with no cleanup completion, using the database clock to
 > distinguish active from expired rows (ADR-0063). It is read-only and supplies no recovery lease,
-> process signal, termination, retry, cleanup proof, or status promotion.
+> process signal, termination, retry, cleanup proof, or status promotion. Claim insertion now rejects
+> owner, actor, state, expiry, and time-window drift from its trusted handoff, and service replay
+> rechecks the complete durable binding (ADR-0064). This closes metadata poisoning; it does not make
+> the future process owner or cleanup evidence independently trustworthy.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

@@ -2377,16 +2377,35 @@ export class AcpBridgeAdmissionService
             existingById ?? existingByHandoff ?? existingByKey ?? existingBySupervision;
           if (existing) {
             if (
+              existing.id !== input.claimId ||
+              existing.claimIdempotencyKey !== input.idempotencyKey ||
               existingById?.claimIdempotencyKey !== input.idempotencyKey ||
               existingByHandoff?.id !== input.claimId ||
               existingByKey?.id !== input.claimId ||
               existingBySupervision?.id !== input.claimId ||
+              existing.workspaceId !== context.workspaceId ||
+              existing.handoffAttemptId !== input.handoffAttemptId ||
               existing.validationDispatchCandidateHash !==
                 dispatch.validationDispatchCandidateHash ||
+              existing.runtimeId !== dispatch.runtimeId ||
+              existing.connectionId !== dispatch.connectionId ||
+              existing.sessionId !== dispatch.sessionId ||
+              existing.dispatchId !== dispatch.dispatchId ||
+              existing.ownerReference !== context.principalId ||
+              existing.ownerActorKind !== actorKind ||
+              existing.supervisionId !== binding.supervisionId ||
               existing.launchNonce !== binding.launchNonce ||
+              existing.platform !== binding.platform ||
               existing.manifestHash !== binding.manifestHash ||
               existing.admissionEvidenceHash !== binding.admissionEvidenceHash ||
-              existing.admissionBindingHash !== binding.admissionBindingHash
+              existing.admissionBindingHash !== binding.admissionBindingHash ||
+              existing.testOnly !== binding.testOnly ||
+              existing.state !== 'CLAIMED' ||
+              existing.runtimeConnection !== 'NOT_CONFIGURED' ||
+              existing.claimedAt < handoff.claimedAt ||
+              existing.claimedAt > now ||
+              existing.claimedAt >= existing.expiresAt ||
+              existing.expiresAt.getTime() !== handoff.expiresAt.getTime()
             )
               throw new AcpBridgeAdmissionConflictError(
                 'Codex validation process-session claim replay drifted',
