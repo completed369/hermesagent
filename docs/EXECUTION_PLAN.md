@@ -97,6 +97,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > A bounded Level-3 recovery inventory can now enumerate only the caller owner's unfinished claims,
 > classify them with the database clock, and paginate over immutable claim IDs (ADR-0063). It is
 > read-only and adds no recovery lease, process action, positive owner, or runtime truth promotion.
+> Process-claim insertion now database-enforces the exact handoff owner, actor, state, expiry, and
+> time window, while trusted replay rechecks the complete persisted binding (ADR-0064). Drift fails
+> closed before any future injected owner can receive streams.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

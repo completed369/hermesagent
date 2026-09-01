@@ -1549,6 +1549,52 @@ test('Codex process-session claims and cleanup are durable prerequisites for ter
   assert.doesNotMatch(migration, /credential|accessToken|apiKey|rawPayload|\bmac\b/u);
 });
 
+test('Codex process-session claims reproduce trusted handoff authority on insert and replay', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const replay = service.slice(
+    service.indexOf('const existingById = existingRows.find', service.indexOf('async claimCodex')),
+    service.indexOf('const [claim] = await tx.$queryRaw', service.indexOf('async claimCodex')),
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260901153000_codex_process_session_claim_trust/migration.sql',
+    'utf8',
+  );
+  for (const field of [
+    'workspaceId',
+    'handoffAttemptId',
+    'runtimeId',
+    'connectionId',
+    'sessionId',
+    'dispatchId',
+    'ownerReference',
+    'ownerActorKind',
+    'supervisionId',
+    'launchNonce',
+    'platform',
+    'manifestHash',
+    'admissionEvidenceHash',
+    'admissionBindingHash',
+    'testOnly',
+    'state',
+    'runtimeConnection',
+    'expiresAt',
+  ])
+    assert.match(replay, new RegExp(`existing\\.${field}`));
+  assert.match(migration, /BEFORE INSERT ON "acp_codex_validation_process_session_claims"/u);
+  assert.match(migration, /Existing Codex validation process-session claim crossed/u);
+  assert.match(migration, /handoff\."ownerReference" IS DISTINCT FROM NEW\."ownerReference"/u);
+  assert.match(migration, /handoff\."ownerActorKind" IS DISTINCT FROM NEW\."ownerActorKind"/u);
+  assert.match(migration, /handoff\."state" IS DISTINCT FROM 'CLAIMED'/u);
+  assert.match(migration, /handoff\."expiresAt" IS DISTINCT FROM NEW\."expiresAt"/u);
+  assert.match(migration, /NEW\."claimedAt" < handoff\."claimedAt"/u);
+  assert.match(migration, /NEW\."claimedAt" > CURRENT_TIMESTAMP/u);
+  assert.match(migration, /NEW\."claimedAt" >= handoff\."expiresAt"/u);
+  assert.doesNotMatch(migration, /CONNECTED|credential|provider|payload|transcript|secret/u);
+});
+
 test('deterministic fake is test-only and no real runtime can be marked connected', () => {
   const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
   const migration = readFileSync(

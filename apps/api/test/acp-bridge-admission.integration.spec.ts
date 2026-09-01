@@ -1069,6 +1069,29 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       runtimeConnection: 'NOT_CONFIGURED',
       supervisionId: processBinding.supervisionId,
     });
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "acp_codex_validation_process_session_claims" (
+          "workspaceId", "id", "handoffAttemptId", "validationDispatchCandidateHash",
+          "runtimeId", "connectionId", "sessionId", "dispatchId", "ownerReference",
+          "ownerActorKind", "supervisionId", "launchNonce", "platform", "manifestHash",
+          "admissionEvidenceHash", "admissionBindingHash", "testOnly", "state",
+          "runtimeConnection", "claimIdempotencyKey", "expiresAt"
+        ) VALUES (
+          CAST(${workspaceId} AS uuid), ${`forged-expiry-${processClaimId}`},
+          ${validationHandoffInput.attemptId},
+          ${validationCandidate.validationDispatchCandidateHash}, ${validationCandidate.runtimeId},
+          ${validationCandidate.connectionId}, ${validationCandidate.sessionId},
+          ${validationCandidate.dispatchId}, ${principalId}, 'SYSTEM',
+          ${`forged-expiry-${processBinding.supervisionId}`}, ${processBinding.launchNonce},
+          ${processBinding.platform}, ${processBinding.manifestHash},
+          ${processBinding.admissionEvidenceHash}, ${processBinding.admissionBindingHash},
+          ${processBinding.testOnly}, 'CLAIMED', 'NOT_CONFIGURED',
+          ${`forged-expiry-${processClaimId}`},
+          ${new Date(processClaim.claim.expiresAt.getTime() - 1)}
+        )
+      `),
+    ).rejects.toThrow(/crossed trusted handoff authority/u);
     const recoveryInventory =
       await authorizedBridge.listCodexValidationProcessSessionRecoveryInventory(
         capability,
