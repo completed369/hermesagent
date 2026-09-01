@@ -100,6 +100,10 @@ evidence; broker reservations remain estimates rather than financial charges.
 > Process-claim insertion now database-enforces the exact handoff owner, actor, state, expiry, and
 > time window, while trusted replay rechecks the complete persisted binding (ADR-0064). Drift fails
 > closed before any future injected owner can receive streams.
+> Expired unfinished process claims can now be serialized by one immutable 15-second Level-3
+> recovery lease (ADR-0065). The database enforces exact owner, expiry, completion absence, monotonic
+> generation, and mutual exclusion with late completion. This grants no process action or runtime
+> truth promotion.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

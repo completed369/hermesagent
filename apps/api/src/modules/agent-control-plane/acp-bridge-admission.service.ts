@@ -373,6 +373,26 @@ interface CodexValidationProcessSessionRecoveryRow extends CodexValidationProces
   readonly recoveryState: 'ACTIVE' | 'EXPIRED';
 }
 
+interface CodexValidationProcessSessionRecoveryClaimRow extends CodexValidationProcessSessionClaimRow {
+  readonly runId: string;
+}
+
+interface CodexValidationProcessSessionRecoveryLeaseRow {
+  readonly workspaceId: string;
+  readonly id: string;
+  readonly claimId: string;
+  readonly ownerReference: string;
+  readonly ownerActorKind: 'HUMAN' | 'AGENT' | 'SYSTEM';
+  readonly generation: number;
+  readonly state: string;
+  readonly runtimeConnection: string;
+  readonly recoveryIdempotencyKey: string;
+  readonly claimExpiresAt: Date;
+  readonly claimedAt: Date;
+  readonly expiresAt: Date;
+  readonly createdAt: Date;
+}
+
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
 const CAPABILITY_OWNER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
@@ -558,6 +578,26 @@ export interface CodexValidationProcessSessionRecoveryPage {
   readonly items: readonly Readonly<CodexValidationProcessSessionRecoveryItem>[];
   readonly nextCursor: string | null;
   readonly observedAt: string;
+  readonly runtimeConnection: 'NOT_CONFIGURED';
+}
+
+export interface ClaimCodexValidationProcessSessionRecoveryLeaseInput {
+  readonly recoveryLeaseId: string;
+  readonly claimId: string;
+  readonly idempotencyKey: string;
+}
+
+export interface CodexValidationProcessSessionRecoveryLease {
+  readonly schemaVersion: 1;
+  readonly recoveryLeaseId: string;
+  readonly claimId: string;
+  readonly ownerReference: string;
+  readonly ownerActorKind: 'HUMAN' | 'AGENT' | 'SYSTEM';
+  readonly generation: number;
+  readonly leaseState: 'ACTIVE' | 'EXPIRED';
+  readonly claimExpiresAt: string;
+  readonly claimedAt: string;
+  readonly expiresAt: string;
   readonly runtimeConnection: 'NOT_CONFIGURED';
 }
 
@@ -2271,6 +2311,205 @@ export class AcpBridgeAdmissionService
   }
 
   /**
+   * Claims one short, append-only recovery lease for an expired unfinished
+   * process session. This serializes a future recovery owner but cannot open,
+   * signal, terminate, retry, launch, or promote a runtime.
+   */
+  async claimCodexValidationProcessSessionRecoveryLease(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: ClaimCodexValidationProcessSessionRecoveryLeaseInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    auditSubjectReference(input.recoveryLeaseId, 'recoveryLeaseId');
+    auditSubjectReference(input.claimId, 'claimId');
+    publicReference(input.idempotencyKey, 'idempotencyKey');
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "acp_codex_validation_process_session_claims" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.claimId} FOR UPDATE`,
+          );
+          const [claimRows, completionRows, existingRows, latestRows, now] = await Promise.all([
+            tx.$queryRaw<CodexValidationProcessSessionRecoveryClaimRow[]>(Prisma.sql`
+              SELECT claim.*, dispatch."runId"
+              FROM "acp_codex_validation_process_session_claims" claim
+              JOIN "acp_codex_validation_dispatch_evidence" dispatch
+                ON dispatch."workspaceId" = claim."workspaceId"
+                AND dispatch."validationDispatchCandidateHash" =
+                  claim."validationDispatchCandidateHash"
+              WHERE claim."workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND claim."id"=${input.claimId}
+              FOR SHARE OF claim, dispatch
+            `),
+            tx.$queryRaw<CodexValidationProcessSessionCompletionRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_process_session_completions"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "claimId"=${input.claimId}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationProcessSessionRecoveryLeaseRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_process_session_recovery_leases"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND ("id"=${input.recoveryLeaseId} OR
+                  "recoveryIdempotencyKey"=${input.idempotencyKey})
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationProcessSessionRecoveryLeaseRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_process_session_recovery_leases"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "claimId"=${input.claimId}
+              ORDER BY "generation" DESC
+              LIMIT 1
+              FOR SHARE
+            `),
+            databaseNow(tx),
+          ]);
+          const claim = claimRows[0];
+          if (!claim)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex validation process-session recovery claim not found',
+            );
+          if (
+            claim.ownerReference !== context.principalId ||
+            claim.ownerActorKind !== actorKind ||
+            claim.state !== 'CLAIMED' ||
+            claim.runtimeConnection !== 'NOT_CONFIGURED'
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process-session recovery crossed owner authority',
+            );
+
+          const existingById = existingRows.find((row) => row.id === input.recoveryLeaseId);
+          const existingByKey = existingRows.find(
+            (row) => row.recoveryIdempotencyKey === input.idempotencyKey,
+          );
+          const existing = existingById ?? existingByKey;
+          if (existing) {
+            if (
+              existingById?.recoveryIdempotencyKey !== input.idempotencyKey ||
+              existingByKey?.id !== input.recoveryLeaseId ||
+              existing.claimId !== input.claimId ||
+              existing.ownerReference !== context.principalId ||
+              existing.ownerActorKind !== actorKind ||
+              existing.state !== 'CLAIMED' ||
+              existing.runtimeConnection !== 'NOT_CONFIGURED' ||
+              existing.claimExpiresAt.getTime() !== claim.expiresAt.getTime() ||
+              existing.claimedAt < claim.expiresAt ||
+              existing.claimedAt > now ||
+              existing.expiresAt.getTime() !== existing.claimedAt.getTime() + 15_000
+            )
+              throw new AcpBridgeAdmissionConflictError(
+                'Codex validation process-session recovery lease replay drifted',
+              );
+            return Object.freeze({
+              lease: Object.freeze({
+                schemaVersion: 1 as const,
+                recoveryLeaseId: existing.id,
+                claimId: existing.claimId,
+                ownerReference: existing.ownerReference,
+                ownerActorKind: existing.ownerActorKind,
+                generation: existing.generation,
+                leaseState: existing.expiresAt > now ? ('ACTIVE' as const) : ('EXPIRED' as const),
+                claimExpiresAt: existing.claimExpiresAt.toISOString(),
+                claimedAt: existing.claimedAt.toISOString(),
+                expiresAt: existing.expiresAt.toISOString(),
+                runtimeConnection: 'NOT_CONFIGURED' as const,
+              }),
+              replayed: true,
+            });
+          }
+          if (existingRows.length > 0)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session recovery lease identity was already used',
+            );
+          if (completionRows.length > 0)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session recovery claim is already complete',
+            );
+          if (claim.expiresAt > now)
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process-session recovery claim is still active',
+            );
+          const latest = latestRows[0];
+          if (latest && latest.expiresAt > now)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session recovery lease is already active',
+            );
+          const generation = (latest?.generation ?? 0) + 1;
+
+          const [lease] = await tx.$queryRaw<CodexValidationProcessSessionRecoveryLeaseRow[]>(
+            Prisma.sql`
+              INSERT INTO "acp_codex_validation_process_session_recovery_leases" (
+                "workspaceId", "id", "claimId", "ownerReference", "ownerActorKind",
+                "generation", "state", "runtimeConnection", "recoveryIdempotencyKey",
+                "claimExpiresAt"
+              ) VALUES (
+                CAST(${context.workspaceId} AS uuid), ${input.recoveryLeaseId}, ${claim.id},
+                ${context.principalId}, ${actorKind}, ${generation}, 'CLAIMED',
+                'NOT_CONFIGURED', ${input.idempotencyKey}, ${claim.expiresAt}
+              ) RETURNING *
+            `,
+          );
+          if (!lease)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session recovery lease was not stored',
+            );
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'run.progress',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpCodexValidationProcessSessionRecoveryLease',
+              subjectId: lease.id,
+              occurredAt: lease.claimedAt.toISOString(),
+              idempotencyKey: `${input.idempotencyKey}:event`,
+              correlationId: claim.runId,
+              facts: { payloadFieldCount: 0, payloadBytes: 0 },
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          return Object.freeze({
+            lease: Object.freeze({
+              schemaVersion: 1 as const,
+              recoveryLeaseId: lease.id,
+              claimId: lease.claimId,
+              ownerReference: lease.ownerReference,
+              ownerActorKind: lease.ownerActorKind,
+              generation: lease.generation,
+              leaseState: 'ACTIVE' as const,
+              claimExpiresAt: lease.claimExpiresAt.toISOString(),
+              claimedAt: lease.claimedAt.toISOString(),
+              expiresAt: lease.expiresAt.toISOString(),
+              runtimeConnection: 'NOT_CONFIGURED' as const,
+            }),
+            replayed: false,
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && error.meta?.code === '23505'))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex validation process-session recovery lease conflict',
+        );
+      throw error;
+    }
+  }
+
+  /**
    * Durably claims one process-session identity before an injected owner may
    * open runtime streams. This records no launch authority and cannot promote
    * runtime truth.
@@ -2525,7 +2764,7 @@ export class AcpBridgeAdmissionService
           await tx.$queryRaw(
             Prisma.sql`SELECT "id" FROM "acp_codex_validation_process_session_claims" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.claimId} FOR UPDATE`,
           );
-          const [claimRows, existingRows, now] = await Promise.all([
+          const [claimRows, existingRows, activeRecoveryRows, now] = await Promise.all([
             tx.$queryRaw<CodexValidationProcessSessionClaimRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_process_session_claims"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.claimId}
@@ -2539,6 +2778,14 @@ export class AcpBridgeAdmissionService
                   "cleanupEvidenceHash"=${cleanupEvidenceHash} OR
                   "completionIdempotencyKey"=${input.idempotencyKey}
                 )
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationProcessSessionRecoveryLeaseRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_process_session_recovery_leases"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "claimId"=${input.claimId}
+                AND "expiresAt" > LOCALTIMESTAMP(3)
+              LIMIT 1
               FOR SHARE
             `),
             databaseNow(tx),
@@ -2590,6 +2837,10 @@ export class AcpBridgeAdmissionService
           )
             throw new AcpBridgeAdmissionDeniedError(
               'Codex validation process-session completion does not match its claim',
+            );
+          if (activeRecoveryRows.length > 0)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session completion conflicts with active recovery lease',
             );
 
           const existingByClaim = existingRows.find((row) => row.claimId === input.claimId);

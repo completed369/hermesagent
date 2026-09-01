@@ -1151,6 +1151,30 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       ),
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
     await expect(
+      authorizedBridge.claimCodexValidationProcessSessionRecoveryLease(
+        capability,
+        { workspaceId, principalId },
+        {
+          recoveryLeaseId: `active-recovery-lease-${registrationSuffix}`,
+          claimId: processClaimId,
+          idempotencyKey: `active-recovery-lease-${registrationSuffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "acp_codex_validation_process_session_recovery_leases" (
+          "workspaceId", "id", "claimId", "ownerReference", "ownerActorKind",
+          "generation", "state", "runtimeConnection", "recoveryIdempotencyKey",
+          "claimExpiresAt"
+        ) VALUES (
+          CAST(${workspaceId} AS uuid), ${`forged-recovery-lease-${registrationSuffix}`},
+          ${processClaimId}, ${principalId}, 'SYSTEM', 1, 'CLAIMED', 'NOT_CONFIGURED',
+          ${`forged-recovery-lease-${registrationSuffix}`}, ${processClaim.claim.expiresAt}
+        )
+      `),
+    ).rejects.toThrow(/lacks expired exclusive authority/u);
+    await expect(
       authorizedBridge.listCodexValidationProcessSessionRecoveryInventory(
         capability,
         { workspaceId, principalId },
@@ -1241,6 +1265,17 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         { limit: 100 },
       );
     expect(completedRecoveryInventory.items).toEqual([]);
+    await expect(
+      authorizedBridge.claimCodexValidationProcessSessionRecoveryLease(
+        capability,
+        { workspaceId, principalId },
+        {
+          recoveryLeaseId: `completed-recovery-lease-${registrationSuffix}`,
+          claimId: processClaimId,
+          idempotencyKey: `completed-recovery-lease-${registrationSuffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
     await expect(
       authorizedBridge.completeCodexValidationProcessSession(
         capability,

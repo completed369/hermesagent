@@ -174,8 +174,9 @@
 > exact durable methods (ADR-0062), but no service supplies it alongside a positive owner, secret
 > resolver, or transport. A separate bounded Level-3 recovery inventory can list only that
 > workspace/principal/actor owner's claims with no cleanup completion, using the database clock to
-> distinguish active from expired rows (ADR-0063). It is read-only and supplies no recovery lease,
-> process signal, termination, retry, cleanup proof, or status promotion. Claim insertion now rejects
+> distinguish active from expired rows (ADR-0063). Expired unfinished claims can now be serialized by
+> one immutable 15-second recovery lease at a time (ADR-0065), but no recovery worker consumes it and
+> it supplies no process signal, termination, retry, cleanup proof, or status promotion. Claim insertion now rejects
 > owner, actor, state, expiry, and time-window drift from its trusted handoff, and service replay
 > rechecks the complete durable binding (ADR-0064). This closes metadata poisoning; it does not make
 > the future process owner or cleanup evidence independently trustworthy.
