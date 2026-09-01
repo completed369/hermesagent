@@ -1227,7 +1227,10 @@ test('native supervisor evidence stays Linux-test-only and final images deny its
   assert.match(testSource, /manifest\.executable\.sha256/u);
   assert.match(testSource, /env: \{\}/u);
   assert.match(addon, /#include "native-supervisor-helper\.c"/u);
-  assert.match(addon, /run_supervisor\(23, arguments, NULL, 0, evidence, NULL, 0, NULL\)/u);
+  assert.match(
+    addon,
+    /run_supervisor\(23, arguments, NULL, 0, NULL, 0, evidence, NULL, 0, NULL\)/u,
+  );
   assert.match(addon, /napi_get_cb_info\(env, info, &actual, NULL/u);
   assert.match(addon, /napi_get_value_string_utf8\(env, value, NULL, 0, &required\)/u);
   assert.match(addon, /memchr\(output, '\\0', copied\)/u);

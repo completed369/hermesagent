@@ -678,6 +678,12 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
         process_poll <= 0 || (process_monitor.revents & POLLIN) == 0 ||
         wait_child_bounded(child, &child_status) != 0 || !WIFEXITED(child_status) ||
         WEXITSTATUS(child_status) != 0) {
+      (void)snprintf(evidence_output, 1024,
+                     "Lifecycle transcript denied (closed=%d, lines=%zu, processPoll=%d, "
+                     "waitStatus=%d, exited=%d, childExit=%d)",
+                     stream_closed, line_count, process_poll, child_status,
+                     WIFEXITED(child_status) ? 1 : 0,
+                     WIFEXITED(child_status) ? WEXITSTATUS(child_status) : -1);
       force_cleanup(child, pidfd);
       (void)close(pidfd);
       return deny("AUTHENTICATED_TRANSCRIPT");

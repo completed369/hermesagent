@@ -41,6 +41,11 @@ static napi_value deny_native(napi_env env, const char *code) {
   return NULL;
 }
 
+static napi_value deny_native_detail(napi_env env, const char *detail) {
+  (void)napi_throw_error(env, "LIFECYCLE_DENIED", detail);
+  return NULL;
+}
+
 static napi_value launch(napi_env env, napi_callback_info info) {
   napi_value arguments[3];
   if (lifecycle_consumer == NULL || exact_argc(env, info, 3, arguments) != 0)
@@ -128,7 +133,8 @@ static napi_value launch(napi_env env, napi_callback_info info) {
                      &transcript_length);
   memset(owned_secret, 0, sizeof(owned_secret));
   memset(owned_dispatch, 0, sizeof(owned_dispatch));
-  if (supervisor_status != 0) return deny_native(env, "LIFECYCLE_DENIED");
+  if (supervisor_status != 0)
+    return deny_native_detail(env, evidence[0] == '\0' ? "Lifecycle supervisor denied" : evidence);
 
   napi_value result;
   napi_value evidence_value;

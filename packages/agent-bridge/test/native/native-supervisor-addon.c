@@ -106,7 +106,7 @@ static napi_value launch(napi_env env, napi_callback_info info) {
                        (char *)"--operation",
                        (char *)"normal"};
   char evidence[1024] = {0};
-  if (run_supervisor(23, arguments, NULL, 0, evidence, NULL, 0, NULL) != 0) {
+  if (run_supervisor(23, arguments, NULL, 0, NULL, 0, evidence, NULL, 0, NULL) != 0) {
     (void)napi_throw_error(env, "NATIVE_DENIED", "Native fixture invocation denied");
     return NULL;
   }
