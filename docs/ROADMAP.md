@@ -295,6 +295,10 @@ published and current `main` has not been deployed to private staging.
    claims and consumes that exact bundle without accepting caller-selected work or dispatch metadata;
    expired replay returns inert truth (ADR-0075). Inventory scheduling, a positive OS-specific
    retained-identity source, and native cleanup action remain absent.
+   A deny-default Level-3 worker can now process one bounded owner-scoped inventory page sequentially,
+   skipping active claims and requiring an exact claim-bound attempt identity before each atomic
+   recovery (ADR-0076). It is not scheduled or production-wired; positive retained-native evidence
+   and native cleanup action remain absent.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
