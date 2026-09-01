@@ -5132,7 +5132,9 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           ${row.capabilityPolicyHash}, ${row.capabilityDigest}, ${row.payloadDigest},
           ${row.unsignedEnvelopeDigest}, ${row.signedEnvelopeDigest},
           ${row.authenticationTagDigest}, ${row.idempotencyKey},
-          db_clock."now", db_clock."now" + INTERVAL '5 seconds', db_clock."now"
+          db_clock."now" - INTERVAL '1 millisecond',
+          db_clock."now" + INTERVAL '5 seconds',
+          db_clock."now" - INTERVAL '1 millisecond'
         FROM (SELECT clock_timestamp() AS "now") AS db_clock
       `);
     };
@@ -5530,7 +5532,18 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     );
     const runs = plan.objective.tasks.map((task) => task.runs[0]!);
     const routingRuns = runs.slice(0, 2);
-    refreshCandidateSnapshot({ maxConcurrentRuns: 1 });
+    const [capacityClock] = await prisma.$queryRaw<Array<{ now: Date }>>(
+      Prisma.sql`SELECT clock_timestamp() AS "now"`,
+    );
+    const capacityObservedAt = capacityClock!.now;
+    const activeReservationsBefore = await prisma.acpBrokerReservation.count({
+      where: {
+        workspaceId,
+        connectionId,
+        OR: [{ state: 'CLAIMED' }, { state: 'RESERVED', expiresAt: { gt: capacityObservedAt } }],
+      },
+    });
+    refreshCandidateSnapshot({ maxConcurrentRuns: activeReservationsBefore + 1 });
     const settled = await Promise.allSettled(
       routingRuns.map((run, index) =>
         brokerReservations.reserveForPreparedRun(
