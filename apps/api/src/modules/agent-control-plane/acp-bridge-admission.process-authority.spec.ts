@@ -178,6 +178,7 @@ describe('Codex validation process-session control-plane authority', () => {
     const now = new Date('2026-09-01T15:00:00.000Z');
     const claimExpiresAt = new Date(now.getTime() - 1_000);
     const leaseExpiresAt = new Date(now.getTime() + 15_000);
+    const binding = processBinding('supervision-recovery-unit');
     const queryRaw = vi
       .fn()
       .mockResolvedValueOnce([])
@@ -187,8 +188,22 @@ describe('Codex validation process-session control-plane authority', () => {
           id: 'claim-recovery-unit',
           ownerReference: principalId,
           ownerActorKind: 'SYSTEM',
+          handoffAttemptId: 'handoff-recovery-unit',
+          validationDispatchCandidateHash: '4'.repeat(64),
+          runtimeId: binding.runtimeId,
+          connectionId: binding.connectionId,
+          sessionId: 'session-recovery-unit',
+          dispatchId: 'dispatch-recovery-unit',
+          supervisionId: binding.supervisionId,
+          launchNonce: binding.launchNonce,
+          platform: binding.platform,
+          manifestHash: binding.manifestHash,
+          admissionEvidenceHash: binding.admissionEvidenceHash,
+          admissionBindingHash: binding.admissionBindingHash,
+          testOnly: binding.testOnly,
           state: 'CLAIMED',
           runtimeConnection: 'NOT_CONFIGURED',
+          claimedAt: new Date(claimExpiresAt.getTime() - 1_000),
           expiresAt: claimExpiresAt,
           runId: 'run-recovery-unit',
         },
@@ -242,12 +257,95 @@ describe('Codex validation process-session control-plane authority', () => {
         expiresAt: leaseExpiresAt.toISOString(),
         runtimeConnection: 'NOT_CONFIGURED',
       },
+      workItem: {
+        schemaVersion: 1,
+        recoveryLeaseId: 'lease-recovery-unit',
+        recoveryGeneration: 1,
+        claimId: 'claim-recovery-unit',
+        handoffAttemptId: 'handoff-recovery-unit',
+        validationDispatchCandidateHash: '4'.repeat(64),
+        sessionId: 'session-recovery-unit',
+        dispatchId: 'dispatch-recovery-unit',
+        runId: 'run-recovery-unit',
+        binding,
+        processClaimedAt: new Date(claimExpiresAt.getTime() - 1_000).toISOString(),
+        processExpiresAt: claimExpiresAt.toISOString(),
+        leaseClaimedAt: now.toISOString(),
+        leaseExpiresAt: leaseExpiresAt.toISOString(),
+        runtimeConnection: 'NOT_CONFIGURED',
+      },
       replayed: false,
     });
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.lease)).toBe(true);
+    expect(Object.isFrozen(result.workItem)).toBe(true);
+    expect(Object.isFrozen(result.workItem?.binding)).toBe(true);
+    const storedLease = {
+      workspaceId,
+      id: 'lease-recovery-unit',
+      claimId: 'claim-recovery-unit',
+      ownerReference: principalId,
+      ownerActorKind: 'SYSTEM',
+      generation: 1,
+      state: 'CLAIMED',
+      runtimeConnection: 'NOT_CONFIGURED',
+      recoveryIdempotencyKey: 'lease-recovery-unit',
+      claimExpiresAt,
+      claimedAt: now,
+      expiresAt: leaseExpiresAt,
+      createdAt: now,
+    };
+    const expiredNow = new Date(leaseExpiresAt.getTime() + 1);
+    const replayQueryRaw = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          workspaceId,
+          id: 'claim-recovery-unit',
+          ownerReference: principalId,
+          ownerActorKind: 'SYSTEM',
+          handoffAttemptId: 'handoff-recovery-unit',
+          validationDispatchCandidateHash: '4'.repeat(64),
+          runtimeId: binding.runtimeId,
+          connectionId: binding.connectionId,
+          sessionId: 'session-recovery-unit',
+          dispatchId: 'dispatch-recovery-unit',
+          supervisionId: binding.supervisionId,
+          launchNonce: binding.launchNonce,
+          platform: binding.platform,
+          manifestHash: binding.manifestHash,
+          admissionEvidenceHash: binding.admissionEvidenceHash,
+          admissionBindingHash: binding.admissionBindingHash,
+          testOnly: binding.testOnly,
+          state: 'CLAIMED',
+          runtimeConnection: 'NOT_CONFIGURED',
+          claimedAt: new Date(claimExpiresAt.getTime() - 1_000),
+          expiresAt: claimExpiresAt,
+          runId: 'run-recovery-unit',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([storedLease])
+      .mockResolvedValueOnce([storedLease])
+      .mockResolvedValueOnce([{ now: expiredNow }]);
+    databaseMocks.transaction.mockImplementationOnce(async (operation) =>
+      operation({ $queryRaw: replayQueryRaw }),
+    );
+    const expiredReplay = await service.claimCodexValidationProcessSessionRecoveryLease(
+      capability,
+      { workspaceId, principalId },
+      {
+        recoveryLeaseId: 'lease-recovery-unit',
+        claimId: 'claim-recovery-unit',
+        idempotencyKey: 'lease-recovery-unit',
+      },
+    );
+    expect(expiredReplay.replayed).toBe(true);
+    expect(expiredReplay.lease.leaseState).toBe('EXPIRED');
+    expect(expiredReplay.workItem).toBeNull();
     expect(recordOperationalEvent).toHaveBeenCalledOnce();
-    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -1619,7 +1619,30 @@ test('Codex process recovery leases are expired-only, exclusive, append-only, an
   assert.match(method, /completionRows\.length > 0/u);
   assert.match(method, /latest\.expiresAt > now/u);
   assert.match(method, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(method, /validateSupervisorProcessBinding/u);
+  assert.match(
+    method,
+    /workItem:\s+completionRows\.length === 0 && existing\.expiresAt > now\s+\? workItemFor\(existing\)\s+: null/u,
+  );
+  for (const field of [
+    'recoveryLeaseId',
+    'recoveryGeneration',
+    'claimId',
+    'handoffAttemptId',
+    'validationDispatchCandidateHash',
+    'sessionId',
+    'dispatchId',
+    'runId',
+    'binding',
+    'processClaimedAt',
+    'processExpiresAt',
+    'leaseClaimedAt',
+    'leaseExpiresAt',
+    'runtimeConnection',
+  ])
+    assert.match(method, new RegExp(`${field}:`));
   assert.doesNotMatch(method, /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess/u);
+  assert.doesNotMatch(method, /\b(?:pid|processHandle|nativeHandle)\b/iu);
   assert.match(migration, /ventureos_require_codex_validation_process_recovery_lease/u);
   assert.match(migration, /FOR UPDATE/u);
   assert.match(migration, /trusted_claim\."expiresAt" > LOCALTIMESTAMP\(3\)/u);

@@ -183,6 +183,9 @@
 > Completion insertion now locks its claim and database-enforces the complete dispatch binding,
 > `NOT_CONFIGURED` truth, and close-time window; idempotent replay rechecks every cleanup field
 > (ADR-0066). The cleanup hash is still owner-reported rather than independent OS-process proof.
+> An active recovery lease now carries an atomic frozen supervisor/dispatch work item (ADR-0067),
+> but it contains no PID or native handle and cannot inspect, signal, terminate, or complete a
+> process. Reusable PID lookup is explicitly insufficient recovery authority.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
