@@ -281,6 +281,9 @@ published and current `main` has not been deployed to private staging.
    A Level-3 serializable recovery-completion path now persists exact exit evidence and a matching
    cancellation cleanup only while the lease is current (ADR-0070). It does not create protocol
    terminal evidence, perform process action, or promote runtime truth.
+   A bounded deny-default coordinator now composes work-item validation, independent exit observation,
+   final lease revalidation, and durable completion ordering (ADR-0071). No positive source, authority,
+   worker, or native cleanup action is wired.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

@@ -1750,6 +1750,34 @@ test('Codex recovery completion is lease-bound, cancellation-only, append-only, 
   assert.doesNotMatch(migration, /'CONNECTED'|"(?:payload|transcript|credential|secret)"/iu);
 });
 
+test('Codex recovery coordinator is ordered, bounded, deny-default, and non-operational', () => {
+  const coordinator = readFileSync(
+    'packages/agent-bridge/src/codex-validation-process-session-recovery-coordinator.ts',
+    'utf8',
+  );
+  assert.match(coordinator, /MAX_ACTIVE_RECOVERIES = 1_024/u);
+  assert.match(
+    coordinator,
+    /workItem\.binding\.workspaceId.*workItem\.recoveryLeaseId.*workItem\.recoveryGeneration/u,
+  );
+  assert.match(coordinator, /class DenyCodexValidationProcessSessionRecoveryCompletionAuthority/u);
+  assert.match(coordinator, /new DenyCodexValidationProcessSessionRecoveryEvidenceSource\(\)/u);
+  assert.match(
+    coordinator,
+    /observeCodexValidationProcessSessionRecoveryExit[\s\S]*completionAuthority\.complete/u,
+  );
+  assert.match(
+    coordinator,
+    /validateCodexValidationProcessSessionRecoveryExitEvidence[\s\S]*completionAuthority\.complete/u,
+  );
+  assert.match(coordinator, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(coordinator, /connectionTransition: 'NOT_APPLIED'/u);
+  assert.doesNotMatch(
+    coordinator,
+    /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess|process\.kill|\b(?:pid|processHandle|nativeHandle)\b/iu,
+  );
+});
+
 test('Codex process-session completions reproduce trusted claim authority on insert and replay', () => {
   const service = readFileSync(
     'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',

@@ -195,6 +195,9 @@
 > Durable recovery-completion admission now stores exact retained-identity exit evidence before one
 > matching cancellation cleanup under the active lease (ADR-0070). No production evidence source or
 > cleanup actor is composed, so abandoned native processes are still not acted on automatically.
+> A shared recovery coordinator now orders evidence before durable completion, rejects same-lease
+> concurrency, and rechecks expiry immediately before the completion port (ADR-0071). Both production
+> ports still deny and no worker invokes the coordinator.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
