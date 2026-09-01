@@ -104,6 +104,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > recovery lease (ADR-0065). The database enforces exact owner, expiry, completion absence, monotonic
 > generation, and mutual exclusion with late completion. This grants no process action or runtime
 > truth promotion.
+> Process-completion insertion now locks and reproduces the exact claim binding, runtime truth, and
+> close-time window, while replay rechecks the complete persisted cleanup result (ADR-0066).
+> Owner-reported cleanup hashes remain non-authoritative OS evidence, and no runtime is promoted.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

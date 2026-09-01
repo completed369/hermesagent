@@ -180,6 +180,9 @@
 > owner, actor, state, expiry, and time-window drift from its trusted handoff, and service replay
 > rechecks the complete durable binding (ADR-0064). This closes metadata poisoning; it does not make
 > the future process owner or cleanup evidence independently trustworthy.
+> Completion insertion now locks its claim and database-enforces the complete dispatch binding,
+> `NOT_CONFIGURED` truth, and close-time window; idempotent replay rechecks every cleanup field
+> (ADR-0066). The cleanup hash is still owner-reported rather than independent OS-process proof.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
