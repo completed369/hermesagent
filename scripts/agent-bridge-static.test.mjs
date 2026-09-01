@@ -1497,6 +1497,34 @@ test('process-tree evidence stays test-only, unexported, and absent from product
   assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
 });
 
+test('Codex process-session ownership authenticates and cleans up before egress with deny defaults', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/codex-validation-process-session-owner.ts',
+    'utf8',
+  );
+  const adapter = readFileSync(
+    'packages/agent-bridge/src/codex-validation-runtime-adapter.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  assert.match(source, /new DenyCodexValidationProcessSessionOwner\(\)/u);
+  assert.match(source, /await adapter\.authenticate\(input, options\)[\s\S]*this\.owner\.open/u);
+  assert.match(
+    source,
+    /await this\.boundedClose[\s\S]*session\.stdin\.destroy\(\)[\s\S]*adapter\.execute/u,
+  );
+  assert.match(source, /validationDispatchCandidateHash/u);
+  assert.match(source, /ventureos\.codex-validation\.process-cleanup\.v1/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(source, /connectionTransition: 'NOT_APPLIED'/u);
+  assert.doesNotMatch(source, /node:child_process|\bspawn\s*\(|\bexec\s*\(|process\.env/u);
+  assert.match(adapter, /async authenticate\([\s\S]*authenticateInput/u);
+  assert.doesNotMatch(module, /CodexValidationProcessSessionOwner/u);
+});
+
 test('deterministic fake is test-only and no real runtime can be marked connected', () => {
   const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
   const migration = readFileSync(

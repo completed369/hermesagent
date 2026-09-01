@@ -245,8 +245,12 @@ published and current `main` has not been deployed to private staging.
    retains it immutably under the same tenant, handoff, dispatch, and zero-spend authority while
    preventing a completed/cancelled double outcome (ADR-0057). Authenticated completion and
    cancellation evidence are admitted without assigning the run or promoting runtime truth, but no
-   production composition supplies streams. Validation against a real authenticated Codex process
-   remains approval- and provisioning-gated.
+   production composition supplies streams. A one-shot process-session coordinator can now obtain
+   already-authorized streams through an injected owner, authenticates before opening them, requires
+   exact process-exit evidence, destroys both streams, and emits terminal bridge evidence only after
+   cleanup (ADR-0059). Its production owner remains deny-only; it contains no launcher or provider
+   access. Validation against a real authenticated Codex process remains approval- and
+   provisioning-gated.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

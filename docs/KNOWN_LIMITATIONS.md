@@ -158,9 +158,12 @@
 > unchanged. Both terminal paths now retain only bounded, domain-separated
 > progress and token-usage-notification counts/digests (ADR-0058). Raw token
 > values are discarded, observations remain unmapped, and recognized cost and
-> compute are fixed at zero with no usage or cost-ledger write. There is still no Codex process
-> controller, real authenticated provider round trip, or connected-state
-> transition; Codex remains **NOT_CONFIGURED**.
+> compute are fixed at zero with no usage or cost-ledger write. A bounded one-shot process-session
+> coordinator now authenticates before requesting injected streams and withholds terminal bridge
+> output until exact exit evidence and stream destruction (ADR-0059). Its production owner is
+> deny-only: there is still no positive Codex process launcher, production OS cleanup/crash recovery,
+> real authenticated provider round trip, or connected-state transition; Codex remains
+> **NOT_CONFIGURED**.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

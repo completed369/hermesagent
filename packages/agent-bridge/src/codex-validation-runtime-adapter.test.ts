@@ -33,6 +33,12 @@ import {
   CodexValidationRuntimeAdapterError,
   type CodexValidationRuntimeProtocolRunner,
 } from './codex-validation-runtime-adapter';
+import {
+  BoundedCodexValidationProcessSessionCoordinator,
+  validateCodexValidationProcessCleanupEvidence,
+  type CodexValidationProcessOpenRequest,
+  type CodexValidationProcessSessionOwner,
+} from './codex-validation-process-session-owner';
 import { BoundedCodexAppServerStdioTransport } from './codex-app-server-stdio-transport';
 import {
   BoundedCodexValidationProtocolRunner,
@@ -41,6 +47,7 @@ import {
 import type { BridgeEgressTransport, BridgeEgressTransportRequest } from './egress-controller';
 import { BRIDGE_PROTOCOL_VERSION, type BridgeEnvelope } from './protocol';
 import { ScopedBridgeSecretLeaseResolver } from './secret-lease';
+import type { SupervisorProcessBinding } from './supervision-lifecycle';
 
 const secret = new Uint8Array(32).fill(9);
 const secretDigest = '8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05';
@@ -276,7 +283,94 @@ async function stopProtocolFixture(child: ChildProcessWithoutNullStreams): Promi
   ]);
 }
 
+function processBinding(input = fixture()): Readonly<SupervisorProcessBinding> {
+  return Object.freeze({
+    schemaVersion: 1,
+    supervisionId: 'supervision:codex-validation-1',
+    launchNonce: 'launch-nonce-1',
+    workspaceId: input.dispatch.workspaceId,
+    runtimeId: input.dispatch.runtimeId,
+    connectionId: input.dispatch.connectionId,
+    platform: 'LINUX',
+    manifestHash: 'e'.repeat(64),
+    admissionEvidenceHash: 'f'.repeat(64),
+    admissionBindingHash: '1'.repeat(64),
+    testOnly: true,
+  });
+}
+
+class FixtureProcessSessionOwner implements CodexValidationProcessSessionOwner {
+  openCalls = 0;
+  closeCalls = 0;
+  bridgeFramesAtClose = -1;
+  failClose = false;
+  hangClose = false;
+  mutateCloseHash = false;
+  readonly children: ChildProcessWithoutNullStreams[] = [];
+
+  constructor(
+    private readonly mode: 'success' | 'unsafe-tool' | 'interrupted',
+    private readonly bridgeTransport: RecordingTransport,
+  ) {}
+
+  async open(request: Readonly<CodexValidationProcessOpenRequest>) {
+    this.openCalls += 1;
+    const processFixture = launchProtocolFixture(this.mode);
+    this.children.push(processFixture.child);
+    return {
+      binding: request.binding,
+      stdin: processFixture.child.stdin,
+      stdout: processFixture.child.stdout,
+      close: async () => {
+        this.closeCalls += 1;
+        this.bridgeFramesAtClose = this.bridgeTransport.frames.length;
+        processFixture.child.stdin.end();
+        await Promise.race([
+          once(processFixture.child, 'close'),
+          new Promise<never>((_resolve, reject) =>
+            setTimeout(() => reject(new Error('owner cleanup timed out')), 2_000),
+          ),
+        ]);
+        if (this.hangClose) await new Promise<never>(() => undefined);
+        if (this.failClose) throw new Error('owner refused cleanup evidence');
+        return {
+          schemaVersion: 1,
+          binding: request.binding,
+          dispatchId: request.dispatchId,
+          validationDispatchCandidateHash: this.mutateCloseHash
+            ? '0'.repeat(64)
+            : request.validationDispatchCandidateHash,
+          sessionId: request.sessionId,
+          processState: 'EXITED',
+          exitCode: processFixture.child.exitCode,
+          signal: processFixture.child.signalCode,
+          closedAt: now,
+          runtimeConnection: 'NOT_CONFIGURED',
+        };
+      },
+    };
+  }
+
+  async cleanup(): Promise<void> {
+    await Promise.all(this.children.map((child) => stopProtocolFixture(child)));
+  }
+}
+
 describe('bounded Codex validation runtime adapter', () => {
+  it('authenticates without protocol execution, egress, or consuming the dispatch', async () => {
+    const input = fixture();
+    const runner = new FixedRunner();
+    const { subject, transport } = adapter(runner);
+
+    await subject.authenticate(input);
+    expect(runner.calls).toBe(0);
+    expect(transport.frames).toHaveLength(0);
+
+    await subject.execute(input);
+    expect(runner.calls).toBe(1);
+    expect(transport.frames).toHaveLength(2);
+  });
+
   it('composes authenticated dispatch through bounded stdio and the exact app-server protocol', async () => {
     const input = fixture();
     const bridgeTransport = new RecordingTransport();
@@ -680,6 +774,151 @@ describe('bounded Codex validation runtime adapter', () => {
       ).rejects.toMatchObject({
         code: mode === 'fail' ? 'TRANSPORT_DENIED' : 'TRANSPORT_MUTATED_FRAME',
       });
+    }
+  });
+});
+
+describe('bounded Codex validation process session owner', () => {
+  it('opens only after authentication and emits evidence only after exact process cleanup', async () => {
+    const input = fixture();
+    const bridgeTransport = new RecordingTransport();
+    const owner = new FixtureProcessSessionOwner('success', bridgeTransport);
+    const subject = new BoundedCodexValidationProcessSessionCoordinator(
+      owner,
+      resolver(),
+      bridgeTransport,
+      () => new Date(now),
+    );
+
+    try {
+      const result = await subject.execute({ ...input, binding: processBinding(input) });
+      expect(owner.openCalls).toBe(1);
+      expect(owner.closeCalls).toBe(1);
+      expect(owner.bridgeFramesAtClose).toBe(0);
+      expect(bridgeTransport.frames.map((frame) => [frame.sequence, frame.type])).toEqual([
+        [2, 'DISPATCH_ACCEPTED'],
+        [3, 'RESULT'],
+      ]);
+      expect(result).toMatchObject({
+        runtimeConnection: 'NOT_CONFIGURED',
+        connectionTransition: 'NOT_APPLIED',
+        terminal: {
+          dispatchId: input.dispatch.dispatchId,
+          providerAccess: 'NOT_CONFIGURED',
+          runtimeConnection: 'NOT_CONFIGURED',
+        },
+        cleanup: {
+          dispatchId: input.dispatch.dispatchId,
+          processState: 'EXITED',
+          exitCode: 0,
+          signal: null,
+          reason: 'COMPLETED',
+          runtimeConnection: 'NOT_CONFIGURED',
+          cleanupEvidenceHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        },
+      });
+      const closeRequest = {
+        schemaVersion: 1 as const,
+        binding: processBinding(input),
+        dispatchId: input.dispatch.dispatchId,
+        validationDispatchCandidateHash: input.dispatch.validationDispatchCandidateHash,
+        sessionId: input.dispatch.sessionId,
+        issuedAt: input.dispatch.issuedAt,
+        expiresAt: input.dispatch.expiresAt,
+        runtimeConnection: 'NOT_CONFIGURED' as const,
+        reason: 'COMPLETED' as const,
+      };
+      expect(
+        validateCodexValidationProcessCleanupEvidence(result.cleanup, closeRequest, new Date(now)),
+      ).toEqual(result.cleanup);
+      expect(() =>
+        validateCodexValidationProcessCleanupEvidence(
+          { ...result.cleanup, cleanupEvidenceHash: '0'.repeat(64) },
+          closeRequest,
+          new Date(now),
+        ),
+      ).toThrow();
+      await expect(
+        subject.execute({ ...input, binding: processBinding(input) }),
+      ).rejects.toMatchObject({ code: 'USED_DISPATCH' });
+      expect(owner.openCalls).toBe(1);
+    } finally {
+      await owner.cleanup();
+    }
+  });
+
+  it('does not open a process for a wrong secret and keeps the default owner deny-only', async () => {
+    const input = fixture();
+    const bridgeTransport = new RecordingTransport();
+    const owner = new FixtureProcessSessionOwner('success', bridgeTransport);
+    const wrongSecret = new BoundedCodexValidationProcessSessionCoordinator(
+      owner,
+      resolver(new Uint8Array(32).fill(8)),
+      bridgeTransport,
+      () => new Date(now),
+    );
+
+    await expect(
+      wrongSecret.execute({ ...input, binding: processBinding(input) }),
+    ).rejects.toMatchObject({ code: 'SECRET_LEASE_DENIED' });
+    expect(owner.openCalls).toBe(0);
+    expect(bridgeTransport.frames).toHaveLength(0);
+
+    await expect(
+      new BoundedCodexValidationProcessSessionCoordinator(
+        undefined,
+        resolver(),
+        bridgeTransport,
+        () => new Date(now),
+      ).execute({ ...input, binding: processBinding(input) }),
+    ).rejects.toMatchObject({ code: 'OWNER_DENIED' });
+    expect(bridgeTransport.frames).toHaveLength(0);
+  });
+
+  it('cleans up unsafe sessions and emits nothing when protocol or cleanup evidence fails', async () => {
+    for (const mode of [
+      'unsafe-tool',
+      'failed-cleanup',
+      'cleanup-timeout',
+      'mutated-cleanup',
+    ] as const) {
+      const input = fixture();
+      const bridgeTransport = new RecordingTransport();
+      const owner = new FixtureProcessSessionOwner(
+        mode === 'unsafe-tool' ? 'unsafe-tool' : 'success',
+        bridgeTransport,
+      );
+      owner.failClose = mode === 'failed-cleanup';
+      owner.hangClose = mode === 'cleanup-timeout';
+      owner.mutateCloseHash = mode === 'mutated-cleanup';
+      const subject = new BoundedCodexValidationProcessSessionCoordinator(
+        owner,
+        resolver(),
+        bridgeTransport,
+        () => new Date(now),
+      );
+      try {
+        await expect(
+          subject.execute(
+            { ...input, binding: processBinding(input) },
+            mode === 'cleanup-timeout' ? { cleanupTimeoutMs: 10 } : {},
+          ),
+        ).rejects.toMatchObject({
+          code:
+            mode === 'unsafe-tool'
+              ? 'UNSAFE_ACTIVITY'
+              : mode === 'cleanup-timeout'
+                ? 'CLEANUP_TIMEOUT'
+                : mode === 'mutated-cleanup'
+                  ? 'INVALID_SESSION'
+                  : 'CLEANUP_FAILED',
+        });
+        expect(owner.closeCalls).toBe(1);
+        expect(owner.bridgeFramesAtClose).toBe(0);
+        expect(bridgeTransport.frames).toHaveLength(0);
+      } finally {
+        await owner.cleanup();
+      }
     }
   });
 });
