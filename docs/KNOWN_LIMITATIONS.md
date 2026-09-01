@@ -189,6 +189,9 @@
 > A shared active-only validator now rejects malformed, stale, extended, secret-bearing, or
 > runtime-promoting recovery work items (ADR-0068). This validates metadata only; no retained native
 > identity or independent OS-process evidence exists in production.
+> A shared exit-evidence contract now requires an independently retained native launch identity and
+> revalidates the lease after observation (ADR-0069). Its production source denies, so this is not
+> retained identity, process action, cleanup completion, or runtime connectivity in production.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

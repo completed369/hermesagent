@@ -275,6 +275,9 @@ published and current `main` has not been deployed to private staging.
    The Agent Bridge now applies an exact active-only validator to that metadata envelope, including
    supervisor binding, claim ordering, fixed lease duration, safe references, and database-clock
    freshness (ADR-0068). It grants no process action or runtime truth.
+   A deny-default evidence-source port now defines exact exit evidence from an independently retained
+   native launch identity and rechecks lease freshness after observation (ADR-0069). No positive
+   source, process action, cleanup completion, or connected-state transition is composed.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
