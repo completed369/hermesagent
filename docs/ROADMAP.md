@@ -118,12 +118,15 @@ published and current `main` has not been deployed to private staging.
   controller and bounded JSONL transport over already-open Codex app-server
   streams now exist. A bounded, still-uncomposed protocol coordinator forces
   an ephemeral read-only/no-network turn, rejects tool and approval activity,
-  and requires an exact dispatch-bound terminal token. An immutable admission
-  path now verifies and retains the exact runtime-signed sequence-2 accepted
-  status and sequence-3 terminal result against that claimed dispatch while
-  leaving runtime, connection, task, and run truth unchanged. Production
-  composition with an authenticated real process remains the next reviewed
-  adapter boundary.
+  and requires an exact dispatch-bound terminal token. A one-use runtime-side
+  adapter now authenticates that exact incoming dispatch, runs the coordinator,
+  signs sequence-2 acceptance and sequence-3 result frames through scoped
+  directional secret leases, and performs bounded local response writes. An
+  immutable admission path now verifies and retains the exact runtime-signed
+  sequence-2 accepted status and sequence-3 terminal result against that claimed
+  dispatch while leaving runtime, connection, task, and run truth unchanged.
+  Production process/stream composition and an authenticated real-process
+  exercise remain the next reviewed boundaries.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database
