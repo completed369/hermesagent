@@ -46,7 +46,10 @@ evidence; broker reservations remain estimates rather than financial charges.
 > The next
 > runtime dependency now includes a reviewed Linux executable/admission-evidence
 > reader and a deny-by-default supervisor composition with a live per-admission
-> authorization port. Production authorization and launching still deny.
+> authorization port. Executable-signature verification is now an explicit
+> dependency across authorization, evidence, admission, and launch revalidation;
+> production injects only a deny verifier, and the pinned key is test-only.
+> Production authorization and launching still deny.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

@@ -35,6 +35,19 @@ export interface LinuxExecutableAuthorization {
 
 export type LinuxExecutableAuthorizationPayload = Omit<LinuxExecutableAuthorization, 'signature'>;
 
+/**
+ * Trusted signature-verification port. Implementations must validate the exact
+ * authorization shape, signature, trust root, validity window, and test-only
+ * policy before returning a normalized authorization.
+ */
+export interface LinuxExecutableAuthorizationVerifier {
+  verify(input: unknown): Readonly<LinuxExecutableAuthorization>;
+}
+
+export const LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER = Symbol(
+  'LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER',
+);
+
 export class SupervisorAuthorizationError extends Error {
   constructor() {
     super('Runtime executable authorization denied');
@@ -77,7 +90,7 @@ export function linuxExecutableAuthorizationHash(
     .digest('hex');
 }
 
-export function validateLinuxExecutableAuthorization(
+function verifyTestOnlyLinuxExecutableAuthorization(
   input: unknown,
 ): Readonly<LinuxExecutableAuthorization> {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) deny();
@@ -157,4 +170,27 @@ export function validateLinuxExecutableAuthorization(
   )
     deny();
   return Object.freeze(authorization);
+}
+
+export class DenyLinuxExecutableAuthorizationVerifier implements LinuxExecutableAuthorizationVerifier {
+  verify(_input: unknown): never {
+    deny();
+  }
+}
+
+/** Pinned deterministic verifier for repository tests only. */
+export class TestOnlyLinuxExecutableAuthorizationVerifier implements LinuxExecutableAuthorizationVerifier {
+  verify(input: unknown): Readonly<LinuxExecutableAuthorization> {
+    return verifyTestOnlyLinuxExecutableAuthorization(input);
+  }
+}
+
+/**
+ * Backward-compatible test-only validator. Production composition must inject
+ * an explicit verifier and never use this helper as a trust decision.
+ */
+export function validateLinuxExecutableAuthorization(
+  input: unknown,
+): Readonly<LinuxExecutableAuthorization> {
+  return verifyTestOnlyLinuxExecutableAuthorization(input);
 }

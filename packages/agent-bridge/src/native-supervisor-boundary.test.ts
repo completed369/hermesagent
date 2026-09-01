@@ -21,6 +21,7 @@ import { canonicalJson } from './codec';
 import type { RuntimeProcessLauncher } from './policy';
 import {
   linuxExecutableAuthorizationHash,
+  TestOnlyLinuxExecutableAuthorizationVerifier,
   type LinuxExecutableAuthorization,
   type LinuxExecutableAuthorizationPayload,
 } from './supervision-authorization';
@@ -451,6 +452,7 @@ describeLinux('Linux native supervisor evidence helper', () => {
       new NativeAuthorizationSource(fixtureAdmission.authorization),
       new NativeEvidenceReader(fixtureAdmission.evidence),
       launcher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const plan = await composition.prepare({
       schemaVersion: 1,
@@ -536,6 +538,7 @@ describeLinux('Linux native supervisor evidence helper', () => {
       new NativeAuthorizationSource(fixtureAdmission.authorization),
       new NativeEvidenceReader(fixtureAdmission.evidence),
       launcher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const plan = await composition.prepare({
       schemaVersion: 1,

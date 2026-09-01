@@ -150,11 +150,13 @@
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
-> a short-lived signed test authorization, and rechecks descriptor/current-path
+> a short-lived signed authorization through an injected verifier, and rechecks descriptor/current-path
 > identity after hashing. It does not retain a launch handle or close
 > replacement TOCTOU after the final check. Production authorization and Windows
-> remain fail-closed pending reviewed signer/registry and native
-> owner/reparse-point/handle designs.
+> remain fail-closed: the reader and API composition default to an explicit deny
+> verifier, while the pinned deterministic key requires a test-only verifier. A
+> production trust-record source, signer registry, and revocation evidence are
+> still absent pending reviewed authority and native owner/reparse-point/handle designs.
 
 > The supervisor composition issues a deeply frozen, non-serializable in-process
 > plan only after exact authorization, evidence, admission, and lifecycle binding.
@@ -166,8 +168,11 @@
 > Its hashes are deterministic correlation/integrity evidence, not signatures or
 > tamper-proof authority. It does not retain the inspected descriptor through a
 > launch, create a process, or close the final filesystem-to-launch TOCTOU gap.
-> The exported composition interface supplies no production signer or positive
-> authorization source. Revocation is only as current as its one source read for
+> The exported composition interface supplies no production signer, positive
+> authorization source, or verifier. The same explicit verifier is applied to
+> the live decision, filesystem evidence, admission, and launch-time
+> revalidation; production injects only the deny implementation. Revocation is
+> only as current as its one source read for
 > an admission; post-decision revocation and atomic launch-time revalidation
 > remain unresolved.
 >

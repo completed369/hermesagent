@@ -9,9 +9,12 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { canonicalJson } from './codec';
-import type { LinuxExecutableAuthorization } from './supervision-authorization';
 import {
-  LinuxExecutableEvidenceReader,
+  type LinuxExecutableAuthorization,
+  TestOnlyLinuxExecutableAuthorizationVerifier,
+} from './supervision-authorization';
+import {
+  LinuxExecutableEvidenceReader as ProductionLinuxExecutableEvidenceReader,
   validatedLinuxInspectionFlags,
 } from './supervision-evidence-reader';
 import { validateSupervisorAdmission } from './supervision-policy';
@@ -21,6 +24,12 @@ const execFileAsync = promisify(execFile);
 const TEST_SIGNER_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
 MC4CAQAwBQYDK2VwBCIEIDXgLTsIlYz/jfY7Or5Ylt4TinBgk8MUM5C+13sON7Uo
 -----END PRIVATE KEY-----`;
+
+class LinuxExecutableEvidenceReader extends ProductionLinuxExecutableEvidenceReader {
+  constructor(authorizations: readonly unknown[]) {
+    super(authorizations, new TestOnlyLinuxExecutableAuthorizationVerifier());
+  }
+}
 
 function signedAuthorization(
   payload: Omit<LinuxExecutableAuthorization, 'signature'>,
@@ -112,6 +121,14 @@ async function fixture() {
 }
 
 describe('trusted Linux executable evidence reader', () => {
+  it('denies a valid authorization unless a verifier is explicitly injected', async () => {
+    const { authorization } = await fixture();
+
+    expect(() => new ProductionLinuxExecutableEvidenceReader([authorization])).toThrow(
+      expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }),
+    );
+  });
+
   it('rejects malformed and duplicate reviewed authorizations before filesystem access', () => {
     expect(() => new LinuxExecutableEvidenceReader([{ schemaVersion: 1 }])).toThrow(
       expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }),

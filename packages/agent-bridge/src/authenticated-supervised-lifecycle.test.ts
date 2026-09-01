@@ -25,6 +25,7 @@ import type { RuntimeProcessLauncher } from './policy';
 import { type BridgeSecretLeaseRequest, ScopedBridgeSecretLeaseResolver } from './secret-lease';
 import {
   linuxExecutableAuthorizationHash,
+  TestOnlyLinuxExecutableAuthorizationVerifier,
   type LinuxExecutableAuthorization,
   type LinuxExecutableAuthorizationPayload,
 } from './supervision-authorization';
@@ -609,6 +610,7 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
       new AuthorizationSource(fixtureAdmission.authorization),
       new EvidenceReader(fixtureAdmission.evidence),
       launcher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const plan = await composition.prepare({
       schemaVersion: 1,
@@ -643,6 +645,7 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
       new AuthorizationSource(fixtureAdmission.authorization),
       new EvidenceReader(fixtureAdmission.evidence),
       launcher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const plan = await composition.prepare({
       schemaVersion: 1,
@@ -720,6 +723,7 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
       new AuthorizationSource(fixtureAdmission.authorization),
       new EvidenceReader(fixtureAdmission.evidence),
       launcher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const plan = await composition.prepare({
       schemaVersion: 1,
