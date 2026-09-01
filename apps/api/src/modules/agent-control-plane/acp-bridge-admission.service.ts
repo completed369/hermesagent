@@ -35,6 +35,8 @@ import {
   createCodexValidationRoundTripCandidate,
   createCodexRegistrationAuthorizationRequest,
   createCodexValidationDispatchAuthorizationRequest,
+  BoundedCodexValidationProcessSessionRecoveryCoordinator,
+  DenyCodexValidationProcessSessionRecoveryEvidenceSource,
   DenyCodexCapabilityExchangeAuthorizationSource,
   DenyCodexRegistrationAuthorizationSource,
   DenyCodexValidationDispatchAuthorizationSource,
@@ -72,6 +74,8 @@ import {
   type CodexValidationProcessSessionAuthority,
   type CodexValidationProcessSessionRecoveryCompletionAuthority,
   type CodexValidationProcessSessionRecoveryCompletionRequest,
+  type CodexValidationProcessSessionRecoveryCoordinatorResult,
+  type CodexValidationProcessSessionRecoveryEvidenceSource,
   type CodexValidationProcessSessionRecoveryWorkItem,
   type CodexValidationProcessSessionRecoveryExitEvidence,
   type CodexTerminalEvidence,
@@ -701,6 +705,14 @@ export interface CodexValidationProcessSessionRecoveryCompletionAuthorityIdentit
   readonly workItem: Readonly<CodexValidationProcessSessionRecoveryWorkItem>;
   readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
   readonly completionIdempotencyKey: string;
+}
+
+export interface CodexValidationProcessSessionRecoveryExecutionAuthorityIdentity extends CodexValidationProcessSessionRecoveryCompletionAuthorityIdentity {
+  readonly lease: Readonly<CodexValidationProcessSessionRecoveryLease>;
+}
+
+export interface CodexValidationProcessSessionRecoveryExecutionAuthority {
+  execute(): Promise<Readonly<CodexValidationProcessSessionRecoveryCoordinatorResult>>;
 }
 
 export interface AcceptCodexValidationRoundTripEvidenceInput {
@@ -2411,6 +2423,59 @@ export class AcpBridgeAdmissionService
           dispatch: boundDispatch,
           idempotencyKey: boundIdempotencyKey,
         });
+      },
+    });
+  }
+
+  /**
+   * Binds one active durable lease bundle to one coordinator attempt. The
+   * default evidence source denies, and the returned port accepts no caller input.
+   */
+  createCodexValidationProcessSessionRecoveryExecutionAuthority(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    identity: CodexValidationProcessSessionRecoveryExecutionAuthorityIdentity,
+    evidenceSource: CodexValidationProcessSessionRecoveryEvidenceSource = new DenyCodexValidationProcessSessionRecoveryEvidenceSource(),
+    clock: () => Date = () => new Date(),
+  ): Readonly<CodexValidationProcessSessionRecoveryExecutionAuthority> {
+    const actorKind = assertControlPlane(capability, context, 3);
+    const completionAuthority = this.createCodexValidationProcessSessionRecoveryCompletionAuthority(
+      capability,
+      context,
+      identity,
+    );
+    const workItem = validateCodexValidationProcessSessionRecoveryWorkItem(identity.workItem);
+    const lease = identity.lease;
+    if (
+      lease.schemaVersion !== 1 ||
+      lease.recoveryLeaseId !== workItem.recoveryLeaseId ||
+      lease.claimId !== workItem.claimId ||
+      lease.ownerReference !== context.principalId ||
+      lease.ownerActorKind !== actorKind ||
+      lease.generation !== workItem.recoveryGeneration ||
+      lease.leaseState !== 'ACTIVE' ||
+      lease.claimExpiresAt !== workItem.processExpiresAt ||
+      lease.claimedAt !== workItem.leaseClaimedAt ||
+      lease.expiresAt !== workItem.leaseExpiresAt ||
+      lease.runtimeConnection !== 'NOT_CONFIGURED'
+    )
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session recovery execution crossed its lease bundle',
+      );
+    const coordinator = new BoundedCodexValidationProcessSessionRecoveryCoordinator(
+      evidenceSource,
+      completionAuthority,
+      clock,
+    );
+    let started = false;
+    return Object.freeze({
+      execute: async () => {
+        if (started)
+          throw new AcpBridgeAdmissionConflictError(
+            'Codex validation process-session recovery execution was already attempted',
+          );
+        started = true;
+        return coordinator.execute(workItem);
       },
     });
   }

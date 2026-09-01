@@ -1797,7 +1797,7 @@ test('control-plane Codex recovery completion authority is exact, frozen, and no
   const start = service.indexOf('createCodexValidationProcessSessionRecoveryCompletionAuthority(');
   const authority = service.slice(
     start,
-    service.indexOf('/**\n   * Lists a bounded owner-scoped snapshot', start),
+    service.indexOf('/**\n   * Binds one active durable lease bundle', start),
   );
   assert.ok(start > 0);
   assert.match(authority, /assertControlPlane\(capability, context, 3\)/u);
@@ -1809,6 +1809,34 @@ test('control-plane Codex recovery completion authority is exact, frozen, and no
   assert.match(authority, /runtimeConnection !== 'NOT_CONFIGURED'/u);
   assert.doesNotMatch(authority, /workItem\.processExpiresAt !== dispatch\.expiresAt/u);
   assert.doesNotMatch(authority, /\.\.\.identity|CONNECTED|spawn\s*\(|exec\s*\(|process\.kill/u);
+});
+
+test('control-plane Codex recovery execution is lease-bound, single-attempt, and deny-default', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const start = service.indexOf('createCodexValidationProcessSessionRecoveryExecutionAuthority(');
+  const authority = service.slice(
+    start,
+    service.indexOf('/**\n   * Lists a bounded owner-scoped snapshot', start),
+  );
+  assert.ok(start > 0);
+  assert.match(authority, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(authority, /new DenyCodexValidationProcessSessionRecoveryEvidenceSource\(\)/u);
+  assert.match(authority, /createCodexValidationProcessSessionRecoveryCompletionAuthority/u);
+  assert.match(authority, /new BoundedCodexValidationProcessSessionRecoveryCoordinator/u);
+  assert.match(authority, /lease\.ownerReference !== context\.principalId/u);
+  assert.match(authority, /lease\.ownerActorKind !== actorKind/u);
+  assert.match(authority, /lease\.leaseState !== 'ACTIVE'/u);
+  assert.match(authority, /lease\.expiresAt !== workItem\.leaseExpiresAt/u);
+  assert.match(authority, /if \(started\)/u);
+  assert.match(authority, /started = true/u);
+  assert.match(authority, /coordinator\.execute\(workItem\)/u);
+  assert.doesNotMatch(
+    authority,
+    /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess|process\.kill|setInterval|setTimeout/iu,
+  );
 });
 
 test('Codex process-session completions reproduce trusted claim authority on insert and replay', () => {
@@ -1983,7 +2011,7 @@ test('control-plane Codex process authority is Level-3, identity-bound, and non-
   );
   const factory = service.slice(
     service.indexOf('createCodexValidationProcessSessionAuthority('),
-    service.indexOf('async claimCodexValidationProcessSession('),
+    service.indexOf('createCodexValidationProcessSessionRecoveryCompletionAuthority('),
   );
   assert.match(factory, /assertControlPlane\(capability, context, 3\)/u);
   assert.match(factory, /Object\.freeze\(\{[\s\S]*workspaceId:[\s\S]*principalId:/u);
