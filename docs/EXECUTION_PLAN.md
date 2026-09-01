@@ -107,6 +107,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > Process-completion insertion now locks and reproduces the exact claim binding, runtime truth, and
 > close-time window, while replay rechecks the complete persisted cleanup result (ADR-0066).
 > Owner-reported cleanup hashes remain non-authoritative OS evidence, and no runtime is promoted.
+> Active recovery-lease acquisition now atomically returns one frozen, revalidated supervisor and
+> dispatch work item; expired replay returns no work item (ADR-0067). It contains no PID, handle,
+> stream, process operation, or runtime authority.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

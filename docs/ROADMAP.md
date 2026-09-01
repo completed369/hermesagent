@@ -269,6 +269,9 @@ published and current `main` has not been deployed to private staging.
    Completion inserts now lock and reproduce the exact claim binding, `NOT_CONFIGURED` truth, and
    claim-bounded close time; replay compares every persisted cleanup field (ADR-0066). The cleanup
    hash remains owner-reported and no positive recovery owner exists.
+   Active lease acquisition now returns an atomic, immutable supervisor/dispatch work item and
+   expired replay returns none (ADR-0067). No PID, process handle, action, or status authority is
+   added; a future owner must prove retained native identity independently.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

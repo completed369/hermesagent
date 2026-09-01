@@ -67,6 +67,7 @@ import {
   type CodexValidationDispatchCandidate,
   type CodexValidationProcessCleanupEvidence,
   type CodexValidationProcessSessionAuthority,
+  type CodexValidationProcessSessionRecoveryWorkItem,
   type CodexTerminalEvidence,
   type CodexValidationRoundTripCandidate,
   type CodexValidationUsageObservationEvidence,
@@ -2380,6 +2381,46 @@ export class AcpBridgeAdmissionService
             throw new AcpBridgeAdmissionDeniedError(
               'Codex validation process-session recovery crossed owner authority',
             );
+          let recoveryBinding: Readonly<SupervisorProcessBinding>;
+          try {
+            recoveryBinding = validateSupervisorProcessBinding({
+              schemaVersion: 1,
+              supervisionId: claim.supervisionId,
+              launchNonce: claim.launchNonce,
+              workspaceId: claim.workspaceId,
+              runtimeId: claim.runtimeId,
+              connectionId: claim.connectionId,
+              platform: claim.platform,
+              manifestHash: claim.manifestHash,
+              admissionEvidenceHash: claim.admissionEvidenceHash,
+              admissionBindingHash: claim.admissionBindingHash,
+              testOnly: claim.testOnly,
+            });
+          } catch {
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process-session recovery binding is invalid',
+            );
+          }
+          const workItemFor = (
+            lease: Readonly<CodexValidationProcessSessionRecoveryLeaseRow>,
+          ): Readonly<CodexValidationProcessSessionRecoveryWorkItem> =>
+            Object.freeze({
+              schemaVersion: 1 as const,
+              recoveryLeaseId: lease.id,
+              recoveryGeneration: lease.generation,
+              claimId: claim.id,
+              handoffAttemptId: claim.handoffAttemptId,
+              validationDispatchCandidateHash: claim.validationDispatchCandidateHash,
+              sessionId: claim.sessionId,
+              dispatchId: claim.dispatchId,
+              runId: claim.runId,
+              binding: recoveryBinding,
+              processClaimedAt: claim.claimedAt.toISOString(),
+              processExpiresAt: claim.expiresAt.toISOString(),
+              leaseClaimedAt: lease.claimedAt.toISOString(),
+              leaseExpiresAt: lease.expiresAt.toISOString(),
+              runtimeConnection: 'NOT_CONFIGURED' as const,
+            });
 
           const existingById = existingRows.find((row) => row.id === input.recoveryLeaseId);
           const existingByKey = existingRows.find(
@@ -2417,6 +2458,10 @@ export class AcpBridgeAdmissionService
                 expiresAt: existing.expiresAt.toISOString(),
                 runtimeConnection: 'NOT_CONFIGURED' as const,
               }),
+              workItem:
+                completionRows.length === 0 && existing.expiresAt > now
+                  ? workItemFor(existing)
+                  : null,
               replayed: true,
             });
           }
@@ -2490,6 +2535,7 @@ export class AcpBridgeAdmissionService
               expiresAt: lease.expiresAt.toISOString(),
               runtimeConnection: 'NOT_CONFIGURED' as const,
             }),
+            workItem: workItemFor(lease),
             replayed: false,
           });
         },

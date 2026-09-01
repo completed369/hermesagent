@@ -124,6 +124,28 @@ export class DenyCodexValidationProcessSessionAuthority implements CodexValidati
   }
 }
 
+/**
+ * Immutable metadata handed from durable lease acquisition to a future
+ * injected recovery owner. This is not a process locator or action capability.
+ */
+export interface CodexValidationProcessSessionRecoveryWorkItem {
+  readonly schemaVersion: 1;
+  readonly recoveryLeaseId: string;
+  readonly recoveryGeneration: number;
+  readonly claimId: string;
+  readonly handoffAttemptId: string;
+  readonly validationDispatchCandidateHash: string;
+  readonly sessionId: string;
+  readonly dispatchId: string;
+  readonly runId: string;
+  readonly binding: Readonly<SupervisorProcessBinding>;
+  readonly processClaimedAt: string;
+  readonly processExpiresAt: string;
+  readonly leaseClaimedAt: string;
+  readonly leaseExpiresAt: string;
+  readonly runtimeConnection: 'NOT_CONFIGURED';
+}
+
 export interface CodexValidationProcessCleanupEvidence extends CodexValidationProcessCloseResult {
   readonly reason: 'COMPLETED' | 'CANCELLED';
   readonly cleanupEvidenceHash: string;
