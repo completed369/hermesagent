@@ -369,16 +369,15 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       codexSecretReference,
       digestSecretReference(codexSecret),
     );
-    const authorizationIssuedAt = new Date(observedAt.getTime() + 1_000);
-    const authorizationExpiresAt = new Date(authorizationIssuedAt.getTime() + 4 * 60_000);
-    const authorizationId = `authorization-${registrationSuffix}`;
+    let authorizationId = '';
+    const registrationAuthorizations = new Map<
+      string,
+      { authorizationId: string; issuedAt: Date }
+    >();
     const requests: Readonly<CodexRegistrationAuthorizationRequest>[] = [];
     const capabilityObservedAt = new Date(observedAt.getTime() + 2_000);
-    const capabilityAuthorizationIssuedAt = new Date(observedAt.getTime() + 3_000);
-    const capabilityAuthorizationExpiresAt = new Date(
-      capabilityAuthorizationIssuedAt.getTime() + 4 * 60_000,
-    );
-    const capabilityAuthorizationId = `capability-authorization-${registrationSuffix}`;
+    let capabilityAuthorizationId = '';
+    const capabilityAuthorizations = new Map<string, { authorizationId: string; issuedAt: Date }>();
     const capabilityRequests: Readonly<CodexCapabilityExchangeAuthorizationRequest>[] = [];
     const validationDispatchRequests: Readonly<CodexValidationDispatchAuthorizationRequest>[] = [];
     const validationAuthorizationIssuedAtByRequest = new Map<string, Date>();
@@ -389,26 +388,40 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       {
         async read(request) {
           requests.push(request);
+          const requestHash = codexRegistrationAuthorizationRequestHash(request);
+          const decision = registrationAuthorizations.get(requestHash) ?? {
+            authorizationId: `authorization-${requestHash.slice(0, 32)}`,
+            issuedAt: new Date(),
+          };
+          registrationAuthorizations.set(requestHash, decision);
+          authorizationId ||= decision.authorizationId;
           return {
             schemaVersion: 1,
-            authorizationId,
-            requestHash: codexRegistrationAuthorizationRequestHash(request),
+            authorizationId: decision.authorizationId,
+            requestHash,
             authorizedByReference: 'control-plane:codex-registration-policy-v1',
-            issuedAt: authorizationIssuedAt.toISOString(),
-            expiresAt: authorizationExpiresAt.toISOString(),
+            issuedAt: decision.issuedAt.toISOString(),
+            expiresAt: new Date(decision.issuedAt.getTime() + 4 * 60_000).toISOString(),
           };
         },
       },
       {
         async read(request) {
           capabilityRequests.push(request);
+          const requestHash = codexCapabilityExchangeAuthorizationRequestHash(request);
+          const decision = capabilityAuthorizations.get(requestHash) ?? {
+            authorizationId: `capability-authorization-${requestHash.slice(0, 32)}`,
+            issuedAt: new Date(),
+          };
+          capabilityAuthorizations.set(requestHash, decision);
+          capabilityAuthorizationId ||= decision.authorizationId;
           return {
             schemaVersion: 1,
-            authorizationId: capabilityAuthorizationId,
-            requestHash: codexCapabilityExchangeAuthorizationRequestHash(request),
+            authorizationId: decision.authorizationId,
+            requestHash,
             authorizedByReference: 'control-plane:codex-capability-policy-v1',
-            issuedAt: capabilityAuthorizationIssuedAt.toISOString(),
-            expiresAt: capabilityAuthorizationExpiresAt.toISOString(),
+            issuedAt: decision.issuedAt.toISOString(),
+            expiresAt: new Date(decision.issuedAt.getTime() + 4 * 60_000).toISOString(),
           };
         },
       },
@@ -1088,9 +1101,122 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     );
     const cancellationTask = cancellationObjective.objective.tasks[0]!;
     const cancellationRun = cancellationTask.runs[0]!;
+    const cancellationRuntimeSuffix = `${registrationSuffix}-cancellation`;
+    const cancellationRuntimeObservedAt = new Date();
+    const cancellationSecretReference = `vault-codex-${cancellationRuntimeSuffix}`;
+    const cancellationSecret = new Uint8Array(32).fill(7);
+    trustedSecrets.set(cancellationSecretReference, cancellationSecret);
+    const cancellationRegistration = codexCandidate(
+      workspaceId,
+      cancellationRuntimeSuffix,
+      cancellationRuntimeObservedAt,
+      cancellationSecretReference,
+      digestSecretReference(cancellationSecret),
+    );
+    const cancellationBridgeContext = {
+      schemaVersion: 1 as const,
+      workspaceId,
+      runtimeId: cancellationRegistration.runtimeId,
+      connectionId: cancellationRegistration.connectionId,
+      sessionId: `codex-session-${cancellationRuntimeSuffix}`,
+      principalReference: `principal:codex-${cancellationRuntimeSuffix}`,
+      parentNonce: `parent-nonce-${cancellationRuntimeSuffix}`,
+      runtimeNonce: `runtime-nonce-${cancellationRuntimeSuffix}`,
+      secretReference: cancellationSecretReference,
+      expectedSecretDigest: digestSecretReference(cancellationSecret),
+      authGeneration: 1,
+      authenticatedAt: new Date(cancellationRuntimeObservedAt.getTime() - 1_000).toISOString(),
+      expiresAt: new Date(cancellationRuntimeObservedAt.getTime() + 4 * 60_000).toISOString(),
+    };
+    await authorizedBridge.registerCodexRuntime(
+      capability,
+      { workspaceId, principalId },
+      {
+        candidate: cancellationRegistration,
+        environment: 'LOCAL_CONTROLLED',
+        secretReference: cancellationSecretReference,
+        capabilityPolicyHash,
+        idempotencyKey: `register-${cancellationRuntimeSuffix}`,
+      },
+    );
+    const cancellationCapability = createCodexCapabilityExchangeCandidate({
+      registration: cancellationRegistration,
+      exchange: {
+        request: { method: 'model/list', id: 42, params: { limit: 20, includeHidden: false } },
+        response: {
+          id: 42,
+          result: {
+            data: [
+              {
+                id: 'gpt-5.6-sol',
+                model: 'gpt-5.6-sol',
+                displayName: 'GPT 5.6 Sol',
+                hidden: false,
+                defaultReasoningEffort: 'low',
+                supportedReasoningEfforts: [
+                  { reasoningEffort: 'low', description: 'Fast' },
+                  { reasoningEffort: 'high', description: 'Thorough' },
+                ],
+                inputModalities: ['text', 'image'],
+                supportsPersonality: true,
+                isDefault: true,
+              },
+            ],
+            nextCursor: null,
+          },
+        },
+        observedAt: new Date().toISOString(),
+      },
+    });
+    await authorizedBridge.acceptCodexCapabilityExchange(
+      capability,
+      { workspaceId, principalId },
+      {
+        candidate: cancellationCapability,
+        capabilityPolicyHash,
+        idempotencyKey: `capability-${cancellationRuntimeSuffix}`,
+      },
+    );
+    const cancellationHeartbeatPayload = { health: 'HEALTHY' };
+    const cancellationHeartbeatIssuedAt = new Date();
+    const cancellationHeartbeatEnvelope = signBridgeEnvelope(
+      {
+        protocolVersion: BRIDGE_PROTOCOL_VERSION,
+        workspaceId,
+        runtimeId: cancellationBridgeContext.runtimeId,
+        connectionId: cancellationBridgeContext.connectionId,
+        sessionId: cancellationBridgeContext.sessionId,
+        principalReference: cancellationBridgeContext.principalReference,
+        sequence: 1,
+        messageId: `heartbeat-${cancellationRuntimeSuffix}`,
+        type: 'HEARTBEAT',
+        issuedAt: cancellationHeartbeatIssuedAt.toISOString(),
+        expiresAt: new Date(cancellationHeartbeatIssuedAt.getTime() + 60_000).toISOString(),
+        payloadDigest: digestBridgePayload(cancellationHeartbeatPayload),
+        payload: cancellationHeartbeatPayload,
+      },
+      deriveBridgeKeys(cancellationSecret, cancellationBridgeContext).runtimeToParent,
+    );
+    await authorizedBridge.acceptCodexHeartbeatEvidence(
+      capability,
+      { workspaceId, principalId },
+      {
+        registration: cancellationRegistration,
+        capability: cancellationCapability,
+        bridge: cancellationBridgeContext,
+        envelope: cancellationHeartbeatEnvelope,
+        idempotencyKey: `heartbeat-${cancellationRuntimeSuffix}`,
+      },
+    );
+    const cancellationHeartbeatCandidate = createCodexHeartbeatEvidenceCandidate({
+      registration: cancellationRegistration,
+      capability: cancellationCapability,
+      bridge: cancellationBridgeContext,
+      envelope: cancellationHeartbeatEnvelope,
+    });
     const cancellationDispatchAt = new Date();
     const cancellationDispatch = createCodexValidationDispatchCandidate({
-      heartbeat: heartbeatCandidate,
+      heartbeat: cancellationHeartbeatCandidate,
       dispatchId: `codex-cancellation-dispatch-${registrationSuffix}`,
       taskId: cancellationTask.id,
       runId: cancellationRun.id,
@@ -1108,7 +1234,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       { workspaceId, principalId },
       {
         candidate: cancellationDispatch,
-        bridge: heartbeatContext,
+        bridge: cancellationBridgeContext,
         idempotencyKey: `codex-cancellation-dispatch-${registrationSuffix}`,
       },
     );
@@ -1119,7 +1245,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       {
         attemptId: cancellationHandoffId,
         validationDispatchCandidateHash: cancellationDispatch.validationDispatchCandidateHash,
-        bridge: heartbeatContext,
+        bridge: cancellationBridgeContext,
         idempotencyKey: cancellationHandoffId,
       },
     );
@@ -1150,16 +1276,16 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       terminalTurnId: cancellationTerminal.turnId,
       terminalMessageHash: cancellationTerminal.messageHash,
     };
-    const cancellationKeys = deriveBridgeKeys(codexSecret, heartbeatContext);
+    const cancellationKeys = deriveBridgeKeys(cancellationSecret, cancellationBridgeContext);
     const cancellationEnvelope = signBridgeEnvelope(
       {
         protocolVersion: BRIDGE_PROTOCOL_VERSION,
         type: 'CANCELLED',
         workspaceId,
-        runtimeId: heartbeatContext.runtimeId,
-        connectionId: heartbeatContext.connectionId,
-        sessionId: heartbeatContext.sessionId,
-        principalReference: heartbeatContext.principalReference,
+        runtimeId: cancellationBridgeContext.runtimeId,
+        connectionId: cancellationBridgeContext.connectionId,
+        sessionId: cancellationBridgeContext.sessionId,
+        principalReference: cancellationBridgeContext.principalReference,
         sequence: 2,
         messageId: `codex-validation-cancelled-${registrationSuffix}`,
         issuedAt: cancellationIssuedAt.toISOString(),
@@ -1174,21 +1300,21 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     const cancellationInput = {
       handoffAttemptId: cancellationHandoffId,
       dispatch: cancellationDispatch,
-      bridge: heartbeatContext,
+      bridge: cancellationBridgeContext,
       terminal: cancellationTerminal,
       cancellationEnvelope,
       idempotencyKey: `codex-validation-cancellation-${registrationSuffix}`,
     };
-    const collisionKeys = deriveBridgeKeys(codexSecret, heartbeatContext);
+    const collisionKeys = deriveBridgeKeys(cancellationSecret, cancellationBridgeContext);
     const completedMessageCollision = signBridgeEnvelope(
       {
         protocolVersion: BRIDGE_PROTOCOL_VERSION,
         type: 'CANCELLED',
         workspaceId,
-        runtimeId: heartbeatContext.runtimeId,
-        connectionId: heartbeatContext.connectionId,
-        sessionId: heartbeatContext.sessionId,
-        principalReference: heartbeatContext.principalReference,
+        runtimeId: cancellationBridgeContext.runtimeId,
+        connectionId: cancellationBridgeContext.connectionId,
+        sessionId: cancellationBridgeContext.sessionId,
+        principalReference: cancellationBridgeContext.principalReference,
         sequence: 2,
         messageId: statusEnvelope.messageId,
         issuedAt: cancellationIssuedAt.toISOString(),
