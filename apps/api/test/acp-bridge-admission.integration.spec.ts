@@ -1069,6 +1069,71 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       runtimeConnection: 'NOT_CONFIGURED',
       supervisionId: processBinding.supervisionId,
     });
+    const recoveryInventory =
+      await authorizedBridge.listCodexValidationProcessSessionRecoveryInventory(
+        capability,
+        { workspaceId, principalId },
+        { limit: 1 },
+      );
+    expect(recoveryInventory).toMatchObject({
+      schemaVersion: 1,
+      nextCursor: null,
+      runtimeConnection: 'NOT_CONFIGURED',
+      items: [
+        {
+          claimId: processClaimId,
+          handoffAttemptId: validationHandoffInput.attemptId,
+          validationDispatchCandidateHash: validationCandidate.validationDispatchCandidateHash,
+          sessionId: validationCandidate.sessionId,
+          dispatchId: validationCandidate.dispatchId,
+          binding: processBinding,
+          recoveryState: 'ACTIVE',
+          runtimeConnection: 'NOT_CONFIGURED',
+        },
+      ],
+    });
+    expect(new Date(recoveryInventory.observedAt).toISOString()).toBe(recoveryInventory.observedAt);
+    expect(Object.isFrozen(recoveryInventory)).toBe(true);
+    expect(Object.isFrozen(recoveryInventory.items)).toBe(true);
+    expect(Object.isFrozen(recoveryInventory.items[0])).toBe(true);
+    expect(Object.isFrozen(recoveryInventory.items[0]?.binding)).toBe(true);
+    const afterRecoveryCursor =
+      await authorizedBridge.listCodexValidationProcessSessionRecoveryInventory(
+        capability,
+        { workspaceId, principalId },
+        { limit: 1, afterClaimId: processClaimId },
+      );
+    expect(afterRecoveryCursor.items).toEqual([]);
+    const otherRecoveryPrincipalId = `other-recovery-owner-${registrationSuffix}`;
+    const otherRecoveryCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      {
+        workspaceId,
+        principalId: otherRecoveryPrincipalId,
+        actorKind: 'AGENT',
+        authorityLevel: 3,
+      },
+    ]);
+    const otherOwnerInventory =
+      await authorizedBridge.listCodexValidationProcessSessionRecoveryInventory(
+        otherRecoveryCapability,
+        { workspaceId, principalId: otherRecoveryPrincipalId },
+        { limit: 100 },
+      );
+    expect(otherOwnerInventory.items).toEqual([]);
+    await expect(
+      authorizedBridge.listCodexValidationProcessSessionRecoveryInventory(
+        level1ControlPlaneCapability,
+        { workspaceId, principalId },
+        { limit: 1 },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      authorizedBridge.listCodexValidationProcessSessionRecoveryInventory(
+        capability,
+        { workspaceId, principalId },
+        { limit: 101 },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
     await expect(
       authorizedBridge.claimCodexValidationProcessSession(
         capability,
@@ -1146,6 +1211,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       processState: 'EXITED',
       runtimeConnection: 'NOT_CONFIGURED',
     });
+    const completedRecoveryInventory =
+      await authorizedBridge.listCodexValidationProcessSessionRecoveryInventory(
+        capability,
+        { workspaceId, principalId },
+        { limit: 100 },
+      );
+    expect(completedRecoveryInventory.items).toEqual([]);
     await expect(
       authorizedBridge.completeCodexValidationProcessSession(
         capability,

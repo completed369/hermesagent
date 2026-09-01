@@ -1683,3 +1683,28 @@ test('control-plane Codex process authority is Level-3, identity-bound, and non-
   assert.doesNotMatch(factory, /\.\.\.identity/u);
   assert.doesNotMatch(factory, /spawn|exec|credential|accessToken|apiKey|CONNECTED/u);
 });
+
+test('Codex process recovery discovery is bounded, owner-scoped, and read-only', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const inventory = service.slice(
+    service.indexOf('async listCodexValidationProcessSessionRecoveryInventory('),
+    service.indexOf('async claimCodexValidationProcessSession('),
+  );
+  assert.match(inventory, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(inventory, /input\.limit < 1 \|\| input\.limit > 100/u);
+  assert.match(inventory, /claim\."workspaceId" = CAST\(\$\{context\.workspaceId\} AS uuid\)/u);
+  assert.match(inventory, /claim\."ownerReference" = \$\{context\.principalId\}/u);
+  assert.match(inventory, /claim\."ownerActorKind" = \$\{actorKind\}/u);
+  assert.match(inventory, /completion\."claimId" IS NULL/u);
+  assert.match(inventory, /ORDER BY claim\."id" ASC/u);
+  assert.match(inventory, /LIMIT \$\{input\.limit \+ 1\}/u);
+  assert.match(inventory, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(inventory, /Object\.freeze\(items\)/u);
+  assert.doesNotMatch(
+    inventory,
+    /\b(?:INSERT|UPDATE|DELETE)\b|spawn|exec|provider|credential|CONNECTED/u,
+  );
+});
