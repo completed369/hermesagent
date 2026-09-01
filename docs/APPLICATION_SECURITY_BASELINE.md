@@ -49,6 +49,19 @@ production MinIO/Temporal connectivity was not exercised.
   known vulnerabilities. Application and CI evidence for the repair belongs to
   its exact pull-request head and does not establish a deployment.
 
+### Decode URI component advisory amendment — 2026-09-01
+
+- A fresh production and complete lockfile audit identified the newly disclosed
+  moderate CPU denial-of-service advisory `CVE-2026-45822` /
+  `GHSA-vcc3-ghjq-m6fr` in `decode-uri-component@0.2.2` through the production
+  `minio@8.0.7` -> `query-string@7.1.3` dependency path.
+- The focused remediation uses the existing reviewed pnpm override mechanism to
+  select patched `decode-uri-component@0.5.0`; no parent package, provider mode,
+  runtime configuration, or application behavior is changed.
+- After the update, both production and complete dependency audits report no
+  known vulnerabilities. A repository contract binds the override and lockfile
+  resolution so a future refresh cannot silently restore the vulnerable child.
+
 ## Security model observed
 
 - Passwords use salted scrypt and constant-time verification.
@@ -306,11 +319,13 @@ production MinIO/Temporal connectivity was not exercised.
   GHSA-jmr7-xgp7-cmfj, GHSA-v6h2-p8h4-qcjw, GHSA-7h2j-9565-4h9v, and
   GHSA-832h-xg76-4gv6.
 - **Exact vulnerable-child replacements:** reviewed pnpm overrides replace
-  `js-yaml` with 5.2.2, `postcss` with 8.5.26, `sharp` with 0.35.0, and `vite`
-  with 6.4.3. These replace vulnerable code retained by exact/incompatible
-  parent ranges; they do not suppress audit output. They resolve
+  `js-yaml` with 5.2.2, `postcss` with 8.5.26, `sharp` with 0.35.0, `vite` with
+  6.4.3, and `decode-uri-component` with 0.5.0. These replace vulnerable code
+  retained by exact/incompatible parent ranges; they do not suppress audit
+  output. They resolve
   GHSA-2g4f-4pwh-qvx6, GHSA-q7g4-2pjw-v29r, GHSA-566m-qj78-rww5, and
-  GHSA-4h9g-4w22-8q66 in addition to the Vite advisories above.
+  GHSA-4h9g-4w22-8q66 in addition to the Vite advisories above, plus
+  GHSA-vcc3-ghjq-m6fr on the MinIO query-string path.
 
 ### Compatibility evidence
 
