@@ -381,7 +381,7 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     const capabilityAuthorizationId = `capability-authorization-${registrationSuffix}`;
     const capabilityRequests: Readonly<CodexCapabilityExchangeAuthorizationRequest>[] = [];
     const validationDispatchRequests: Readonly<CodexValidationDispatchAuthorizationRequest>[] = [];
-    let validationAuthorizationIssuedAt: Date | undefined;
+    const validationAuthorizationIssuedAtByRequest = new Map<string, Date>();
     const authorizedBridge = testBridge(
       undefined,
       undefined,
@@ -415,14 +415,22 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       {
         async read(request) {
           validationDispatchRequests.push(request);
-          validationAuthorizationIssuedAt ??= new Date();
+          const requestHash = codexValidationDispatchAuthorizationRequestHash(request);
+          const validationAuthorizationIssuedAt =
+            validationAuthorizationIssuedAtByRequest.get(requestHash) ?? new Date();
+          validationAuthorizationIssuedAtByRequest.set(
+            requestHash,
+            validationAuthorizationIssuedAt,
+          );
           return {
             schemaVersion: 1,
-            authorizationId: `validation-authorization-${registrationSuffix}`,
-            requestHash: codexValidationDispatchAuthorizationRequestHash(request),
+            authorizationId: `validation-authorization-${requestHash.slice(0, 32)}`,
+            requestHash,
             authorizedByReference: 'control-plane:codex-validation-policy-v1',
             issuedAt: validationAuthorizationIssuedAt.toISOString(),
-            expiresAt: new Date(validationAuthorizationIssuedAt.getTime() + 60_000).toISOString(),
+            expiresAt: new Date(
+              validationAuthorizationIssuedAt.getTime() + 4 * 60_000,
+            ).toISOString(),
           };
         },
       },
