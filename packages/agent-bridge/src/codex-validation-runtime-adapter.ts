@@ -21,6 +21,7 @@ import {
 import type {
   CodexValidationProtocolEvidence,
   CodexValidationProtocolRunOptions,
+  CodexValidationUsageObservationEvidence,
 } from './codex-validation-protocol-runner';
 import {
   CODEX_VALIDATION_CANCELLATION_RESULT_CODE,
@@ -49,6 +50,10 @@ const MAX_TRACKED_DISPATCHES = 1_024;
 const MAX_FRAME_NODES = 1_024;
 const MAX_FRAME_DEPTH = 8;
 const SHA256 = /^[a-f0-9]{64}$/u;
+const EMPTY_PROGRESS_EVIDENCE_HASH =
+  '801adbaf421a4c656b9ec0f28085e952a35d35212487487d5b95a95a7c3b6a64';
+const EMPTY_TOKEN_USAGE_EVIDENCE_HASH =
+  '95c9cbcf9d54ee66ed622c5c6dc41d45949a816164405da6219991a9b3dde532';
 const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
 
 export interface CodexValidationRuntimeProtocolRunner {
@@ -178,9 +183,7 @@ function validateBridge(input: unknown): ValidatedBridge {
   });
 }
 
-function validateTerminal(
-  input: unknown,
-): Readonly<CodexTerminalEvidence | CodexCancellationTerminalEvidence> {
+function validateTerminal(input: unknown): Readonly<CodexValidationProtocolEvidence> {
   if (!input || typeof input !== 'object' || Array.isArray(input))
     throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
   const status = (input as Record<string, unknown>).status;
@@ -191,18 +194,67 @@ function validateTerminal(
           'interruptRequestId',
           'interruptResponseHash',
           'messageHash',
+          'progressEventCount',
+          'progressEvidenceHash',
+          'recognizedComputeUnits',
+          'recognizedCostMinorUnits',
           'runtimeConnection',
           'status',
           'threadId',
+          'tokenUsageEventCount',
+          'tokenUsageEvidenceHash',
           'turnId',
+          'usageAccountingState',
         ]
-      : ['messageHash', 'runtimeConnection', 'status', 'threadId', 'turnId'],
+      : [
+          'messageHash',
+          'progressEventCount',
+          'progressEvidenceHash',
+          'recognizedComputeUnits',
+          'recognizedCostMinorUnits',
+          'runtimeConnection',
+          'status',
+          'threadId',
+          'tokenUsageEventCount',
+          'tokenUsageEvidenceHash',
+          'turnId',
+          'usageAccountingState',
+        ],
   );
   const threadId = reference(terminal.threadId);
   const turnId = reference(terminal.turnId);
   const messageHash = digest(terminal.messageHash);
   if (terminal.runtimeConnection !== 'NOT_CONFIGURED')
     throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
+  const progressEventCount = terminal.progressEventCount;
+  const tokenUsageEventCount = terminal.tokenUsageEventCount;
+  const usageAccountingState =
+    (tokenUsageEventCount as number) === 0 ? 'NOT_OBSERVED' : 'OBSERVED_UNMAPPED';
+  if (
+    !Number.isSafeInteger(progressEventCount) ||
+    (progressEventCount as number) < 0 ||
+    (progressEventCount as number) > 128 ||
+    !Number.isSafeInteger(tokenUsageEventCount) ||
+    (tokenUsageEventCount as number) < 0 ||
+    (tokenUsageEventCount as number) > (progressEventCount as number) ||
+    ((progressEventCount as number) === 0 &&
+      terminal.progressEvidenceHash !== EMPTY_PROGRESS_EVIDENCE_HASH) ||
+    ((tokenUsageEventCount as number) === 0 &&
+      terminal.tokenUsageEvidenceHash !== EMPTY_TOKEN_USAGE_EVIDENCE_HASH) ||
+    terminal.recognizedCostMinorUnits !== 0 ||
+    terminal.recognizedComputeUnits !== 0 ||
+    terminal.usageAccountingState !== usageAccountingState
+  )
+    throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
+  const observation: Readonly<CodexValidationUsageObservationEvidence> = Object.freeze({
+    progressEventCount: progressEventCount as number,
+    progressEvidenceHash: digest(terminal.progressEvidenceHash),
+    tokenUsageEventCount: tokenUsageEventCount as number,
+    tokenUsageEvidenceHash: digest(terminal.tokenUsageEvidenceHash),
+    usageAccountingState,
+    recognizedCostMinorUnits: 0,
+    recognizedComputeUnits: 0,
+  });
   if (terminal.status === 'interrupted') {
     if (
       !Number.isSafeInteger(terminal.interruptRequestId) ||
@@ -217,6 +269,7 @@ function validateTerminal(
       interruptRequestId: terminal.interruptRequestId as number,
       interruptResponseHash: digest(terminal.interruptResponseHash),
       runtimeConnection: 'NOT_CONFIGURED',
+      ...observation,
     });
   }
   if (terminal.status !== 'completed')
@@ -227,6 +280,7 @@ function validateTerminal(
     status: 'completed',
     messageHash,
     runtimeConnection: 'NOT_CONFIGURED',
+    ...observation,
   });
 }
 
@@ -331,7 +385,7 @@ function validateDispatchFrame(
 function createUnsignedRuntimeEnvelope(
   dispatch: Readonly<CodexValidationDispatchCandidate>,
   bridge: ValidatedBridge,
-  terminal: Readonly<CodexTerminalEvidence>,
+  terminal: Readonly<CodexTerminalEvidence & CodexValidationUsageObservationEvidence>,
   sequence: 2 | 3,
   issuedAt: string,
   expiresAt: string,
@@ -352,6 +406,13 @@ function createUnsignedRuntimeEnvelope(
           terminalTurnId: terminal.turnId,
           terminalMessageHash: terminal.messageHash,
           terminalStatus: 'completed',
+          progressEventCount: terminal.progressEventCount,
+          progressEvidenceHash: terminal.progressEvidenceHash,
+          tokenUsageEventCount: terminal.tokenUsageEventCount,
+          tokenUsageEvidenceHash: terminal.tokenUsageEvidenceHash,
+          usageAccountingState: terminal.usageAccountingState,
+          recognizedCostMinorUnits: 0,
+          recognizedComputeUnits: 0,
         };
   return Object.freeze({
     protocolVersion: BRIDGE_PROTOCOL_VERSION,
@@ -373,7 +434,7 @@ function createUnsignedRuntimeEnvelope(
 function createUnsignedCancellationEnvelope(
   dispatch: Readonly<CodexValidationDispatchCandidate>,
   bridge: ValidatedBridge,
-  terminal: Readonly<CodexCancellationTerminalEvidence>,
+  terminal: Readonly<CodexCancellationTerminalEvidence & CodexValidationUsageObservationEvidence>,
   issuedAt: string,
   expiresAt: string,
 ): Omit<BridgeEnvelope, 'mac'> {
@@ -389,6 +450,13 @@ function createUnsignedCancellationEnvelope(
     terminalTurnId: terminal.turnId,
     terminalMessageHash: terminal.messageHash,
     terminalStatus: 'interrupted',
+    progressEventCount: terminal.progressEventCount,
+    progressEvidenceHash: terminal.progressEvidenceHash,
+    tokenUsageEventCount: terminal.tokenUsageEventCount,
+    tokenUsageEvidenceHash: terminal.tokenUsageEvidenceHash,
+    usageAccountingState: terminal.usageAccountingState,
+    recognizedCostMinorUnits: 0,
+    recognizedComputeUnits: 0,
   });
   return Object.freeze({
     protocolVersion: BRIDGE_PROTOCOL_VERSION,
@@ -478,7 +546,9 @@ export class BoundedCodexValidationRuntimeAdapter {
           : { signal: options.signal, timeoutMs: Math.min(options.timeoutMs, runRemaining) };
       const terminal = validateTerminal(await this.runner.run(dispatch, runOptions));
       if (terminal.status === 'interrupted') {
-        const cancellation = terminal as Readonly<CodexCancellationTerminalEvidence>;
+        const cancellation = terminal as Readonly<
+          CodexCancellationTerminalEvidence & CodexValidationUsageObservationEvidence
+        >;
         const cancellationAt = this.authorizedTimestamp(deadline);
         const evidenceExpiresAt = new Date(deadline).toISOString();
         const cancellationEnvelope = await this.withSecret(bridge, 'SIGN_FRAME', (secret) => {

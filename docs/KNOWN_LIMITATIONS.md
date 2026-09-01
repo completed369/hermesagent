@@ -108,7 +108,8 @@
 > exact accepted-status/result pair or one exact acknowledged-cancellation terminal without assigning
 > the run or promoting connection truth. Synthetic or caller-supplied evidence is not a
 > live provider round trip. There is still no production process launch,
-> credential source, provider call, artifact/usage admission for this path, or
+> credential source, provider call, artifact admission, recognized usage/cost
+> mapping for this path, or
 > runtime promotion. Codex remains **NOT_CONFIGURED**.
 >
 > Authenticated Codex registration now has a dedicated durable evidence path.
@@ -154,7 +155,10 @@
 > acknowledgement and interrupted terminal, stores only normalized hashes and
 > safe references, and is database-exclusive with completed evidence for that
 > handoff. It likewise leaves the ready run unassigned and runtime truth
-> unchanged. There is still no Codex process
+> unchanged. Both terminal paths now retain only bounded, domain-separated
+> progress and token-usage-notification counts/digests (ADR-0058). Raw token
+> values are discarded, observations remain unmapped, and recognized cost and
+> compute are fixed at zero with no usage or cost-ledger write. There is still no Codex process
 > controller, real authenticated provider round trip, or connected-state
 > transition; Codex remains **NOT_CONFIGURED**.
 

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { resolve } from 'node:path';
 
@@ -12,7 +13,7 @@ import {
 } from './auth';
 import { deterministicLinuxAdmission } from './__tests__/fixtures/deterministic-supervision';
 import type { AuthenticatedJsonlSessionContext } from './authenticated-jsonl-session';
-import { decodeBridgeLine } from './codec';
+import { canonicalJson, decodeBridgeLine } from './codec';
 import {
   CODEX_APP_SERVER_ADAPTER_KIND,
   CODEX_APP_SERVER_ARGUMENT_POLICY,
@@ -44,6 +45,15 @@ import { ScopedBridgeSecretLeaseResolver } from './secret-lease';
 const secret = new Uint8Array(32).fill(9);
 const secretDigest = '8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05';
 const now = '2026-08-31T11:03:20.000Z';
+const observation = {
+  progressEventCount: 1,
+  progressEvidenceHash: 'c'.repeat(64),
+  tokenUsageEventCount: 1,
+  tokenUsageEvidenceHash: 'd'.repeat(64),
+  usageAccountingState: 'OBSERVED_UNMAPPED' as const,
+  recognizedCostMinorUnits: 0 as const,
+  recognizedComputeUnits: 0 as const,
+};
 
 function fixture(maximumDurationMs = 30_000, dispatchId = 'validation-dispatch-1') {
   const bridge: AuthenticatedJsonlSessionContext = {
@@ -181,6 +191,7 @@ class FixedRunner implements CodexValidationRuntimeProtocolRunner {
       status: 'completed' as const,
       messageHash: 'b'.repeat(64),
       runtimeConnection: 'NOT_CONFIGURED' as const,
+      ...observation,
     };
   }
 }
@@ -289,6 +300,9 @@ describe('bounded Codex validation runtime adapter', () => {
         providerAccess: 'NOT_CONFIGURED',
         runtimeConnection: 'NOT_CONFIGURED',
         connectionTransition: 'NOT_APPLIED',
+        usageAccountingState: 'NOT_OBSERVED',
+        recognizedCostMinorUnits: 0,
+        recognizedComputeUnits: 0,
       });
       expect(bridgeTransport.frames.map((frame) => [frame.sequence, frame.type])).toEqual([
         [2, 'DISPATCH_ACCEPTED'],
@@ -386,9 +400,39 @@ describe('bounded Codex validation runtime adapter', () => {
         providerAccess: 'NOT_CONFIGURED',
         runtimeConnection: 'NOT_CONFIGURED',
         connectionTransition: 'NOT_APPLIED',
+        usageAccountingState: 'NOT_OBSERVED',
+        recognizedCostMinorUnits: 0,
+        recognizedComputeUnits: 0,
       });
       if (!('interruptResponseHash' in result)) throw new Error('cancellation evidence required');
       expect(validateCodexValidationCancellationCandidate(result)).toEqual(result);
+      const removed = new Set([
+        'progressEventCount',
+        'progressEvidenceHash',
+        'tokenUsageEventCount',
+        'tokenUsageEvidenceHash',
+        'usageAccountingState',
+        'recognizedCostMinorUnits',
+        'recognizedComputeUnits',
+        'cancellationCandidateHash',
+      ]);
+      const historicalNormalized = Object.fromEntries(
+        Object.entries(result).filter(([key]) => !removed.has(key)),
+      );
+      const migrated = {
+        ...result,
+        progressEventCount: 0,
+        progressEvidenceHash: '0'.repeat(64),
+        tokenUsageEventCount: 0,
+        tokenUsageEvidenceHash: '0'.repeat(64),
+        usageAccountingState: 'LEGACY_NOT_CAPTURED' as const,
+        recognizedCostMinorUnits: 0 as const,
+        recognizedComputeUnits: 0 as const,
+        cancellationCandidateHash: createHash('sha256')
+          .update(canonicalJson(historicalNormalized))
+          .digest('hex'),
+      };
+      expect(validateCodexValidationCancellationCandidate(migrated)).toEqual(migrated);
       expect(() =>
         validateCodexValidationCancellationCandidate({
           ...result,
@@ -565,6 +609,18 @@ describe('bounded Codex validation runtime adapter', () => {
       code: 'INVALID_INPUT',
     });
     expect(malformedTransport.frames).toHaveLength(0);
+
+    const falseAccounting: CodexValidationRuntimeProtocolRunner = {
+      async run() {
+        return {
+          ...(await new FixedRunner().run()),
+          recognizedCostMinorUnits: 1,
+        } as never;
+      },
+    };
+    await expect(
+      adapter(falseAccounting, new RecordingTransport()).subject.execute(input),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
 
     const malformedCancellation: CodexValidationRuntimeProtocolRunner = {
       async run() {

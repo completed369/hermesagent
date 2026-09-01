@@ -76,6 +76,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > verifies its runtime-to-parent MAC, prevents a completed/cancelled double outcome, and leaves the
 > run unassigned and runtime truth unchanged (ADR-0057). It is durable cancellation evidence, not a
 > real provider stop or runtime connection.
+> Completed and cancelled validation evidence now also binds bounded, domain-separated progress and
+> token-usage-notification counts/digests (ADR-0058). Raw token values are discarded and recognized
+> usage, compute, and cost remain zero until a separately reviewed provider mapping exists.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

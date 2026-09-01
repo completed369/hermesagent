@@ -129,6 +129,11 @@ published and current `main` has not been deployed to private staging.
   sequence-2 cancellation envelope whose normalized evidence is immutable and
   mutually exclusive with completed evidence for the same handoff (ADR-0057).
   Cancellation still assigns no run and promotes no runtime or connection truth.
+  Both terminal outcomes now bind bounded, domain-separated counts and digests
+  for admitted progress and `thread/tokenUsage/updated` notifications
+  (ADR-0058). Raw token values are discarded, accounting remains unmapped, and
+  recognized cost and compute remain exactly zero; no usage or ledger row is
+  created.
   The supervisor now applies one explicit executable-authorization verifier to
   its decision, evidence, admission, and launch-time revalidation paths.
   Production and direct evidence-reader defaults deny; the pinned deterministic

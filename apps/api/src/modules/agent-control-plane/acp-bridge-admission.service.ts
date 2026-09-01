@@ -65,6 +65,7 @@ import {
   type CodexValidationDispatchCandidate,
   type CodexTerminalEvidence,
   type CodexValidationRoundTripCandidate,
+  type CodexValidationUsageObservationEvidence,
   type TrustedBridgeBrokerEvidence,
 } from '@ventureos/agent-bridge';
 import {
@@ -161,6 +162,13 @@ interface CodexValidationDispatchEvidenceRow {
   readonly authorityLevel: number;
   readonly taskPolicyHash: string;
   readonly maximumCostMinorUnits: number;
+  readonly progressEventCount: number;
+  readonly progressEvidenceHash: string;
+  readonly tokenUsageEventCount: number;
+  readonly tokenUsageEvidenceHash: string;
+  readonly usageAccountingState: string;
+  readonly recognizedCostMinorUnits: number;
+  readonly recognizedComputeUnits: number;
   readonly maximumComputeUnits: number;
   readonly maximumDurationMs: number;
   readonly outboundSequence: number;
@@ -202,6 +210,13 @@ interface CodexValidationEgressHandoffRow {
   readonly taskPolicyHash: string;
   readonly maximumComputeUnits: number;
   readonly maximumCostMinorUnits: number;
+  readonly progressEventCount: number;
+  readonly progressEvidenceHash: string;
+  readonly tokenUsageEventCount: number;
+  readonly tokenUsageEvidenceHash: string;
+  readonly usageAccountingState: string;
+  readonly recognizedCostMinorUnits: number;
+  readonly recognizedComputeUnits: number;
   readonly maximumDurationMs: number;
   readonly outboundSequence: number;
   readonly messageId: string;
@@ -446,7 +461,7 @@ export interface AcceptCodexValidationRoundTripEvidenceInput {
   readonly handoffAttemptId: string;
   readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
   readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
-  readonly terminal: Readonly<CodexTerminalEvidence>;
+  readonly terminal: Readonly<CodexTerminalEvidence & CodexValidationUsageObservationEvidence>;
   readonly statusEnvelope: Readonly<BridgeEnvelope>;
   readonly terminalEnvelope: Readonly<BridgeEnvelope>;
   readonly idempotencyKey: string;
@@ -456,7 +471,9 @@ export interface AcceptCodexValidationCancellationEvidenceInput {
   readonly handoffAttemptId: string;
   readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
   readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
-  readonly terminal: Readonly<CodexCancellationTerminalEvidence>;
+  readonly terminal: Readonly<
+    CodexCancellationTerminalEvidence & CodexValidationUsageObservationEvidence
+  >;
   readonly cancellationEnvelope: Readonly<BridgeEnvelope>;
   readonly idempotencyKey: string;
 }
@@ -2286,6 +2303,9 @@ export class AcpBridgeAdmissionService
                 "connectionId", "sessionId", "principalReference", "adapterKind",
                 "authGeneration", "dispatchId", "taskId", "runId", "agentId",
                 "authorityLevel", "taskPolicyHash", "maximumCostMinorUnits",
+                "progressEventCount", "progressEvidenceHash", "tokenUsageEventCount",
+                "tokenUsageEvidenceHash", "usageAccountingState",
+                "recognizedCostMinorUnits", "recognizedComputeUnits",
                 "cancellationSequence", "cancellationMessageId", "interruptRequestId",
                 "interruptResponseHash", "terminalThreadId", "terminalTurnId",
                 "terminalMessageHash", "cancellationPayloadDigest",
@@ -2302,6 +2322,10 @@ export class AcpBridgeAdmissionService
                 ${candidate.authGeneration}, ${candidate.dispatchId}, ${candidate.taskId},
                 ${candidate.runId}, ${candidate.agentId}, ${candidate.authorityLevel},
                 ${candidate.taskPolicyHash}, ${candidate.maximumCostMinorUnits},
+                ${candidate.progressEventCount}, ${candidate.progressEvidenceHash},
+                ${candidate.tokenUsageEventCount}, ${candidate.tokenUsageEvidenceHash},
+                ${candidate.usageAccountingState}, ${candidate.recognizedCostMinorUnits},
+                ${candidate.recognizedComputeUnits},
                 ${candidate.cancellationSequence}, ${candidate.cancellationMessageId},
                 ${candidate.interruptRequestId}, ${candidate.interruptResponseHash},
                 ${candidate.terminalThreadId}, ${candidate.terminalTurnId},
@@ -2632,6 +2656,9 @@ export class AcpBridgeAdmissionService
               "connectionId", "sessionId", "principalReference", "adapterKind",
               "authGeneration", "dispatchId", "taskId", "runId", "agentId",
               "authorityLevel", "taskPolicyHash", "maximumCostMinorUnits",
+              "progressEventCount", "progressEvidenceHash", "tokenUsageEventCount",
+              "tokenUsageEvidenceHash", "usageAccountingState",
+              "recognizedCostMinorUnits", "recognizedComputeUnits",
               "statusSequence", "statusMessageId", "statusPayloadDigest",
               "statusEnvelopeDigest", "statusAuthenticationTagDigest", "statusIssuedAt",
               "statusExpiresAt", "terminalSequence", "terminalMessageId",
@@ -2648,7 +2675,11 @@ export class AcpBridgeAdmissionService
               ${candidate.adapterKind}, ${candidate.authGeneration}, ${candidate.dispatchId},
               ${candidate.taskId}, ${candidate.runId}, ${candidate.agentId},
               ${candidate.authorityLevel}, ${candidate.taskPolicyHash},
-              ${candidate.maximumCostMinorUnits}, ${candidate.statusSequence},
+              ${candidate.maximumCostMinorUnits},
+              ${candidate.progressEventCount}, ${candidate.progressEvidenceHash},
+              ${candidate.tokenUsageEventCount}, ${candidate.tokenUsageEvidenceHash},
+              ${candidate.usageAccountingState}, ${candidate.recognizedCostMinorUnits},
+              ${candidate.recognizedComputeUnits}, ${candidate.statusSequence},
               ${candidate.statusMessageId}, ${candidate.statusPayloadDigest},
               ${candidate.statusEnvelopeDigest}, ${candidate.statusAuthenticationTagDigest},
               ${new Date(candidate.statusIssuedAt)}, ${new Date(candidate.statusExpiresAt)},

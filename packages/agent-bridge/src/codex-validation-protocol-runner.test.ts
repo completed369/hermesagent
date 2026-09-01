@@ -181,7 +181,17 @@ function messages(
 
 describe('BoundedCodexValidationProtocolRunner', () => {
   it('uses an ephemeral read-only session and proves the dispatch-bound terminal token', async () => {
-    const transport = new FixtureTransport(messages());
+    const stream = messages();
+    const tokenUsage = {
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: 'thr_123',
+        tokenUsage: { total: { inputTokens: 11, outputTokens: 2 } },
+      },
+    };
+    stream.splice(5, 0, tokenUsage);
+    const progressEvents = [stream[3]!, stream[4]!, tokenUsage];
+    const transport = new FixtureTransport(stream);
     const evidence = await new BoundedCodexValidationProtocolRunner(
       transport,
       () => new Date('2026-08-31T11:03:16.000Z'),
@@ -192,7 +202,21 @@ describe('BoundedCodexValidationProtocolRunner', () => {
       turnId: 'turn_456',
       status: 'completed',
       runtimeConnection: 'NOT_CONFIGURED',
+      progressEventCount: 3,
+      progressEvidenceHash: sha256({
+        domain: 'ventureos.codex-validation.progress.v1',
+        eventHashes: progressEvents.map(sha256),
+      }),
+      tokenUsageEventCount: 1,
+      tokenUsageEvidenceHash: sha256({
+        domain: 'ventureos.codex-validation.token-usage.v1',
+        eventHashes: [sha256(tokenUsage)],
+      }),
+      usageAccountingState: 'OBSERVED_UNMAPPED',
+      recognizedCostMinorUnits: 0,
+      recognizedComputeUnits: 0,
     });
+    expect(JSON.stringify(evidence)).not.toMatch(/inputTokens|outputTokens|"tokenUsage":/iu);
     expect(transport.writes[2]).toMatchObject({
       method: 'thread/start',
       params: { approvalPolicy: 'never', ephemeral: true, sandbox: 'read-only' },

@@ -922,6 +922,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       status: 'completed' as const,
       messageHash: 'b'.repeat(64),
       runtimeConnection: 'NOT_CONFIGURED' as const,
+      progressEventCount: 3,
+      progressEvidenceHash: '9'.repeat(64),
+      tokenUsageEventCount: 1,
+      tokenUsageEvidenceHash: '8'.repeat(64),
+      usageAccountingState: 'OBSERVED_UNMAPPED' as const,
+      recognizedCostMinorUnits: 0 as const,
+      recognizedComputeUnits: 0 as const,
     };
     const runtimeKeys = deriveBridgeKeys(codexSecret, heartbeatContext);
     const statusEnvelope = signBridgeEnvelope(
@@ -962,6 +969,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       terminalThreadId: terminalEvidence.threadId,
       terminalTurnId: terminalEvidence.turnId,
       terminalMessageHash: terminalEvidence.messageHash,
+      progressEventCount: terminalEvidence.progressEventCount,
+      progressEvidenceHash: terminalEvidence.progressEvidenceHash,
+      tokenUsageEventCount: terminalEvidence.tokenUsageEventCount,
+      tokenUsageEvidenceHash: terminalEvidence.tokenUsageEvidenceHash,
+      usageAccountingState: terminalEvidence.usageAccountingState,
+      recognizedCostMinorUnits: 0,
+      recognizedComputeUnits: 0,
     };
     const terminalEnvelope = signBridgeEnvelope(
       {
@@ -1017,7 +1031,20 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       runtimeConnection: 'NOT_CONFIGURED',
       connectionTransition: 'NOT_APPLIED',
       maximumCostMinorUnits: 0,
+      progressEventCount: 3,
+      tokenUsageEventCount: 1,
+      usageAccountingState: 'OBSERVED_UNMAPPED',
+      recognizedCostMinorUnits: 0,
+      recognizedComputeUnits: 0,
     });
+    expect(
+      await prisma.acpRunUsage.count({ where: { workspaceId, runId: validationCandidate.runId } }),
+    ).toBe(0);
+    expect(
+      await prisma.acpCostLedgerEntry.count({
+        where: { workspaceId, runId: validationCandidate.runId },
+      }),
+    ).toBe(0);
     expect(JSON.stringify(acceptedRoundTrip.evidence)).not.toContain(statusEnvelope.mac);
     expect(JSON.stringify(acceptedRoundTrip.evidence)).not.toContain(terminalEnvelope.mac);
     expect(secretLeaseRequests.at(-1)?.purpose).toBe('VERIFY_FRAME');
@@ -1262,6 +1289,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       interruptRequestId: 4,
       interruptResponseHash: 'c'.repeat(64),
       runtimeConnection: 'NOT_CONFIGURED' as const,
+      progressEventCount: 1,
+      progressEvidenceHash: '7'.repeat(64),
+      tokenUsageEventCount: 0,
+      tokenUsageEvidenceHash: '95c9cbcf9d54ee66ed622c5c6dc41d45949a816164405da6219991a9b3dde532',
+      usageAccountingState: 'NOT_OBSERVED' as const,
+      recognizedCostMinorUnits: 0 as const,
+      recognizedComputeUnits: 0 as const,
     };
     const cancellationPayload = {
       challengeCode: 'codex.runtime.round-trip.v1',
@@ -1275,6 +1309,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       terminalThreadId: cancellationTerminal.threadId,
       terminalTurnId: cancellationTerminal.turnId,
       terminalMessageHash: cancellationTerminal.messageHash,
+      progressEventCount: cancellationTerminal.progressEventCount,
+      progressEvidenceHash: cancellationTerminal.progressEvidenceHash,
+      tokenUsageEventCount: cancellationTerminal.tokenUsageEventCount,
+      tokenUsageEvidenceHash: cancellationTerminal.tokenUsageEvidenceHash,
+      usageAccountingState: cancellationTerminal.usageAccountingState,
+      recognizedCostMinorUnits: 0,
+      recognizedComputeUnits: 0,
     };
     const cancellationKeys = deriveBridgeKeys(cancellationSecret, cancellationBridgeContext);
     const cancellationEnvelope = signBridgeEnvelope(
@@ -1331,7 +1372,20 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       runtimeConnection: 'NOT_CONFIGURED',
       connectionTransition: 'NOT_APPLIED',
       maximumCostMinorUnits: 0,
+      progressEventCount: 1,
+      tokenUsageEventCount: 0,
+      usageAccountingState: 'NOT_OBSERVED',
+      recognizedCostMinorUnits: 0,
+      recognizedComputeUnits: 0,
     });
+    expect(
+      await prisma.acpRunUsage.count({ where: { workspaceId, runId: cancellationDispatch.runId } }),
+    ).toBe(0);
+    expect(
+      await prisma.acpCostLedgerEntry.count({
+        where: { workspaceId, runId: cancellationDispatch.runId },
+      }),
+    ).toBe(0);
     expect(JSON.stringify(acceptedCancellation.evidence)).not.toContain(cancellationEnvelope.mac);
     await expect(
       prisma.$executeRaw(Prisma.sql`

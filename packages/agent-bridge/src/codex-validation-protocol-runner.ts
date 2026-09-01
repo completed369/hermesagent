@@ -42,8 +42,19 @@ export interface CodexValidationProtocolRunOptions {
   readonly signal?: AbortSignal;
 }
 
+export interface CodexValidationUsageObservationEvidence {
+  readonly progressEventCount: number;
+  readonly progressEvidenceHash: string;
+  readonly tokenUsageEventCount: number;
+  readonly tokenUsageEvidenceHash: string;
+  readonly usageAccountingState: 'NOT_OBSERVED' | 'OBSERVED_UNMAPPED';
+  readonly recognizedCostMinorUnits: 0;
+  readonly recognizedComputeUnits: 0;
+}
+
 export type CodexValidationProtocolEvidence =
-  CodexTerminalEvidence | CodexCancellationTerminalEvidence;
+  | (CodexTerminalEvidence & CodexValidationUsageObservationEvidence)
+  | (CodexCancellationTerminalEvidence & CodexValidationUsageObservationEvidence);
 
 export type CodexValidationProtocolRunnerErrorCode =
   | 'INVALID_DISPATCH'
@@ -108,7 +119,15 @@ function finalText(input: unknown): string {
   return agentMessage.text;
 }
 
-function admitProgress(input: unknown, threadId: string, turnId: string): void {
+function sha256(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex');
+}
+
+function admitProgress(
+  input: unknown,
+  threadId: string,
+  turnId: string,
+): Readonly<{ method: string; eventHash: string }> {
   const message = record(input);
   if (Object.hasOwn(message, 'id')) throw new CodexValidationProtocolRunnerError('UNSAFE_ACTIVITY');
   if (typeof message.method !== 'string' || !SAFE_PROGRESS_METHODS.has(message.method))
@@ -154,6 +173,28 @@ function admitProgress(input: unknown, threadId: string, turnId: string): void {
   // Bound and canonicalize every admitted event without retaining its content.
   const bytes = new TextEncoder().encode(canonicalJson(message)).byteLength;
   if (bytes > 65_536) throw new CodexValidationProtocolRunnerError('LIMIT_EXCEEDED');
+  return Object.freeze({ method: message.method, eventHash: sha256(message) });
+}
+
+function usageObservation(
+  progressEventHashes: readonly string[],
+  tokenUsageEventHashes: readonly string[],
+): Readonly<CodexValidationUsageObservationEvidence> {
+  return Object.freeze({
+    progressEventCount: progressEventHashes.length,
+    progressEvidenceHash: sha256({
+      domain: 'ventureos.codex-validation.progress.v1',
+      eventHashes: progressEventHashes,
+    }),
+    tokenUsageEventCount: tokenUsageEventHashes.length,
+    tokenUsageEvidenceHash: sha256({
+      domain: 'ventureos.codex-validation.token-usage.v1',
+      eventHashes: tokenUsageEventHashes,
+    }),
+    usageAccountingState: tokenUsageEventHashes.length === 0 ? 'NOT_OBSERVED' : 'OBSERVED_UNMAPPED',
+    recognizedCostMinorUnits: 0,
+    recognizedComputeUnits: 0,
+  });
 }
 
 /**
@@ -240,6 +281,8 @@ export class BoundedCodexValidationProtocolRunner {
     };
     options.signal?.addEventListener('abort', requestInterrupt, { once: true });
     if (options.signal?.aborted) requestInterrupt();
+    const progressEventHashes: string[] = [];
+    const tokenUsageEventHashes: string[] = [];
     try {
       for (let count = 0; count <= MAX_PROGRESS_EVENTS; count += 1) {
         if (count === MAX_PROGRESS_EVENTS)
@@ -272,11 +315,21 @@ export class BoundedCodexValidationProtocolRunner {
             throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
           if (evidence.status === 'interrupted') {
             if (!interruptEvidence) throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
-            return Object.freeze({ ...evidence, ...interruptEvidence });
+            return Object.freeze({
+              ...evidence,
+              ...interruptEvidence,
+              ...usageObservation(progressEventHashes, tokenUsageEventHashes),
+            });
           }
-          return evidence;
+          return Object.freeze({
+            ...evidence,
+            ...usageObservation(progressEventHashes, tokenUsageEventHashes),
+          });
         }
-        admitProgress(message, snapshot.threadId, snapshot.turnId);
+        const admitted = admitProgress(message, snapshot.threadId, snapshot.turnId);
+        progressEventHashes.push(admitted.eventHash);
+        if (admitted.method === 'thread/tokenUsage/updated')
+          tokenUsageEventHashes.push(admitted.eventHash);
       }
       throw new CodexValidationProtocolRunnerError('LIMIT_EXCEEDED');
     } finally {

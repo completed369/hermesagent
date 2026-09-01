@@ -559,6 +559,37 @@ test('Codex validation cancellation evidence is authenticated, immutable, and tr
   );
 });
 
+test('Codex validation usage observations are bounded, digest-only, zero-cost evidence', () => {
+  const runner = readFileSync(
+    'packages/agent-bridge/src/codex-validation-protocol-runner.ts',
+    'utf8',
+  );
+  const adapter = readFileSync(
+    'packages/agent-bridge/src/codex-validation-runtime-adapter.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260901100000_codex_validation_usage_observation_evidence/migration.sql',
+    'utf8',
+  );
+  assert.match(runner, /ventureos\.codex-validation\.progress\.v1/u);
+  assert.match(runner, /ventureos\.codex-validation\.token-usage\.v1/u);
+  assert.match(runner, /MAX_PROGRESS_EVENTS = 128/u);
+  assert.match(runner, /recognizedCostMinorUnits: 0/u);
+  assert.match(runner, /recognizedComputeUnits: 0/u);
+  assert.match(adapter, /terminal\.recognizedCostMinorUnits !== 0/u);
+  assert.match(adapter, /terminal\.recognizedComputeUnits !== 0/u);
+  assert.match(migration, /"tokenUsageEventCount" BETWEEN 0 AND "progressEventCount"/u);
+  assert.match(migration, /"recognizedCostMinorUnits" = 0/u);
+  assert.match(migration, /"recognizedComputeUnits" = 0/u);
+  assert.match(migration, /'LEGACY_NOT_CAPTURED'/u);
+  assert.match(migration, /ventureos_reject_new_codex_validation_legacy_usage/u);
+  assert.doesNotMatch(
+    migration,
+    /^\s+"(?:rawUsage|tokenValues|providerData|prompt|transcript|mac|secret)"\s+/mu,
+  );
+});
+
 test('production secret resolution is deny-only and has no ambient credential source', () => {
   const source = serviceFiles
     .filter((file) => !file.endsWith('supervision-evidence-reader.ts'))
