@@ -329,6 +329,8 @@ describe('BoundedCodexValidationProtocolRunner', () => {
       threadId: 'thr_123',
       turnId: 'turn_456',
       status: 'interrupted',
+      interruptRequestId: 4,
+      interruptResponseHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
       runtimeConnection: 'NOT_CONFIGURED',
     });
     expect(transport.writes[4]).toEqual({

@@ -71,9 +71,11 @@ evidence; broker reservations remain estimates rather than financial charges.
 > protects their timeout contract, denies pre-authentication I/O and reported tool activity, and
 > remains excluded from production composition and runtime truth.
 > A successor deterministic case sends one exact correlated `turn/interrupt`, requires its
-> acknowledgement and an interrupted terminal, and returns `CANCELLED` without emitting bridge
-> status/result frames (ADR-0056). It is cancellation protocol evidence, not a real provider stop or
-> runtime connection.
+> acknowledgement and an interrupted terminal (ADR-0056). The adapter now emits one authenticated
+> sequence-2 cancellation evidence frame only after that proof. A tenant-bound immutable admission
+> verifies its runtime-to-parent MAC, prevents a completed/cancelled double outcome, and leaves the
+> run unassigned and runtime truth unchanged (ADR-0057). It is durable cancellation evidence, not a
+> real provider stop or runtime connection.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

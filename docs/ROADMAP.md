@@ -124,7 +124,11 @@ published and current `main` has not been deployed to private staging.
   directional secret leases, and performs bounded local response writes. An
   immutable admission path now verifies and retains the exact runtime-signed
   sequence-2 accepted status and sequence-3 terminal result against that claimed
-  dispatch while leaving runtime, connection, task, and run truth unchanged.
+  dispatch while leaving runtime, connection, task, and run truth unchanged. An
+  acknowledged interrupt plus interrupted terminal now produces one authenticated
+  sequence-2 cancellation envelope whose normalized evidence is immutable and
+  mutually exclusive with completed evidence for the same handoff (ADR-0057).
+  Cancellation still assigns no run and promotes no runtime or connection truth.
   The supervisor now applies one explicit executable-authorization verifier to
   its decision, evidence, admission, and launch-time revalidation paths.
   Production and direct evidence-reader defaults deny; the pinned deterministic
@@ -231,11 +235,13 @@ published and current `main` has not been deployed to private staging.
    correlated safe progress, and exact dispatch-bound terminal output. A deterministic test-only
    child process now composes that transport and coordinator with the authenticated runtime adapter
    and proves that wrong-secret and reported-tool paths emit no bridge result (ADR-0055). It also
-   proves one exact interrupt acknowledgement and interrupted terminal without emitting accepted or
-   result frames (ADR-0056), but no production composition supplies streams. Authenticated
-   status/result evidence can now be
-   admitted immutably without promoting runtime truth; validation against a real authenticated
-   Codex process remains approval- and provisioning-gated.
+   proves one exact interrupt acknowledgement and interrupted terminal (ADR-0056). The adapter now
+   emits one authenticated cancellation evidence frame after that proof, and the control plane
+   retains it immutably under the same tenant, handoff, dispatch, and zero-spend authority while
+   preventing a completed/cancelled double outcome (ADR-0057). Authenticated completion and
+   cancellation evidence are admitted without assigning the run or promoting runtime truth, but no
+   production composition supplies streams. Validation against a real authenticated Codex process
+   remains approval- and provisioning-gated.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

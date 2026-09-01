@@ -22,6 +22,7 @@ import {
 import { createCodexAuthenticatedRegistrationCandidate } from './codex-authenticated-registration';
 import { createCodexCapabilityExchangeCandidate } from './codex-capability-exchange';
 import { createCodexHeartbeatEvidenceCandidate } from './codex-heartbeat';
+import { validateCodexValidationCancellationCandidate } from './codex-validation-cancellation';
 import {
   codexValidationDispatchUnsignedEnvelope,
   createCodexValidationDispatchCandidate,
@@ -356,7 +357,7 @@ describe('bounded Codex validation runtime adapter', () => {
     }
   });
 
-  it('correlates cancellation through the process and emits no bridge result', async () => {
+  it('correlates cancellation through the process and emits one authenticated cancellation', async () => {
     const input = fixture();
     const controller = new AbortController();
     const bridgeTransport = new RecordingTransport();
@@ -375,11 +376,46 @@ describe('bounded Codex validation runtime adapter', () => {
     );
 
     try {
-      await expect(subject.execute(input, { signal: controller.signal })).rejects.toMatchObject({
-        code: 'CANCELLED',
+      const result = await subject.execute(input, { signal: controller.signal });
+      expect(result).toMatchObject({
+        dispatchId: input.dispatch.dispatchId,
+        cancellationSequence: 2,
+        interruptRequestId: 4,
+        resultCode: 'VALIDATION_CANCELLED',
+        terminalState: 'INTERRUPTED',
+        providerAccess: 'NOT_CONFIGURED',
+        runtimeConnection: 'NOT_CONFIGURED',
+        connectionTransition: 'NOT_APPLIED',
       });
+      if (!('interruptResponseHash' in result)) throw new Error('cancellation evidence required');
+      expect(validateCodexValidationCancellationCandidate(result)).toEqual(result);
+      expect(() =>
+        validateCodexValidationCancellationCandidate({
+          ...result,
+          interruptResponseHash: 'f'.repeat(64),
+        }),
+      ).toThrow();
       expect(controller.signal.aborted).toBe(true);
-      expect(bridgeTransport.frames).toHaveLength(0);
+      expect(bridgeTransport.frames.map((frame) => [frame.sequence, frame.type])).toEqual([
+        [2, 'CANCELLED'],
+      ]);
+      expect(bridgeTransport.frames[0]?.payload).toMatchObject({
+        dispatchId: input.dispatch.dispatchId,
+        interruptRequestId: 4,
+        interruptResponseHash: result.interruptResponseHash,
+        terminalStatus: 'interrupted',
+      });
+      const keys = deriveBridgeKeys(secret, input.bridge);
+      expect(() =>
+        verifyBridgeEnvelope(
+          bridgeTransport.frames[0]!,
+          keys.runtimeToParent,
+          input.bridge,
+          new Date(now),
+        ),
+      ).not.toThrow();
+      keys.parentToRuntime.fill(0);
+      keys.runtimeToParent.fill(0);
       expect(stdio.snapshot()).toMatchObject({
         state: 'ACTIVE',
         runtimeConnection: 'NOT_CONFIGURED',

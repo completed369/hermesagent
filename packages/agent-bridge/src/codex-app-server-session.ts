@@ -54,6 +54,16 @@ export interface CodexTerminalEvidence {
   readonly runtimeConnection: 'NOT_CONFIGURED';
 }
 
+export interface CodexInterruptEvidence {
+  readonly interruptRequestId: number;
+  readonly interruptResponseHash: string;
+}
+
+export interface CodexCancellationTerminalEvidence
+  extends CodexTerminalEvidence, CodexInterruptEvidence {
+  readonly status: 'interrupted';
+}
+
 type JsonRecord = Record<string, unknown>;
 
 function record(value: unknown): JsonRecord {
@@ -338,13 +348,18 @@ export class CodexAppServerProtocolSession {
     return freeze(message);
   }
 
-  acceptInterruptResponse(input: unknown): void {
-    this.#admit(() => {
+  acceptInterruptResponse(input: unknown): Readonly<CodexInterruptEvidence> {
+    return this.#admit(() => {
       this.#require('INTERRUPT_PENDING');
       const response = this.#response(input);
       exact(response.result, []);
+      const evidence = freeze({
+        interruptRequestId: requestId(response.id),
+        interruptResponseHash: createHash('sha256').update(canonicalJson(input)).digest('hex'),
+      });
       this.#pendingId = null;
       this.#state = 'INTERRUPT_ACKNOWLEDGED';
+      return evidence;
     });
   }
 

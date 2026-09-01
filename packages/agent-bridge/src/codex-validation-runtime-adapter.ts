@@ -8,14 +8,25 @@ import {
 } from './auth';
 import type { AuthenticatedJsonlSessionContext } from './authenticated-jsonl-session';
 import { canonicalJson, encodeBridgeLine, validateBridgeEnvelope } from './codec';
-import type { CodexTerminalEvidence } from './codex-app-server-session';
+import type {
+  CodexCancellationTerminalEvidence,
+  CodexTerminalEvidence,
+} from './codex-app-server-session';
 import {
   CODEX_VALIDATION_CHALLENGE,
   codexValidationDispatchPayload,
   validateCodexValidationDispatchCandidate,
   type CodexValidationDispatchCandidate,
 } from './codex-validation-dispatch';
-import type { CodexValidationProtocolRunOptions } from './codex-validation-protocol-runner';
+import type {
+  CodexValidationProtocolEvidence,
+  CodexValidationProtocolRunOptions,
+} from './codex-validation-protocol-runner';
+import {
+  CODEX_VALIDATION_CANCELLATION_RESULT_CODE,
+  createCodexValidationCancellationCandidate,
+  type CodexValidationCancellationCandidate,
+} from './codex-validation-cancellation';
 import {
   CODEX_VALIDATION_RESULT_CODE,
   createCodexValidationRoundTripCandidate,
@@ -44,7 +55,7 @@ export interface CodexValidationRuntimeProtocolRunner {
   run(
     dispatch: unknown,
     options?: Readonly<CodexValidationProtocolRunOptions>,
-  ): Promise<Readonly<CodexTerminalEvidence>>;
+  ): Promise<Readonly<CodexValidationProtocolEvidence>>;
 }
 
 export interface CodexValidationRuntimeAdapterInput {
@@ -167,20 +178,47 @@ function validateBridge(input: unknown): ValidatedBridge {
   });
 }
 
-function validateTerminal(input: unknown): Readonly<CodexTerminalEvidence> {
-  const terminal = exactRecord(input, [
-    'messageHash',
-    'runtimeConnection',
-    'status',
-    'threadId',
-    'turnId',
-  ]);
+function validateTerminal(
+  input: unknown,
+): Readonly<CodexTerminalEvidence | CodexCancellationTerminalEvidence> {
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
+  const status = (input as Record<string, unknown>).status;
+  const terminal = exactRecord(
+    input,
+    status === 'interrupted'
+      ? [
+          'interruptRequestId',
+          'interruptResponseHash',
+          'messageHash',
+          'runtimeConnection',
+          'status',
+          'threadId',
+          'turnId',
+        ]
+      : ['messageHash', 'runtimeConnection', 'status', 'threadId', 'turnId'],
+  );
   const threadId = reference(terminal.threadId);
   const turnId = reference(terminal.turnId);
   const messageHash = digest(terminal.messageHash);
   if (terminal.runtimeConnection !== 'NOT_CONFIGURED')
     throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
-  if (terminal.status === 'interrupted') throw new CodexValidationRuntimeAdapterError('CANCELLED');
+  if (terminal.status === 'interrupted') {
+    if (
+      !Number.isSafeInteger(terminal.interruptRequestId) ||
+      (terminal.interruptRequestId as number) < 1
+    )
+      throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
+    return Object.freeze({
+      threadId,
+      turnId,
+      status: 'interrupted',
+      messageHash,
+      interruptRequestId: terminal.interruptRequestId as number,
+      interruptResponseHash: digest(terminal.interruptResponseHash),
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+  }
   if (terminal.status !== 'completed')
     throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
   return Object.freeze({
@@ -332,6 +370,43 @@ function createUnsignedRuntimeEnvelope(
   });
 }
 
+function createUnsignedCancellationEnvelope(
+  dispatch: Readonly<CodexValidationDispatchCandidate>,
+  bridge: ValidatedBridge,
+  terminal: Readonly<CodexCancellationTerminalEvidence>,
+  issuedAt: string,
+  expiresAt: string,
+): Omit<BridgeEnvelope, 'mac'> {
+  const payload = Object.freeze({
+    challengeCode: CODEX_VALIDATION_CHALLENGE,
+    dispatchId: dispatch.dispatchId,
+    taskId: dispatch.taskId,
+    runId: dispatch.runId,
+    resultCode: CODEX_VALIDATION_CANCELLATION_RESULT_CODE,
+    interruptRequestId: terminal.interruptRequestId,
+    interruptResponseHash: terminal.interruptResponseHash,
+    terminalThreadId: terminal.threadId,
+    terminalTurnId: terminal.turnId,
+    terminalMessageHash: terminal.messageHash,
+    terminalStatus: 'interrupted',
+  });
+  return Object.freeze({
+    protocolVersion: BRIDGE_PROTOCOL_VERSION,
+    workspaceId: bridge.workspaceId,
+    runtimeId: bridge.runtimeId,
+    connectionId: bridge.connectionId,
+    sessionId: bridge.sessionId,
+    principalReference: bridge.principalReference,
+    sequence: 2,
+    messageId: `validation-cancelled:${hash(dispatch.dispatchId).slice(0, 32)}`,
+    type: 'CANCELLED',
+    issuedAt,
+    expiresAt,
+    payloadDigest: digestBridgePayload(payload),
+    payload,
+  });
+}
+
 /**
  * Runtime-side boundary for one authenticated, zero-cost Codex validation.
  * It cannot launch a process, resolve provider credentials, or promote runtime truth.
@@ -350,7 +425,7 @@ export class BoundedCodexValidationRuntimeAdapter {
   async execute(
     input: Readonly<CodexValidationRuntimeAdapterInput>,
     options: Readonly<CodexValidationRuntimeAdapterOptions> = {},
-  ): Promise<Readonly<CodexValidationRoundTripCandidate>> {
+  ): Promise<Readonly<CodexValidationRoundTripCandidate | CodexValidationCancellationCandidate>> {
     let dispatch: Readonly<CodexValidationDispatchCandidate>;
     let bridge: ValidatedBridge;
     try {
@@ -402,6 +477,36 @@ export class BoundedCodexValidationRuntimeAdapter {
           ? { signal: options.signal }
           : { signal: options.signal, timeoutMs: Math.min(options.timeoutMs, runRemaining) };
       const terminal = validateTerminal(await this.runner.run(dispatch, runOptions));
+      if (terminal.status === 'interrupted') {
+        const cancellation = terminal as Readonly<CodexCancellationTerminalEvidence>;
+        const cancellationAt = this.authorizedTimestamp(deadline);
+        const evidenceExpiresAt = new Date(deadline).toISOString();
+        const cancellationEnvelope = await this.withSecret(bridge, 'SIGN_FRAME', (secret) => {
+          const keys = deriveBridgeKeys(secret, bridge);
+          try {
+            return signBridgeEnvelope(
+              createUnsignedCancellationEnvelope(
+                dispatch,
+                bridge,
+                cancellation,
+                cancellationAt,
+                evidenceExpiresAt,
+              ),
+              keys.runtimeToParent,
+            );
+          } finally {
+            keys.parentToRuntime.fill(0);
+            keys.runtimeToParent.fill(0);
+          }
+        });
+        await this.write(dispatch, cancellationEnvelope, deadline, undefined);
+        return createCodexValidationCancellationCandidate({
+          dispatch,
+          bridge,
+          terminal: cancellation,
+          cancellationEnvelope,
+        });
+      }
       const statusAt = this.authorizedTimestamp(deadline);
       const terminalAt = this.authorizedTimestamp(deadline, statusAt);
       const evidenceExpiresAt = new Date(deadline).toISOString();

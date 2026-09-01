@@ -30,6 +30,7 @@ import {
   codexValidationDispatchUnsignedEnvelope,
   createCodexCapabilityExchangeAuthorizationRequest,
   createCodexHeartbeatEvidenceCandidate,
+  createCodexValidationCancellationCandidate,
   createCodexValidationRoundTripCandidate,
   createCodexRegistrationAuthorizationRequest,
   createCodexValidationDispatchAuthorizationRequest,
@@ -43,6 +44,7 @@ import {
   validateCodexValidationDispatchAuthorizationDecision,
   validateCodexValidationDispatchCandidate,
   validateCodexHeartbeatEvidenceCandidate,
+  validateCodexValidationCancellationCandidate,
   validateCodexValidationRoundTripCandidate,
   type AuthenticatedJsonlSessionContext,
   type BridgeArtifactContentVerifier,
@@ -57,6 +59,8 @@ import {
   type CodexCapabilityExchangeCandidate,
   type CodexRegistrationAuthorizationSource,
   type CodexHeartbeatEvidenceCandidate,
+  type CodexCancellationTerminalEvidence,
+  type CodexValidationCancellationCandidate,
   type CodexValidationDispatchAuthorizationSource,
   type CodexValidationDispatchCandidate,
   type CodexTerminalEvidence,
@@ -259,6 +263,46 @@ interface CodexValidationRoundTripEvidenceRow {
   readonly createdAt: Date;
 }
 
+interface CodexValidationCancellationEvidenceRow {
+  readonly workspaceId: string;
+  readonly cancellationCandidateHash: string;
+  readonly handoffAttemptId: string;
+  readonly validationDispatchCandidateHash: string;
+  readonly heartbeatCandidateHash: string;
+  readonly runtimeId: string;
+  readonly connectionId: string;
+  readonly sessionId: string;
+  readonly principalReference: string;
+  readonly adapterKind: string;
+  readonly authGeneration: number;
+  readonly dispatchId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly authorityLevel: number;
+  readonly taskPolicyHash: string;
+  readonly maximumCostMinorUnits: number;
+  readonly cancellationSequence: number;
+  readonly cancellationMessageId: string;
+  readonly interruptRequestId: number;
+  readonly interruptResponseHash: string;
+  readonly terminalThreadId: string;
+  readonly terminalTurnId: string;
+  readonly terminalMessageHash: string;
+  readonly cancellationPayloadDigest: string;
+  readonly cancellationEnvelopeDigest: string;
+  readonly cancellationAuthenticationTagDigest: string;
+  readonly cancellationIssuedAt: Date;
+  readonly cancellationExpiresAt: Date;
+  readonly resultCode: string;
+  readonly terminalState: string;
+  readonly providerAccess: string;
+  readonly runtimeConnection: string;
+  readonly connectionTransition: string;
+  readonly cancellationIdempotencyKey: string;
+  readonly createdAt: Date;
+}
+
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
 const CAPABILITY_OWNER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
@@ -405,6 +449,15 @@ export interface AcceptCodexValidationRoundTripEvidenceInput {
   readonly terminal: Readonly<CodexTerminalEvidence>;
   readonly statusEnvelope: Readonly<BridgeEnvelope>;
   readonly terminalEnvelope: Readonly<BridgeEnvelope>;
+  readonly idempotencyKey: string;
+}
+
+export interface AcceptCodexValidationCancellationEvidenceInput {
+  readonly handoffAttemptId: string;
+  readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
+  readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
+  readonly terminal: Readonly<CodexCancellationTerminalEvidence>;
+  readonly cancellationEnvelope: Readonly<BridgeEnvelope>;
   readonly idempotencyKey: string;
 }
 
@@ -1963,6 +2016,354 @@ export class AcpBridgeAdmissionService
   }
 
   /**
+   * Admits one authenticated interrupt acknowledgement and interrupted terminal
+   * for a claimed validation handoff. This burns no new authority, assigns no
+   * run, and cannot transition runtime or connection truth.
+   */
+  async acceptCodexValidationCancellationEvidence(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: AcceptCodexValidationCancellationEvidenceInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    auditSubjectReference(input.handoffAttemptId, 'handoffAttemptId');
+    publicReference(input.idempotencyKey, 'idempotencyKey');
+    let candidate: Readonly<CodexValidationCancellationCandidate>;
+    try {
+      candidate = validateCodexValidationCancellationCandidate(
+        createCodexValidationCancellationCandidate({
+          dispatch: input.dispatch,
+          bridge: input.bridge,
+          terminal: input.terminal,
+          cancellationEnvelope: input.cancellationEnvelope,
+        }),
+      );
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Codex validation cancellation evidence is invalid');
+    }
+    if (candidate.workspaceId !== context.workspaceId)
+      throw new AcpBridgeAdmissionDeniedError('Codex validation cancellation crossed workspace');
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "acp_codex_validation_egress_handoff_attempts" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.handoffAttemptId} FOR UPDATE`,
+          );
+          const [handoffRows, dispatchRows, existingRows, completedRows] = await Promise.all([
+            tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_egress_handoff_attempts"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "id"=${input.handoffAttemptId}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_dispatch_evidence"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "validationDispatchCandidateHash"=${candidate.validationDispatchCandidateHash}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationCancellationEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_cancellation_evidence"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND (
+                  "cancellationCandidateHash"=${candidate.cancellationCandidateHash}
+                  OR "handoffAttemptId"=${input.handoffAttemptId}
+                  OR "cancellationIdempotencyKey"=${input.idempotencyKey}
+                  OR ("sessionId"=${candidate.sessionId}
+                    AND "cancellationMessageId"=${candidate.cancellationMessageId})
+                )
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationRoundTripEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_round_trip_evidence"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND (
+                  "handoffAttemptId"=${input.handoffAttemptId}
+                  OR ("sessionId"=${candidate.sessionId}
+                    AND (
+                      "statusMessageId"=${candidate.cancellationMessageId}
+                      OR "terminalMessageId"=${candidate.cancellationMessageId}
+                    ))
+                )
+              FOR SHARE
+            `),
+          ]);
+          const handoff = handoffRows[0];
+          const dispatch = dispatchRows[0];
+          if (!handoff || !dispatch)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex validation handoff or dispatch evidence not found',
+            );
+          if (completedRows.length > 0)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation handoff or message already has completed evidence',
+            );
+          const [connection, run, now] = await Promise.all([
+            tx.acpRuntimeConnection.findUnique({
+              where: {
+                workspaceId_id: { workspaceId: context.workspaceId, id: candidate.connectionId },
+              },
+              include: { runtime: true },
+            }),
+            tx.acpRun.findUnique({
+              where: { workspaceId_id: { workspaceId: context.workspaceId, id: candidate.runId } },
+              include: { task: { include: { objective: true } } },
+            }),
+            databaseNow(tx),
+          ]);
+          if (!connection || !run)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex validation cancellation durable state not found',
+            );
+          const routingPolicy = run.task.routingPolicy as Record<string, unknown>;
+          const agentPolicy = run.task.agentPolicy as Record<string, unknown>;
+          if (
+            !routingPolicy ||
+            typeof routingPolicy !== 'object' ||
+            Array.isArray(routingPolicy) ||
+            JSON.stringify(Object.keys(routingPolicy).sort()) !==
+              JSON.stringify(['capabilityId', 'maximumLatencyMs']) ||
+            !agentPolicy ||
+            typeof agentPolicy !== 'object' ||
+            Array.isArray(agentPolicy) ||
+            JSON.stringify(Object.keys(agentPolicy).sort()) !==
+              JSON.stringify(['scopes', 'templateId']) ||
+            handoff.validationDispatchCandidateHash !== candidate.validationDispatchCandidateHash ||
+            handoff.heartbeatCandidateHash !== candidate.heartbeatCandidateHash ||
+            handoff.ownerReference !== context.principalId ||
+            handoff.ownerActorKind !== actorKind ||
+            handoff.generation !== 1 ||
+            handoff.state !== 'CLAIMED' ||
+            handoff.runtimeId !== candidate.runtimeId ||
+            handoff.connectionId !== candidate.connectionId ||
+            handoff.sessionId !== candidate.sessionId ||
+            handoff.dispatchId !== candidate.dispatchId ||
+            handoff.taskId !== candidate.taskId ||
+            handoff.runId !== candidate.runId ||
+            handoff.agentId !== candidate.agentId ||
+            handoff.authorityLevel !== candidate.authorityLevel ||
+            handoff.taskPolicyHash !== candidate.taskPolicyHash ||
+            handoff.maximumCostMinorUnits !== 0 ||
+            handoff.outboundSequence !== 1 ||
+            handoff.validationIssuedAt.toISOString() !== input.dispatch.issuedAt ||
+            handoff.validationExpiresAt.toISOString() !== input.dispatch.expiresAt ||
+            candidate.cancellationIssuedAt < handoff.claimedAt.toISOString() ||
+            candidate.cancellationIssuedAt > handoff.expiresAt.toISOString() ||
+            candidate.cancellationExpiresAt > handoff.validationExpiresAt.toISOString() ||
+            dispatch.validationDispatchCandidateHash !==
+              candidate.validationDispatchCandidateHash ||
+            dispatch.heartbeatCandidateHash !== candidate.heartbeatCandidateHash ||
+            dispatch.runtimeId !== candidate.runtimeId ||
+            dispatch.connectionId !== candidate.connectionId ||
+            dispatch.sessionId !== candidate.sessionId ||
+            dispatch.principalReference !== candidate.principalReference ||
+            dispatch.authGeneration !== candidate.authGeneration ||
+            dispatch.dispatchId !== candidate.dispatchId ||
+            dispatch.taskId !== candidate.taskId ||
+            dispatch.runId !== candidate.runId ||
+            dispatch.agentId !== candidate.agentId ||
+            dispatch.authorityLevel !== candidate.authorityLevel ||
+            dispatch.taskPolicyHash !== candidate.taskPolicyHash ||
+            dispatch.maximumCostMinorUnits !== 0 ||
+            dispatch.challengeCode !== CODEX_VALIDATION_CHALLENGE ||
+            dispatch.expiresAt <= now ||
+            connection.runtimeId !== candidate.runtimeId ||
+            connection.runtime.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
+            connection.runtime.status !== 'NOT_CONFIGURED' ||
+            connection.runtime.secretReference !== input.bridge.secretReference ||
+            connection.runtime.secretDigest !== input.bridge.expectedSecretDigest ||
+            connection.status !== 'NOT_CONFIGURED' ||
+            connection.authGeneration !== 1 ||
+            connection.capabilityCodes.length !== 0 ||
+            connection.capabilityDigest !== null ||
+            connection.lastHeartbeatAt !== null ||
+            connection.lastHeartbeatHealth !== null ||
+            connection.lastHeartbeatSequence !== null ||
+            run.taskId !== candidate.taskId ||
+            run.objectiveId !== run.task.objectiveId ||
+            run.status !== 'PREPARED' ||
+            run.task.status !== 'READY' ||
+            run.task.kind !== 'quality.verify' ||
+            run.requiredAuthority !== candidate.authorityLevel ||
+            run.task.requiredAuthority !== candidate.authorityLevel ||
+            run.policyHash !== candidate.taskPolicyHash ||
+            run.task.policyHash !== candidate.taskPolicyHash ||
+            run.policyVersion !== run.task.policyVersion ||
+            run.task.maximumCostMinorUnits !== 0n ||
+            run.task.maximumComputeUnits !== BigInt(dispatch.maximumComputeUnits) ||
+            run.task.estimatedDurationMs !== BigInt(dispatch.maximumDurationMs) ||
+            run.task.objective.status !== 'ACTIVE' ||
+            run.task.objective.maximumAuthority < candidate.authorityLevel ||
+            run.task.objective.maximumCostMinorUnits !== 0n ||
+            run.task.objective.maximumComputeUnits < BigInt(dispatch.maximumComputeUnits) ||
+            run.assignedAgentId !== null ||
+            run.assignedRuntimeId !== null ||
+            run.assignedConnectionId !== null ||
+            run.task.assignedAgentId !== null ||
+            run.task.assignedRuntimeId !== null ||
+            run.task.assignedConnectionId !== null ||
+            routingPolicy.capabilityId !== CODEX_VALIDATION_CHALLENGE ||
+            routingPolicy.maximumLatencyMs !== dispatch.maximumDurationMs ||
+            agentPolicy.templateId !== 'codex-runtime-validator' ||
+            !Array.isArray(agentPolicy.scopes) ||
+            JSON.stringify(agentPolicy.scopes) !== JSON.stringify([CODEX_VALIDATION_CHALLENGE])
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation cancellation durable authority is not live',
+            );
+
+          await this.withSecretLease(
+            {
+              workspaceId: context.workspaceId,
+              runtimeId: candidate.runtimeId,
+              connectionId: candidate.connectionId,
+              secretReference: input.bridge.secretReference,
+              expectedDigest: input.bridge.expectedSecretDigest,
+              authGeneration: 1,
+              purpose: 'VERIFY_FRAME',
+            },
+            (secret) => {
+              const keys = deriveBridgeKeys(secret, input.bridge);
+              try {
+                verifyBridgeEnvelope(
+                  input.cancellationEnvelope,
+                  keys.runtimeToParent,
+                  input.bridge,
+                  now,
+                );
+              } catch {
+                throw new AcpBridgeAdmissionDeniedError(
+                  'Codex validation cancellation frame authentication failed',
+                );
+              } finally {
+                keys.parentToRuntime.fill(0);
+                keys.runtimeToParent.fill(0);
+              }
+            },
+          );
+
+          const existingByCandidate = existingRows.find(
+            (row) => row.cancellationCandidateHash === candidate.cancellationCandidateHash,
+          );
+          const existingByHandoff = existingRows.find(
+            (row) => row.handoffAttemptId === input.handoffAttemptId,
+          );
+          const existingByKey = existingRows.find(
+            (row) => row.cancellationIdempotencyKey === input.idempotencyKey,
+          );
+          const existing = existingByCandidate ?? existingByHandoff ?? existingByKey;
+          if (existing) {
+            if (
+              existingByCandidate?.cancellationIdempotencyKey !== input.idempotencyKey ||
+              existingByHandoff?.cancellationCandidateHash !==
+                candidate.cancellationCandidateHash ||
+              existingByKey?.cancellationCandidateHash !== candidate.cancellationCandidateHash ||
+              existing.handoffAttemptId !== input.handoffAttemptId
+            )
+              throw new AcpBridgeAdmissionConflictError(
+                'Codex validation cancellation replay drifted',
+              );
+            return Object.freeze({
+              runtime: connection.runtime,
+              connection,
+              run,
+              evidence: Object.freeze({ ...existing, schemaVersion: 1 as const }),
+              replayed: true,
+            });
+          }
+          if (existingRows.length > 0)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation cancellation message identity was already used',
+            );
+
+          const [evidence] = await tx.$queryRaw<
+            CodexValidationCancellationEvidenceRow[]
+          >(Prisma.sql`
+              INSERT INTO "acp_codex_validation_cancellation_evidence" (
+                "workspaceId", "cancellationCandidateHash", "handoffAttemptId",
+                "validationDispatchCandidateHash", "heartbeatCandidateHash", "runtimeId",
+                "connectionId", "sessionId", "principalReference", "adapterKind",
+                "authGeneration", "dispatchId", "taskId", "runId", "agentId",
+                "authorityLevel", "taskPolicyHash", "maximumCostMinorUnits",
+                "cancellationSequence", "cancellationMessageId", "interruptRequestId",
+                "interruptResponseHash", "terminalThreadId", "terminalTurnId",
+                "terminalMessageHash", "cancellationPayloadDigest",
+                "cancellationEnvelopeDigest", "cancellationAuthenticationTagDigest",
+                "cancellationIssuedAt", "cancellationExpiresAt", "resultCode",
+                "terminalState", "providerAccess", "runtimeConnection",
+                "connectionTransition", "cancellationIdempotencyKey"
+              ) VALUES (
+                CAST(${context.workspaceId} AS uuid), ${candidate.cancellationCandidateHash},
+                ${input.handoffAttemptId}, ${candidate.validationDispatchCandidateHash},
+                ${candidate.heartbeatCandidateHash}, ${candidate.runtimeId},
+                ${candidate.connectionId}, ${candidate.sessionId},
+                ${candidate.principalReference}, ${candidate.adapterKind},
+                ${candidate.authGeneration}, ${candidate.dispatchId}, ${candidate.taskId},
+                ${candidate.runId}, ${candidate.agentId}, ${candidate.authorityLevel},
+                ${candidate.taskPolicyHash}, ${candidate.maximumCostMinorUnits},
+                ${candidate.cancellationSequence}, ${candidate.cancellationMessageId},
+                ${candidate.interruptRequestId}, ${candidate.interruptResponseHash},
+                ${candidate.terminalThreadId}, ${candidate.terminalTurnId},
+                ${candidate.terminalMessageHash}, ${candidate.cancellationPayloadDigest},
+                ${candidate.cancellationEnvelopeDigest},
+                ${candidate.cancellationAuthenticationTagDigest},
+                ${new Date(candidate.cancellationIssuedAt)},
+                ${new Date(candidate.cancellationExpiresAt)}, ${candidate.resultCode},
+                ${candidate.terminalState}, ${candidate.providerAccess},
+                ${candidate.runtimeConnection}, ${candidate.connectionTransition},
+                ${input.idempotencyKey}
+              ) RETURNING *
+            `);
+          if (!evidence)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation cancellation evidence was not stored',
+            );
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'run.progress',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpCodexValidationCancellationEvidence',
+              subjectId: evidence.cancellationCandidateHash,
+              occurredAt: now.toISOString(),
+              idempotencyKey: `${input.idempotencyKey}:event`,
+              correlationId: candidate.runId,
+              facts: { payloadFieldCount: 0, payloadBytes: 0 },
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          return Object.freeze({
+            runtime: connection.runtime,
+            connection,
+            run,
+            evidence: Object.freeze({ ...evidence, schemaVersion: 1 as const }),
+            replayed: false,
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && error.meta?.code === '23505'))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex validation cancellation conflict',
+        );
+      throw error;
+    }
+  }
+
+  /**
    * Admits the authenticated status/result pair for a claimed validation handoff.
    * This is evidence only: it deliberately does not assign the prepared run or
    * transition runtime/connection truth.
@@ -1998,7 +2399,7 @@ export class AcpBridgeAdmissionService
           await tx.$queryRaw(
             Prisma.sql`SELECT "id" FROM "acp_codex_validation_egress_handoff_attempts" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.handoffAttemptId} FOR UPDATE`,
           );
-          const [handoffRows, dispatchRows, existingRows] = await Promise.all([
+          const [handoffRows, dispatchRows, existingRows, cancellationRows] = await Promise.all([
             tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_egress_handoff_attempts"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
@@ -2023,12 +2424,28 @@ export class AcpBridgeAdmissionService
                 )
               FOR SHARE
             `),
+            tx.$queryRaw<CodexValidationCancellationEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_cancellation_evidence"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND (
+                  "handoffAttemptId"=${input.handoffAttemptId}
+                  OR ("sessionId"=${candidate.sessionId}
+                    AND "cancellationMessageId" IN (
+                      ${candidate.statusMessageId}, ${candidate.terminalMessageId}
+                    ))
+                )
+              FOR SHARE
+            `),
           ]);
           const handoff = handoffRows[0];
           const dispatch = dispatchRows[0];
           if (!handoff || !dispatch)
             throw new AcpBridgeAdmissionNotFoundError(
               'Codex validation handoff or dispatch evidence not found',
+            );
+          if (cancellationRows.length > 0)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation handoff or message already has cancellation evidence',
             );
           const [connection, run, now] = await Promise.all([
             tx.acpRuntimeConnection.findUnique({

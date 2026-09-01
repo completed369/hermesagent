@@ -178,7 +178,10 @@ describe('Codex app-server protocol session', () => {
       id: 4,
       params: { threadId: 'thr_123', turnId: 'turn_456' },
     });
-    session.acceptInterruptResponse({ id: 4, result: {} });
+    expect(session.acceptInterruptResponse({ id: 4, result: {} })).toMatchObject({
+      interruptRequestId: 4,
+      interruptResponseHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
     expect(session.snapshot().state).toBe('INTERRUPT_ACKNOWLEDGED');
     expect(session.snapshot().terminalStatus).toBeNull();
     expect(() => session.interrupt()).toThrow(expect.objectContaining({ code: 'INVALID_STATE' }));
