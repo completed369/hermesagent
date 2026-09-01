@@ -162,9 +162,11 @@
 > version skips, broken hash links, equivocation, stale roots, and revocation.
 > The supervisor reads that source before preparation and again immediately
 > before native handoff (ADR-0052); the API supplies only its deny implementation.
-> No positive snapshot reader, durable
-> checkpoint backend, root provisioning, signer registry, or live revocation
-> publisher is configured pending reviewed authority and native
+> PostgreSQL snapshot-reader and atomic checkpoint adapters now exist with
+> immutable snapshot rows and append-only checkpoint-transition audit evidence
+> (ADR-0053), but are not composed. No root provisioning, signer registry,
+> snapshot publication procedure, or live revocation publisher is configured
+> pending reviewed authority and native
 > owner/reparse-point/handle designs.
 
 > The supervisor composition issues a deeply frozen, non-serializable in-process

@@ -1090,6 +1090,68 @@ test('executable trust snapshots are authenticated, anti-rollback, and unconfigu
   assert.doesNotMatch(module, /BoundedLinuxExecutableAuthorityTrustSource/u);
 });
 
+test('durable executable trust state is exact, atomic, audited, and uncomposed', () => {
+  const adapter = readFileSync(
+    'apps/api/src/modules/agent-control-plane/executable-authority-trust-state.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260901040000_executable_authority_trust_state/migration.sql',
+    'utf8',
+  );
+  const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const integration = readFileSync(
+    'apps/api/test/executable-authority-trust-state.integration.spec.ts',
+    'utf8',
+  );
+
+  assert.match(adapter, /implements LinuxExecutableAuthorityTrustSnapshotReader/u);
+  assert.match(adapter, /implements LinuxExecutableAuthorityTrustCheckpointStore/u);
+  assert.match(adapter, /ORDER BY "snapshotVersion" DESC[\s\S]*LIMIT 1/u);
+  assert.match(adapter, /ON CONFLICT \("signerKeyId"\) DO NOTHING/u);
+  assert.match(
+    adapter,
+    /nextCheckpoint\.snapshotVersion !== expectedCheckpoint\.snapshotVersion \+ 1/u,
+  );
+  assert.match(
+    adapter,
+    /AND "snapshotId" = \$\{expectedCheckpoint\.snapshotId\}[\s\S]*AND "snapshotVersion" = \$\{expectedCheckpoint\.snapshotVersion\}[\s\S]*AND "snapshotHash" = \$\{expectedCheckpoint\.snapshotHash\}/u,
+  );
+  assert.doesNotMatch(
+    adapter,
+    /\bprocess\.(?:env|cwd|platform)\b|\bfetch\s*\(|\$queryRawUnsafe|\$executeRawUnsafe/u,
+  );
+
+  assert.match(migration, /CREATE TABLE "acp_executable_authority_trust_snapshots"/u);
+  assert.match(migration, /CREATE TABLE "acp_executable_authority_trust_checkpoints"/u);
+  assert.match(migration, /CREATE TABLE "acp_executable_authority_trust_checkpoint_events"/u);
+  assert.match(migration, /"snapshot" \?& ARRAY\[/u);
+  assert.match(migration, /"snapshot" - ARRAY\[/u);
+  assert.match(migration, /INTERVAL '15 minutes'/u);
+  assert.match(
+    migration,
+    /FOREIGN KEY \("signerKeyId", "snapshotVersion", "snapshotId", "snapshotHash"\)/u,
+  );
+  assert.match(migration, /NEW\."snapshotVersion" <> OLD\."snapshotVersion" \+ 1/u);
+  assert.match(
+    migration,
+    /AFTER INSERT OR UPDATE[\s\S]*ventureos_audit_executable_authority_trust_checkpoint/u,
+  );
+  assert.match(migration, /trust_snapshots_immutable/u);
+  assert.match(migration, /checkpoint_events_immutable/u);
+  assert.match(schema, /model AcpExecutableAuthorityTrustSnapshot/u);
+  assert.match(schema, /model AcpExecutableAuthorityTrustCheckpoint/u);
+  assert.match(schema, /model AcpExecutableAuthorityTrustCheckpointEvent/u);
+  assert.match(integration, /Promise\.all\(\[/u);
+  assert.match(integration, /expect\(results\.sort\(\)\)\.toEqual\(\[false, true\]\)/u);
+  assert.doesNotMatch(module, /PostgresLinuxExecutableAuthorityTrust/u);
+  assert.match(module, /new DenyLinuxExecutableAuthorityTrustSource\(\)/u);
+});
+
 test('native supervisor evidence stays Linux-test-only and final images deny its fixtures', () => {
   const helper = readFileSync(
     'packages/agent-bridge/test/native/native-supervisor-helper.c',
