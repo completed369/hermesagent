@@ -1630,8 +1630,18 @@ test('Codex process recovery leases are expired-only, exclusive, append-only, an
   assert.match(method, /validateSupervisorProcessBinding/u);
   assert.match(
     method,
-    /workItem:\s+completionRows\.length === 0 && existing\.expiresAt > now\s+\? workItemFor\(existing\)\s+: null/u,
+    /const workItem =\s+completionRows\.length === 0 && existing\.expiresAt > now\s+\? workItemFor\(existing\)\s+: null/u,
   );
+  assert.match(service, /function recoveryDispatchCandidateFromRow/u);
+  assert.match(service, /validateCodexValidationDispatchCandidate/u);
+  assert.match(method, /FOR SHARE OF dispatch/u);
+  assert.match(method, /dispatch: workItem \? recoveryDispatch : null/u);
+  assert.match(method, /dispatch: recoveryDispatch/u);
+  assert.match(
+    method,
+    /recoveryDispatch\.validationDispatchCandidateHash !==\s+claim\.validationDispatchCandidateHash/u,
+  );
+  assert.doesNotMatch(method, /recoveryDispatch\.expiresAt !== claim\.expiresAt/u);
   for (const field of [
     'recoveryLeaseId',
     'recoveryGeneration',
@@ -1735,6 +1745,7 @@ test('Codex recovery completion is lease-bound, cancellation-only, append-only, 
   assert.match(method, /validateCodexValidationProcessSessionRecoveryExitEvidence/u);
   assert.match(method, /reason: 'CANCELLED'/u);
   assert.match(method, /Prisma\.TransactionIsolationLevel\.Serializable/u);
+  assert.doesNotMatch(method, /dispatch\.expiresAt !== workItem\.processExpiresAt/u);
   assert.ok(
     method.indexOf('INSERT INTO "acp_codex_validation_process_session_recovery_exit_evidence"') <
       method.indexOf('INSERT INTO "acp_codex_validation_process_session_completions"'),
@@ -1796,6 +1807,7 @@ test('control-plane Codex recovery completion authority is exact, frozen, and no
   assert.match(authority, /canonicalJson\(requestedWorkItem\) !== canonicalJson\(boundWorkItem\)/u);
   assert.match(authority, /completeCodexValidationProcessSessionRecovery/u);
   assert.match(authority, /runtimeConnection !== 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(authority, /workItem\.processExpiresAt !== dispatch\.expiresAt/u);
   assert.doesNotMatch(authority, /\.\.\.identity|CONNECTED|spawn\s*\(|exec\s*\(|process\.kill/u);
 });
 

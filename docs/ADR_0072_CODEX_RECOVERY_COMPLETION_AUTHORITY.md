@@ -14,7 +14,13 @@ unreviewed runtime-truth transition.
 Add a Level-3 Agent Control Plane factory that snapshots one validated active recovery work item, its
 exact validated dispatch candidate, the workspace/principal context, and one completion idempotency
 key. The factory rejects any mismatch across workspace, runtime, connection, session, dispatch, run,
-dispatch hash, or process-expiry binding.
+or dispatch hash.
+
+The process lease and validation dispatch have deliberately separate expiry clocks: the process claim
+inherits the shorter egress-handoff lease, while the dispatch retains its validation window. The
+canonical dispatch hash binds the complete candidate, including its own issued/expiry timestamps;
+the work item separately binds the process claim timestamps. Recovery therefore compares the two
+authorities by their shared candidate hash and identities, never by equating their expiries.
 
 The returned frozen completion authority accepts only `NOT_CONFIGURED` runtime truth. On every call it
 revalidates the active work item and retained-identity exit evidence, compares the work item with the

@@ -125,6 +125,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > A Level-3 control-plane factory now binds that coordinator completion port to one immutable recovery
 > work item, exact dispatch, caller context, and idempotency identity (ADR-0072). It is not composed
 > with an evidence source or worker and grants no process action or runtime-status transition.
+> Active recovery-lease acquisition now returns the canonical durable dispatch beside the work item
+> from the same serializable transaction, while expired replay returns neither (ADR-0073). This closes
+> restart-time dispatch recovery only; no worker, evidence source, or process action is composed.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned
