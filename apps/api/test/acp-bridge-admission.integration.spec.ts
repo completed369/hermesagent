@@ -23,6 +23,7 @@ import {
   createCodexCapabilityExchangeCandidate,
   createCodexAuthenticatedRegistrationCandidate,
   createCodexHeartbeatEvidenceCandidate,
+  createCodexValidationProcessCleanupEvidence,
   createCodexValidationDispatchCandidate,
   deriveBridgeKeys,
   DenyBridgeSecretLeaseResolver,
@@ -1006,6 +1007,143 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       terminalEnvelope,
       idempotencyKey: `codex-validation-round-trip-${registrationSuffix}`,
     };
+    const processBinding = {
+      schemaVersion: 1 as const,
+      supervisionId: `codex-supervision-${registrationSuffix}`,
+      launchNonce: `codex-launch-${registrationSuffix}`,
+      workspaceId,
+      runtimeId: validationCandidate.runtimeId,
+      connectionId: validationCandidate.connectionId,
+      platform: 'LINUX' as const,
+      manifestHash: '1'.repeat(64),
+      admissionEvidenceHash: '2'.repeat(64),
+      admissionBindingHash: '3'.repeat(64),
+      testOnly: true,
+    };
+    const processClaimId = `codex-process-claim-${registrationSuffix}`;
+    const processClaim = await authorizedBridge.claimCodexValidationProcessSession(
+      capability,
+      { workspaceId, principalId },
+      {
+        claimId: processClaimId,
+        handoffAttemptId: validationHandoffInput.attemptId,
+        dispatch: validationCandidate,
+        binding: processBinding,
+        idempotencyKey: processClaimId,
+      },
+    );
+    expect(processClaim.replayed).toBe(false);
+    expect(processClaim.claim).toMatchObject({
+      state: 'CLAIMED',
+      runtimeConnection: 'NOT_CONFIGURED',
+      supervisionId: processBinding.supervisionId,
+    });
+    expect(
+      (
+        await authorizedBridge.claimCodexValidationProcessSession(
+          capability,
+          { workspaceId, principalId },
+          {
+            claimId: processClaimId,
+            handoffAttemptId: validationHandoffInput.attemptId,
+            dispatch: validationCandidate,
+            binding: processBinding,
+            idempotencyKey: processClaimId,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+    await expect(
+      authorizedBridge.claimCodexValidationProcessSession(
+        capability,
+        { workspaceId, principalId },
+        {
+          claimId: processClaimId,
+          handoffAttemptId: validationHandoffInput.attemptId,
+          dispatch: validationCandidate,
+          binding: { ...processBinding, launchNonce: `drift-${registrationSuffix}` },
+          idempotencyKey: processClaimId,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      authorizedBridge.acceptCodexValidationRoundTripEvidence(
+        capability,
+        { workspaceId, principalId },
+        roundTripInput,
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    const processCloseRequest = {
+      schemaVersion: 1 as const,
+      binding: processBinding,
+      dispatchId: validationCandidate.dispatchId,
+      validationDispatchCandidateHash: validationCandidate.validationDispatchCandidateHash,
+      sessionId: validationCandidate.sessionId,
+      issuedAt: validationCandidate.issuedAt,
+      expiresAt: validationCandidate.expiresAt,
+      runtimeConnection: 'NOT_CONFIGURED' as const,
+      reason: 'COMPLETED' as const,
+    };
+    const processClosedAt = new Date(processClaim.claim.claimedAt.getTime() + 1);
+    const processCleanup = createCodexValidationProcessCleanupEvidence(
+      {
+        schemaVersion: 1,
+        binding: processBinding,
+        dispatchId: validationCandidate.dispatchId,
+        validationDispatchCandidateHash: validationCandidate.validationDispatchCandidateHash,
+        sessionId: validationCandidate.sessionId,
+        processState: 'EXITED',
+        exitCode: 0,
+        signal: null,
+        closedAt: processClosedAt.toISOString(),
+        runtimeConnection: 'NOT_CONFIGURED',
+      },
+      processCloseRequest,
+      processClosedAt,
+    );
+    const processCompletion = await authorizedBridge.completeCodexValidationProcessSession(
+      capability,
+      { workspaceId, principalId },
+      {
+        claimId: processClaimId,
+        dispatch: validationCandidate,
+        cleanup: processCleanup,
+        idempotencyKey: `codex-process-completion-${registrationSuffix}`,
+      },
+    );
+    expect(processCompletion.replayed).toBe(false);
+    expect(processCompletion.completion).toMatchObject({
+      cleanupEvidenceHash: processCleanup.cleanupEvidenceHash,
+      reason: 'COMPLETED',
+      processState: 'EXITED',
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    expect(
+      (
+        await authorizedBridge.completeCodexValidationProcessSession(
+          capability,
+          { workspaceId, principalId },
+          {
+            claimId: processClaimId,
+            dispatch: validationCandidate,
+            cleanup: processCleanup,
+            idempotencyKey: `codex-process-completion-${registrationSuffix}`,
+          },
+        )
+      ).replayed,
+    ).toBe(true);
+    await expect(
+      authorizedBridge.completeCodexValidationProcessSession(
+        capability,
+        { workspaceId, principalId },
+        {
+          claimId: processClaimId,
+          dispatch: validationCandidate,
+          cleanup: { ...processCleanup, cleanupEvidenceHash: 'f'.repeat(64) },
+          idempotencyKey: `codex-process-completion-${registrationSuffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
     const acceptedRoundTrip = await authorizedBridge.acceptCodexValidationRoundTripEvidence(
       capability,
       { workspaceId, principalId },
@@ -1047,6 +1185,14 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
     ).toBe(0);
     expect(JSON.stringify(acceptedRoundTrip.evidence)).not.toContain(statusEnvelope.mac);
     expect(JSON.stringify(acceptedRoundTrip.evidence)).not.toContain(terminalEnvelope.mac);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "acp_codex_validation_process_session_completions"
+        SET "runtimeConnection" = 'CONNECTED'
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "cleanupEvidenceHash" = ${processCleanup.cleanupEvidenceHash}
+      `),
+    ).rejects.toThrow();
     expect(secretLeaseRequests.at(-1)?.purpose).toBe('VERIFY_FRAME');
     expect(
       (
@@ -1346,6 +1492,77 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       cancellationEnvelope,
       idempotencyKey: `codex-validation-cancellation-${registrationSuffix}`,
     };
+    const cancellationProcessBinding = {
+      schemaVersion: 1 as const,
+      supervisionId: `codex-cancellation-supervision-${registrationSuffix}`,
+      launchNonce: `codex-cancellation-launch-${registrationSuffix}`,
+      workspaceId,
+      runtimeId: cancellationDispatch.runtimeId,
+      connectionId: cancellationDispatch.connectionId,
+      platform: 'LINUX' as const,
+      manifestHash: '4'.repeat(64),
+      admissionEvidenceHash: '5'.repeat(64),
+      admissionBindingHash: '6'.repeat(64),
+      testOnly: true,
+    };
+    const cancellationProcessClaimId = `codex-cancellation-process-${registrationSuffix}`;
+    const cancellationProcessClaim = await authorizedBridge.claimCodexValidationProcessSession(
+      capability,
+      { workspaceId, principalId },
+      {
+        claimId: cancellationProcessClaimId,
+        handoffAttemptId: cancellationHandoffId,
+        dispatch: cancellationDispatch,
+        binding: cancellationProcessBinding,
+        idempotencyKey: cancellationProcessClaimId,
+      },
+    );
+    await expect(
+      authorizedBridge.acceptCodexValidationCancellationEvidence(
+        capability,
+        { workspaceId, principalId },
+        cancellationInput,
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    const cancellationProcessClosedAt = new Date(
+      cancellationProcessClaim.claim.claimedAt.getTime() + 1,
+    );
+    const cancellationProcessCleanup = createCodexValidationProcessCleanupEvidence(
+      {
+        schemaVersion: 1,
+        binding: cancellationProcessBinding,
+        dispatchId: cancellationDispatch.dispatchId,
+        validationDispatchCandidateHash: cancellationDispatch.validationDispatchCandidateHash,
+        sessionId: cancellationDispatch.sessionId,
+        processState: 'EXITED',
+        exitCode: null,
+        signal: 'SIGTERM',
+        closedAt: cancellationProcessClosedAt.toISOString(),
+        runtimeConnection: 'NOT_CONFIGURED',
+      },
+      {
+        schemaVersion: 1,
+        binding: cancellationProcessBinding,
+        dispatchId: cancellationDispatch.dispatchId,
+        validationDispatchCandidateHash: cancellationDispatch.validationDispatchCandidateHash,
+        sessionId: cancellationDispatch.sessionId,
+        issuedAt: cancellationDispatch.issuedAt,
+        expiresAt: cancellationDispatch.expiresAt,
+        runtimeConnection: 'NOT_CONFIGURED',
+        reason: 'CANCELLED',
+      },
+      cancellationProcessClosedAt,
+    );
+    await authorizedBridge.completeCodexValidationProcessSession(
+      capability,
+      { workspaceId, principalId },
+      {
+        claimId: cancellationProcessClaimId,
+        dispatch: cancellationDispatch,
+        cleanup: cancellationProcessCleanup,
+        idempotencyKey: `codex-cancellation-process-complete-${registrationSuffix}`,
+      },
+    );
     const acceptedCancellation = await authorizedBridge.acceptCodexValidationCancellationEvidence(
       capability,
       { workspaceId, principalId },

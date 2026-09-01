@@ -45,7 +45,9 @@ import {
   validateCodexValidationDispatchCandidate,
   validateCodexHeartbeatEvidenceCandidate,
   validateCodexValidationCancellationCandidate,
+  validateCodexValidationProcessCleanupEvidence,
   validateCodexValidationRoundTripCandidate,
+  validateSupervisorProcessBinding,
   type AuthenticatedJsonlSessionContext,
   type BridgeArtifactContentVerifier,
   type BridgeBrokerEvidenceVerifier,
@@ -63,9 +65,11 @@ import {
   type CodexValidationCancellationCandidate,
   type CodexValidationDispatchAuthorizationSource,
   type CodexValidationDispatchCandidate,
+  type CodexValidationProcessCleanupEvidence,
   type CodexTerminalEvidence,
   type CodexValidationRoundTripCandidate,
   type CodexValidationUsageObservationEvidence,
+  type SupervisorProcessBinding,
   type TrustedBridgeBrokerEvidence,
 } from '@ventureos/agent-bridge';
 import {
@@ -318,6 +322,52 @@ interface CodexValidationCancellationEvidenceRow {
   readonly createdAt: Date;
 }
 
+interface CodexValidationProcessSessionClaimRow {
+  readonly workspaceId: string;
+  readonly id: string;
+  readonly handoffAttemptId: string;
+  readonly validationDispatchCandidateHash: string;
+  readonly runtimeId: string;
+  readonly connectionId: string;
+  readonly sessionId: string;
+  readonly dispatchId: string;
+  readonly ownerReference: string;
+  readonly ownerActorKind: 'HUMAN' | 'AGENT' | 'SYSTEM';
+  readonly supervisionId: string;
+  readonly launchNonce: string;
+  readonly platform: string;
+  readonly manifestHash: string;
+  readonly admissionEvidenceHash: string;
+  readonly admissionBindingHash: string;
+  readonly testOnly: boolean;
+  readonly state: string;
+  readonly runtimeConnection: string;
+  readonly claimIdempotencyKey: string;
+  readonly claimedAt: Date;
+  readonly expiresAt: Date;
+  readonly createdAt: Date;
+}
+
+interface CodexValidationProcessSessionCompletionRow {
+  readonly workspaceId: string;
+  readonly cleanupEvidenceHash: string;
+  readonly claimId: string;
+  readonly handoffAttemptId: string;
+  readonly validationDispatchCandidateHash: string;
+  readonly runtimeId: string;
+  readonly connectionId: string;
+  readonly sessionId: string;
+  readonly dispatchId: string;
+  readonly reason: 'COMPLETED' | 'CANCELLED';
+  readonly processState: string;
+  readonly exitCode: number | null;
+  readonly signal: string | null;
+  readonly closedAt: Date;
+  readonly runtimeConnection: string;
+  readonly completionIdempotencyKey: string;
+  readonly createdAt: Date;
+}
+
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
 const CAPABILITY_OWNER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
@@ -454,6 +504,21 @@ export interface ClaimCodexValidationEgressHandoffInput {
   readonly attemptId: string;
   readonly validationDispatchCandidateHash: string;
   readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
+  readonly idempotencyKey: string;
+}
+
+export interface ClaimCodexValidationProcessSessionInput {
+  readonly claimId: string;
+  readonly handoffAttemptId: string;
+  readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
+  readonly binding: Readonly<SupervisorProcessBinding>;
+  readonly idempotencyKey: string;
+}
+
+export interface CompleteCodexValidationProcessSessionInput {
+  readonly claimId: string;
+  readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
+  readonly cleanup: Readonly<CodexValidationProcessCleanupEvidence>;
   readonly idempotencyKey: string;
 }
 
@@ -2033,6 +2098,399 @@ export class AcpBridgeAdmissionService
   }
 
   /**
+   * Durably claims one process-session identity before an injected owner may
+   * open runtime streams. This records no launch authority and cannot promote
+   * runtime truth.
+   */
+  async claimCodexValidationProcessSession(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: ClaimCodexValidationProcessSessionInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    auditSubjectReference(input.claimId, 'claimId');
+    auditSubjectReference(input.handoffAttemptId, 'handoffAttemptId');
+    publicReference(input.idempotencyKey, 'idempotencyKey');
+    let dispatch: Readonly<CodexValidationDispatchCandidate>;
+    let binding: Readonly<SupervisorProcessBinding>;
+    try {
+      dispatch = validateCodexValidationDispatchCandidate(input.dispatch);
+      binding = validateSupervisorProcessBinding(input.binding);
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError('Codex validation process-session claim is invalid');
+    }
+    if (
+      dispatch.workspaceId !== context.workspaceId ||
+      binding.workspaceId !== context.workspaceId ||
+      binding.runtimeId !== dispatch.runtimeId ||
+      binding.connectionId !== dispatch.connectionId
+    )
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session claim crossed its durable binding',
+      );
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "acp_codex_validation_egress_handoff_attempts" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.handoffAttemptId} FOR UPDATE`,
+          );
+          const [handoffRows, dispatchRows, existingRows, now] = await Promise.all([
+            tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_egress_handoff_attempts"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "id"=${input.handoffAttemptId}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_dispatch_evidence"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "validationDispatchCandidateHash"=${dispatch.validationDispatchCandidateHash}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationProcessSessionClaimRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_process_session_claims"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND (
+                  "id"=${input.claimId} OR
+                  "handoffAttemptId"=${input.handoffAttemptId} OR
+                  "claimIdempotencyKey"=${input.idempotencyKey} OR
+                  "supervisionId"=${binding.supervisionId}
+                )
+              FOR SHARE
+            `),
+            databaseNow(tx),
+          ]);
+          const handoff = handoffRows[0];
+          const durableDispatch = dispatchRows[0];
+          if (!handoff || !durableDispatch)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex validation handoff or dispatch evidence not found',
+            );
+          if (
+            handoff.validationDispatchCandidateHash !== dispatch.validationDispatchCandidateHash ||
+            handoff.ownerReference !== context.principalId ||
+            handoff.ownerActorKind !== actorKind ||
+            handoff.state !== 'CLAIMED' ||
+            handoff.runtimeId !== dispatch.runtimeId ||
+            handoff.connectionId !== dispatch.connectionId ||
+            handoff.sessionId !== dispatch.sessionId ||
+            handoff.dispatchId !== dispatch.dispatchId ||
+            handoff.expiresAt <= now ||
+            handoff.validationExpiresAt.toISOString() !== dispatch.expiresAt ||
+            durableDispatch.validationDispatchCandidateHash !==
+              dispatch.validationDispatchCandidateHash ||
+            durableDispatch.runtimeId !== dispatch.runtimeId ||
+            durableDispatch.connectionId !== dispatch.connectionId ||
+            durableDispatch.sessionId !== dispatch.sessionId ||
+            durableDispatch.dispatchId !== dispatch.dispatchId ||
+            durableDispatch.expiresAt <= now
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process-session claim authority is not live',
+            );
+
+          const existingById = existingRows.find((row) => row.id === input.claimId);
+          const existingByHandoff = existingRows.find(
+            (row) => row.handoffAttemptId === input.handoffAttemptId,
+          );
+          const existingByKey = existingRows.find(
+            (row) => row.claimIdempotencyKey === input.idempotencyKey,
+          );
+          const existingBySupervision = existingRows.find(
+            (row) => row.supervisionId === binding.supervisionId,
+          );
+          const existing =
+            existingById ?? existingByHandoff ?? existingByKey ?? existingBySupervision;
+          if (existing) {
+            if (
+              existingById?.claimIdempotencyKey !== input.idempotencyKey ||
+              existingByHandoff?.id !== input.claimId ||
+              existingByKey?.id !== input.claimId ||
+              existingBySupervision?.id !== input.claimId ||
+              existing.validationDispatchCandidateHash !==
+                dispatch.validationDispatchCandidateHash ||
+              existing.launchNonce !== binding.launchNonce ||
+              existing.manifestHash !== binding.manifestHash ||
+              existing.admissionEvidenceHash !== binding.admissionEvidenceHash ||
+              existing.admissionBindingHash !== binding.admissionBindingHash
+            )
+              throw new AcpBridgeAdmissionConflictError(
+                'Codex validation process-session claim replay drifted',
+              );
+            return Object.freeze({
+              claim: Object.freeze({ ...existing, schemaVersion: 1 as const }),
+              replayed: true,
+            });
+          }
+          if (existingRows.length > 0)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session identity was already claimed',
+            );
+
+          const [claim] = await tx.$queryRaw<CodexValidationProcessSessionClaimRow[]>(Prisma.sql`
+            INSERT INTO "acp_codex_validation_process_session_claims" (
+              "workspaceId", "id", "handoffAttemptId", "validationDispatchCandidateHash",
+              "runtimeId", "connectionId", "sessionId", "dispatchId", "ownerReference",
+              "ownerActorKind", "supervisionId", "launchNonce", "platform", "manifestHash",
+              "admissionEvidenceHash", "admissionBindingHash", "testOnly", "state",
+              "runtimeConnection", "claimIdempotencyKey", "expiresAt"
+            ) VALUES (
+              CAST(${context.workspaceId} AS uuid), ${input.claimId}, ${input.handoffAttemptId},
+              ${dispatch.validationDispatchCandidateHash}, ${dispatch.runtimeId},
+              ${dispatch.connectionId}, ${dispatch.sessionId}, ${dispatch.dispatchId},
+              ${context.principalId}, ${actorKind}, ${binding.supervisionId},
+              ${binding.launchNonce}, ${binding.platform}, ${binding.manifestHash},
+              ${binding.admissionEvidenceHash}, ${binding.admissionBindingHash},
+              ${binding.testOnly}, 'CLAIMED', 'NOT_CONFIGURED', ${input.idempotencyKey},
+              ${handoff.expiresAt}
+            ) RETURNING *
+          `);
+          if (!claim)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session claim was not stored',
+            );
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'run.progress',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpCodexValidationProcessSessionClaim',
+              subjectId: claim.id,
+              occurredAt: now.toISOString(),
+              idempotencyKey: `${input.idempotencyKey}:event`,
+              correlationId: dispatch.runId,
+              facts: { payloadFieldCount: 0, payloadBytes: 0 },
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          return Object.freeze({
+            claim: Object.freeze({ ...claim, schemaVersion: 1 as const }),
+            replayed: false,
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && error.meta?.code === '23505'))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex validation process-session claim conflict',
+        );
+      throw error;
+    }
+  }
+
+  /** Records exact owner-reported exit evidence before terminal admission. */
+  async completeCodexValidationProcessSession(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: CompleteCodexValidationProcessSessionInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    auditSubjectReference(input.claimId, 'claimId');
+    publicReference(input.idempotencyKey, 'idempotencyKey');
+    let dispatch: Readonly<CodexValidationDispatchCandidate>;
+    let binding: Readonly<SupervisorProcessBinding>;
+    let reason: 'COMPLETED' | 'CANCELLED';
+    let cleanupEvidenceHash: string;
+    try {
+      dispatch = validateCodexValidationDispatchCandidate(input.dispatch);
+      const untrusted = input.cleanup as unknown as Record<string, unknown>;
+      binding = validateSupervisorProcessBinding(untrusted?.binding);
+      digest(untrusted?.cleanupEvidenceHash, 'cleanupEvidenceHash');
+      cleanupEvidenceHash = untrusted.cleanupEvidenceHash;
+      if (untrusted?.reason !== 'COMPLETED' && untrusted?.reason !== 'CANCELLED') throw new Error();
+      reason = untrusted.reason;
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session completion is invalid',
+      );
+    }
+    if (
+      dispatch.workspaceId !== context.workspaceId ||
+      binding.workspaceId !== context.workspaceId ||
+      binding.runtimeId !== dispatch.runtimeId ||
+      binding.connectionId !== dispatch.connectionId
+    )
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session completion crossed its durable binding',
+      );
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "acp_codex_validation_process_session_claims" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.claimId} FOR UPDATE`,
+          );
+          const [claimRows, existingRows, now] = await Promise.all([
+            tx.$queryRaw<CodexValidationProcessSessionClaimRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_process_session_claims"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.claimId}
+              FOR SHARE
+            `),
+            tx.$queryRaw<CodexValidationProcessSessionCompletionRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_process_session_completions"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND (
+                  "claimId"=${input.claimId} OR
+                  "cleanupEvidenceHash"=${cleanupEvidenceHash} OR
+                  "completionIdempotencyKey"=${input.idempotencyKey}
+                )
+              FOR SHARE
+            `),
+            databaseNow(tx),
+          ]);
+          const claim = claimRows[0];
+          if (!claim)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex validation process-session claim not found',
+            );
+          let cleanup: Readonly<CodexValidationProcessCleanupEvidence>;
+          try {
+            cleanup = validateCodexValidationProcessCleanupEvidence(
+              input.cleanup,
+              {
+                schemaVersion: 1,
+                binding,
+                dispatchId: dispatch.dispatchId,
+                validationDispatchCandidateHash: dispatch.validationDispatchCandidateHash,
+                sessionId: dispatch.sessionId,
+                issuedAt: dispatch.issuedAt,
+                expiresAt: dispatch.expiresAt,
+                runtimeConnection: 'NOT_CONFIGURED',
+                reason,
+              },
+              now,
+            );
+          } catch {
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process cleanup evidence is invalid',
+            );
+          }
+          if (
+            claim.ownerReference !== context.principalId ||
+            claim.ownerActorKind !== actorKind ||
+            claim.validationDispatchCandidateHash !== dispatch.validationDispatchCandidateHash ||
+            claim.runtimeId !== dispatch.runtimeId ||
+            claim.connectionId !== dispatch.connectionId ||
+            claim.sessionId !== dispatch.sessionId ||
+            claim.dispatchId !== dispatch.dispatchId ||
+            claim.supervisionId !== binding.supervisionId ||
+            claim.launchNonce !== binding.launchNonce ||
+            claim.platform !== binding.platform ||
+            claim.manifestHash !== binding.manifestHash ||
+            claim.admissionEvidenceHash !== binding.admissionEvidenceHash ||
+            claim.admissionBindingHash !== binding.admissionBindingHash ||
+            claim.testOnly !== binding.testOnly ||
+            cleanup.closedAt < claim.claimedAt.toISOString() ||
+            cleanup.closedAt > claim.expiresAt.toISOString()
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process-session completion does not match its claim',
+            );
+
+          const existingByClaim = existingRows.find((row) => row.claimId === input.claimId);
+          const existingByHash = existingRows.find(
+            (row) => row.cleanupEvidenceHash === cleanup.cleanupEvidenceHash,
+          );
+          const existingByKey = existingRows.find(
+            (row) => row.completionIdempotencyKey === input.idempotencyKey,
+          );
+          const existing = existingByClaim ?? existingByHash ?? existingByKey;
+          if (existing) {
+            if (
+              existingByClaim?.completionIdempotencyKey !== input.idempotencyKey ||
+              existingByHash?.claimId !== input.claimId ||
+              existingByKey?.cleanupEvidenceHash !== cleanup.cleanupEvidenceHash ||
+              existing.reason !== cleanup.reason
+            )
+              throw new AcpBridgeAdmissionConflictError(
+                'Codex validation process-session completion replay drifted',
+              );
+            return Object.freeze({
+              completion: Object.freeze({ ...existing, schemaVersion: 1 as const }),
+              replayed: true,
+            });
+          }
+          if (existingRows.length > 0)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session completion identity was already used',
+            );
+
+          const [completion] = await tx.$queryRaw<
+            CodexValidationProcessSessionCompletionRow[]
+          >(Prisma.sql`
+            INSERT INTO "acp_codex_validation_process_session_completions" (
+              "workspaceId", "cleanupEvidenceHash", "claimId", "handoffAttemptId",
+              "validationDispatchCandidateHash", "runtimeId", "connectionId", "sessionId",
+              "dispatchId", "reason", "processState", "exitCode", "signal", "closedAt",
+              "runtimeConnection", "completionIdempotencyKey"
+            ) VALUES (
+              CAST(${context.workspaceId} AS uuid), ${cleanup.cleanupEvidenceHash}, ${claim.id},
+              ${claim.handoffAttemptId}, ${cleanup.validationDispatchCandidateHash},
+              ${claim.runtimeId}, ${claim.connectionId}, ${cleanup.sessionId},
+              ${cleanup.dispatchId}, ${cleanup.reason}, ${cleanup.processState},
+              ${cleanup.exitCode}, ${cleanup.signal}, ${new Date(cleanup.closedAt)},
+              ${cleanup.runtimeConnection}, ${input.idempotencyKey}
+            ) RETURNING *
+          `);
+          if (!completion)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session completion was not stored',
+            );
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'run.progress',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpCodexValidationProcessSessionCompletion',
+              subjectId: completion.cleanupEvidenceHash,
+              occurredAt: now.toISOString(),
+              idempotencyKey: `${input.idempotencyKey}:event`,
+              correlationId: dispatch.runId,
+              facts: { payloadFieldCount: 0, payloadBytes: 0 },
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          return Object.freeze({
+            completion: Object.freeze({ ...completion, schemaVersion: 1 as const }),
+            replayed: false,
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && error.meta?.code === '23505'))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex validation process-session completion conflict',
+        );
+      throw error;
+    }
+  }
+
+  /**
    * Admits one authenticated interrupt acknowledgement and interrupted terminal
    * for a claimed validation handoff. This burns no new authority, assigns no
    * run, and cannot transition runtime or connection truth.
@@ -2067,20 +2525,21 @@ export class AcpBridgeAdmissionService
           await tx.$queryRaw(
             Prisma.sql`SELECT "id" FROM "acp_codex_validation_egress_handoff_attempts" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.handoffAttemptId} FOR UPDATE`,
           );
-          const [handoffRows, dispatchRows, existingRows, completedRows] = await Promise.all([
-            tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
+          const [handoffRows, dispatchRows, existingRows, completedRows, cleanupRows] =
+            await Promise.all([
+              tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_egress_handoff_attempts"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND "id"=${input.handoffAttemptId}
               FOR SHARE
             `),
-            tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
+              tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_dispatch_evidence"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND "validationDispatchCandidateHash"=${candidate.validationDispatchCandidateHash}
               FOR SHARE
             `),
-            tx.$queryRaw<CodexValidationCancellationEvidenceRow[]>(Prisma.sql`
+              tx.$queryRaw<CodexValidationCancellationEvidenceRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_cancellation_evidence"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND (
@@ -2092,7 +2551,7 @@ export class AcpBridgeAdmissionService
                 )
               FOR SHARE
             `),
-            tx.$queryRaw<CodexValidationRoundTripEvidenceRow[]>(Prisma.sql`
+              tx.$queryRaw<CodexValidationRoundTripEvidenceRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_round_trip_evidence"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND (
@@ -2105,7 +2564,13 @@ export class AcpBridgeAdmissionService
                 )
               FOR SHARE
             `),
-          ]);
+              tx.$queryRaw<CodexValidationProcessSessionCompletionRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_process_session_completions"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "handoffAttemptId"=${input.handoffAttemptId}
+              FOR SHARE
+            `),
+            ]);
           const handoff = handoffRows[0];
           const dispatch = dispatchRows[0];
           if (!handoff || !dispatch)
@@ -2293,6 +2758,19 @@ export class AcpBridgeAdmissionService
             throw new AcpBridgeAdmissionConflictError(
               'Codex validation cancellation message identity was already used',
             );
+          const cleanup = cleanupRows[0];
+          if (
+            !cleanup ||
+            cleanup.validationDispatchCandidateHash !== candidate.validationDispatchCandidateHash ||
+            cleanup.runtimeId !== candidate.runtimeId ||
+            cleanup.connectionId !== candidate.connectionId ||
+            cleanup.sessionId !== candidate.sessionId ||
+            cleanup.dispatchId !== candidate.dispatchId ||
+            cleanup.reason !== 'CANCELLED'
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation cancellation requires exact process cleanup evidence',
+            );
 
           const [evidence] = await tx.$queryRaw<
             CodexValidationCancellationEvidenceRow[]
@@ -2423,20 +2901,21 @@ export class AcpBridgeAdmissionService
           await tx.$queryRaw(
             Prisma.sql`SELECT "id" FROM "acp_codex_validation_egress_handoff_attempts" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.handoffAttemptId} FOR UPDATE`,
           );
-          const [handoffRows, dispatchRows, existingRows, cancellationRows] = await Promise.all([
-            tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
+          const [handoffRows, dispatchRows, existingRows, cancellationRows, cleanupRows] =
+            await Promise.all([
+              tx.$queryRaw<CodexValidationEgressHandoffRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_egress_handoff_attempts"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND "id"=${input.handoffAttemptId}
               FOR SHARE
             `),
-            tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
+              tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_dispatch_evidence"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND "validationDispatchCandidateHash"=${candidate.validationDispatchCandidateHash}
               FOR SHARE
             `),
-            tx.$queryRaw<CodexValidationRoundTripEvidenceRow[]>(Prisma.sql`
+              tx.$queryRaw<CodexValidationRoundTripEvidenceRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_round_trip_evidence"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND (
@@ -2448,7 +2927,7 @@ export class AcpBridgeAdmissionService
                 )
               FOR SHARE
             `),
-            tx.$queryRaw<CodexValidationCancellationEvidenceRow[]>(Prisma.sql`
+              tx.$queryRaw<CodexValidationCancellationEvidenceRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_cancellation_evidence"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND (
@@ -2460,7 +2939,13 @@ export class AcpBridgeAdmissionService
                 )
               FOR SHARE
             `),
-          ]);
+              tx.$queryRaw<CodexValidationProcessSessionCompletionRow[]>(Prisma.sql`
+              SELECT * FROM "acp_codex_validation_process_session_completions"
+              WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND "handoffAttemptId"=${input.handoffAttemptId}
+              FOR SHARE
+            `),
+            ]);
           const handoff = handoffRows[0];
           const dispatch = dispatchRows[0];
           if (!handoff || !dispatch)
@@ -2647,6 +3132,19 @@ export class AcpBridgeAdmissionService
           if (existingRows.length > 0)
             throw new AcpBridgeAdmissionConflictError(
               'Codex validation round-trip message identity was already used',
+            );
+          const cleanup = cleanupRows[0];
+          if (
+            !cleanup ||
+            cleanup.validationDispatchCandidateHash !== candidate.validationDispatchCandidateHash ||
+            cleanup.runtimeId !== candidate.runtimeId ||
+            cleanup.connectionId !== candidate.connectionId ||
+            cleanup.sessionId !== candidate.sessionId ||
+            cleanup.dispatchId !== candidate.dispatchId ||
+            cleanup.reason !== 'COMPLETED'
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation round trip requires exact process cleanup evidence',
             );
 
           const [evidence] = await tx.$queryRaw<CodexValidationRoundTripEvidenceRow[]>(Prisma.sql`

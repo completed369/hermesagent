@@ -164,6 +164,10 @@
 > deny-only: there is still no positive Codex process launcher, production OS cleanup/crash recovery,
 > real authenticated provider round trip, or connected-state transition; Codex remains
 > **NOT_CONFIGURED**.
+> Append-only process-session claims and cleanup rows now survive service restarts and are required
+> by database triggers before new validation terminal evidence (ADR-0060). They expose unfinished
+> claims for a future recovery composition, but no recovery worker consumes them and the cleanup
+> hash remains owner-reported integrity evidence rather than independent OS-process proof.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

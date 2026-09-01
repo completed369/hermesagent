@@ -84,6 +84,10 @@ evidence; broker reservations remain estimates rather than financial charges.
 > exact process-exit evidence and stream destruction (ADR-0059). The exported production owner
 > remains deny-only; no launcher, credential source, provider call, assignment, or runtime-status
 > transition is added.
+> Process-session claim and cleanup evidence is now append-only and database-backed (ADR-0060).
+> New Codex validation terminal evidence requires a matching completed claim even for direct SQL
+> insertion. This survives service restarts but adds no positive owner, recovery worker, launch,
+> provider access, or connected-state transition.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

@@ -1525,6 +1525,30 @@ test('Codex process-session ownership authenticates and cleans up before egress 
   assert.doesNotMatch(module, /CodexValidationProcessSessionOwner/u);
 });
 
+test('Codex process-session claims and cleanup are durable prerequisites for terminal evidence', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260901130000_codex_validation_process_sessions/migration.sql',
+    'utf8',
+  );
+  assert.match(service, /claimCodexValidationProcessSession/u);
+  assert.match(service, /completeCodexValidationProcessSession/u);
+  assert.match(service, /validateCodexValidationProcessCleanupEvidence/u);
+  assert.match(service, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(migration, /acp_codex_validation_process_session_claims/u);
+  assert.match(migration, /acp_codex_validation_process_session_completions/u);
+  assert.match(migration, /ventureos_require_codex_validation_process_cleanup/u);
+  assert.match(migration, /round_trip_requires_process_cleanup/u);
+  assert.match(migration, /cancellation_requires_process_cleanup/u);
+  assert.match(migration, /process_session_claims_immutable/u);
+  assert.match(migration, /process_session_completions_immutable/u);
+  assert.match(migration, /runtimeConnection" = 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(migration, /credential|accessToken|apiKey|rawPayload|\bmac\b/u);
+});
+
 test('deterministic fake is test-only and no real runtime can be marked connected', () => {
   const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
   const migration = readFileSync(

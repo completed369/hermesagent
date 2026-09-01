@@ -268,7 +268,7 @@ class CapturedTerminalRunner implements CodexValidationRuntimeProtocolRunner {
   }
 }
 
-function cleanupEvidence(
+export function createCodexValidationProcessCleanupEvidence(
   result: Readonly<CodexValidationProcessCloseResult>,
   request: Readonly<CodexValidationProcessCloseRequest>,
   observedAt: Date,
@@ -456,7 +456,7 @@ export class BoundedCodexValidationProcessSessionCoordinator {
     }
     if (!terminal || !closed || !closeRequest)
       throw new CodexValidationProcessSessionError('CLEANUP_FAILED');
-    const cleanup = cleanupEvidence(closed, closeRequest, this.clock());
+    const cleanup = createCodexValidationProcessCleanupEvidence(closed, closeRequest, this.clock());
     terminalRunner.terminal = terminal;
     const admitted = await adapter.execute(input, {
       timeoutMs: options.timeoutMs,
