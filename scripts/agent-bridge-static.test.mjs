@@ -1600,6 +1600,14 @@ test('Codex process recovery leases are expired-only, exclusive, append-only, an
     'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
     'utf8',
   );
+  const owner = readFileSync(
+    'packages/agent-bridge/src/codex-validation-process-session-owner.ts',
+    'utf8',
+  );
+  const workItemContract = owner.slice(
+    owner.indexOf('export interface CodexValidationProcessSessionRecoveryWorkItem'),
+    owner.indexOf('export interface CodexValidationProcessCleanupEvidence'),
+  );
   const migration = readFileSync(
     'packages/database/prisma/migrations/20260901170000_codex_process_session_recovery_leases/migration.sql',
     'utf8',
@@ -1639,10 +1647,16 @@ test('Codex process recovery leases are expired-only, exclusive, append-only, an
     'leaseClaimedAt',
     'leaseExpiresAt',
     'runtimeConnection',
-  ])
+  ]) {
     assert.match(method, new RegExp(`${field}:`));
+    assert.match(workItemContract, new RegExp(`readonly ${field}:`));
+  }
   assert.doesNotMatch(method, /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess/u);
   assert.doesNotMatch(method, /\b(?:pid|processHandle|nativeHandle)\b/iu);
+  assert.doesNotMatch(
+    workItemContract,
+    /CONNECTED|\b(?:pid|processHandle|nativeHandle|payload|transcript|credential|secret)\b/iu,
+  );
   assert.match(migration, /ventureos_require_codex_validation_process_recovery_lease/u);
   assert.match(migration, /FOR UPDATE/u);
   assert.match(migration, /trusted_claim\."expiresAt" > LOCALTIMESTAMP\(3\)/u);
