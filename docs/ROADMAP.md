@@ -259,11 +259,13 @@ published and current `main` has not been deployed to private staging.
    (ADR-0062), but no service supplies a positive owner, secret resolver, or transport. An internal
    Level-3 recovery inventory now provides bounded, owner-scoped discovery of claims with no matching
    completion and classifies them from the database clock (ADR-0063). It performs no recovery action;
-   a positive owner and exclusive recovery lease remain absent. Process-claim inserts now reproduce
+   a positive owner remains absent. Process-claim inserts now reproduce
    the exact handoff owner, actor, state, expiry, and time window at the database boundary, and replay
    rechecks the complete persisted supervisor/dispatch binding (ADR-0064). Validation
-   against a real authenticated Codex process remains approval- and
-   provisioning-gated.
+   against a real authenticated Codex process remains approval- and provisioning-gated. Expired
+   unfinished claims now support one immutable 15-second, owner-scoped recovery lease generation at
+   a time, mutually exclusive with late completion (ADR-0065). The lease has no process, transport,
+   secret, provider, cleanup, or runtime-truth authority.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

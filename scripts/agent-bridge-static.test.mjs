@@ -1595,6 +1595,48 @@ test('Codex process-session claims reproduce trusted handoff authority on insert
   assert.doesNotMatch(migration, /CONNECTED|credential|provider|payload|transcript|secret/u);
 });
 
+test('Codex process recovery leases are expired-only, exclusive, append-only, and non-operational', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260901170000_codex_process_session_recovery_leases/migration.sql',
+    'utf8',
+  );
+  const method = service.slice(
+    service.indexOf('async claimCodexValidationProcessSessionRecoveryLease'),
+    service.indexOf(
+      '/**\n   * Durably claims one process-session identity',
+      service.indexOf('async claimCodexValidationProcessSessionRecoveryLease'),
+    ),
+  );
+  assert.match(method, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(method, /FOR UPDATE/u);
+  assert.match(method, /claim\.ownerReference !== context\.principalId/u);
+  assert.match(method, /claim\.ownerActorKind !== actorKind/u);
+  assert.match(method, /claim\.expiresAt > now/u);
+  assert.match(method, /completionRows\.length > 0/u);
+  assert.match(method, /latest\.expiresAt > now/u);
+  assert.match(method, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(method, /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess/u);
+  assert.match(migration, /ventureos_require_codex_validation_process_recovery_lease/u);
+  assert.match(migration, /FOR UPDATE/u);
+  assert.match(migration, /trusted_claim\."expiresAt" > LOCALTIMESTAMP\(3\)/u);
+  assert.match(migration, /NEW\."claimedAt" IS DISTINCT FROM LOCALTIMESTAMP\(3\)/u);
+  assert.match(migration, /"expiresAt" = "claimedAt" \+ INTERVAL '15 seconds'/u);
+  assert.match(migration, /completion_excludes_active_recovery/u);
+  assert.match(
+    migration,
+    /ventureos_reject_completion_during_codex_process_recovery\(\)[\s\S]*FOR UPDATE/u,
+  );
+  assert.match(migration, /recovery_leases_immutable/u);
+  assert.doesNotMatch(
+    migration,
+    /CONNECTED|"(?:payload|transcript|credential|providerResponse|secretReference)"\s+(?:TEXT|JSON)/u,
+  );
+});
+
 test('deterministic fake is test-only and no real runtime can be marked connected', () => {
   const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
   const migration = readFileSync(
@@ -1737,7 +1779,7 @@ test('Codex process recovery discovery is bounded, owner-scoped, and read-only',
   );
   const inventory = service.slice(
     service.indexOf('async listCodexValidationProcessSessionRecoveryInventory('),
-    service.indexOf('async claimCodexValidationProcessSession('),
+    service.indexOf('async claimCodexValidationProcessSessionRecoveryLease('),
   );
   assert.match(inventory, /assertControlPlane\(capability, context, 3\)/u);
   assert.match(inventory, /input\.limit < 1 \|\| input\.limit > 100/u);

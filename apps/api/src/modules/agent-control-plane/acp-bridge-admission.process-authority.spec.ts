@@ -4,6 +4,7 @@ import {
   type SupervisorProcessBinding,
 } from '@ventureos/agent-bridge';
 import { OperationalEventCapability } from '@ventureos/agent-control-plane';
+import { prisma } from '@ventureos/database';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -13,6 +14,13 @@ import {
 
 const workspaceId = '00000000-0000-4000-8000-000000000001';
 const principalId = 'control-plane:process-owner';
+
+const databaseMocks = vi.hoisted(() => ({ transaction: vi.fn() }));
+
+vi.mock('@ventureos/database', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ventureos/database')>();
+  return { ...actual, prisma: { $transaction: databaseMocks.transaction } };
+});
 
 describe('Codex validation process-session control-plane authority', () => {
   it('snapshots identity and delegates exact claim and completion requests', async () => {
@@ -129,6 +137,17 @@ describe('Codex validation process-session control-plane authority', () => {
         { limit: 1 },
       ),
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      service.claimCodexValidationProcessSessionRecoveryLease(
+        lowCapability,
+        { workspaceId, principalId },
+        {
+          recoveryLeaseId: 'recovery-lease-low',
+          claimId: 'recovery-claim-low',
+          idempotencyKey: 'recovery-lease-low',
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
 
     const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
       { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
@@ -147,6 +166,88 @@ describe('Codex validation process-session control-plane authority', () => {
         { limit: 101 },
       ),
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+  });
+
+  it('claims a short frozen recovery lease only through exact Level-3 owner authority', async () => {
+    const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
+    const recordOperationalEvent = vi.fn().mockResolvedValue(undefined);
+    Object.assign(service, { auditService: { recordOperationalEvent } });
+    const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+    const now = new Date('2026-09-01T15:00:00.000Z');
+    const claimExpiresAt = new Date(now.getTime() - 1_000);
+    const leaseExpiresAt = new Date(now.getTime() + 15_000);
+    const queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          workspaceId,
+          id: 'claim-recovery-unit',
+          ownerReference: principalId,
+          ownerActorKind: 'SYSTEM',
+          state: 'CLAIMED',
+          runtimeConnection: 'NOT_CONFIGURED',
+          expiresAt: claimExpiresAt,
+          runId: 'run-recovery-unit',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ now }])
+      .mockResolvedValueOnce([
+        {
+          workspaceId,
+          id: 'lease-recovery-unit',
+          claimId: 'claim-recovery-unit',
+          ownerReference: principalId,
+          ownerActorKind: 'SYSTEM',
+          generation: 1,
+          state: 'CLAIMED',
+          runtimeConnection: 'NOT_CONFIGURED',
+          recoveryIdempotencyKey: 'lease-recovery-unit',
+          claimExpiresAt,
+          claimedAt: now,
+          expiresAt: leaseExpiresAt,
+          createdAt: now,
+        },
+      ]);
+    databaseMocks.transaction.mockImplementationOnce(async (operation) =>
+      operation({ $queryRaw: queryRaw }),
+    );
+
+    const result = await service.claimCodexValidationProcessSessionRecoveryLease(
+      capability,
+      { workspaceId, principalId },
+      {
+        recoveryLeaseId: 'lease-recovery-unit',
+        claimId: 'claim-recovery-unit',
+        idempotencyKey: 'lease-recovery-unit',
+      },
+    );
+
+    expect(result).toEqual({
+      lease: {
+        schemaVersion: 1,
+        recoveryLeaseId: 'lease-recovery-unit',
+        claimId: 'claim-recovery-unit',
+        ownerReference: principalId,
+        ownerActorKind: 'SYSTEM',
+        generation: 1,
+        leaseState: 'ACTIVE',
+        claimExpiresAt: claimExpiresAt.toISOString(),
+        claimedAt: now.toISOString(),
+        expiresAt: leaseExpiresAt.toISOString(),
+        runtimeConnection: 'NOT_CONFIGURED',
+      },
+      replayed: false,
+    });
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(result.lease)).toBe(true);
+    expect(recordOperationalEvent).toHaveBeenCalledOnce();
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
   });
 });
 
