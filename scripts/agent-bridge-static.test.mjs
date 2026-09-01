@@ -2136,3 +2136,23 @@ test('Codex process recovery discovery is bounded, owner-scoped, and read-only',
     /\b(?:INSERT|UPDATE|DELETE)\b|spawn|exec|provider|credential|CONNECTED/u,
   );
 });
+
+test('retained-native recovery peer signs only after bounded native cleanup evidence', () => {
+  const peer = readFileSync('packages/agent-bridge/src/retained-native-supervisor-peer.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  assert.match(peer, /class DenyRetainedNativeRecoveryNativeAuthority/u);
+  assert.match(peer, /class AuthenticatedLocalRetainedNativeSupervisorRecoveryPeer/u);
+  assert.match(peer, /ventureos\.retained-native-supervisor\.recovery-request\.v1/u);
+  assert.match(peer, /Promise\.race\(\[[\s\S]*observeAndCleanup/u);
+  assert.match(peer, /retainedIdentityKind !== 'PIDFD'/u);
+  assert.match(peer, /cleanupState !== 'PROCESS_GROUP_GONE'/u);
+  assert.match(peer, /identityVerifiedAt[\s\S]*request\.issuedAt/u);
+  assert.match(peer, /sign\([\s\S]*canonicalJson\(payload\)/u);
+  assert.match(peer, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(peer, /from 'node:(?:child_process|fs|net)'/u);
+  assert.doesNotMatch(peer, /\bCONNECTED\b|provider|deployment|publish|spend/u);
+  assert.doesNotMatch(apiComposition, /AuthenticatedLocalRetainedNativeSupervisorRecoveryPeer/u);
+});
