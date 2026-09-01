@@ -249,7 +249,10 @@ published and current `main` has not been deployed to private staging.
    already-authorized streams through an injected owner, authenticates before opening them, requires
    exact process-exit evidence, destroys both streams, and emits terminal bridge evidence only after
    cleanup (ADR-0059). Its production owner remains deny-only; it contains no launcher or provider
-   access. Validation against a real authenticated Codex process remains approval- and
+   access. Durable append-only claims now retain the exact owner/supervisor/handoff identity across
+   service restarts, and matching cleanup evidence is a database-enforced prerequisite for every
+   new validation terminal outcome (ADR-0060). A positive recovery worker and owner are still
+   absent. Validation against a real authenticated Codex process remains approval- and
    provisioning-gated.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
