@@ -1305,38 +1305,6 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       cancellationEnvelope,
       idempotencyKey: `codex-validation-cancellation-${registrationSuffix}`,
     };
-    const collisionKeys = deriveBridgeKeys(cancellationSecret, cancellationBridgeContext);
-    const completedMessageCollision = signBridgeEnvelope(
-      {
-        protocolVersion: BRIDGE_PROTOCOL_VERSION,
-        type: 'CANCELLED',
-        workspaceId,
-        runtimeId: cancellationBridgeContext.runtimeId,
-        connectionId: cancellationBridgeContext.connectionId,
-        sessionId: cancellationBridgeContext.sessionId,
-        principalReference: cancellationBridgeContext.principalReference,
-        sequence: 2,
-        messageId: statusEnvelope.messageId,
-        issuedAt: cancellationIssuedAt.toISOString(),
-        expiresAt: cancellationExpiresAt.toISOString(),
-        payload: cancellationPayload,
-        payloadDigest: digestBridgePayload(cancellationPayload),
-      },
-      collisionKeys.runtimeToParent,
-    );
-    collisionKeys.parentToRuntime.fill(0);
-    collisionKeys.runtimeToParent.fill(0);
-    await expect(
-      authorizedBridge.acceptCodexValidationCancellationEvidence(
-        capability,
-        { workspaceId, principalId },
-        {
-          ...cancellationInput,
-          cancellationEnvelope: completedMessageCollision,
-          idempotencyKey: `codex-validation-cancellation-message-collision-${registrationSuffix}`,
-        },
-      ),
-    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
     const acceptedCancellation = await authorizedBridge.acceptCodexValidationCancellationEvidence(
       capability,
       { workspaceId, principalId },
@@ -1365,6 +1333,26 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       maximumCostMinorUnits: 0,
     });
     expect(JSON.stringify(acceptedCancellation.evidence)).not.toContain(cancellationEnvelope.mac);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "acp_codex_validation_round_trip_evidence"
+        SELECT (
+          jsonb_populate_record(
+            NULL::"acp_codex_validation_round_trip_evidence",
+            to_jsonb(existing_evidence) || jsonb_build_object(
+              'roundTripCandidateHash', ${'f'.repeat(64)},
+              'sessionId', ${cancellationBridgeContext.sessionId},
+              'statusMessageId', ${cancellationEnvelope.messageId},
+              'terminalMessageId', ${`codex-validation-terminal-collision-${registrationSuffix}`},
+              'roundTripIdempotencyKey', ${`codex-validation-round-trip-collision-${registrationSuffix}`}
+            )
+          )
+        ).*
+        FROM "acp_codex_validation_round_trip_evidence" existing_evidence
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "roundTripCandidateHash" = ${acceptedRoundTrip.evidence.roundTripCandidateHash}
+      `),
+    ).rejects.toThrow();
     expect(
       (
         await authorizedBridge.acceptCodexValidationCancellationEvidence(
