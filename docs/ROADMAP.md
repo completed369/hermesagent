@@ -284,6 +284,9 @@ published and current `main` has not been deployed to private staging.
    A bounded deny-default coordinator now composes work-item validation, independent exit observation,
    final lease revalidation, and durable completion ordering (ADR-0071). No positive source, authority,
    worker, or native cleanup action is wired.
+   A Level-3 factory now snapshots one exact recovery work item, durable dispatch, caller context, and
+   idempotency key into the coordinator's completion port (ADR-0072). No evidence source, worker,
+   process action, or runtime-status transition is composed.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

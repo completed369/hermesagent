@@ -198,6 +198,9 @@
 > A shared recovery coordinator now orders evidence before durable completion, rejects same-lease
 > concurrency, and rechecks expiry immediately before the completion port (ADR-0071). Both production
 > ports still deny and no worker invokes the coordinator.
+> A Level-3 recovery-completion authority adapter now snapshots one exact lease work item, durable
+> dispatch, caller context, and idempotency key before delegating to serializable completion
+> (ADR-0072). No positive evidence source or worker is composed, so production recovery remains inert.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

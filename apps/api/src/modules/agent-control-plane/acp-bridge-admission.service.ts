@@ -70,6 +70,8 @@ import {
   type CodexValidationDispatchCandidate,
   type CodexValidationProcessCleanupEvidence,
   type CodexValidationProcessSessionAuthority,
+  type CodexValidationProcessSessionRecoveryCompletionAuthority,
+  type CodexValidationProcessSessionRecoveryCompletionRequest,
   type CodexValidationProcessSessionRecoveryWorkItem,
   type CodexValidationProcessSessionRecoveryExitEvidence,
   type CodexTerminalEvidence,
@@ -638,6 +640,12 @@ export interface CompleteCodexValidationProcessSessionRecoveryInput {
   readonly exitEvidence: Readonly<CodexValidationProcessSessionRecoveryExitEvidence>;
   readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
   readonly idempotencyKey: string;
+}
+
+export interface CodexValidationProcessSessionRecoveryCompletionAuthorityIdentity {
+  readonly workItem: Readonly<CodexValidationProcessSessionRecoveryWorkItem>;
+  readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
+  readonly completionIdempotencyKey: string;
 }
 
 export interface AcceptCodexValidationRoundTripEvidenceInput {
@@ -2272,6 +2280,85 @@ export class AcpBridgeAdmissionService
       },
     };
     return Object.freeze(authority);
+  }
+
+  /**
+   * Snapshots one active recovery work item and its exact durable dispatch for
+   * the coordinator completion port. This grants no evidence or process authority.
+   */
+  createCodexValidationProcessSessionRecoveryCompletionAuthority(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    identity: CodexValidationProcessSessionRecoveryCompletionAuthorityIdentity,
+  ): Readonly<CodexValidationProcessSessionRecoveryCompletionAuthority> {
+    assertControlPlane(capability, context, 3);
+    publicReference(identity.completionIdempotencyKey, 'completionIdempotencyKey');
+    let workItem: Readonly<CodexValidationProcessSessionRecoveryWorkItem>;
+    let dispatch: Readonly<CodexValidationDispatchCandidate>;
+    try {
+      workItem = validateCodexValidationProcessSessionRecoveryWorkItem(identity.workItem);
+      dispatch = validateCodexValidationDispatchCandidate(identity.dispatch);
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session recovery authority identity is invalid',
+      );
+    }
+    if (
+      workItem.binding.workspaceId !== context.workspaceId ||
+      dispatch.workspaceId !== context.workspaceId ||
+      workItem.binding.runtimeId !== dispatch.runtimeId ||
+      workItem.binding.connectionId !== dispatch.connectionId ||
+      workItem.sessionId !== dispatch.sessionId ||
+      workItem.dispatchId !== dispatch.dispatchId ||
+      workItem.runId !== dispatch.runId ||
+      workItem.validationDispatchCandidateHash !== dispatch.validationDispatchCandidateHash ||
+      workItem.processExpiresAt !== dispatch.expiresAt
+    )
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session recovery authority crossed its durable binding',
+      );
+    const boundContext = Object.freeze({
+      workspaceId: context.workspaceId,
+      principalId: context.principalId,
+    });
+    const boundWorkItem = workItem;
+    const boundDispatch = dispatch;
+    const boundIdempotencyKey = identity.completionIdempotencyKey;
+    return Object.freeze({
+      complete: async (
+        request: Readonly<CodexValidationProcessSessionRecoveryCompletionRequest>,
+      ) => {
+        if (request.runtimeConnection !== 'NOT_CONFIGURED')
+          throw new AcpBridgeAdmissionDeniedError(
+            'Codex validation process-session recovery authority cannot promote runtime truth',
+          );
+        let requestedWorkItem: Readonly<CodexValidationProcessSessionRecoveryWorkItem>;
+        let exitEvidence: Readonly<CodexValidationProcessSessionRecoveryExitEvidence>;
+        try {
+          requestedWorkItem = validateCodexValidationProcessSessionRecoveryWorkItem(
+            request.workItem,
+          );
+          exitEvidence = validateCodexValidationProcessSessionRecoveryExitEvidence(
+            request.exitEvidence,
+            requestedWorkItem,
+          );
+        } catch {
+          throw new AcpBridgeAdmissionDeniedError(
+            'Codex validation process-session recovery authority evidence is invalid',
+          );
+        }
+        if (canonicalJson(requestedWorkItem) !== canonicalJson(boundWorkItem))
+          throw new AcpBridgeAdmissionDeniedError(
+            'Codex validation process-session recovery authority identity drifted',
+          );
+        await this.completeCodexValidationProcessSessionRecovery(capability, boundContext, {
+          workItem: boundWorkItem,
+          exitEvidence,
+          dispatch: boundDispatch,
+          idempotencyKey: boundIdempotencyKey,
+        });
+      },
+    });
   }
 
   /**
