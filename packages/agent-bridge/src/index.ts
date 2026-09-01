@@ -28,3 +28,4 @@ export * from './codex-validation-process-session-owner';
 export * from './codex-validation-process-session-recovery';
 export * from './codex-validation-process-session-recovery-evidence';
 export * from './codex-validation-process-session-recovery-coordinator';
+export * from './retained-native-supervisor-recovery';

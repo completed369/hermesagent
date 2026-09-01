@@ -299,6 +299,12 @@ published and current `main` has not been deployed to private staging.
    skipping active claims and requiring an exact claim-bound attempt identity before each atomic
    recovery (ADR-0076). It is not scheduled or production-wired; positive retained-native evidence
    and native cleanup action remain absent.
+   A concrete two-second, challenge-bound recovery observation protocol now binds the complete
+   tenant/lease/supervisor/launch/session/dispatch identity to a fresh request and verifies one exact
+   Ed25519 response from an explicitly trusted external native supervisor (ADR-0077). It maps only
+   normalized exit facts into ADR-0069 evidence, exposes no process locator or action handle, and
+   rejects incomplete deny composition. No transport peer, trust provisioning, retained native
+   implementation, cleanup action, scheduler, or production wiring is supplied.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
