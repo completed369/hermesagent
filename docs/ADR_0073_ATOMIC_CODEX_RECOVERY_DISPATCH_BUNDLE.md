@@ -14,8 +14,13 @@ transaction, weakening the reviewed binding and leaving no complete restart-safe
 During the serializable recovery-lease transaction, lock and read the immutable durable validation
 dispatch row associated with the claimed process session. Reconstruct the public dispatch candidate
 from its digest-only fields and fixed `NOT_CONFIGURED` truth, pass it through the canonical candidate
-validator, and compare its workspace, runtime, connection, session, dispatch, run, hash, and expiry
-against the durable process claim.
+validator, and compare its workspace, runtime, connection, session, dispatch, run, and hash against
+the durable process claim.
+
+The final comparison does not equate the dispatch expiry with the process-claim expiry. The process
+claim inherits the bounded egress-handoff expiry, which can be earlier than the validation dispatch
+expiry. Instead, the immutable candidate hash binds the dispatch's own timing fields, while the
+recovery work item independently binds the process-claim clock.
 
 Return the frozen dispatch beside the frozen active work item. An expired lease replay returns both
 `workItem: null` and `dispatch: null`; it cannot leak a stale authority pair.

@@ -2366,8 +2366,7 @@ export class AcpBridgeAdmissionService
       workItem.sessionId !== dispatch.sessionId ||
       workItem.dispatchId !== dispatch.dispatchId ||
       workItem.runId !== dispatch.runId ||
-      workItem.validationDispatchCandidateHash !== dispatch.validationDispatchCandidateHash ||
-      workItem.processExpiresAt !== dispatch.expiresAt
+      workItem.validationDispatchCandidateHash !== dispatch.validationDispatchCandidateHash
     )
       throw new AcpBridgeAdmissionDeniedError(
         'Codex validation process-session recovery authority crossed its durable binding',
@@ -2583,8 +2582,7 @@ export class AcpBridgeAdmissionService
             recoveryDispatch.connectionId !== claim.connectionId ||
             recoveryDispatch.sessionId !== claim.sessionId ||
             recoveryDispatch.dispatchId !== claim.dispatchId ||
-            recoveryDispatch.runId !== claim.runId ||
-            recoveryDispatch.expiresAt !== claim.expiresAt.toISOString()
+            recoveryDispatch.runId !== claim.runId
           )
             throw new AcpBridgeAdmissionDeniedError(
               'Codex validation process-session recovery dispatch crossed durable authority',
@@ -3116,8 +3114,7 @@ export class AcpBridgeAdmissionService
             dispatch.connectionId !== binding.connectionId ||
             dispatch.sessionId !== workItem.sessionId ||
             dispatch.dispatchId !== workItem.dispatchId ||
-            dispatch.runId !== workItem.runId ||
-            dispatch.expiresAt !== workItem.processExpiresAt
+            dispatch.runId !== workItem.runId
           )
             throw new AcpBridgeAdmissionDeniedError(
               'Codex validation process-session recovery completion crossed durable authority',

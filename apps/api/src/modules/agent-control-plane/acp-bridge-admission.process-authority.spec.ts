@@ -314,9 +314,10 @@ describe('Codex validation process-session control-plane authority', () => {
     ]);
     const now = new Date('2026-09-01T15:00:00.000Z');
     const claimExpiresAt = new Date(now.getTime() - 1_000);
+    const validationExpiresAt = new Date(now.getTime() + 30_000);
     const leaseExpiresAt = new Date(now.getTime() + 15_000);
     const binding = processBinding('supervision-recovery-unit');
-    const dispatch = recoveryDispatch(claimExpiresAt.toISOString());
+    const dispatch = recoveryDispatch(validationExpiresAt.toISOString());
     const queryRaw = vi
       .fn()
       .mockResolvedValueOnce([])
@@ -498,10 +499,11 @@ describe('Codex validation process-session control-plane authority', () => {
     const binding = processBinding('supervision-recovery-completion-unit');
     const processClaimedAt = new Date('2026-09-01T12:00:00.000Z');
     const processExpiresAt = new Date('2026-09-01T12:01:00.000Z');
+    const validationExpiresAt = new Date('2026-09-01T12:01:30.000Z');
     const leaseClaimedAt = new Date('2026-09-01T12:01:01.000Z');
     const leaseExpiresAt = new Date('2026-09-01T12:01:16.000Z');
     const now = new Date('2026-09-01T12:01:03.000Z');
-    const dispatch = recoveryDispatch(processExpiresAt.toISOString());
+    const dispatch = recoveryDispatch(validationExpiresAt.toISOString());
     const workItem = {
       schemaVersion: 1 as const,
       recoveryLeaseId: 'lease-recovery-completion-unit',
@@ -804,10 +806,11 @@ function recoveryAuthorityFixture() {
   const now = Date.now();
   const processClaimedAt = new Date(now - 62_000);
   const processExpiresAt = new Date(now - 2_000);
+  const validationExpiresAt = new Date(now + 13_000);
   const leaseClaimedAt = new Date(now - 1_000);
   const leaseExpiresAt = new Date(now + 14_000);
   const binding = processBinding('supervision-recovery-authority-unit');
-  const dispatch = recoveryDispatch(processExpiresAt.toISOString());
+  const dispatch = recoveryDispatch(validationExpiresAt.toISOString());
   const workItem = {
     schemaVersion: 1 as const,
     recoveryLeaseId: 'lease-recovery-authority-unit',
