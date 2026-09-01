@@ -1677,6 +1677,7 @@ test('Codex process-session completions reproduce trusted claim authority on ins
   assert.match(migration, /trusted_claim\."runtimeConnection" IS DISTINCT FROM 'NOT_CONFIGURED'/u);
   assert.match(migration, /NEW\."closedAt" < trusted_claim\."claimedAt"/u);
   assert.match(migration, /NEW\."closedAt" > trusted_claim\."expiresAt"/u);
+  assert.match(migration, /NEW\."createdAt" < trusted_claim\."claimedAt"/u);
   assert.match(migration, /NEW\."createdAt" IS DISTINCT FROM LOCALTIMESTAMP\(3\)/u);
   assert.doesNotMatch(
     migration,

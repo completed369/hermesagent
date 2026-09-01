@@ -19,6 +19,7 @@ BEGIN
       OR completion."runtimeConnection" IS DISTINCT FROM 'NOT_CONFIGURED'
       OR completion."closedAt" < trusted_claim."claimedAt"
       OR completion."closedAt" > trusted_claim."expiresAt"
+      OR completion."createdAt" < trusted_claim."claimedAt"
       OR completion."closedAt" > completion."createdAt"
       OR completion."createdAt" > LOCALTIMESTAMP(3)
   ) THEN
@@ -52,6 +53,7 @@ BEGIN
      NEW."runtimeConnection" IS DISTINCT FROM 'NOT_CONFIGURED' OR
      NEW."closedAt" < trusted_claim."claimedAt" OR
      NEW."closedAt" > trusted_claim."expiresAt" OR
+     NEW."createdAt" < trusted_claim."claimedAt" OR
      NEW."closedAt" > NEW."createdAt" OR
      NEW."createdAt" IS DISTINCT FROM LOCALTIMESTAMP(3) THEN
     RAISE EXCEPTION 'Codex validation process-session completion crossed trusted claim authority'
