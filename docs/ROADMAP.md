@@ -290,6 +290,11 @@ published and current `main` has not been deployed to private staging.
    Recovery lease acquisition now returns the validated durable dispatch with the active work item in
    one serializable bundle, and expired replay returns neither (ADR-0073). A positive worker,
    retained-identity source, and native cleanup action remain absent.
+   One active lease bundle can now be bound to a frozen zero-input, single-attempt coordinator port
+   whose evidence source denies by default (ADR-0074). The internal Level-3 recovery operation then
+   claims and consumes that exact bundle without accepting caller-selected work or dispatch metadata;
+   expired replay returns inert truth (ADR-0075). Inventory scheduling, a positive OS-specific
+   retained-identity source, and native cleanup action remain absent.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

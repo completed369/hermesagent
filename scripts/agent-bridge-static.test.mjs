@@ -1819,7 +1819,7 @@ test('control-plane Codex recovery execution is lease-bound, single-attempt, and
   const start = service.indexOf('createCodexValidationProcessSessionRecoveryExecutionAuthority(');
   const authority = service.slice(
     start,
-    service.indexOf('/**\n   * Lists a bounded owner-scoped snapshot', start),
+    service.indexOf('/**\n   * Claims one exact durable recovery bundle', start),
   );
   assert.ok(start > 0);
   assert.match(authority, /assertControlPlane\(capability, context, 3\)/u);
@@ -1835,6 +1835,35 @@ test('control-plane Codex recovery execution is lease-bound, single-attempt, and
   assert.match(authority, /coordinator\.execute\(workItem\)/u);
   assert.doesNotMatch(
     authority,
+    /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess|process\.kill|setInterval|setTimeout/iu,
+  );
+});
+
+test('control-plane Codex recovery claim and execution are one exact deny-default operation', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const start = service.indexOf('async executeCodexValidationProcessSessionRecovery(');
+  const operation = service.slice(
+    start,
+    service.indexOf('/**\n   * Lists a bounded owner-scoped snapshot', start),
+  );
+  assert.ok(start > 0);
+  assert.match(operation, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(operation, /new DenyCodexValidationProcessSessionRecoveryEvidenceSource\(\)/u);
+  assert.match(operation, /claimCodexValidationProcessSessionRecoveryLease/u);
+  assert.match(operation, /recoveryLeaseId: input\.recoveryLeaseId/u);
+  assert.match(operation, /idempotencyKey: input\.idempotencyKey/u);
+  assert.match(operation, /createCodexValidationProcessSessionRecoveryExecutionAuthority/u);
+  assert.match(operation, /bundle\.lease\.leaseState === 'EXPIRED'/u);
+  assert.match(operation, /bundle\.workItem === null \|\| bundle\.dispatch === null/u);
+  assert.match(operation, /completionIdempotencyKey: input\.completionIdempotencyKey/u);
+  assert.match(operation, /recoveryState: 'RECORDED'/u);
+  assert.match(operation, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(operation, /connectionTransition: 'NOT_APPLIED'/u);
+  assert.doesNotMatch(
+    operation,
     /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess|process\.kill|setInterval|setTimeout/iu,
   );
 });
