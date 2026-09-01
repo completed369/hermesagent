@@ -24,3 +24,4 @@ export * from './codex-validation-round-trip';
 export * from './codex-validation-cancellation';
 export * from './codex-validation-protocol-runner';
 export * from './codex-validation-runtime-adapter';
+export * from './codex-validation-process-session-owner';

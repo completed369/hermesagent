@@ -79,6 +79,11 @@ evidence; broker reservations remain estimates rather than financial charges.
 > Completed and cancelled validation evidence now also binds bounded, domain-separated progress and
 > token-usage-notification counts/digests (ADR-0058). Raw token values are discarded and recognized
 > usage, compute, and cost remain zero until a separately reviewed provider mapping exists.
+> A one-shot Codex process-session coordinator now authenticates the dispatch before requesting
+> already-authorized streams from an injected owner and permits terminal bridge egress only after
+> exact process-exit evidence and stream destruction (ADR-0059). The exported production owner
+> remains deny-only; no launcher, credential source, provider call, assignment, or runtime-status
+> transition is added.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

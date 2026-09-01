@@ -490,34 +490,24 @@ export class BoundedCodexValidationRuntimeAdapter {
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
+  /**
+   * Authenticates and bounds one dispatch without running the protocol or
+   * emitting bridge output. Process/session owners use this before opening any
+   * runtime I/O and execute() revalidates the same authority immediately before
+   * signing terminal evidence.
+   */
+  async authenticate(
+    input: Readonly<CodexValidationRuntimeAdapterInput>,
+    options: Readonly<CodexValidationRuntimeAdapterOptions> = {},
+  ): Promise<void> {
+    await this.authenticateInput(input, options.signal);
+  }
+
   async execute(
     input: Readonly<CodexValidationRuntimeAdapterInput>,
     options: Readonly<CodexValidationRuntimeAdapterOptions> = {},
   ): Promise<Readonly<CodexValidationRoundTripCandidate | CodexValidationCancellationCandidate>> {
-    let dispatch: Readonly<CodexValidationDispatchCandidate>;
-    let bridge: ValidatedBridge;
-    try {
-      dispatch = validateCodexValidationDispatchCandidate(input.dispatch);
-      bridge = validateBridge(input.bridge);
-      validateBinding(dispatch, bridge);
-      validateDispatchFrame(dispatch, input.dispatchEnvelope);
-    } catch (error) {
-      if (error instanceof CodexValidationRuntimeAdapterError) throw error;
-      throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
-    }
-    const now = this.validClock();
-    if (
-      now.getTime() < Date.parse(dispatch.issuedAt) ||
-      now.getTime() >= Date.parse(dispatch.expiresAt) ||
-      now.getTime() >= Date.parse(bridge.expiresAt)
-    )
-      throw new CodexValidationRuntimeAdapterError('AUTHORITY_EXPIRED');
-    if (options.signal?.aborted) throw new CodexValidationRuntimeAdapterError('CANCELLED');
-    const deadline = Math.min(
-      now.getTime() + dispatch.maximumDurationMs,
-      Date.parse(dispatch.expiresAt),
-      Date.parse(bridge.expiresAt),
-    );
+    const { dispatch, bridge, now, deadline } = await this.authenticateInput(input, options.signal);
     for (const [id, expiresAt] of this.#used) if (expiresAt <= now.getTime()) this.#used.delete(id);
     const id = `${bridge.sessionId}:${dispatch.dispatchId}`;
     if (this.#active.has(id)) throw new CodexValidationRuntimeAdapterError('CONCURRENT_DISPATCH');
@@ -527,17 +517,6 @@ export class BoundedCodexValidationRuntimeAdapter {
     this.#active.add(id);
     this.#used.set(id, deadline);
     try {
-      await this.withSecret(bridge, 'VERIFY_FRAME', (secret) => {
-        const keys = deriveBridgeKeys(secret, bridge);
-        try {
-          verifyBridgeEnvelope(input.dispatchEnvelope, keys.parentToRuntime, bridge, now);
-        } catch {
-          throw new CodexValidationRuntimeAdapterError('INVALID_FRAME');
-        } finally {
-          keys.parentToRuntime.fill(0);
-          keys.runtimeToParent.fill(0);
-        }
-      });
       const runRemaining = deadline - this.validClock().getTime();
       if (runRemaining < 1) throw new CodexValidationRuntimeAdapterError('AUTHORITY_EXPIRED');
       const runOptions =
@@ -628,6 +607,53 @@ export class BoundedCodexValidationRuntimeAdapter {
     } finally {
       this.#active.delete(id);
     }
+  }
+
+  private async authenticateInput(
+    input: Readonly<CodexValidationRuntimeAdapterInput>,
+    signal: AbortSignal | undefined,
+  ): Promise<{
+    readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
+    readonly bridge: ValidatedBridge;
+    readonly now: Date;
+    readonly deadline: number;
+  }> {
+    let dispatch: Readonly<CodexValidationDispatchCandidate>;
+    let bridge: ValidatedBridge;
+    try {
+      dispatch = validateCodexValidationDispatchCandidate(input.dispatch);
+      bridge = validateBridge(input.bridge);
+      validateBinding(dispatch, bridge);
+      validateDispatchFrame(dispatch, input.dispatchEnvelope);
+    } catch (error) {
+      if (error instanceof CodexValidationRuntimeAdapterError) throw error;
+      throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
+    }
+    const now = this.validClock();
+    if (
+      now.getTime() < Date.parse(dispatch.issuedAt) ||
+      now.getTime() >= Date.parse(dispatch.expiresAt) ||
+      now.getTime() >= Date.parse(bridge.expiresAt)
+    )
+      throw new CodexValidationRuntimeAdapterError('AUTHORITY_EXPIRED');
+    if (signal?.aborted) throw new CodexValidationRuntimeAdapterError('CANCELLED');
+    const deadline = Math.min(
+      now.getTime() + dispatch.maximumDurationMs,
+      Date.parse(dispatch.expiresAt),
+      Date.parse(bridge.expiresAt),
+    );
+    await this.withSecret(bridge, 'VERIFY_FRAME', (secret) => {
+      const keys = deriveBridgeKeys(secret, bridge);
+      try {
+        verifyBridgeEnvelope(input.dispatchEnvelope, keys.parentToRuntime, bridge, now);
+      } catch {
+        throw new CodexValidationRuntimeAdapterError('INVALID_FRAME');
+      } finally {
+        keys.parentToRuntime.fill(0);
+        keys.runtimeToParent.fill(0);
+      }
+    });
+    return Object.freeze({ dispatch, bridge, now, deadline });
   }
 
   private validClock(): Date {
