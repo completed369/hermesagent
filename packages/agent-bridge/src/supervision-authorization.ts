@@ -134,10 +134,15 @@ function parseLinuxExecutableAuthorization(input: unknown): Readonly<LinuxExecut
     'validUntil',
   ].sort();
   const actual = Object.keys(record).sort();
+  const ownKeys = Reflect.ownKeys(record);
+  const descriptors = Object.getOwnPropertyDescriptors(record);
   if (
     record.schemaVersion !== 1 ||
     actual.length !== expected.length ||
+    ownKeys.length !== actual.length ||
+    ownKeys.some((key) => typeof key !== 'string') ||
     actual.some((key, index) => key !== expected[index]) ||
+    actual.some((key) => !Object.hasOwn(descriptors[key] ?? {}, 'value')) ||
     typeof record.testOnly !== 'boolean' ||
     typeof record.canonicalPath !== 'string' ||
     !record.canonicalPath.startsWith('/') ||
@@ -226,12 +231,17 @@ function parseTrustRecord(input: unknown): Readonly<ParsedTrustRecord> {
     'validUntil',
   ].sort();
   const actual = Object.keys(value).sort();
+  const ownKeys = Reflect.ownKeys(value);
+  const descriptors = Object.getOwnPropertyDescriptors(value);
   if (
     value.schemaVersion !== 1 ||
     value.algorithm !== 'ED25519' ||
     value.testOnly !== false ||
     actual.length !== expected.length ||
+    ownKeys.length !== actual.length ||
+    ownKeys.some((key) => typeof key !== 'string') ||
     actual.some((key, index) => key !== expected[index]) ||
+    actual.some((key) => !Object.hasOwn(descriptors[key] ?? {}, 'value')) ||
     typeof value.authorizedWorktreeRoot !== 'string' ||
     !value.authorizedWorktreeRoot.startsWith('/') ||
     typeof value.publicKeySpkiBase64 !== 'string' ||
@@ -295,7 +305,10 @@ function parseTrustRecord(input: unknown): Readonly<ParsedTrustRecord> {
 export class BoundedLinuxExecutableAuthorizationVerifier implements LinuxExecutableAuthorizationVerifier {
   readonly #records: ReadonlyMap<string, Readonly<ParsedTrustRecord>>;
 
-  constructor(records: readonly unknown[]) {
+  constructor(
+    records: readonly unknown[],
+    private readonly clock: () => number = Date.now,
+  ) {
     const parsed = records.map(parseTrustRecord);
     if (parsed.length === 0 || parsed.length > 32) deny();
     const bySigner = new Map<string, Readonly<ParsedTrustRecord>>();
@@ -313,13 +326,14 @@ export class BoundedLinuxExecutableAuthorizationVerifier implements LinuxExecuta
       keyFingerprints.add(record.record.publicKeySpkiSha256);
     }
     this.#records = bySigner;
+    Object.freeze(this);
   }
 
   verify(input: unknown): Readonly<LinuxExecutableAuthorization> {
     const authorization = parseLinuxExecutableAuthorization(input);
     const trusted = this.#records.get(authorization.signerKeyId);
     if (!trusted) deny();
-    const now = Date.now();
+    const now = this.clock();
     const validFrom = Date.parse(authorization.validFrom);
     const validUntil = Date.parse(authorization.validUntil);
     const trustFrom = Date.parse(trusted.record.validFrom);

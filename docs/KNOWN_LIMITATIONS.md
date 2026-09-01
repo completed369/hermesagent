@@ -156,9 +156,13 @@
 > remain fail-closed: the reader and API composition default to an explicit deny
 > verifier, while the pinned deterministic key requires a test-only verifier. A
 > bounded static verifier can authenticate explicitly supplied Ed25519 trust
-> records with exact scope, validity, and revocation constraints, but the API
-> supplies none. A production trust-record source, signer registry, and live
-> revocation evidence are still absent pending reviewed authority and native
+> records with exact scope, validity, and revocation constraints. A separate
+> source can authenticate exact 15-minute Ed25519 signer-registry snapshots and
+> advance a trusted durable compare-and-swap checkpoint, rejecting rollback,
+> version skips, broken hash links, equivocation, stale roots, and revocation.
+> The API supplies neither primitive. No positive snapshot reader, durable
+> checkpoint backend, root provisioning, signer registry, or live revocation
+> publisher is configured pending reviewed authority and native
 > owner/reparse-point/handle designs.
 
 > The supervisor composition issues a deeply frozen, non-serializable in-process
@@ -174,10 +178,11 @@
 > The exported composition interface supplies no production signer, positive
 > authorization source, or verifier. The same explicit verifier is applied to
 > the live decision, filesystem evidence, admission, and launch-time
-> revalidation; production injects only the deny implementation. Revocation is
-> only as current as its injected immutable trust snapshot and one source read for
-> an admission; post-decision revocation and atomic launch-time revalidation
-> remain unresolved.
+> revalidation; production injects only the deny implementation. The
+> authenticated snapshot source is not yet consumed by the supervisor, so
+> revocation is only as current as its injected immutable verifier;
+> per-decision source reads, post-decision revocation, and atomic launch-time
+> revalidation remain unresolved.
 >
 > The authenticated JSONL session is likewise an I/O-free post-authentication
 > verifier only. It owns bounded parsing, runtime-to-parent sequence and batch

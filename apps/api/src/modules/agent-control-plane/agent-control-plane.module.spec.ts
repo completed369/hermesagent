@@ -3,9 +3,11 @@ import {
   CODEX_REGISTRATION_AUTHORIZATION_SOURCE,
   DenyCodexRegistrationAuthorizationSource,
   DenyRuntimeProcessLauncher,
+  DenyLinuxExecutableAuthorityTrustSource,
   DenyTrustedSupervisorAuthorizationSource,
   DenyLinuxExecutableAuthorizationVerifier,
   LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER,
+  LINUX_EXECUTABLE_AUTHORITY_TRUST_SOURCE,
   RUNTIME_PROCESS_LAUNCHER,
   TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE,
   TrustedSupervisorComposition,
@@ -44,6 +46,9 @@ describe('AgentControlPlaneModule', () => {
     );
     expect(moduleRef.get(LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER)).toBeInstanceOf(
       DenyLinuxExecutableAuthorizationVerifier,
+    );
+    expect(moduleRef.get(LINUX_EXECUTABLE_AUTHORITY_TRUST_SOURCE)).toBeInstanceOf(
+      DenyLinuxExecutableAuthorityTrustSource,
     );
     expect(moduleRef.get(RUNTIME_PROCESS_LAUNCHER)).toBeInstanceOf(DenyRuntimeProcessLauncher);
     expect(moduleRef.get(CODEX_REGISTRATION_AUTHORIZATION_SOURCE)).toBeInstanceOf(

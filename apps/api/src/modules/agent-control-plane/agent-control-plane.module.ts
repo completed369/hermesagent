@@ -22,9 +22,11 @@ import {
   DenyCodexRegistrationAuthorizationSource,
   DenyCodexValidationDispatchAuthorizationSource,
   DenyRuntimeProcessLauncher,
+  DenyLinuxExecutableAuthorityTrustSource,
   DenyLinuxExecutableAuthorizationVerifier,
   DenyTrustedSupervisorAuthorizationSource,
   LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER,
+  LINUX_EXECUTABLE_AUTHORITY_TRUST_SOURCE,
   PerAdmissionLinuxExecutableEvidenceReader,
   RUNTIME_PROCESS_LAUNCHER,
   TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE,
@@ -45,6 +47,7 @@ const denyCodexCapabilityAuthorization = new DenyCodexCapabilityExchangeAuthoriz
 const denyCodexValidationDispatchAuthorization =
   new DenyCodexValidationDispatchAuthorizationSource();
 const denySupervisorAuthorization = new DenyTrustedSupervisorAuthorizationSource();
+const denyExecutableAuthorityTrust = new DenyLinuxExecutableAuthorityTrustSource();
 const denyExecutableAuthorizationVerifier = new DenyLinuxExecutableAuthorizationVerifier();
 const denyRuntimeProcessLauncher = new DenyRuntimeProcessLauncher();
 const trustedSupervisorComposition = new TrustedSupervisorComposition(
@@ -112,6 +115,10 @@ const denyTestOnlyGate: BridgeTestOnlyGate = {
     {
       provide: TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE,
       useValue: denySupervisorAuthorization,
+    },
+    {
+      provide: LINUX_EXECUTABLE_AUTHORITY_TRUST_SOURCE,
+      useValue: denyExecutableAuthorityTrust,
     },
     {
       provide: LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER,

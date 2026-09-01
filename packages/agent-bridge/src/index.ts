@@ -7,6 +7,7 @@ export * from './secret-lease';
 export * from './supervision-policy';
 export * from './supervision-lifecycle';
 export * from './supervision-authorization';
+export * from './supervision-authority-trust-source';
 export * from './supervision-evidence-reader';
 export * from './supervisor-composition';
 export * from './authenticated-jsonl-session';
