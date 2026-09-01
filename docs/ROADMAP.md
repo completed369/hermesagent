@@ -210,6 +210,9 @@ published and current `main` has not been deployed to private staging.
    cleanup. This is CI evidence only, not a runtime connection or production transport; production
    authorization, secrets, and launching remain deny-only and all real runtimes remain
    **NOT_CONFIGURED**.
+   A Linux-only deterministic fixture additionally accepts one exact parent-authenticated dispatch
+   on an anonymous stdin pipe and emits authenticated acceptance/result evidence after cleanup
+   (ADR-0054). This remains unexported CI evidence and does not configure a real runtime.
    Codex now also has an I/O-free, exact stable `model/list` capability
    translator and immutable durable acceptance bound to authenticated durable
    registration. It accepts only a complete non-hidden catalog, retains hashes

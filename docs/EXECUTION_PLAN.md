@@ -62,6 +62,10 @@ evidence; broker reservations remain estimates rather than financial charges.
 > authorization decision and again immediately before native handoff (ADR-0052),
 > while the API supplies only the deny source.
 > Production authorization and launching still deny.
+> A Linux-only deterministic fixture also owns one anonymous stdin dispatch pipe and proves one
+> parent-authenticated `DISPATCH` to authenticated `DISPATCH_ACCEPTED`/`RESULT` round trip after
+> complete process cleanup (ADR-0054). This is CI-only evidence, not a production stream owner or
+> runtime connection.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

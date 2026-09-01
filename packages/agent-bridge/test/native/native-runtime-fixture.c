@@ -162,6 +162,24 @@ static void derive_runtime_key(const unsigned char secret[SECRET_BYTES],
   memset(expand_input, 0, sizeof(expand_input));
 }
 
+static void derive_parent_key(const unsigned char secret[SECRET_BYTES],
+                              unsigned char output[SHA256_BYTES]) {
+  static const char context_json[] =
+      "{\"connectionId\":\"lifecycle-connection\",\"parentNonce\":\"lifecycle-parent-nonce\","
+      "\"principalReference\":\"lifecycle-principal\",\"runtimeId\":\"lifecycle-runtime\","
+      "\"runtimeNonce\":\"lifecycle-runtime-nonce\",\"sessionId\":\"lifecycle-session\","
+      "\"workspaceId\":\"lifecycle-workspace\"}";
+  static const char info[] = "ventureos.bridge.v1:parent-to-runtime";
+  unsigned char salt[SHA256_BYTES], pseudorandom_key[SHA256_BYTES];
+  unsigned char expand_input[sizeof(info)];
+  sha256((const unsigned char *)context_json, strlen(context_json), salt);
+  hmac_sha256(salt, SHA256_BYTES, secret, SECRET_BYTES, pseudorandom_key);
+  memcpy(expand_input, info, sizeof(info) - 1); expand_input[sizeof(info) - 1] = 1;
+  hmac_sha256(pseudorandom_key, SHA256_BYTES, expand_input, sizeof(expand_input), output);
+  memset(salt, 0, sizeof(salt)); memset(pseudorandom_key, 0, sizeof(pseudorandom_key));
+  memset(expand_input, 0, sizeof(expand_input));
+}
+
 static void hex_digest(const unsigned char digest[SHA256_BYTES], char output[65]) {
   static const char digits[] = "0123456789abcdef";
   for (size_t index = 0; index < SHA256_BYTES; index += 1) {
@@ -213,6 +231,117 @@ static int read_secret(unsigned char secret[SECRET_BYTES]) {
   ssize_t trailing = read(SECRET_FD, &extra, 1);
   (void)close(SECRET_FD);
   return trailing == 0 ? 0 : -1;
+}
+
+static int parse_utc_millis(const char value[25], int64_t *output) {
+  int year, month, day, hour, minute, second, millisecond, consumed = 0;
+  if (sscanf(value, "%4d-%2d-%2dT%2d:%2d:%2d.%3dZ%n", &year, &month, &day, &hour,
+             &minute, &second, &millisecond, &consumed) != 7 ||
+      consumed != 24 || year < 1970 || month < 1 || month > 12 || day < 1 || day > 31 ||
+      hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59 ||
+      millisecond < 0 || millisecond > 999)
+    return -1;
+  struct tm parsed = {.tm_year = year - 1900,
+                      .tm_mon = month - 1,
+                      .tm_mday = day,
+                      .tm_hour = hour,
+                      .tm_min = minute,
+                      .tm_sec = second,
+                      .tm_isdst = 0};
+  time_t seconds = timegm(&parsed);
+  struct tm normalized;
+  if (seconds < 0 || gmtime_r(&seconds, &normalized) == NULL ||
+      normalized.tm_year != year - 1900 || normalized.tm_mon != month - 1 ||
+      normalized.tm_mday != day || normalized.tm_hour != hour ||
+      normalized.tm_min != minute || normalized.tm_sec != second)
+    return -1;
+  *output = (int64_t)seconds * 1000 + millisecond;
+  return 0;
+}
+
+static int verify_dispatch(const unsigned char key[SHA256_BYTES]) {
+  char signed_line[MAX_FRAME_BYTES] = {0};
+  size_t used = 0;
+  for (;;) {
+    if (used >= sizeof(signed_line) - 1) return -1;
+    ssize_t count = read(STDIN_FILENO, signed_line + used, sizeof(signed_line) - 1 - used);
+    if (count > 0) { used += (size_t)count; continue; }
+    if (count < 0 && errno == EINTR) continue;
+    if (count < 0) return -1;
+    break;
+  }
+  if (used < 2 || signed_line[used - 1] != '\n' ||
+      memchr(signed_line, '\n', used - 1) != NULL) return -1;
+  signed_line[--used] = '\0';
+  static const char prefix[] =
+      "{\"connectionId\":\"lifecycle-connection\",\"expiresAt\":\"";
+  static const char issued_marker[] = "\",\"issuedAt\":\"";
+  static const char mac_marker[] = "\",\"mac\":\"";
+  if (strncmp(signed_line, prefix, sizeof(prefix) - 1) != 0) return -1;
+  char *issued = strstr(signed_line + sizeof(prefix) - 1, issued_marker);
+  char *mac = issued == NULL ? NULL : strstr(issued + sizeof(issued_marker) - 1, mac_marker);
+  if (issued == NULL || mac == NULL || strlen(mac + sizeof(mac_marker) - 1) < 44) return -1;
+  const size_t expires_length = (size_t)(issued - (signed_line + sizeof(prefix) - 1));
+  const char *issued_value = issued + sizeof(issued_marker) - 1;
+  const size_t issued_length = (size_t)(mac - issued_value);
+  const char *mac_value = mac + sizeof(mac_marker) - 1;
+  if (expires_length != 24 || issued_length != 24 || mac_value[43] != '"') return -1;
+  char expires_at[25], issued_at[25];
+  memcpy(expires_at, signed_line + sizeof(prefix) - 1, 24); expires_at[24] = '\0';
+  memcpy(issued_at, issued_value, 24); issued_at[24] = '\0';
+  int64_t expires_ms, issued_ms;
+  struct timespec observed;
+  if (parse_utc_millis(expires_at, &expires_ms) != 0 ||
+      parse_utc_millis(issued_at, &issued_ms) != 0 ||
+      clock_gettime(CLOCK_REALTIME, &observed) != 0)
+    return -1;
+  const int64_t observed_ms = (int64_t)observed.tv_sec * 1000 + observed.tv_nsec / 1000000;
+  if (expires_ms - issued_ms != 30000 || issued_ms > observed_ms + 1000 ||
+      expires_ms <= observed_ms)
+    return -1;
+
+  const char payload[] =
+      "{\"challenge\":\"VENTUREOS_ZERO_SPEND_VALIDATE\","
+      "\"dispatchId\":\"lifecycle-dispatch\"}";
+  unsigned char payload_bytes[SHA256_BYTES];
+  char payload_digest[65];
+  sha256((const unsigned char *)payload, strlen(payload), payload_bytes);
+  hex_digest(payload_bytes, payload_digest);
+  char unsigned_json[MAX_FRAME_BYTES];
+  int unsigned_length = snprintf(
+      unsigned_json, sizeof(unsigned_json),
+      "{\"connectionId\":\"lifecycle-connection\",\"expiresAt\":\"%s\","
+      "\"issuedAt\":\"%s\",\"messageId\":\"lifecycle-parent-dispatch-1\","
+      "\"payload\":%s,\"payloadDigest\":\"%s\","
+      "\"principalReference\":\"lifecycle-principal\","
+      "\"protocolVersion\":\"ventureos.bridge.v1\",\"runtimeId\":\"lifecycle-runtime\","
+      "\"sequence\":1,\"sessionId\":\"lifecycle-session\",\"type\":\"DISPATCH\","
+      "\"workspaceId\":\"lifecycle-workspace\"}",
+      expires_at, issued_at, payload, payload_digest);
+  if (unsigned_length <= 0 || (size_t)unsigned_length >= sizeof(unsigned_json)) return -1;
+  unsigned char expected_mac_bytes[SHA256_BYTES];
+  char expected_mac[44];
+  hmac_sha256(key, SHA256_BYTES, (const unsigned char *)unsigned_json,
+              (size_t)unsigned_length, expected_mac_bytes);
+  base64url(expected_mac_bytes, expected_mac);
+  char expected_signed[MAX_FRAME_BYTES];
+  int expected_length = snprintf(
+      expected_signed, sizeof(expected_signed),
+      "{\"connectionId\":\"lifecycle-connection\",\"expiresAt\":\"%s\","
+      "\"issuedAt\":\"%s\",\"mac\":\"%s\",\"messageId\":\"lifecycle-parent-dispatch-1\","
+      "\"payload\":%s,\"payloadDigest\":\"%s\","
+      "\"principalReference\":\"lifecycle-principal\","
+      "\"protocolVersion\":\"ventureos.bridge.v1\",\"runtimeId\":\"lifecycle-runtime\","
+      "\"sequence\":1,\"sessionId\":\"lifecycle-session\",\"type\":\"DISPATCH\","
+      "\"workspaceId\":\"lifecycle-workspace\"}",
+      expires_at, issued_at, expected_mac, payload, payload_digest);
+  const int accepted = expected_length > 0 && (size_t)expected_length == used &&
+                       memcmp(expected_signed, signed_line, used) == 0;
+  memset(payload_bytes, 0, sizeof(payload_bytes));
+  memset(expected_mac_bytes, 0, sizeof(expected_mac_bytes));
+  memset(unsigned_json, 0, sizeof(unsigned_json));
+  memset(expected_signed, 0, sizeof(expected_signed));
+  return accepted ? 0 : -1;
 }
 
 static int utc_timestamp(time_t value, char output[25]) {
@@ -307,37 +436,67 @@ static int verify_runtime_boundary(void) {
 }
 
 static int authenticated_lifecycle(const char *mode) {
-  unsigned char secret[SECRET_BYTES], runtime_key[SHA256_BYTES];
+  unsigned char secret[SECRET_BYTES], runtime_key[SHA256_BYTES], parent_key[SHA256_BYTES];
   if (read_secret(secret) != 0) return 40;
   derive_runtime_key(secret, runtime_key);
+  memset(parent_key, 0, sizeof(parent_key));
+  const int cancelled = strcmp(mode, "authenticated-cancel") == 0;
+  const int dispatched = strcmp(mode, "authenticated-dispatch") == 0;
+  if (dispatched) derive_parent_key(secret, parent_key);
   memset(secret, 0, sizeof(secret));
   struct timespec observed;
   char issued_at[25], expires_at[25];
   if (clock_gettime(CLOCK_REALTIME, &observed) != 0 ||
       utc_timestamp(observed.tv_sec, issued_at) != 0 ||
       utc_timestamp(observed.tv_sec + 60, expires_at) != 0) {
-    memset(runtime_key, 0, sizeof(runtime_key)); return 41;
+    memset(parent_key, 0, sizeof(parent_key));
+    memset(runtime_key, 0, sizeof(runtime_key));
+    return 41;
   }
   char first[MAX_FRAME_BYTES], second[MAX_FRAME_BYTES], third[MAX_FRAME_BYTES];
-  size_t first_length = 0, second_length = 0, third_length = 0;
-  const int cancelled = strcmp(mode, "authenticated-cancel") == 0;
+  char fourth[MAX_FRAME_BYTES];
+  size_t first_length = 0, second_length = 0, third_length = 0, fourth_length = 0;
   if (build_frame(1, "CAPABILITIES", "{\"protocol\":\"jsonl-v1\"}", issued_at,
                   expires_at, runtime_key, first, &first_length) != 0 ||
       build_frame(2, "HEARTBEAT", "{\"health\":\"HEALTHY\"}", issued_at, expires_at,
                   runtime_key, second, &second_length) != 0 ||
-      build_frame(3, cancelled ? "CANCELLED" : "RESULT",
+      build_frame(3, cancelled ? "CANCELLED" : dispatched ? "DISPATCH_ACCEPTED" : "RESULT",
                   cancelled ? "{\"reason\":\"PARENT_CANCELLED\"}"
-                            : "{\"outcome\":\"SUCCEEDED\"}",
-                  issued_at, expires_at, runtime_key, third, &third_length) != 0) {
-    memset(runtime_key, 0, sizeof(runtime_key)); return 42;
+                            : dispatched ? "{\"dispatchId\":\"lifecycle-dispatch\"}"
+                                         : "{\"outcome\":\"SUCCEEDED\"}",
+                  issued_at, expires_at, runtime_key, third, &third_length) != 0 ||
+      (dispatched && build_frame(4, "RESULT", "{\"outcome\":\"SUCCEEDED\"}", issued_at,
+                                 expires_at, runtime_key, fourth, &fourth_length) != 0)) {
+    memset(parent_key, 0, sizeof(parent_key));
+    memset(runtime_key, 0, sizeof(runtime_key));
+    return 42;
   }
-  memset(runtime_key, 0, sizeof(runtime_key));
   if (cancelled) {
     memcpy(cancellation_frame, third, third_length); cancellation_frame_length = third_length;
-    if (signal(SIGTERM, cancel_and_exit) == SIG_ERR) return 45;
+    if (signal(SIGTERM, cancel_and_exit) == SIG_ERR) {
+      memset(parent_key, 0, sizeof(parent_key));
+      memset(runtime_key, 0, sizeof(runtime_key));
+      return 45;
+    }
   }
   if (exact_write(STDOUT_FILENO, first, first_length) != 0 ||
-      exact_write(STDOUT_FILENO, second, second_length) != 0) return 43;
+      exact_write(STDOUT_FILENO, second, second_length) != 0) {
+    memset(parent_key, 0, sizeof(parent_key));
+    memset(runtime_key, 0, sizeof(runtime_key));
+    return 43;
+  }
+  if (dispatched && verify_dispatch(parent_key) != 0) {
+    memset(parent_key, 0, sizeof(parent_key));
+    memset(runtime_key, 0, sizeof(runtime_key));
+    return 46;
+  }
+  memset(parent_key, 0, sizeof(parent_key));
+  memset(runtime_key, 0, sizeof(runtime_key));
+  if (dispatched)
+    return exact_write(STDOUT_FILENO, third, third_length) == 0 &&
+                   exact_write(STDOUT_FILENO, fourth, fourth_length) == 0
+               ? 0
+               : 44;
   if (!cancelled) return exact_write(STDOUT_FILENO, third, third_length) == 0 ? 0 : 44;
   for (;;) pause();
 }
@@ -348,7 +507,8 @@ int main(int argc, char **argv) {
   int boundary = verify_runtime_boundary();
   if (boundary != 0) return boundary;
   if (strcmp(argv[2], "authenticated-success") == 0 ||
-      strcmp(argv[2], "authenticated-cancel") == 0)
+      strcmp(argv[2], "authenticated-cancel") == 0 ||
+      strcmp(argv[2], "authenticated-dispatch") == 0)
     return authenticated_lifecycle(argv[2]);
   if (strcmp(argv[2], "jsonl-fixture") != 0) return 20;
   if (signal(SIGTERM, SIG_IGN) == SIG_ERR) return 27;

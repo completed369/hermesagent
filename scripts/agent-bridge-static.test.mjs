@@ -1249,7 +1249,7 @@ test('native supervisor evidence stays Linux-test-only and final images deny its
   assert.match(imageWorkflow, /Native supervisor test helper entered a final runtime image/u);
 });
 
-test('authenticated supervised lifecycle evidence is test-only, bounded, and deny-wired', () => {
+test('authenticated supervised lifecycle and dispatch evidence is test-only, bounded, and deny-wired', () => {
   const helper = readFileSync(
     'packages/agent-bridge/test/native/native-supervisor-helper.c',
     'utf8',
@@ -1280,7 +1280,10 @@ test('authenticated supervised lifecycle evidence is test-only, bounded, and den
 
   assert.match(helper, /pipe2\(secret_pipe, O_CLOEXEC\)/u);
   assert.match(helper, /write_all\(secret_pipe\[1\], secret, secret_length\)/u);
-  assert.match(helper, /transcript_capacity[\s\S]*line_count != 3/u);
+  assert.match(helper, /pipe2\(dispatch_pipe, O_CLOEXEC\)/u);
+  assert.match(helper, /write_all\(dispatch_pipe\[1\], dispatch, dispatch_length\)/u);
+  assert.match(helper, /const size_t expected_lines = has_dispatch \? 4U : 3U/u);
+  assert.match(helper, /line_count != expected_lines/u);
   assert.match(helper, /authenticated-cancel[\s\S]*kill\(-child, SIGTERM\)/u);
   assert.match(helper, /wait_child_bounded[\s\S]*cleanupCompletedBeforeEvidence/u);
   assert.match(
@@ -1292,13 +1295,23 @@ test('authenticated supervised lifecycle evidence is test-only, bounded, and den
   assert.doesNotMatch(helper, /authenticatedTerminal/u);
   assert.match(fixture, /#define SECRET_FD 3/u);
   assert.match(fixture, /derive_runtime_key\(secret, runtime_key\)/u);
+  assert.match(fixture, /derive_parent_key\(secret, parent_key\)/u);
+  assert.match(fixture, /verify_dispatch\(parent_key\)/u);
+  assert.match(fixture, /parse_utc_millis\(expires_at, &expires_ms\)/u);
+  assert.match(fixture, /expires_ms - issued_ms != 30000/u);
+  assert.match(fixture, /expires_ms <= observed_ms/u);
+  assert.match(fixture, /"DISPATCH_ACCEPTED"/u);
   assert.match(fixture, /memset\(secret, 0, sizeof\(secret\)\)/u);
   assert.match(fixture, /memset\(runtime_key, 0, sizeof\(runtime_key\)\)/u);
-  assert.match(fixture, /"CAPABILITIES"[\s\S]*"HEARTBEAT"[\s\S]*"CANCELLED" : "RESULT"/u);
+  assert.match(fixture, /"CAPABILITIES"[\s\S]*"HEARTBEAT"/u);
+  assert.match(fixture, /cancelled \? "CANCELLED"/u);
+  assert.match(fixture, /"DISPATCH_ACCEPTED" : "RESULT"/u);
   assert.doesNotMatch(fixture, /getenv\s*\(/u);
   assert.match(addon, /napi_get_typedarray_info/u);
   assert.match(addon, /secret_length != LIFECYCLE_SECRET_BYTES/u);
+  assert.match(addon, /dispatch_length > LIFECYCLE_DISPATCH_BYTES/u);
   assert.match(addon, /memset\(owned_secret, 0, sizeof\(owned_secret\)\)/u);
+  assert.match(addon, /memset\(owned_dispatch, 0, sizeof\(owned_dispatch\)\)/u);
   assert.match(addon, /napi_call_function\(env, global, consumer, 1, arguments, &tuple\)/u);
   assert.doesNotMatch(addon, /napi_set_named_property\(env, exports, "launch"/u);
   assert.match(testSource, /new TrustedSupervisorComposition\(/u);
@@ -1317,6 +1330,8 @@ test('authenticated supervised lifecycle evidence is test-only, bounded, and den
   assert.match(testSource, /'session'[\s\S]*'nonce'[\s\S]*'generation'[\s\S]*'expiry'/u);
   assert.match(testSource, /\['CAPABILITIES', 'HEARTBEAT', 'RESULT'\]/u);
   assert.match(testSource, /\['CAPABILITIES', 'HEARTBEAT', 'CANCELLED'\]/u);
+  assert.match(testSource, /\['CAPABILITIES', 'HEARTBEAT', 'DISPATCH_ACCEPTED', 'RESULT'\]/u);
+  assert.match(testSource, /denies a mutated parent dispatch/u);
   assert.match(testSource, /cleanupCompletedBeforeEvidence: true/u);
   assert.doesNotMatch(index, /authenticated-supervised-lifecycle|authenticated-lifecycle-addon/u);
   assert.match(module, /new DenyBridgeSecretLeaseResolver\(\)/u);

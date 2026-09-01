@@ -7,6 +7,7 @@
 #include "native-supervisor-helper.c"
 
 #define LIFECYCLE_SECRET_BYTES 32U
+#define LIFECYCLE_DISPATCH_BYTES 2048U
 #define LIFECYCLE_TRANSCRIPT_BYTES 8192U
 
 static napi_ref lifecycle_consumer = NULL;
@@ -41,8 +42,8 @@ static napi_value deny_native(napi_env env, const char *code) {
 }
 
 static napi_value launch(napi_env env, napi_callback_info info) {
-  napi_value arguments[2];
-  if (lifecycle_consumer == NULL || exact_argc(env, info, 2, arguments) != 0)
+  napi_value arguments[3];
+  if (lifecycle_consumer == NULL || exact_argc(env, info, 3, arguments) != 0)
     return deny_native(env, "LIFECYCLE_ARGUMENTS");
   napi_value consumer;
   napi_value global;
@@ -92,6 +93,25 @@ static napi_value launch(napi_env env, napi_callback_info info) {
   unsigned char owned_secret[LIFECYCLE_SECRET_BYTES];
   memcpy(owned_secret, secret_data, sizeof(owned_secret));
 
+  bool is_dispatch_array = false;
+  napi_typedarray_type dispatch_array_type;
+  size_t dispatch_length = 0;
+  void *dispatch_data = NULL;
+  napi_value dispatch_array_buffer;
+  size_t dispatch_byte_offset = 0;
+  if (napi_is_typedarray(env, arguments[2], &is_dispatch_array) != napi_ok ||
+      !is_dispatch_array ||
+      napi_get_typedarray_info(env, arguments[2], &dispatch_array_type, &dispatch_length,
+                               &dispatch_data, &dispatch_array_buffer,
+                               &dispatch_byte_offset) != napi_ok ||
+      dispatch_array_type != napi_uint8_array || dispatch_length > LIFECYCLE_DISPATCH_BYTES ||
+      (dispatch_length > 0 && dispatch_data == NULL)) {
+    memset(owned_secret, 0, sizeof(owned_secret));
+    return deny_native(env, "LIFECYCLE_DISPATCH");
+  }
+  unsigned char owned_dispatch[LIFECYCLE_DISPATCH_BYTES] = {0};
+  if (dispatch_length > 0) memcpy(owned_dispatch, dispatch_data, dispatch_length);
+
   char *native_arguments[] = {(char *)"ventureos-authenticated-lifecycle-addon",
                               (char *)"--fixture", fixture, (char *)"--root", root,
                               (char *)"--sha256", digest, (char *)"--uid", uid,
@@ -103,9 +123,11 @@ static napi_value launch(napi_env env, napi_callback_info info) {
   char transcript[LIFECYCLE_TRANSCRIPT_BYTES] = {0};
   size_t transcript_length = 0;
   int supervisor_status =
-      run_supervisor(23, native_arguments, owned_secret, sizeof(owned_secret), evidence,
-                     transcript, sizeof(transcript), &transcript_length);
+      run_supervisor(23, native_arguments, owned_secret, sizeof(owned_secret), owned_dispatch,
+                     dispatch_length, evidence, transcript, sizeof(transcript),
+                     &transcript_length);
   memset(owned_secret, 0, sizeof(owned_secret));
+  memset(owned_dispatch, 0, sizeof(owned_dispatch));
   if (supervisor_status != 0) return deny_native(env, "LIFECYCLE_DENIED");
 
   napi_value result;
