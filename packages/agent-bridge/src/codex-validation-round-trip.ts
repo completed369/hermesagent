@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { AuthenticatedJsonlSessionContext } from './authenticated-jsonl-session';
 import { canonicalJson, validateBridgeEnvelope } from './codec';
 import type { CodexTerminalEvidence } from './codex-app-server-session';
+import type { CodexValidationUsageObservationEvidence } from './codex-validation-protocol-runner';
 import { CODEX_APP_SERVER_ADAPTER_KIND } from './codex-app-server-policy';
 import {
   CODEX_VALIDATION_CHALLENGE,
@@ -13,6 +14,20 @@ import type { BridgeEnvelope } from './protocol';
 
 const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
+const LEGACY_USAGE_EVIDENCE_HASH = '0'.repeat(64);
+const EMPTY_PROGRESS_EVIDENCE_HASH =
+  '801adbaf421a4c656b9ec0f28085e952a35d35212487487d5b95a95a7c3b6a64';
+const EMPTY_TOKEN_USAGE_EVIDENCE_HASH =
+  '95c9cbcf9d54ee66ed622c5c6dc41d45949a816164405da6219991a9b3dde532';
+const USAGE_OBSERVATION_FIELDS = new Set([
+  'progressEventCount',
+  'progressEvidenceHash',
+  'tokenUsageEventCount',
+  'tokenUsageEvidenceHash',
+  'usageAccountingState',
+  'recognizedCostMinorUnits',
+  'recognizedComputeUnits',
+]);
 export const CODEX_VALIDATION_RESULT_CODE = 'VALIDATION_COMPLETED' as const;
 
 export type CodexValidationRoundTripErrorCode =
@@ -47,6 +62,13 @@ export interface CodexValidationRoundTripCandidate {
   readonly authorityLevel: 0 | 1 | 2 | 3;
   readonly taskPolicyHash: string;
   readonly maximumCostMinorUnits: 0;
+  readonly progressEventCount: number;
+  readonly progressEvidenceHash: string;
+  readonly tokenUsageEventCount: number;
+  readonly tokenUsageEvidenceHash: string;
+  readonly usageAccountingState: 'LEGACY_NOT_CAPTURED' | 'NOT_OBSERVED' | 'OBSERVED_UNMAPPED';
+  readonly recognizedCostMinorUnits: 0;
+  readonly recognizedComputeUnits: 0;
   readonly statusSequence: 2;
   readonly statusMessageId: string;
   readonly statusPayloadDigest: string;
@@ -117,6 +139,13 @@ function sha256(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
+function normalizedCandidateHash(value: JsonRecord, legacy: boolean): string {
+  if (!legacy) return sha256(value);
+  return sha256(
+    Object.fromEntries(Object.entries(value).filter(([key]) => !USAGE_OBSERVATION_FIELDS.has(key))),
+  );
+}
+
 function hashText(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -167,15 +196,42 @@ function bridgeIdentity(input: unknown) {
   };
 }
 
-function terminalEvidence(input: unknown): Readonly<CodexTerminalEvidence> {
+function terminalEvidence(
+  input: unknown,
+): Readonly<CodexTerminalEvidence & CodexValidationUsageObservationEvidence> {
   const evidence = exact(input, [
     'messageHash',
+    'progressEventCount',
+    'progressEvidenceHash',
+    'recognizedComputeUnits',
+    'recognizedCostMinorUnits',
     'runtimeConnection',
     'status',
     'threadId',
+    'tokenUsageEventCount',
+    'tokenUsageEvidenceHash',
     'turnId',
+    'usageAccountingState',
   ]);
-  if (evidence.status !== 'completed' || evidence.runtimeConnection !== 'NOT_CONFIGURED')
+  const usageAccountingState: 'NOT_OBSERVED' | 'OBSERVED_UNMAPPED' =
+    (evidence.tokenUsageEventCount as number) === 0 ? 'NOT_OBSERVED' : 'OBSERVED_UNMAPPED';
+  if (
+    evidence.status !== 'completed' ||
+    evidence.runtimeConnection !== 'NOT_CONFIGURED' ||
+    !Number.isSafeInteger(evidence.progressEventCount) ||
+    (evidence.progressEventCount as number) < 0 ||
+    (evidence.progressEventCount as number) > 128 ||
+    !Number.isSafeInteger(evidence.tokenUsageEventCount) ||
+    (evidence.tokenUsageEventCount as number) < 0 ||
+    (evidence.tokenUsageEventCount as number) > (evidence.progressEventCount as number) ||
+    ((evidence.progressEventCount as number) === 0 &&
+      evidence.progressEvidenceHash !== EMPTY_PROGRESS_EVIDENCE_HASH) ||
+    ((evidence.tokenUsageEventCount as number) === 0 &&
+      evidence.tokenUsageEvidenceHash !== EMPTY_TOKEN_USAGE_EVIDENCE_HASH) ||
+    evidence.recognizedCostMinorUnits !== 0 ||
+    evidence.recognizedComputeUnits !== 0 ||
+    evidence.usageAccountingState !== usageAccountingState
+  )
     throw new CodexValidationRoundTripError('RESULT_MISMATCH');
   return freeze({
     threadId: reference(evidence.threadId),
@@ -183,6 +239,13 @@ function terminalEvidence(input: unknown): Readonly<CodexTerminalEvidence> {
     status: 'completed' as const,
     messageHash: digest(evidence.messageHash),
     runtimeConnection: 'NOT_CONFIGURED' as const,
+    progressEventCount: evidence.progressEventCount as number,
+    progressEvidenceHash: digest(evidence.progressEvidenceHash),
+    tokenUsageEventCount: evidence.tokenUsageEventCount as number,
+    tokenUsageEvidenceHash: digest(evidence.tokenUsageEvidenceHash),
+    usageAccountingState,
+    recognizedCostMinorUnits: 0 as const,
+    recognizedComputeUnits: 0 as const,
   });
 }
 
@@ -198,7 +261,7 @@ function envelope(input: unknown): BridgeEnvelope {
 export function createCodexValidationRoundTripCandidate(input: {
   readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
   readonly bridge: Readonly<AuthenticatedJsonlSessionContext>;
-  readonly terminal: Readonly<CodexTerminalEvidence>;
+  readonly terminal: Readonly<CodexTerminalEvidence & CodexValidationUsageObservationEvidence>;
   readonly statusEnvelope: Readonly<BridgeEnvelope>;
   readonly terminalEnvelope: Readonly<BridgeEnvelope>;
 }): Readonly<CodexValidationRoundTripCandidate> {
@@ -243,12 +306,19 @@ export function createCodexValidationRoundTripCandidate(input: {
     'challengeCode',
     'dispatchId',
     'resultCode',
+    'progressEventCount',
+    'progressEvidenceHash',
+    'recognizedComputeUnits',
+    'recognizedCostMinorUnits',
     'runId',
     'taskId',
     'terminalMessageHash',
     'terminalThreadId',
     'terminalStatus',
     'terminalTurnId',
+    'tokenUsageEventCount',
+    'tokenUsageEvidenceHash',
+    'usageAccountingState',
   ]);
   if (
     statusPayload.challengeCode !== CODEX_VALIDATION_CHALLENGE ||
@@ -266,7 +336,14 @@ export function createCodexValidationRoundTripCandidate(input: {
     resultPayload.terminalStatus !== 'completed' ||
     resultPayload.terminalThreadId !== terminal.threadId ||
     resultPayload.terminalTurnId !== terminal.turnId ||
-    resultPayload.terminalMessageHash !== terminal.messageHash
+    resultPayload.terminalMessageHash !== terminal.messageHash ||
+    resultPayload.progressEventCount !== terminal.progressEventCount ||
+    resultPayload.progressEvidenceHash !== terminal.progressEvidenceHash ||
+    resultPayload.tokenUsageEventCount !== terminal.tokenUsageEventCount ||
+    resultPayload.tokenUsageEvidenceHash !== terminal.tokenUsageEvidenceHash ||
+    resultPayload.usageAccountingState !== terminal.usageAccountingState ||
+    resultPayload.recognizedCostMinorUnits !== 0 ||
+    resultPayload.recognizedComputeUnits !== 0
   )
     throw new CodexValidationRoundTripError('RESULT_MISMATCH');
   const statusIssuedAt = timestamp(statusEnvelope.issuedAt);
@@ -297,6 +374,13 @@ export function createCodexValidationRoundTripCandidate(input: {
     authorityLevel: dispatch.authorityLevel,
     taskPolicyHash: dispatch.taskPolicyHash,
     maximumCostMinorUnits: 0 as const,
+    progressEventCount: terminal.progressEventCount,
+    progressEvidenceHash: terminal.progressEvidenceHash,
+    tokenUsageEventCount: terminal.tokenUsageEventCount,
+    tokenUsageEvidenceHash: terminal.tokenUsageEvidenceHash,
+    usageAccountingState: terminal.usageAccountingState,
+    recognizedCostMinorUnits: 0 as const,
+    recognizedComputeUnits: 0 as const,
     statusSequence: 2 as const,
     statusMessageId: reference(statusEnvelope.messageId),
     statusPayloadDigest: digest(statusEnvelope.payloadDigest),
@@ -340,7 +424,11 @@ export function validateCodexValidationRoundTripCandidate(
     'heartbeatCandidateHash',
     'maximumCostMinorUnits',
     'principalReference',
+    'progressEventCount',
+    'progressEvidenceHash',
     'providerAccess',
+    'recognizedComputeUnits',
+    'recognizedCostMinorUnits',
     'resultCode',
     'roundTripCandidateHash',
     'runId',
@@ -369,13 +457,43 @@ export function validateCodexValidationRoundTripCandidate(
     'terminalState',
     'terminalThreadId',
     'terminalTurnId',
+    'tokenUsageEventCount',
+    'tokenUsageEvidenceHash',
+    'usageAccountingState',
     'validationDispatchCandidateHash',
     'workspaceId',
   ]);
+  const legacyUsage = candidate.usageAccountingState === 'LEGACY_NOT_CAPTURED';
+  const usageAccountingState: 'LEGACY_NOT_CAPTURED' | 'NOT_OBSERVED' | 'OBSERVED_UNMAPPED' =
+    legacyUsage
+      ? 'LEGACY_NOT_CAPTURED'
+      : (candidate.tokenUsageEventCount as number) === 0
+        ? 'NOT_OBSERVED'
+        : 'OBSERVED_UNMAPPED';
   if (
     candidate.schemaVersion !== 1 ||
     candidate.adapterKind !== CODEX_APP_SERVER_ADAPTER_KIND ||
     candidate.maximumCostMinorUnits !== 0 ||
+    candidate.recognizedCostMinorUnits !== 0 ||
+    candidate.recognizedComputeUnits !== 0 ||
+    !Number.isSafeInteger(candidate.progressEventCount) ||
+    (candidate.progressEventCount as number) < 0 ||
+    (candidate.progressEventCount as number) > 128 ||
+    !Number.isSafeInteger(candidate.tokenUsageEventCount) ||
+    (candidate.tokenUsageEventCount as number) < 0 ||
+    (candidate.tokenUsageEventCount as number) > (candidate.progressEventCount as number) ||
+    (legacyUsage &&
+      (candidate.progressEventCount !== 0 ||
+        candidate.tokenUsageEventCount !== 0 ||
+        candidate.progressEvidenceHash !== LEGACY_USAGE_EVIDENCE_HASH ||
+        candidate.tokenUsageEvidenceHash !== LEGACY_USAGE_EVIDENCE_HASH)) ||
+    (!legacyUsage &&
+      candidate.progressEventCount === 0 &&
+      candidate.progressEvidenceHash !== EMPTY_PROGRESS_EVIDENCE_HASH) ||
+    (!legacyUsage &&
+      candidate.tokenUsageEventCount === 0 &&
+      candidate.tokenUsageEvidenceHash !== EMPTY_TOKEN_USAGE_EVIDENCE_HASH) ||
+    candidate.usageAccountingState !== usageAccountingState ||
     candidate.statusSequence !== 2 ||
     candidate.terminalSequence !== 3 ||
     candidate.statusState !== 'ACCEPTED' ||
@@ -408,6 +526,13 @@ export function validateCodexValidationRoundTripCandidate(
     authorityLevel: candidate.authorityLevel as 0 | 1 | 2 | 3,
     taskPolicyHash: digest(candidate.taskPolicyHash),
     maximumCostMinorUnits: 0 as const,
+    progressEventCount: candidate.progressEventCount as number,
+    progressEvidenceHash: digest(candidate.progressEvidenceHash),
+    tokenUsageEventCount: candidate.tokenUsageEventCount as number,
+    tokenUsageEvidenceHash: digest(candidate.tokenUsageEvidenceHash),
+    usageAccountingState,
+    recognizedCostMinorUnits: 0 as const,
+    recognizedComputeUnits: 0 as const,
     statusSequence: 2 as const,
     statusMessageId: reference(candidate.statusMessageId),
     statusPayloadDigest: digest(candidate.statusPayloadDigest),
@@ -439,7 +564,7 @@ export function validateCodexValidationRoundTripCandidate(
     Date.parse(normalized.terminalExpiresAt) <= Date.parse(normalized.terminalIssuedAt)
   )
     throw new CodexValidationRoundTripError('INVALID_EVIDENCE');
-  const expectedHash = sha256(normalized);
+  const expectedHash = normalizedCandidateHash(normalized, legacyUsage);
   if (digest(candidate.roundTripCandidateHash) !== expectedHash)
     throw new CodexValidationRoundTripError('INVALID_EVIDENCE');
   return freeze({ ...normalized, roundTripCandidateHash: expectedHash });

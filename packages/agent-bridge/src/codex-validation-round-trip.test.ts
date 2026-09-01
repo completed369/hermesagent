@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
+
 import { describe, expect, it } from 'vitest';
 
 import { deriveBridgeKeys, digestBridgePayload, signBridgeEnvelope } from './auth';
 import { deterministicLinuxAdmission } from './__tests__/fixtures/deterministic-supervision';
 import type { AuthenticatedJsonlSessionContext } from './authenticated-jsonl-session';
+import { canonicalJson } from './codec';
 import {
   CODEX_APP_SERVER_ADAPTER_KIND,
   CODEX_APP_SERVER_ARGUMENT_POLICY,
@@ -25,6 +28,15 @@ import { BRIDGE_PROTOCOL_VERSION, type BridgeEnvelope } from './protocol';
 
 const secret = new Uint8Array(32).fill(9);
 const secretDigest = '8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05';
+const observation = {
+  progressEventCount: 1,
+  progressEvidenceHash: 'c'.repeat(64),
+  tokenUsageEventCount: 1,
+  tokenUsageEvidenceHash: 'd'.repeat(64),
+  usageAccountingState: 'OBSERVED_UNMAPPED' as const,
+  recognizedCostMinorUnits: 0 as const,
+  recognizedComputeUnits: 0 as const,
+};
 
 function fixture() {
   const bridge: AuthenticatedJsonlSessionContext = {
@@ -147,6 +159,7 @@ function fixture() {
     status: 'completed' as const,
     messageHash: 'b'.repeat(64),
     runtimeConnection: 'NOT_CONFIGURED' as const,
+    ...observation,
   };
   const signed = (
     sequence: number,
@@ -186,6 +199,7 @@ function fixture() {
     terminalTurnId: terminal.turnId,
     terminalMessageHash: terminal.messageHash,
     terminalStatus: 'completed',
+    ...observation,
   };
   return {
     bridge,
@@ -233,6 +247,26 @@ describe('Codex validation round-trip evidence', () => {
       { ...base, statusEnvelope: { ...base.statusEnvelope, sequence: 4 } },
       { ...base, terminalEnvelope: { ...base.terminalEnvelope, type: 'FAILED' as const } },
       { ...base, terminal: { ...base.terminal, messageHash: 'c'.repeat(64) } },
+      { ...base, terminal: { ...base.terminal, tokenUsageEventCount: 0 } },
+      {
+        ...base,
+        terminal: {
+          ...base.terminal,
+          tokenUsageEventCount: 0,
+          usageAccountingState: 'NOT_OBSERVED' as const,
+        },
+      },
+      { ...base, terminal: { ...base.terminal, recognizedCostMinorUnits: 1 as never } },
+      {
+        ...base,
+        terminalEnvelope: {
+          ...base.terminalEnvelope,
+          payload: {
+            ...(base.terminalEnvelope.payload as Record<string, unknown>),
+            progressEvidenceHash: 'e'.repeat(64),
+          },
+        },
+      },
       { ...base, bridge: { ...base.bridge, runtimeId: 'other-runtime' } },
       { ...base, terminal: { ...base.terminal, runtimeConnection: 'CONNECTED' as never } },
     ])
@@ -247,5 +281,42 @@ describe('Codex validation round-trip evidence', () => {
         terminalMessageHash: 'c'.repeat(64),
       }),
     ).toThrow();
+    expect(() =>
+      validateCodexValidationRoundTripCandidate({
+        ...candidate,
+        recognizedComputeUnits: 1,
+      }),
+    ).toThrow();
+  });
+
+  it('preserves validation of explicitly migrated pre-observation evidence', () => {
+    const candidate = createCodexValidationRoundTripCandidate(fixture());
+    const removed = new Set([
+      'progressEventCount',
+      'progressEvidenceHash',
+      'tokenUsageEventCount',
+      'tokenUsageEvidenceHash',
+      'usageAccountingState',
+      'recognizedCostMinorUnits',
+      'recognizedComputeUnits',
+      'roundTripCandidateHash',
+    ]);
+    const historicalNormalized = Object.fromEntries(
+      Object.entries(candidate).filter(([key]) => !removed.has(key)),
+    );
+    const migrated = {
+      ...candidate,
+      progressEventCount: 0,
+      progressEvidenceHash: '0'.repeat(64),
+      tokenUsageEventCount: 0,
+      tokenUsageEvidenceHash: '0'.repeat(64),
+      usageAccountingState: 'LEGACY_NOT_CAPTURED' as const,
+      recognizedCostMinorUnits: 0 as const,
+      recognizedComputeUnits: 0 as const,
+      roundTripCandidateHash: createHash('sha256')
+        .update(canonicalJson(historicalNormalized))
+        .digest('hex'),
+    };
+    expect(validateCodexValidationRoundTripCandidate(migrated)).toEqual(migrated);
   });
 });
