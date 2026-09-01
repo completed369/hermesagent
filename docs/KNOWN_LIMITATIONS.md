@@ -410,7 +410,10 @@ write completion must not be presented as runtime receipt or connectivity.
 
 The injected Codex protocol coordinator can require an ephemeral
 read-only/no-network turn and an exact dispatch-bound terminal token while
-rejecting observed tool or approval activity. It still receives no production
-streams, launcher, credentials, provider access, runtime-side bridge signer, or
-durable writer. Because no real authenticated process round trip exists, this
-must not be presented as configured Codex or runtime connectivity.
+rejecting observed tool or approval activity. A deny-by-default runtime adapter
+can authenticate the incoming dispatch and sign/write the correlated acceptance
+and result through injected secret and local-transport ports. Neither component
+receives production streams, launcher authority, credentials, provider access,
+or a durable writer, and production secret and response transports remain
+deny-only. Because no real authenticated process round trip exists, this must
+not be presented as configured Codex or runtime connectivity.

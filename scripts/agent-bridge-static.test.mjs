@@ -15,6 +15,7 @@ const packageFiles = [
   'packages/agent-bridge/src/codex-validation-dispatch.ts',
   'packages/agent-bridge/src/codex-validation-egress-controller.ts',
   'packages/agent-bridge/src/codex-validation-protocol-runner.ts',
+  'packages/agent-bridge/src/codex-validation-runtime-adapter.ts',
   'packages/agent-bridge/src/codex-validation-round-trip.ts',
   'packages/agent-bridge/src/evidence.ts',
   'packages/agent-bridge/src/index.ts',
@@ -136,6 +137,30 @@ test('Codex validation runner is dispatch-bound, side-effect denied, and uncompo
   assert.match(session, /sandbox: 'read-only'/u);
   assert.match(session, /sandboxPolicy: \{ type: 'readOnly', networkAccess: false \}/u);
   assert.doesNotMatch(runner, /runtimeConnection:\s*'(?:CONNECTED|HEALTHY)'/u);
+});
+
+test('Codex validation runtime adapter authenticates both directions without launch authority', () => {
+  const adapter = readFileSync(
+    'packages/agent-bridge/src/codex-validation-runtime-adapter.ts',
+    'utf8',
+  );
+  assert.doesNotMatch(
+    adapter,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(adapter, /\bprocess\.(?:env|cwd|platform)\b|@Controller\s*\(|Prisma/u);
+  assert.doesNotMatch(adapter, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
+  assert.match(adapter, /bridge,\s*'VERIFY_FRAME'/u);
+  assert.match(adapter, /bridge,\s*'SIGN_FRAME'/u);
+  assert.match(adapter, /keys\.parentToRuntime/u);
+  assert.match(adapter, /keys\.runtimeToParent/u);
+  assert.match(adapter, /MAX_TRACKED_DISPATCHES = 1_024/u);
+  assert.match(adapter, /MAX_FRAME_NODES = 1_024/u);
+  assert.match(adapter, /MAX_FRAME_DEPTH = 8/u);
+  assert.match(adapter, /sequence === 2 \? 'DISPATCH_ACCEPTED' : 'RESULT'/u);
+  assert.match(adapter, /new DenyBridgeSecretLeaseResolver\(\)/u);
+  assert.match(adapter, /new DenyBridgeEgressTransport\(\)/u);
+  assert.doesNotMatch(adapter, /runtimeConnection:\s*'(?:CONNECTED|HEALTHY)'/u);
 });
 
 test('Codex registration translation hashes account evidence and grants no authority', () => {
