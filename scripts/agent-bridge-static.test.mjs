@@ -128,6 +128,10 @@ test('Codex validation runner is dispatch-bound, side-effect denied, and injecti
   assert.match(runner, /MAX_RUN_MS = 15_000/u);
   assert.match(runner, /ventureos-validation:\$\{dispatchId\}/u);
   assert.match(runner, /validationRestrictionsAccepted\(\)/u);
+  assert.match(runner, /session\.interrupt\(\)/u);
+  assert.match(runner, /message\.id !== interruptRequestId/u);
+  assert.match(runner, /evidence\.status !== 'interrupted'/u);
+  assert.match(runner, /addEventListener\('abort', requestInterrupt, \{ once: true \}\)/u);
   assert.match(
     runner,
     /SAFE_ITEM_TYPES = new Set\(\['userMessage', 'agentMessage', 'reasoning'\]\)/u,
@@ -160,6 +164,10 @@ test('Codex validation runtime adapter authenticates both directions without lau
   assert.match(adapter, /sequence === 2 \? 'DISPATCH_ACCEPTED' : 'RESULT'/u);
   assert.match(adapter, /new DenyBridgeSecretLeaseResolver\(\)/u);
   assert.match(adapter, /new DenyBridgeEgressTransport\(\)/u);
+  assert.match(
+    adapter,
+    /terminal\.status === 'interrupted'[\s\S]*CodexValidationRuntimeAdapterError\('CANCELLED'\)/u,
+  );
   assert.doesNotMatch(adapter, /runtimeConnection:\s*'(?:CONNECTED|HEALTHY)'/u);
 });
 
@@ -185,6 +193,8 @@ test('composed Codex validation process evidence remains deterministic and test-
   assert.match(adapter, /options\.timeoutMs === undefined/u);
   assert.match(fixture, /approvalPolicy !== 'never'/u);
   assert.match(fixture, /sandboxPolicy\?\.networkAccess !== false/u);
+  assert.match(fixture, /request\.method === 'turn\/interrupt'/u);
+  assert.match(fixture, /status: 'interrupted'/u);
   assert.doesNotMatch(
     fixture,
     /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,

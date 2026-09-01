@@ -175,13 +175,19 @@ function validateTerminal(input: unknown): Readonly<CodexTerminalEvidence> {
     'threadId',
     'turnId',
   ]);
-  if (terminal.status !== 'completed' || terminal.runtimeConnection !== 'NOT_CONFIGURED')
+  const threadId = reference(terminal.threadId);
+  const turnId = reference(terminal.turnId);
+  const messageHash = digest(terminal.messageHash);
+  if (terminal.runtimeConnection !== 'NOT_CONFIGURED')
+    throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
+  if (terminal.status === 'interrupted') throw new CodexValidationRuntimeAdapterError('CANCELLED');
+  if (terminal.status !== 'completed')
     throw new CodexValidationRuntimeAdapterError('INVALID_INPUT');
   return Object.freeze({
-    threadId: reference(terminal.threadId),
-    turnId: reference(terminal.turnId),
+    threadId,
+    turnId,
     status: 'completed',
-    messageHash: digest(terminal.messageHash),
+    messageHash,
     runtimeConnection: 'NOT_CONFIGURED',
   });
 }

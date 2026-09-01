@@ -32,7 +32,10 @@ import {
   type CodexValidationRuntimeProtocolRunner,
 } from './codex-validation-runtime-adapter';
 import { BoundedCodexAppServerStdioTransport } from './codex-app-server-stdio-transport';
-import { BoundedCodexValidationProtocolRunner } from './codex-validation-protocol-runner';
+import {
+  BoundedCodexValidationProtocolRunner,
+  type CodexValidationProtocolTransport,
+} from './codex-validation-protocol-runner';
 import type { BridgeEgressTransport, BridgeEgressTransportRequest } from './egress-controller';
 import { BRIDGE_PROTOCOL_VERSION, type BridgeEnvelope } from './protocol';
 import { ScopedBridgeSecretLeaseResolver } from './secret-lease';
@@ -213,7 +216,7 @@ function adapter(
   };
 }
 
-function launchProtocolFixture(mode: 'success' | 'unsafe-tool') {
+function launchProtocolFixture(mode: 'success' | 'unsafe-tool' | 'interrupted') {
   const child = spawn(
     process.execPath,
     [resolve(__dirname, '..', 'test', 'fixtures', 'codex-validation-app-server.mjs'), mode],
@@ -230,6 +233,23 @@ function launchProtocolFixture(mode: 'success' | 'unsafe-tool') {
     if (Buffer.byteLength(stderr, 'utf8') > 4_096) child.kill();
   });
   return { child, stderr: () => stderr };
+}
+
+class AbortAfterTurnStartedTransport implements CodexValidationProtocolTransport {
+  constructor(
+    private readonly delegate: CodexValidationProtocolTransport,
+    private readonly controller: AbortController,
+  ) {}
+
+  write(message: unknown, options = {}) {
+    return this.delegate.write(message, options);
+  }
+
+  async read(options = {}) {
+    const message = await this.delegate.read(options);
+    if (message.method === 'turn/started') this.controller.abort();
+    return message;
+  }
 }
 
 async function stopProtocolFixture(child: ChildProcessWithoutNullStreams): Promise<void> {
@@ -331,6 +351,41 @@ describe('bounded Codex validation runtime adapter', () => {
       await expect(subject.execute(input)).rejects.toMatchObject({ code: 'UNSAFE_ACTIVITY' });
       expect(bridgeTransport.frames).toHaveLength(0);
       expect(stdio.snapshot().runtimeConnection).toBe('NOT_CONFIGURED');
+    } finally {
+      await stopProtocolFixture(processFixture.child);
+    }
+  });
+
+  it('correlates cancellation through the process and emits no bridge result', async () => {
+    const input = fixture();
+    const controller = new AbortController();
+    const bridgeTransport = new RecordingTransport();
+    const processFixture = launchProtocolFixture('interrupted');
+    const stdio = new BoundedCodexAppServerStdioTransport(
+      processFixture.child.stdin,
+      processFixture.child.stdout,
+    );
+    const protocol = new AbortAfterTurnStartedTransport(stdio, controller);
+    const runner = new BoundedCodexValidationProtocolRunner(protocol, () => new Date(now));
+    const subject = new BoundedCodexValidationRuntimeAdapter(
+      runner,
+      resolver(),
+      bridgeTransport,
+      () => new Date(now),
+    );
+
+    try {
+      await expect(subject.execute(input, { signal: controller.signal })).rejects.toMatchObject({
+        code: 'CANCELLED',
+      });
+      expect(controller.signal.aborted).toBe(true);
+      expect(bridgeTransport.frames).toHaveLength(0);
+      expect(stdio.snapshot()).toMatchObject({
+        state: 'ACTIVE',
+        runtimeConnection: 'NOT_CONFIGURED',
+      });
+      expect(processFixture.stderr()).toBe('');
+      await expect(subject.execute(input)).rejects.toMatchObject({ code: 'USED_DISPATCH' });
     } finally {
       await stopProtocolFixture(processFixture.child);
     }
@@ -474,6 +529,21 @@ describe('bounded Codex validation runtime adapter', () => {
       code: 'INVALID_INPUT',
     });
     expect(malformedTransport.frames).toHaveLength(0);
+
+    const malformedCancellation: CodexValidationRuntimeProtocolRunner = {
+      async run() {
+        return {
+          ...(await new FixedRunner().run()),
+          status: 'interrupted',
+          messageHash: 'not-a-digest',
+        } as never;
+      },
+    };
+    const malformedCancellationTransport = new RecordingTransport();
+    await expect(
+      adapter(malformedCancellation, malformedCancellationTransport).subject.execute(input),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(malformedCancellationTransport.frames).toHaveLength(0);
 
     let current = new Date(now);
     const expiring: CodexValidationRuntimeProtocolRunner = {

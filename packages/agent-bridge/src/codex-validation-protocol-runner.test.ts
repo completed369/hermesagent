@@ -74,7 +74,10 @@ function dispatch() {
 class FixtureTransport implements CodexValidationProtocolTransport {
   readonly writes: unknown[] = [];
 
-  constructor(private readonly messages: Readonly<Record<string, unknown>>[]) {}
+  constructor(
+    private readonly messages: Readonly<Record<string, unknown>>[],
+    private readonly onRead: (message: Readonly<Record<string, unknown>>) => void = () => {},
+  ) {}
 
   async write(message: unknown): Promise<void> {
     this.writes.push(message);
@@ -83,6 +86,7 @@ class FixtureTransport implements CodexValidationProtocolTransport {
   async read(): Promise<Readonly<Record<string, unknown>>> {
     const message = this.messages.shift();
     if (!message) throw new Error('fixture exhausted');
+    this.onRead(message);
     return message;
   }
 }
@@ -288,6 +292,90 @@ describe('BoundedCodexValidationProtocolRunner', () => {
         () => new Date('2026-08-31T11:03:16.000Z'),
       ).run(dispatch(), { timeoutMs: 15_000 }),
     ).rejects.toMatchObject({ code: 'INVALID_TIMEOUT' });
+  });
+
+  it('sends one correlated interrupt and admits only an interrupted terminal after cancellation', async () => {
+    const controller = new AbortController();
+    const interruptedMessages = () => {
+      const values = messages().slice(0, 4);
+      values.push(
+        { id: 4, result: {} },
+        {
+          method: 'turn/completed',
+          params: {
+            threadId: 'thr_123',
+            turn: {
+              id: 'turn_456',
+              status: 'interrupted',
+              items: [],
+              error: null,
+            },
+          },
+        },
+      );
+      return values;
+    };
+    const interrupted = interruptedMessages();
+    const transport = new FixtureTransport(interrupted, (message) => {
+      if (message.method === 'turn/started') controller.abort();
+    });
+
+    const evidence = await new BoundedCodexValidationProtocolRunner(
+      transport,
+      () => new Date('2026-08-31T11:03:16.000Z'),
+    ).run(dispatch(), { signal: controller.signal });
+
+    expect(evidence).toMatchObject({
+      threadId: 'thr_123',
+      turnId: 'turn_456',
+      status: 'interrupted',
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    expect(transport.writes[4]).toEqual({
+      method: 'turn/interrupt',
+      id: 4,
+      params: { threadId: 'thr_123', turnId: 'turn_456' },
+    });
+    expect(transport.writes).toHaveLength(5);
+
+    const wrongCorrelation = interruptedMessages();
+    wrongCorrelation[4] = { id: 40, result: {} };
+    const second = new AbortController();
+    await expect(
+      new BoundedCodexValidationProtocolRunner(
+        new FixtureTransport(wrongCorrelation, (message) => {
+          if (message.method === 'turn/started') second.abort();
+        }),
+        () => new Date('2026-08-31T11:03:16.000Z'),
+      ).run(dispatch(), { signal: second.signal }),
+    ).rejects.toMatchObject({ code: 'CORRELATION_MISMATCH' });
+
+    const missingAcknowledgement = interruptedMessages();
+    missingAcknowledgement.splice(4, 1);
+    const withoutAck = new AbortController();
+    await expect(
+      new BoundedCodexValidationProtocolRunner(
+        new FixtureTransport(missingAcknowledgement, (message) => {
+          if (message.method === 'turn/started') withoutAck.abort();
+        }),
+        () => new Date('2026-08-31T11:03:16.000Z'),
+      ).run(dispatch(), { signal: withoutAck.signal }),
+    ).rejects.toMatchObject({ code: 'RESULT_MISMATCH' });
+
+    const wrongTerminal = interruptedMessages();
+    const terminal = structuredClone(wrongTerminal[5]!);
+    ((terminal.params as Record<string, unknown>).turn as Record<string, unknown>).status =
+      'completed';
+    wrongTerminal[5] = terminal;
+    const third = new AbortController();
+    await expect(
+      new BoundedCodexValidationProtocolRunner(
+        new FixtureTransport(wrongTerminal, (message) => {
+          if (message.method === 'turn/started') third.abort();
+        }),
+        () => new Date('2026-08-31T11:03:16.000Z'),
+      ).run(dispatch(), { signal: third.signal }),
+    ).rejects.toMatchObject({ code: 'RESULT_MISMATCH' });
   });
 
   it('does not run validation against a legacy response that cannot attest restrictions', async () => {

@@ -230,8 +230,10 @@ published and current `main` has not been deployed to private staging.
    boundary now enforces ephemeral read-only/no-network execution, bounded
    correlated safe progress, and exact dispatch-bound terminal output. A deterministic test-only
    child process now composes that transport and coordinator with the authenticated runtime adapter
-   and proves that wrong-secret and reported-tool paths emit no bridge result (ADR-0055), but no
-   production composition supplies streams. Authenticated status/result evidence can now be
+   and proves that wrong-secret and reported-tool paths emit no bridge result (ADR-0055). It also
+   proves one exact interrupt acknowledgement and interrupted terminal without emitting accepted or
+   result frames (ADR-0056), but no production composition supplies streams. Authenticated
+   status/result evidence can now be
    admitted immutably without promoting runtime truth; validation against a real authenticated
    Codex process remains approval- and provisioning-gated.
    Merged contracts are not runtime-connectivity evidence.

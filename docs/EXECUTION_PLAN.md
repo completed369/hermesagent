@@ -70,6 +70,10 @@ evidence; broker reservations remain estimates rather than financial charges.
 > are also composed in a deterministic child-process test (ADR-0055). That evidence repairs and
 > protects their timeout contract, denies pre-authentication I/O and reported tool activity, and
 > remains excluded from production composition and runtime truth.
+> A successor deterministic case sends one exact correlated `turn/interrupt`, requires its
+> acknowledgement and an interrupted terminal, and returns `CANCELLED` without emitting bridge
+> status/result frames (ADR-0056). It is cancellation protocol evidence, not a real provider stop or
+> runtime connection.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

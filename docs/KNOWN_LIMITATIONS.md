@@ -100,7 +100,9 @@
 > framing, timeout, cancellation, malformed-output, and byte-limit enforcement.
 > A deterministic test-only composition now exercises both against a separate Node process and the
 > authenticated runtime adapter (ADR-0055), including fail-closed wrong-secret and reported-tool
-> cases. No production source supplies a process or streams. A separate evidence-only path now
+> cases. The same test-only process now proves one correlated `turn/interrupt` acknowledgement and
+> interrupted terminal with no bridge result emission (ADR-0056). No production source supplies a
+> process or streams. A separate evidence-only path now
 > MAC-verifies and immutably retains
 > one exact correlated accepted-status/result pair without assigning the run or
 > promoting connection truth. Synthetic or caller-supplied evidence is not a
