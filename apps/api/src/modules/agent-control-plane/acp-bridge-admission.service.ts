@@ -715,6 +715,19 @@ export interface CodexValidationProcessSessionRecoveryExecutionAuthority {
   execute(): Promise<Readonly<CodexValidationProcessSessionRecoveryCoordinatorResult>>;
 }
 
+export interface ExecuteCodexValidationProcessSessionRecoveryInput extends ClaimCodexValidationProcessSessionRecoveryLeaseInput {
+  readonly completionIdempotencyKey: string;
+}
+
+export interface CodexValidationProcessSessionRecoveryExecutionResult {
+  readonly lease: Readonly<CodexValidationProcessSessionRecoveryLease>;
+  readonly replayed: boolean;
+  readonly execution: Readonly<CodexValidationProcessSessionRecoveryCoordinatorResult> | null;
+  readonly recoveryState: 'RECORDED' | 'LEASE_EXPIRED';
+  readonly runtimeConnection: 'NOT_CONFIGURED';
+  readonly connectionTransition: 'NOT_APPLIED';
+}
+
 export interface AcceptCodexValidationRoundTripEvidenceInput {
   readonly handoffAttemptId: string;
   readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
@@ -2477,6 +2490,70 @@ export class AcpBridgeAdmissionService
         started = true;
         return coordinator.execute(workItem);
       },
+    });
+  }
+
+  /**
+   * Claims one exact durable recovery bundle and immediately consumes that
+   * bundle through the bounded execution authority. No caller-selected work
+   * item can be introduced between the durable claim and observation.
+   */
+  async executeCodexValidationProcessSessionRecovery(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: ExecuteCodexValidationProcessSessionRecoveryInput,
+    evidenceSource: CodexValidationProcessSessionRecoveryEvidenceSource = new DenyCodexValidationProcessSessionRecoveryEvidenceSource(),
+    clock: () => Date = () => new Date(),
+  ): Promise<Readonly<CodexValidationProcessSessionRecoveryExecutionResult>> {
+    assertControlPlane(capability, context, 3);
+    publicReference(input.completionIdempotencyKey, 'completionIdempotencyKey');
+    const bundle = await this.claimCodexValidationProcessSessionRecoveryLease(
+      capability,
+      context,
+      Object.freeze({
+        recoveryLeaseId: input.recoveryLeaseId,
+        claimId: input.claimId,
+        idempotencyKey: input.idempotencyKey,
+      }),
+    );
+    if (bundle.lease.leaseState === 'EXPIRED') {
+      if (bundle.workItem !== null || bundle.dispatch !== null)
+        throw new AcpBridgeAdmissionDeniedError(
+          'Expired Codex validation process-session recovery returned executable authority',
+        );
+      return Object.freeze({
+        lease: bundle.lease,
+        replayed: bundle.replayed,
+        execution: null,
+        recoveryState: 'LEASE_EXPIRED' as const,
+        runtimeConnection: 'NOT_CONFIGURED' as const,
+        connectionTransition: 'NOT_APPLIED' as const,
+      });
+    }
+    if (bundle.workItem === null || bundle.dispatch === null)
+      throw new AcpBridgeAdmissionDeniedError(
+        'Active Codex validation process-session recovery omitted executable authority',
+      );
+    const authority = this.createCodexValidationProcessSessionRecoveryExecutionAuthority(
+      capability,
+      context,
+      {
+        lease: bundle.lease,
+        workItem: bundle.workItem,
+        dispatch: bundle.dispatch,
+        completionIdempotencyKey: input.completionIdempotencyKey,
+      },
+      evidenceSource,
+      clock,
+    );
+    const execution = await authority.execute();
+    return Object.freeze({
+      lease: bundle.lease,
+      replayed: bundle.replayed,
+      execution,
+      recoveryState: 'RECORDED' as const,
+      runtimeConnection: 'NOT_CONFIGURED' as const,
+      connectionTransition: 'NOT_APPLIED' as const,
     });
   }
 

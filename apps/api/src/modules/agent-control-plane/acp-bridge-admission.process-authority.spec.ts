@@ -311,6 +311,101 @@ describe('Codex validation process-session control-plane authority', () => {
     await expect(authority.execute()).rejects.toThrow();
   });
 
+  it('claims and executes only the exact returned active recovery bundle', async () => {
+    const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
+    const fixture = recoveryAuthorityFixture();
+    const lease = recoveryLease(fixture.workItem);
+    const claim = vi
+      .spyOn(service, 'claimCodexValidationProcessSessionRecoveryLease')
+      .mockResolvedValue({
+        lease,
+        workItem: fixture.workItem,
+        dispatch: fixture.dispatch,
+        replayed: false,
+      });
+    const complete = vi
+      .spyOn(service, 'completeCodexValidationProcessSessionRecovery')
+      .mockResolvedValue({} as never);
+    const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+    const leaseClaimedAt = Date.parse(fixture.workItem.leaseClaimedAt);
+    const times = [100, 200, 600, 700].map((offset) => new Date(leaseClaimedAt + offset));
+
+    const result = await service.executeCodexValidationProcessSessionRecovery(
+      capability,
+      { workspaceId, principalId },
+      {
+        recoveryLeaseId: lease.recoveryLeaseId,
+        claimId: lease.claimId,
+        idempotencyKey: 'recovery-execute-lease-unit',
+        completionIdempotencyKey: 'recovery-execute-completion-unit',
+      },
+      { observe: async () => fixture.exitEvidence },
+      () => times.shift()!,
+    );
+
+    expect(result).toMatchObject({
+      lease,
+      replayed: false,
+      recoveryState: 'RECORDED',
+      runtimeConnection: 'NOT_CONFIGURED',
+      connectionTransition: 'NOT_APPLIED',
+      execution: { completionState: 'RECORDED' },
+    });
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(claim).toHaveBeenCalledWith(
+      capability,
+      { workspaceId, principalId },
+      {
+        recoveryLeaseId: lease.recoveryLeaseId,
+        claimId: lease.claimId,
+        idempotencyKey: 'recovery-execute-lease-unit',
+      },
+    );
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it('returns inert truth when an idempotent recovery lease replay is expired', async () => {
+    const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
+    const fixture = recoveryAuthorityFixture();
+    const lease = { ...recoveryLease(fixture.workItem), leaseState: 'EXPIRED' as const };
+    vi.spyOn(service, 'claimCodexValidationProcessSessionRecoveryLease').mockResolvedValue({
+      lease,
+      workItem: null,
+      dispatch: null,
+      replayed: true,
+    });
+    const executionFactory = vi.spyOn(
+      service,
+      'createCodexValidationProcessSessionRecoveryExecutionAuthority',
+    );
+    const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+
+    const result = await service.executeCodexValidationProcessSessionRecovery(
+      capability,
+      { workspaceId, principalId },
+      {
+        recoveryLeaseId: lease.recoveryLeaseId,
+        claimId: lease.claimId,
+        idempotencyKey: 'recovery-expired-lease-unit',
+        completionIdempotencyKey: 'recovery-expired-completion-unit',
+      },
+    );
+
+    expect(result).toEqual({
+      lease,
+      replayed: true,
+      execution: null,
+      recoveryState: 'LEASE_EXPIRED',
+      runtimeConnection: 'NOT_CONFIGURED',
+      connectionTransition: 'NOT_APPLIED',
+    });
+    expect(executionFactory).not.toHaveBeenCalled();
+  });
+
   it('rejects recovery discovery without Level-3 authority or bounded input', async () => {
     const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
     const lowCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
