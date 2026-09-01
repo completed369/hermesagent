@@ -61,12 +61,18 @@ static int exact_mode(const char *mode) {
   return strcmp(mode, "normal") == 0 || strcmp(mode, "tamper-after-copy") == 0 ||
          strcmp(mode, "replace-after-copy") == 0 ||
          strcmp(mode, "authenticated-success") == 0 ||
-         strcmp(mode, "authenticated-cancel") == 0;
+         strcmp(mode, "authenticated-cancel") == 0 ||
+         strcmp(mode, "authenticated-dispatch") == 0;
 }
 
 static int authenticated_mode(const char *mode) {
   return strcmp(mode, "authenticated-success") == 0 ||
-         strcmp(mode, "authenticated-cancel") == 0;
+         strcmp(mode, "authenticated-cancel") == 0 ||
+         strcmp(mode, "authenticated-dispatch") == 0;
+}
+
+static int dispatch_mode(const char *mode) {
+  return strcmp(mode, "authenticated-dispatch") == 0;
 }
 
 static int parse_unsigned(const char *text, unsigned long maximum, unsigned long *output) {
@@ -225,13 +231,17 @@ static int apply_limits(void) {
 }
 
 static void child_exec(int executable, int working_directory, int status_write, int ready_write,
-                       int secret_read, const char *mode) {
+                       int secret_read, int dispatch_read, const char *mode) {
   if (setpgid(0, 0) != 0) goto failed;
   if (dup2(ready_write, STDOUT_FILENO) < 0) goto failed;
   if (ready_write != STDOUT_FILENO) (void)close(ready_write);
   if (secret_read >= 0) {
     if (dup2(secret_read, 3) < 0) goto failed;
     if (secret_read != 3) (void)close(secret_read);
+  }
+  if (dispatch_read >= 0) {
+    if (dup2(dispatch_read, STDIN_FILENO) < 0) goto failed;
+    if (dispatch_read != STDIN_FILENO) (void)close(dispatch_read);
   }
   if (fchdir(working_directory) != 0) goto failed;
   if (apply_limits() != 0) goto failed;
@@ -295,7 +305,8 @@ static void force_cleanup(pid_t child, int pidfd) {
 }
 
 static int run_supervisor(int argc, char **argv, const unsigned char *secret,
-                          size_t secret_length, char evidence_output[1024],
+                          size_t secret_length, const unsigned char *dispatch,
+                          size_t dispatch_length, char evidence_output[1024],
                           char *transcript_output, size_t transcript_capacity,
                           size_t *transcript_length) {
   if (argc != 23 || strcmp(argv[1], "--fixture") != 0 || strcmp(argv[3], "--root") != 0 ||
@@ -310,9 +321,12 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
   const char *expected_hex = argv[6];
   const char *mode = argv[22];
   const int authenticated = authenticated_mode(mode);
+  const int has_dispatch = dispatch_mode(mode);
   if ((authenticated && (secret == NULL || secret_length != 32 || transcript_output == NULL ||
                          transcript_length == NULL || transcript_capacity < 1024)) ||
-      (!authenticated && secret_length != 0))
+      (!authenticated && secret_length != 0) ||
+      (has_dispatch && (dispatch == NULL || dispatch_length == 0 || dispatch_length > 2048)) ||
+      (!has_dispatch && dispatch_length != 0))
     return deny("SESSION_INPUT");
   if (transcript_length != NULL) *transcript_length = 0;
   unsigned long expected_uid = 0;
@@ -504,6 +518,7 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
   int status_pipe[2];
   int ready_pipe[2];
   int secret_pipe[2] = {-1, -1};
+  int dispatch_pipe[2] = {-1, -1};
   if (pipe2(status_pipe, O_CLOEXEC) != 0) {
     (void)close(working_directory);
     (void)close(executable);
@@ -521,9 +536,22 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
     (void)close(status_pipe[1]);
     (void)close(ready_pipe[0]);
     (void)close(ready_pipe[1]);
+    if (dispatch_pipe[0] >= 0) (void)close(dispatch_pipe[0]);
+    if (dispatch_pipe[1] >= 0) (void)close(dispatch_pipe[1]);
     (void)close(working_directory);
     (void)close(executable);
     return deny("SECRET_PIPE");
+  }
+  if (has_dispatch && pipe2(dispatch_pipe, O_CLOEXEC) != 0) {
+    (void)close(status_pipe[0]);
+    (void)close(status_pipe[1]);
+    (void)close(ready_pipe[0]);
+    (void)close(ready_pipe[1]);
+    (void)close(secret_pipe[0]);
+    (void)close(secret_pipe[1]);
+    (void)close(working_directory);
+    (void)close(executable);
+    return deny("DISPATCH_PIPE");
   }
   if (authenticated &&
       (write_all(secret_pipe[1], secret, secret_length) != 0 || close(secret_pipe[1]) != 0)) {
@@ -533,17 +561,35 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
     (void)close(status_pipe[1]);
     (void)close(ready_pipe[0]);
     (void)close(ready_pipe[1]);
+    if (dispatch_pipe[0] >= 0) (void)close(dispatch_pipe[0]);
+    if (dispatch_pipe[1] >= 0) (void)close(dispatch_pipe[1]);
     (void)close(working_directory);
     (void)close(executable);
     return deny("SECRET_PIPE");
   }
   if (authenticated) secret_pipe[1] = -1;
+  if (has_dispatch &&
+      (write_all(dispatch_pipe[1], dispatch, dispatch_length) != 0 ||
+       close(dispatch_pipe[1]) != 0)) {
+    (void)close(dispatch_pipe[0]);
+    if (dispatch_pipe[1] >= 0) (void)close(dispatch_pipe[1]);
+    (void)close(secret_pipe[0]);
+    (void)close(status_pipe[0]);
+    (void)close(status_pipe[1]);
+    (void)close(ready_pipe[0]);
+    (void)close(ready_pipe[1]);
+    (void)close(working_directory);
+    (void)close(executable);
+    return deny("DISPATCH_PIPE");
+  }
+  if (has_dispatch) dispatch_pipe[1] = -1;
   if (!permit_is_current(expires_at_ms)) {
     (void)close(status_pipe[0]);
     (void)close(status_pipe[1]);
     (void)close(ready_pipe[0]);
     (void)close(ready_pipe[1]);
     if (secret_pipe[0] >= 0) (void)close(secret_pipe[0]);
+    if (dispatch_pipe[0] >= 0) (void)close(dispatch_pipe[0]);
     (void)close(working_directory);
     (void)close(executable);
     return deny("PERMIT_EXPIRED");
@@ -555,6 +601,7 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
     (void)close(ready_pipe[0]);
     (void)close(ready_pipe[1]);
     if (secret_pipe[0] >= 0) (void)close(secret_pipe[0]);
+    if (dispatch_pipe[0] >= 0) (void)close(dispatch_pipe[0]);
     (void)close(working_directory);
     (void)close(executable);
     return deny("FORK");
@@ -562,12 +609,14 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
   if (child == 0) {
     (void)close(status_pipe[0]);
     (void)close(ready_pipe[0]);
-    child_exec(executable, working_directory, status_pipe[1], ready_pipe[1], secret_pipe[0], mode);
+    child_exec(executable, working_directory, status_pipe[1], ready_pipe[1], secret_pipe[0],
+               dispatch_pipe[0], mode);
   }
 
   (void)close(status_pipe[1]);
   (void)close(ready_pipe[1]);
   if (secret_pipe[0] >= 0) (void)close(secret_pipe[0]);
+  if (dispatch_pipe[0] >= 0) (void)close(dispatch_pipe[0]);
   (void)close(working_directory);
   (void)close(executable);
   (void)setpgid(child, child);
@@ -622,11 +671,19 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
     struct pollfd process_monitor = {.fd = pidfd, .events = POLLIN};
     int process_poll = poll(&process_monitor, 1, KILL_TIMEOUT_MS);
     int child_status = 0;
-    if (!stream_closed || used == 0 || used >= transcript_capacity || line_count != 3 ||
+    const size_t expected_lines = has_dispatch ? 4U : 3U;
+    if (!stream_closed || used == 0 || used >= transcript_capacity ||
+        line_count != expected_lines ||
         (strcmp(mode, "authenticated-cancel") == 0 && !cancellation_sent) ||
         process_poll <= 0 || (process_monitor.revents & POLLIN) == 0 ||
         wait_child_bounded(child, &child_status) != 0 || !WIFEXITED(child_status) ||
         WEXITSTATUS(child_status) != 0) {
+      (void)snprintf(evidence_output, 1024,
+                     "Lifecycle transcript denied (closed=%d, lines=%zu, processPoll=%d, "
+                     "waitStatus=%d, exited=%d, childExit=%d)",
+                     stream_closed, line_count, process_poll, child_status,
+                     WIFEXITED(child_status) ? 1 : 0,
+                     WIFEXITED(child_status) ? WEXITSTATUS(child_status) : -1);
       force_cleanup(child, pidfd);
       (void)close(pidfd);
       return deny("AUTHENTICATED_TRANSCRIPT");
@@ -638,23 +695,46 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
     char source_hex[65];
     char sealed_hex[65];
     char transcript_hex[65];
+    char dispatch_hex[65] = {0};
     unsigned char transcript_digest[SHA256_BYTES];
     if (hash_buffer((const unsigned char *)transcript_output, used, transcript_digest) != 0)
       return deny("TRANSCRIPT_DIGEST");
+    if (has_dispatch) {
+      unsigned char dispatch_digest[SHA256_BYTES];
+      if (hash_buffer(dispatch, dispatch_length, dispatch_digest) != 0)
+        return deny("DISPATCH_DIGEST");
+      encode_hex(dispatch_digest, dispatch_hex);
+      memset(dispatch_digest, 0, sizeof(dispatch_digest));
+    }
     encode_hex(source_digest, source_hex);
     encode_hex(sealed_digest, sealed_hex);
     encode_hex(transcript_digest, transcript_hex);
     memset(transcript_digest, 0, sizeof(transcript_digest));
-    int evidence_length = snprintf(
-        evidence_output, 1024,
-        "{\"schemaVersion\":1,\"sourceDigest\":\"%s\",\"sealedDigest\":\"%s\","
-        "\"transcriptDigest\":\"%s\","
-        "\"execveatSucceeded\":true,\"emptyEnvironment\":true,"
-        "\"secretPassedByAnonymousFd\":true,\"transcriptBounded\":true,"
-        "\"expectedTerminal\":\"%s\",\"pidfdObservedExit\":true,"
-        "\"processGroupGone\":true,\"cleanupCompletedBeforeEvidence\":true}\n",
-        source_hex, sealed_hex, transcript_hex,
-        strcmp(mode, "authenticated-cancel") == 0 ? "CANCELLED" : "RESULT");
+    int evidence_length = has_dispatch
+                              ? snprintf(
+                                    evidence_output, 1024,
+                                    "{\"schemaVersion\":1,\"sourceDigest\":\"%s\","
+                                    "\"sealedDigest\":\"%s\",\"transcriptDigest\":\"%s\","
+                                    "\"dispatchInputDigest\":\"%s\",\"stdinOwned\":true,"
+                                    "\"execveatSucceeded\":true,\"emptyEnvironment\":true,"
+                                    "\"secretPassedByAnonymousFd\":true,"
+                                    "\"transcriptBounded\":true,\"expectedTerminal\":\"RESULT\","
+                                    "\"pidfdObservedExit\":true,\"processGroupGone\":true,"
+                                    "\"cleanupCompletedBeforeEvidence\":true}\n",
+                                    source_hex, sealed_hex, transcript_hex, dispatch_hex)
+                              : snprintf(
+                                    evidence_output, 1024,
+                                    "{\"schemaVersion\":1,\"sourceDigest\":\"%s\","
+                                    "\"sealedDigest\":\"%s\",\"transcriptDigest\":\"%s\","
+                                    "\"dispatchInputDigest\":null,\"stdinOwned\":false,"
+                                    "\"execveatSucceeded\":true,\"emptyEnvironment\":true,"
+                                    "\"secretPassedByAnonymousFd\":true,"
+                                    "\"transcriptBounded\":true,\"expectedTerminal\":\"%s\","
+                                    "\"pidfdObservedExit\":true,\"processGroupGone\":true,"
+                                    "\"cleanupCompletedBeforeEvidence\":true}\n",
+                                    source_hex, sealed_hex, transcript_hex,
+                                    strcmp(mode, "authenticated-cancel") == 0 ? "CANCELLED"
+                                                                             : "RESULT");
     if (evidence_length <= 0 || evidence_length >= 1024) return deny("EVIDENCE_OUTPUT");
     return 0;
   }
@@ -726,7 +806,7 @@ static int run_supervisor(int argc, char **argv, const unsigned char *secret,
 #ifndef VENTUREOS_NATIVE_ADDON
 int main(int argc, char **argv) {
   char evidence[1024] = {0};
-  int status = run_supervisor(argc, argv, NULL, 0, evidence, NULL, 0, NULL);
+  int status = run_supervisor(argc, argv, NULL, 0, NULL, 0, evidence, NULL, 0, NULL);
   if (status == 0 && fputs(evidence, stdout) == EOF) return deny("EVIDENCE_WRITE");
   return status;
 }

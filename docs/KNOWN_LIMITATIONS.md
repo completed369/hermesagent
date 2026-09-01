@@ -168,6 +168,9 @@
 > snapshot publication procedure, or live revocation publisher is configured
 > pending reviewed authority and native
 > owner/reparse-point/handle designs.
+> Linux CI includes a deterministic, test-only authenticated native dispatch round trip over an
+> anonymous parent-owned stdin pipe (ADR-0054). It is not exported or composed and does not prove a
+> production interactive stream owner, crash recovery, or real Codex connectivity.
 
 > The supervisor composition issues a deeply frozen, non-serializable in-process
 > plan only after exact authorization, evidence, admission, and lifecycle binding.

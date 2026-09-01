@@ -15,12 +15,17 @@ import { createRequire } from 'node:module';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { digestSecretReference } from './auth';
+import {
+  deriveBridgeKeys,
+  digestBridgePayload,
+  digestSecretReference,
+  signBridgeEnvelope,
+} from './auth';
 import {
   AuthenticatedRuntimeJsonlSession,
   type AuthenticatedJsonlSessionContext,
 } from './authenticated-jsonl-session';
-import { canonicalJson } from './codec';
+import { canonicalJson, encodeBridgeLine } from './codec';
 import type { RuntimeProcessLauncher } from './policy';
 import { type BridgeSecretLeaseRequest, ScopedBridgeSecretLeaseResolver } from './secret-lease';
 import {
@@ -52,17 +57,19 @@ MC4CAQAwBQYDK2VwBCIEIDXgLTsIlYz/jfY7Or5Ylt4TinBgk8MUM5C+13sON7Uo
 const hash = (value: unknown): string =>
   createHash('sha256').update(canonicalJson(value)).digest('hex');
 
-type LifecycleMode = 'authenticated-success' | 'authenticated-cancel';
+type LifecycleMode = 'authenticated-success' | 'authenticated-cancel' | 'authenticated-dispatch';
 
 interface LifecycleNativeEvidence {
   readonly schemaVersion: 1;
   readonly sourceDigest: string;
   readonly sealedDigest: string;
   readonly transcriptDigest: string;
+  readonly dispatchInputDigest: string | null;
   readonly execveatSucceeded: true;
   readonly emptyEnvironment: true;
   readonly secretPassedByAnonymousFd: true;
   readonly transcriptBounded: true;
+  readonly stdinOwned: boolean;
   readonly expectedTerminal: 'RESULT' | 'CANCELLED';
   readonly pidfdObservedExit: true;
   readonly processGroupGone: true;
@@ -73,8 +80,9 @@ interface LifecycleCompletionEvidence {
   readonly schemaVersion: 1;
   readonly mode: LifecycleMode;
   readonly transcriptDigest: string;
-  readonly frameTypes: readonly ['CAPABILITIES', 'HEARTBEAT', 'RESULT' | 'CANCELLED'];
-  readonly sequences: readonly [1, 2, 3];
+  readonly dispatchInputDigest: string | null;
+  readonly frameTypes: readonly string[];
+  readonly sequences: readonly number[];
   readonly cleanupCompletedBeforeVerification: true;
 }
 
@@ -86,7 +94,7 @@ interface LifecycleAddonResult {
 interface LifecycleAddon {
   bind(
     consumer: (handoff: unknown) => readonly string[],
-  ): (handoff: unknown, secret: Uint8Array) => LifecycleAddonResult;
+  ): (handoff: unknown, secret: Uint8Array, dispatch: Uint8Array) => LifecycleAddonResult;
 }
 
 class FixtureCompleted extends Error {}
@@ -140,7 +148,7 @@ class AuthenticatedLifecycleLauncher implements RuntimeProcessLauncher {
   completion?: Readonly<LifecycleCompletionEvidence>;
   authorizedNativeCalls = 0;
   #consumeHandoff?: TrustedNativeLaunchHandoffConsumer;
-  #launch?: (token: unknown, secret: Uint8Array) => LifecycleAddonResult;
+  #launch?: (token: unknown, secret: Uint8Array, dispatch: Uint8Array) => LifecycleAddonResult;
   #lastHandoff?: unknown;
   readonly #nativeTokens = new WeakMap<
     object,
@@ -154,6 +162,7 @@ class AuthenticatedLifecycleLauncher implements RuntimeProcessLauncher {
     private readonly secretResolver: ScopedBridgeSecretLeaseResolver,
     private readonly sessionContext: Readonly<AuthenticatedJsonlSessionContext>,
     private readonly transformTranscript: (input: Uint8Array) => Uint8Array = (input) => input,
+    private readonly transformDispatch: (input: Uint8Array) => Uint8Array = (input) => input,
   ) {}
 
   factory() {
@@ -223,6 +232,7 @@ class AuthenticatedLifecycleLauncher implements RuntimeProcessLauncher {
     input: string,
     transcript: Uint8Array,
     expectedTerminal: 'RESULT' | 'CANCELLED',
+    dispatch: Uint8Array,
   ): Readonly<LifecycleNativeEvidence> {
     let parsed: unknown;
     try {
@@ -235,6 +245,7 @@ class AuthenticatedLifecycleLauncher implements RuntimeProcessLauncher {
     const evidence = parsed as Record<string, unknown>;
     const exactKeys = [
       'cleanupCompletedBeforeEvidence',
+      'dispatchInputDigest',
       'emptyEnvironment',
       'execveatSucceeded',
       'expectedTerminal',
@@ -244,28 +255,77 @@ class AuthenticatedLifecycleLauncher implements RuntimeProcessLauncher {
       'sealedDigest',
       'secretPassedByAnonymousFd',
       'sourceDigest',
+      'stdinOwned',
       'transcriptBounded',
       'transcriptDigest',
     ];
     if (canonicalJson(Object.keys(evidence).sort()) !== canonicalJson(exactKeys))
       throw new Error('Lifecycle native evidence denied');
     const transcriptDigest = createHash('sha256').update(transcript).digest('hex');
+    const dispatchInputDigest =
+      dispatch.byteLength === 0 ? null : createHash('sha256').update(dispatch).digest('hex');
     if (
       evidence.schemaVersion !== 1 ||
       evidence.sourceDigest !== this.manifest.executable.sha256 ||
       evidence.sealedDigest !== this.manifest.executable.sha256 ||
       evidence.transcriptDigest !== transcriptDigest ||
+      evidence.dispatchInputDigest !== dispatchInputDigest ||
       evidence.expectedTerminal !== expectedTerminal ||
       evidence.execveatSucceeded !== true ||
       evidence.emptyEnvironment !== true ||
       evidence.secretPassedByAnonymousFd !== true ||
       evidence.transcriptBounded !== true ||
+      evidence.stdinOwned !== dispatch.byteLength > 0 ||
       evidence.pidfdObservedExit !== true ||
       evidence.processGroupGone !== true ||
       evidence.cleanupCompletedBeforeEvidence !== true
     )
       throw new Error('Lifecycle native evidence denied');
     return Object.freeze(evidence as unknown as LifecycleNativeEvidence);
+  }
+
+  private dispatchFrame(secret: Uint8Array, mode: LifecycleMode): Uint8Array {
+    if (mode !== 'authenticated-dispatch') return new Uint8Array();
+    const issuedAt = new Date().toISOString();
+    const expiresAt = new Date(Date.parse(issuedAt) + 30_000).toISOString();
+    const payload = Object.freeze({
+      challenge: 'VENTUREOS_ZERO_SPEND_VALIDATE',
+      dispatchId: 'lifecycle-dispatch',
+    });
+    const keys = deriveBridgeKeys(secret, {
+      workspaceId: this.sessionContext.workspaceId,
+      runtimeId: this.sessionContext.runtimeId,
+      connectionId: this.sessionContext.connectionId,
+      sessionId: this.sessionContext.sessionId,
+      principalReference: this.sessionContext.principalReference,
+      parentNonce: this.sessionContext.parentNonce,
+      runtimeNonce: this.sessionContext.runtimeNonce,
+    });
+    try {
+      return encodeBridgeLine(
+        signBridgeEnvelope(
+          {
+            protocolVersion: 'ventureos.bridge.v1',
+            workspaceId: this.sessionContext.workspaceId,
+            runtimeId: this.sessionContext.runtimeId,
+            connectionId: this.sessionContext.connectionId,
+            sessionId: this.sessionContext.sessionId,
+            principalReference: this.sessionContext.principalReference,
+            messageId: 'lifecycle-parent-dispatch-1',
+            sequence: 1,
+            type: 'DISPATCH',
+            issuedAt,
+            expiresAt,
+            payload,
+            payloadDigest: digestBridgePayload(payload),
+          },
+          keys.parentToRuntime,
+        ),
+      );
+    } finally {
+      keys.parentToRuntime.fill(0);
+      keys.runtimeToParent.fill(0);
+    }
   }
 
   async launch(handoff: unknown): Promise<never> {
@@ -301,9 +361,13 @@ class AuthenticatedLifecycleLauncher implements RuntimeProcessLauncher {
       purpose: 'AUTHENTICATE',
     });
     let result: Readonly<LifecycleAddonResult>;
+    let dispatch: Uint8Array<ArrayBufferLike> = new Uint8Array();
     try {
       result = await this.secretResolver.withSecret(request, (secret) => {
-        const nativeResult = this.#launch!(token, secret);
+        dispatch = this.transformDispatch(
+          this.dispatchFrame(secret, this.manifest.argv[1] as LifecycleMode),
+        );
+        const nativeResult = this.#launch!(token, secret, dispatch);
         return Object.freeze({
           evidence: nativeResult.evidence,
           transcript: Uint8Array.from(nativeResult.transcript),
@@ -315,27 +379,42 @@ class AuthenticatedLifecycleLauncher implements RuntimeProcessLauncher {
 
     const transcript = this.transformTranscript(result.transcript);
     const mode = this.manifest.argv[1] as LifecycleMode;
-    const expectedTerminal = mode === 'authenticated-success' ? 'RESULT' : 'CANCELLED';
+    const expectedTerminal = mode === 'authenticated-cancel' ? 'CANCELLED' : 'RESULT';
     const nativeEvidence = this.verifyNativeEvidence(
       result.evidence,
       result.transcript,
       expectedTerminal,
+      dispatch,
     );
     const session = new AuthenticatedRuntimeJsonlSession(this.sessionContext, this.secretResolver);
     const verified = await session.ingest(transcript);
-    const expectedTypes = ['CAPABILITIES', 'HEARTBEAT', expectedTerminal] as const;
-    const expectedPayloads = [
-      { protocol: 'jsonl-v1' },
-      { health: 'HEALTHY' },
-      expectedTerminal === 'RESULT' ? { outcome: 'SUCCEEDED' } : { reason: 'PARENT_CANCELLED' },
-    ] as const;
+    const expectedTypes =
+      mode === 'authenticated-dispatch'
+        ? (['CAPABILITIES', 'HEARTBEAT', 'DISPATCH_ACCEPTED', 'RESULT'] as const)
+        : (['CAPABILITIES', 'HEARTBEAT', expectedTerminal] as const);
+    const expectedPayloads =
+      mode === 'authenticated-dispatch'
+        ? ([
+            { protocol: 'jsonl-v1' },
+            { health: 'HEALTHY' },
+            { dispatchId: 'lifecycle-dispatch' },
+            { outcome: 'SUCCEEDED' },
+          ] as const)
+        : ([
+            { protocol: 'jsonl-v1' },
+            { health: 'HEALTHY' },
+            expectedTerminal === 'RESULT'
+              ? { outcome: 'SUCCEEDED' }
+              : { reason: 'PARENT_CANCELLED' },
+          ] as const);
+    const expectedSequences = expectedTypes.map((_, index) => index + 1);
     if (
-      verified.length !== 3 ||
+      verified.length !== expectedTypes.length ||
       canonicalJson(verified.map((frame) => frame.type)) !== canonicalJson(expectedTypes) ||
-      canonicalJson(verified.map((frame) => frame.sequence)) !== canonicalJson([1, 2, 3]) ||
+      canonicalJson(verified.map((frame) => frame.sequence)) !== canonicalJson(expectedSequences) ||
       canonicalJson(verified.map((frame) => frame.payload)) !== canonicalJson(expectedPayloads) ||
-      session.snapshot().acceptedFrames !== 3 ||
-      session.snapshot().nextSequence !== 4 ||
+      session.snapshot().acceptedFrames !== expectedTypes.length ||
+      session.snapshot().nextSequence !== expectedTypes.length + 1 ||
       !session.snapshot().capabilitiesAccepted
     )
       throw new Error('Lifecycle authenticated transcript denied');
@@ -344,8 +423,9 @@ class AuthenticatedLifecycleLauncher implements RuntimeProcessLauncher {
       schemaVersion: 1,
       mode,
       transcriptDigest: nativeEvidence.transcriptDigest,
+      dispatchInputDigest: nativeEvidence.dispatchInputDigest,
       frameTypes: Object.freeze(expectedTypes),
-      sequences: Object.freeze([1, 2, 3] as const),
+      sequences: Object.freeze(expectedSequences),
       cleanupCompletedBeforeVerification: true,
     });
     throw new FixtureCompleted('Authenticated lifecycle fixture completed');
@@ -557,6 +637,8 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
     for (const key of [
       'authenticated-success',
       'authenticated-cancel',
+      'authenticated-dispatch',
+      'dispatch-tamper',
       'tamper',
       'wrong-key',
       'session',
@@ -576,8 +658,8 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
           ? {
               bind(consumer) {
                 const launch = loaded.bind(consumer);
-                return (handoff, secret) => {
-                  const result = launch(handoff, secret);
+                return (handoff, secret, dispatch) => {
+                  const result = launch(handoff, secret, dispatch);
                   const evidence = JSON.parse(result.evidence) as Record<string, unknown>;
                   if (key === 'evidence-extra') evidence.untrusted = true;
                   else evidence.transcriptDigest = '0'.repeat(64);
@@ -630,6 +712,7 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
   it.each([
     ['authenticated-success', ['CAPABILITIES', 'HEARTBEAT', 'RESULT']],
     ['authenticated-cancel', ['CAPABILITIES', 'HEARTBEAT', 'CANCELLED']],
+    ['authenticated-dispatch', ['CAPABILITIES', 'HEARTBEAT', 'DISPATCH_ACCEPTED', 'RESULT']],
   ] as const)('verifies the %s transcript only after native cleanup', async (mode, types) => {
     const fixtureAdmission = admission(createWorktree(mode), mode);
     const source = new RecordingSecretSource();
@@ -662,8 +745,10 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
       schemaVersion: 1,
       mode,
       transcriptDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      dispatchInputDigest:
+        mode === 'authenticated-dispatch' ? expect.stringMatching(/^[a-f0-9]{64}$/u) : null,
       frameTypes: types,
-      sequences: [1, 2, 3],
+      sequences: types.map((_, index) => index + 1),
       cleanupCompletedBeforeVerification: true,
     });
     expect(Object.isFrozen(launcher.completion)).toBe(true);
@@ -676,6 +761,42 @@ describeLinux('test-only authenticated supervised lifecycle transcript', () => {
       'AUTHENTICATE',
       'VERIFY_FRAME',
     ]);
+  });
+
+  it('denies a mutated parent dispatch before accepting runtime completion evidence', async () => {
+    const mode = 'authenticated-dispatch';
+    const fixtureAdmission = admission(createWorktree('dispatch-tamper'), mode);
+    const source = new RecordingSecretSource();
+    const resolver = new ScopedBridgeSecretLeaseResolver(source);
+    const launcher = new AuthenticatedLifecycleLauncher(
+      addons.get('dispatch-tamper')!,
+      fixtureAdmission.manifest,
+      statSync(fixture, { bigint: true }).size,
+      resolver,
+      context(),
+      (input) => input,
+      (input) => {
+        const mutated = Uint8Array.from(input);
+        const marker = Buffer.from(mutated).indexOf('"mac":"') + 7;
+        mutated[marker] = mutated[marker] === 65 ? 66 : 65;
+        return mutated;
+      },
+    );
+    const composition = new TrustedSupervisorComposition(
+      new AuthorizationSource(fixtureAdmission.authorization),
+      new EvidenceReader(fixtureAdmission.evidence),
+      launcher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
+    );
+    const plan = await composition.prepare({
+      schemaVersion: 1,
+      manifest: fixtureAdmission.manifest,
+    });
+
+    await expect(composition.execute(plan)).rejects.not.toBeInstanceOf(FixtureCompleted);
+    expect(launcher.authorizedNativeCalls).toBe(1);
+    expect(launcher.completion).toBeUndefined();
+    expect(source.requests.map((request) => request.purpose)).toEqual(['AUTHENTICATE']);
   });
 
   it.each([
