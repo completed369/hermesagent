@@ -278,6 +278,9 @@ published and current `main` has not been deployed to private staging.
    A deny-default evidence-source port now defines exact exit evidence from an independently retained
    native launch identity and rechecks lease freshness after observation (ADR-0069). No positive
    source, process action, cleanup completion, or connected-state transition is composed.
+   A Level-3 serializable recovery-completion path now persists exact exit evidence and a matching
+   cancellation cleanup only while the lease is current (ADR-0070). It does not create protocol
+   terminal evidence, perform process action, or promote runtime truth.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

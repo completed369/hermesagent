@@ -31,6 +31,7 @@ import {
   createCodexCapabilityExchangeAuthorizationRequest,
   createCodexHeartbeatEvidenceCandidate,
   createCodexValidationCancellationCandidate,
+  createCodexValidationProcessCleanupEvidence,
   createCodexValidationRoundTripCandidate,
   createCodexRegistrationAuthorizationRequest,
   createCodexValidationDispatchAuthorizationRequest,
@@ -47,6 +48,7 @@ import {
   validateCodexValidationCancellationCandidate,
   validateCodexValidationProcessCleanupEvidence,
   validateCodexValidationProcessSessionRecoveryWorkItem,
+  validateCodexValidationProcessSessionRecoveryExitEvidence,
   validateCodexValidationRoundTripCandidate,
   validateSupervisorProcessBinding,
   type AuthenticatedJsonlSessionContext,
@@ -69,6 +71,7 @@ import {
   type CodexValidationProcessCleanupEvidence,
   type CodexValidationProcessSessionAuthority,
   type CodexValidationProcessSessionRecoveryWorkItem,
+  type CodexValidationProcessSessionRecoveryExitEvidence,
   type CodexTerminalEvidence,
   type CodexValidationRoundTripCandidate,
   type CodexValidationUsageObservationEvidence,
@@ -395,6 +398,33 @@ interface CodexValidationProcessSessionRecoveryLeaseRow {
   readonly createdAt: Date;
 }
 
+interface CodexValidationProcessSessionRecoveryExitEvidenceRow {
+  readonly workspaceId: string;
+  readonly evidenceHash: string;
+  readonly evidenceId: string;
+  readonly recoveryLeaseId: string;
+  readonly recoveryGeneration: number;
+  readonly claimId: string;
+  readonly cleanupEvidenceHash: string;
+  readonly ownerReference: string;
+  readonly ownerActorKind: 'HUMAN' | 'AGENT' | 'SYSTEM';
+  readonly supervisionId: string;
+  readonly launchNonce: string;
+  readonly sessionId: string;
+  readonly dispatchId: string;
+  readonly validationDispatchCandidateHash: string;
+  readonly identityEstablishedAt: Date;
+  readonly exitedAt: Date;
+  readonly verifiedAt: Date;
+  readonly processState: string;
+  readonly exitCode: number | null;
+  readonly signal: string | null;
+  readonly identityAuthority: string;
+  readonly runtimeConnection: string;
+  readonly recoveryCompletionIdempotencyKey: string;
+  readonly createdAt: Date;
+}
+
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
 const CAPABILITY_OWNER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
@@ -601,6 +631,13 @@ export interface CodexValidationProcessSessionRecoveryLease {
   readonly claimedAt: string;
   readonly expiresAt: string;
   readonly runtimeConnection: 'NOT_CONFIGURED';
+}
+
+export interface CompleteCodexValidationProcessSessionRecoveryInput {
+  readonly workItem: Readonly<CodexValidationProcessSessionRecoveryWorkItem>;
+  readonly exitEvidence: Readonly<CodexValidationProcessSessionRecoveryExitEvidence>;
+  readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
+  readonly idempotencyKey: string;
 }
 
 export interface AcceptCodexValidationRoundTripEvidenceInput {
@@ -2772,6 +2809,315 @@ export class AcpBridgeAdmissionService
       )
         throw new AcpBridgeAdmissionConflictError(
           'Concurrent Codex validation process-session claim conflict',
+        );
+      throw error;
+    }
+  }
+
+  /**
+   * Persists independently observed exit evidence and one cancellation cleanup
+   * while the exact recovery lease remains active. Performs no process action.
+   */
+  async completeCodexValidationProcessSessionRecovery(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: CompleteCodexValidationProcessSessionRecoveryInput,
+  ) {
+    const actorKind = assertControlPlane(capability, context, 3);
+    publicReference(input.idempotencyKey, 'idempotencyKey');
+    let dispatch: Readonly<CodexValidationDispatchCandidate>;
+    try {
+      dispatch = validateCodexValidationDispatchCandidate(input.dispatch);
+    } catch {
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session recovery completion is invalid',
+      );
+    }
+    if (dispatch.workspaceId !== context.workspaceId)
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session recovery completion crossed its workspace',
+      );
+
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const untrustedWorkItem = input.workItem as unknown as Record<string, unknown>;
+          const claimId = untrustedWorkItem?.claimId;
+          const recoveryLeaseId = untrustedWorkItem?.recoveryLeaseId;
+          if (typeof claimId !== 'string' || typeof recoveryLeaseId !== 'string')
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process-session recovery completion lacks authority',
+            );
+          auditSubjectReference(claimId, 'claimId');
+          auditSubjectReference(recoveryLeaseId, 'recoveryLeaseId');
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "acp_codex_validation_process_session_claims" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${claimId} FOR UPDATE`,
+          );
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "acp_codex_validation_process_session_recovery_leases" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${recoveryLeaseId} AND "claimId"=${claimId} FOR UPDATE`,
+          );
+          const [claimRows, leaseRows, existingEvidenceRows, existingCompletionRows, now] =
+            await Promise.all([
+              tx.$queryRaw<CodexValidationProcessSessionRecoveryClaimRow[]>(Prisma.sql`
+                SELECT claim.*, dispatch."runId"
+                FROM "acp_codex_validation_process_session_claims" claim
+                JOIN "acp_codex_validation_dispatch_evidence" dispatch
+                  ON dispatch."workspaceId"=claim."workspaceId"
+                  AND dispatch."validationDispatchCandidateHash"=claim."validationDispatchCandidateHash"
+                WHERE claim."workspaceId"=CAST(${context.workspaceId} AS uuid)
+                  AND claim."id"=${claimId}
+                FOR SHARE OF claim
+              `),
+              tx.$queryRaw<CodexValidationProcessSessionRecoveryLeaseRow[]>(Prisma.sql`
+                SELECT * FROM "acp_codex_validation_process_session_recovery_leases"
+                WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                  AND "id"=${recoveryLeaseId} AND "claimId"=${claimId}
+                FOR SHARE
+              `),
+              tx.$queryRaw<CodexValidationProcessSessionRecoveryExitEvidenceRow[]>(Prisma.sql`
+                SELECT * FROM "acp_codex_validation_process_session_recovery_exit_evidence"
+                WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
+                  AND (
+                    "claimId"=${claimId} OR
+                    "recoveryLeaseId"=${recoveryLeaseId} OR
+                    "recoveryCompletionIdempotencyKey"=${input.idempotencyKey}
+                  )
+                FOR SHARE
+              `),
+              tx.$queryRaw<CodexValidationProcessSessionCompletionRow[]>(Prisma.sql`
+                SELECT * FROM "acp_codex_validation_process_session_completions"
+                WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "claimId"=${claimId}
+                FOR SHARE
+              `),
+              databaseNow(tx),
+            ]);
+          const claim = claimRows[0];
+          const lease = leaseRows[0];
+          if (!claim || !lease)
+            throw new AcpBridgeAdmissionNotFoundError(
+              'Codex validation process-session recovery authority not found',
+            );
+          let workItem: Readonly<CodexValidationProcessSessionRecoveryWorkItem>;
+          let exitEvidence: Readonly<CodexValidationProcessSessionRecoveryExitEvidence>;
+          try {
+            workItem = validateCodexValidationProcessSessionRecoveryWorkItem(input.workItem, now);
+            exitEvidence = validateCodexValidationProcessSessionRecoveryExitEvidence(
+              input.exitEvidence,
+              workItem,
+              now,
+            );
+          } catch {
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process-session recovery evidence is invalid',
+            );
+          }
+          const binding = workItem.binding;
+          if (
+            workItem.claimId !== claim.id ||
+            workItem.recoveryLeaseId !== lease.id ||
+            workItem.recoveryGeneration !== lease.generation ||
+            workItem.handoffAttemptId !== claim.handoffAttemptId ||
+            workItem.validationDispatchCandidateHash !== claim.validationDispatchCandidateHash ||
+            workItem.sessionId !== claim.sessionId ||
+            workItem.dispatchId !== claim.dispatchId ||
+            workItem.runId !== claim.runId ||
+            workItem.processClaimedAt !== claim.claimedAt.toISOString() ||
+            workItem.processExpiresAt !== claim.expiresAt.toISOString() ||
+            workItem.leaseClaimedAt !== lease.claimedAt.toISOString() ||
+            workItem.leaseExpiresAt !== lease.expiresAt.toISOString() ||
+            claim.ownerReference !== context.principalId ||
+            claim.ownerActorKind !== actorKind ||
+            lease.ownerReference !== context.principalId ||
+            lease.ownerActorKind !== actorKind ||
+            lease.claimExpiresAt.toISOString() !== workItem.processExpiresAt ||
+            lease.runtimeConnection !== 'NOT_CONFIGURED' ||
+            claim.supervisionId !== binding.supervisionId ||
+            claim.launchNonce !== binding.launchNonce ||
+            claim.platform !== binding.platform ||
+            claim.manifestHash !== binding.manifestHash ||
+            claim.admissionEvidenceHash !== binding.admissionEvidenceHash ||
+            claim.admissionBindingHash !== binding.admissionBindingHash ||
+            claim.testOnly !== binding.testOnly ||
+            dispatch.validationDispatchCandidateHash !== workItem.validationDispatchCandidateHash ||
+            dispatch.runtimeId !== binding.runtimeId ||
+            dispatch.connectionId !== binding.connectionId ||
+            dispatch.sessionId !== workItem.sessionId ||
+            dispatch.dispatchId !== workItem.dispatchId ||
+            dispatch.runId !== workItem.runId ||
+            dispatch.expiresAt !== workItem.processExpiresAt
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process-session recovery completion crossed durable authority',
+            );
+          const cleanup = createCodexValidationProcessCleanupEvidence(
+            {
+              schemaVersion: 1,
+              binding,
+              dispatchId: workItem.dispatchId,
+              validationDispatchCandidateHash: workItem.validationDispatchCandidateHash,
+              sessionId: workItem.sessionId,
+              processState: 'EXITED',
+              exitCode: exitEvidence.exitCode,
+              signal: exitEvidence.signal,
+              closedAt: exitEvidence.exitedAt,
+              runtimeConnection: 'NOT_CONFIGURED',
+            },
+            {
+              schemaVersion: 1,
+              binding,
+              dispatchId: workItem.dispatchId,
+              validationDispatchCandidateHash: workItem.validationDispatchCandidateHash,
+              sessionId: workItem.sessionId,
+              issuedAt: dispatch.issuedAt,
+              expiresAt: dispatch.expiresAt,
+              runtimeConnection: 'NOT_CONFIGURED',
+              reason: 'CANCELLED',
+            },
+            now,
+          );
+
+          const existingEvidence = existingEvidenceRows[0];
+          const existingCompletion = existingCompletionRows[0];
+          if (existingEvidence || existingCompletion) {
+            if (
+              existingEvidenceRows.length !== 1 ||
+              !existingEvidence ||
+              !existingCompletion ||
+              existingEvidence.workspaceId !== context.workspaceId ||
+              existingEvidence.evidenceHash !== exitEvidence.evidenceHash ||
+              existingEvidence.evidenceId !== exitEvidence.evidenceId ||
+              existingEvidence.recoveryLeaseId !== workItem.recoveryLeaseId ||
+              existingEvidence.recoveryGeneration !== workItem.recoveryGeneration ||
+              existingEvidence.claimId !== workItem.claimId ||
+              existingEvidence.cleanupEvidenceHash !== cleanup.cleanupEvidenceHash ||
+              existingEvidence.ownerReference !== context.principalId ||
+              existingEvidence.ownerActorKind !== actorKind ||
+              existingEvidence.supervisionId !== binding.supervisionId ||
+              existingEvidence.launchNonce !== binding.launchNonce ||
+              existingEvidence.sessionId !== workItem.sessionId ||
+              existingEvidence.dispatchId !== workItem.dispatchId ||
+              existingEvidence.validationDispatchCandidateHash !==
+                workItem.validationDispatchCandidateHash ||
+              existingEvidence.identityEstablishedAt.toISOString() !==
+                exitEvidence.identityEstablishedAt ||
+              existingEvidence.exitedAt.toISOString() !== exitEvidence.exitedAt ||
+              existingEvidence.verifiedAt.toISOString() !== exitEvidence.verifiedAt ||
+              existingEvidence.processState !== 'EXITED' ||
+              existingEvidence.exitCode !== exitEvidence.exitCode ||
+              existingEvidence.signal !== exitEvidence.signal ||
+              existingEvidence.identityAuthority !== 'RETAINED_NATIVE_IDENTITY' ||
+              existingEvidence.runtimeConnection !== 'NOT_CONFIGURED' ||
+              existingEvidence.recoveryCompletionIdempotencyKey !== input.idempotencyKey ||
+              existingCompletion.cleanupEvidenceHash !== cleanup.cleanupEvidenceHash ||
+              existingCompletion.workspaceId !== context.workspaceId ||
+              existingCompletion.claimId !== workItem.claimId ||
+              existingCompletion.handoffAttemptId !== workItem.handoffAttemptId ||
+              existingCompletion.validationDispatchCandidateHash !==
+                workItem.validationDispatchCandidateHash ||
+              existingCompletion.runtimeId !== binding.runtimeId ||
+              existingCompletion.connectionId !== binding.connectionId ||
+              existingCompletion.sessionId !== workItem.sessionId ||
+              existingCompletion.dispatchId !== workItem.dispatchId ||
+              existingCompletion.reason !== 'CANCELLED' ||
+              existingCompletion.processState !== 'EXITED' ||
+              existingCompletion.exitCode !== exitEvidence.exitCode ||
+              existingCompletion.signal !== exitEvidence.signal ||
+              existingCompletion.closedAt.toISOString() !== exitEvidence.exitedAt ||
+              existingCompletion.runtimeConnection !== 'NOT_CONFIGURED' ||
+              existingCompletion.completionIdempotencyKey !== input.idempotencyKey
+            )
+              throw new AcpBridgeAdmissionConflictError(
+                'Codex validation process-session recovery completion replay drifted',
+              );
+            return Object.freeze({
+              evidence: Object.freeze({ ...existingEvidence, schemaVersion: 1 as const }),
+              completion: Object.freeze({ ...existingCompletion, schemaVersion: 1 as const }),
+              replayed: true,
+            });
+          }
+
+          const [storedEvidence] = await tx.$queryRaw<
+            CodexValidationProcessSessionRecoveryExitEvidenceRow[]
+          >(Prisma.sql`
+            INSERT INTO "acp_codex_validation_process_session_recovery_exit_evidence" (
+              "workspaceId", "evidenceHash", "evidenceId", "recoveryLeaseId",
+              "recoveryGeneration", "claimId", "cleanupEvidenceHash", "ownerReference",
+              "ownerActorKind", "supervisionId", "launchNonce", "sessionId", "dispatchId",
+              "validationDispatchCandidateHash", "identityEstablishedAt", "exitedAt",
+              "verifiedAt", "processState", "exitCode", "signal", "identityAuthority",
+              "runtimeConnection", "recoveryCompletionIdempotencyKey"
+            ) VALUES (
+              CAST(${context.workspaceId} AS uuid), ${exitEvidence.evidenceHash},
+              ${exitEvidence.evidenceId}, ${workItem.recoveryLeaseId},
+              ${workItem.recoveryGeneration}, ${workItem.claimId}, ${cleanup.cleanupEvidenceHash},
+              ${context.principalId}, ${actorKind}, ${binding.supervisionId},
+              ${binding.launchNonce}, ${workItem.sessionId}, ${workItem.dispatchId},
+              ${workItem.validationDispatchCandidateHash},
+              ${new Date(exitEvidence.identityEstablishedAt)}, ${new Date(exitEvidence.exitedAt)},
+              ${new Date(exitEvidence.verifiedAt)}, 'EXITED', ${exitEvidence.exitCode},
+              ${exitEvidence.signal}, 'RETAINED_NATIVE_IDENTITY', 'NOT_CONFIGURED',
+              ${input.idempotencyKey}
+            ) RETURNING *
+          `);
+          const [completion] = await tx.$queryRaw<
+            CodexValidationProcessSessionCompletionRow[]
+          >(Prisma.sql`
+            INSERT INTO "acp_codex_validation_process_session_completions" (
+              "workspaceId", "cleanupEvidenceHash", "claimId", "handoffAttemptId",
+              "validationDispatchCandidateHash", "runtimeId", "connectionId", "sessionId",
+              "dispatchId", "reason", "processState", "exitCode", "signal", "closedAt",
+              "runtimeConnection", "completionIdempotencyKey"
+            ) VALUES (
+              CAST(${context.workspaceId} AS uuid), ${cleanup.cleanupEvidenceHash}, ${claim.id},
+              ${claim.handoffAttemptId}, ${workItem.validationDispatchCandidateHash},
+              ${claim.runtimeId}, ${claim.connectionId}, ${workItem.sessionId},
+              ${workItem.dispatchId}, 'CANCELLED', 'EXITED', ${exitEvidence.exitCode},
+              ${exitEvidence.signal}, ${new Date(exitEvidence.exitedAt)}, 'NOT_CONFIGURED',
+              ${input.idempotencyKey}
+            ) RETURNING *
+          `);
+          if (!storedEvidence || !completion)
+            throw new AcpBridgeAdmissionConflictError(
+              'Codex validation process-session recovery completion was not stored',
+            );
+          await this.auditService.recordOperationalEvent(
+            capability,
+            context,
+            {
+              id: randomUUID(),
+              workspaceId: context.workspaceId,
+              type: 'run.progress',
+              source: 'CONTROL_PLANE',
+              actorKind,
+              actorId: context.principalId,
+              subjectType: 'AcpCodexValidationProcessSessionRecoveryCompletion',
+              subjectId: storedEvidence.evidenceHash,
+              occurredAt: now.toISOString(),
+              idempotencyKey: `${input.idempotencyKey}:event`,
+              correlationId: workItem.runId,
+              facts: { payloadFieldCount: 0, payloadBytes: 0 },
+            },
+            actorKind === 'HUMAN' ? context.principalId : undefined,
+            tx,
+          );
+          return Object.freeze({
+            evidence: Object.freeze({ ...storedEvidence, schemaVersion: 1 as const }),
+            completion: Object.freeze({ ...completion, schemaVersion: 1 as const }),
+            replayed: false,
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2002' ||
+          error.code === 'P2034' ||
+          (error.code === 'P2010' &&
+            (error.meta?.code === '23505' || error.meta?.code === '23514')))
+      )
+        throw new AcpBridgeAdmissionConflictError(
+          'Concurrent Codex validation process-session recovery completion conflict',
         );
       throw error;
     }

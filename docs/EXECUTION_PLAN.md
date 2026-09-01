@@ -116,6 +116,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > A deny-default evidence-source boundary now accepts only lease-current exit observations from an
 > independently retained native launch identity (ADR-0069). No positive source or process action is
 > composed, and reusable process identifiers remain insufficient authority.
+> A serializable Level-3 recovery-completion admission can now persist that exact exit evidence and
+> one matching `CANCELLED` cleanup row while the lease remains active (ADR-0070). It performs no
+> process action and cannot admit terminal runtime evidence by itself.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned
