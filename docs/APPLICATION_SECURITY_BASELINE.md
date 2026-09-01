@@ -320,12 +320,13 @@ production MinIO/Temporal connectivity was not exercised.
   GHSA-832h-xg76-4gv6.
 - **Exact vulnerable-child replacements:** reviewed pnpm overrides replace
   `js-yaml` with 5.2.2, `postcss` with 8.5.26, `sharp` with 0.35.0, `vite` with
-  6.4.3, and `decode-uri-component` with 0.5.0. These replace vulnerable code
-  retained by exact/incompatible parent ranges; they do not suppress audit
-  output. They resolve
+  6.4.3, `browserslist` with 4.28.7, and `decode-uri-component` with 0.5.0.
+  These replace vulnerable code retained by exact/incompatible parent ranges;
+  they do not suppress audit output. They resolve
   GHSA-2g4f-4pwh-qvx6, GHSA-q7g4-2pjw-v29r, GHSA-566m-qj78-rww5, and
   GHSA-4h9g-4w22-8q66 in addition to the Vite advisories above, plus
-  GHSA-vcc3-ghjq-m6fr on the MinIO query-string path.
+  GHSA-vcc3-ghjq-m6fr on the MinIO query-string path and CVE-2026-73088 /
+  CVE-2026-73089 in workspace image dependency trees.
 
 ### Compatibility evidence
 
