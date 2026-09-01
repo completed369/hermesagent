@@ -4,7 +4,8 @@ import { posix, win32 } from 'node:path';
 import { canonicalJson } from './codec';
 import {
   linuxExecutableAuthorizationHash,
-  validateLinuxExecutableAuthorization,
+  TestOnlyLinuxExecutableAuthorizationVerifier,
+  type LinuxExecutableAuthorizationVerifier,
 } from './supervision-authorization';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -468,7 +469,10 @@ function parseManifest(value: unknown): RuntimeLaunchManifest {
   };
 }
 
-function parseEvidence(value: unknown): TrustedSupervisorAdmissionEvidence {
+function parseEvidence(
+  value: unknown,
+  authorizationVerifier: LinuxExecutableAuthorizationVerifier,
+): TrustedSupervisorAdmissionEvidence {
   const record = object(value, EVIDENCE_KEYS, 'INVALID_EVIDENCE');
   if (record.schemaVersion !== 2) throw new SupervisorPolicyError('INVALID_EVIDENCE');
   if (record.platform !== 'WIN32' && record.platform !== 'LINUX')
@@ -511,7 +515,7 @@ function parseEvidence(value: unknown): TrustedSupervisorAdmissionEvidence {
   };
   if (evidence.platform === 'LINUX' && evidence.platformEvidence.kind === 'LINUX') {
     try {
-      const authorization = validateLinuxExecutableAuthorization({
+      const authorization = authorizationVerifier.verify({
         schemaVersion: 1,
         authorizationId: evidence.authorizationId,
         authorizationVersion: evidence.authorizationVersion,
@@ -551,13 +555,14 @@ function frozen<T>(value: T): T {
   return Object.freeze(value);
 }
 
-export function validateSupervisorAdmission(
+function validateSupervisorAdmissionUsing(
   manifestInput: unknown,
   evidenceInput: unknown,
+  authorizationVerifier: LinuxExecutableAuthorizationVerifier,
 ): ValidatedSupervisorAdmission {
   const validatedManifest = validateSupervisorManifest(manifestInput);
   const manifest = validatedManifest.manifest;
-  const evidence = parseEvidence(evidenceInput);
+  const evidence = parseEvidence(evidenceInput, authorizationVerifier);
   const manifestHash = validatedManifest.manifestHash;
   const observedAt = new Date(evidence.observedAt).getTime();
   const expiresAt = new Date(evidence.expiresAt).getTime();
@@ -609,6 +614,27 @@ export function validateSupervisorAdmission(
       evidenceHash,
     }),
   });
+}
+
+/** Backward-compatible deterministic test validator. */
+export function validateSupervisorAdmission(
+  manifestInput: unknown,
+  evidenceInput: unknown,
+): ValidatedSupervisorAdmission {
+  return validateSupervisorAdmissionUsing(
+    manifestInput,
+    evidenceInput,
+    new TestOnlyLinuxExecutableAuthorizationVerifier(),
+  );
+}
+
+/** Admission validation with an explicit trusted authorization verifier. */
+export function validateSupervisorAdmissionWithAuthorizationVerifier(
+  manifestInput: unknown,
+  evidenceInput: unknown,
+  authorizationVerifier: LinuxExecutableAuthorizationVerifier,
+): ValidatedSupervisorAdmission {
+  return validateSupervisorAdmissionUsing(manifestInput, evidenceInput, authorizationVerifier);
 }
 
 export function validateSupervisorManifest(manifestInput: unknown): ValidatedSupervisorManifest {

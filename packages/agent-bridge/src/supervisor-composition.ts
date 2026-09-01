@@ -2,13 +2,13 @@ import { createHash } from 'node:crypto';
 
 import { canonicalJson } from './codec';
 import {
+  DenyLinuxExecutableAuthorizationVerifier,
   linuxExecutableAuthorizationHash,
   type LinuxExecutableAuthorization,
-  validateLinuxExecutableAuthorization,
+  type LinuxExecutableAuthorizationVerifier,
 } from './supervision-authorization';
 import { LinuxExecutableEvidenceReader } from './supervision-evidence-reader';
 import {
-  createSupervisorProcessBinding,
   type SupervisorProcessBinding,
   validateSupervisorProcessBinding,
 } from './supervision-lifecycle';
@@ -17,7 +17,7 @@ import {
   type RuntimeLaunchManifest,
   type TrustedSupervisorAdmissionEvidence,
   type ValidatedSupervisorAdmission,
-  validateSupervisorAdmission,
+  validateSupervisorAdmissionWithAuthorizationVerifier,
   validateSupervisorManifest,
 } from './supervision-policy';
 
@@ -127,11 +127,17 @@ export interface PerAdmissionSupervisorEvidenceReader {
 }
 
 export class PerAdmissionLinuxExecutableEvidenceReader implements PerAdmissionSupervisorEvidenceReader {
+  constructor(
+    private readonly authorizationVerifier: LinuxExecutableAuthorizationVerifier = new DenyLinuxExecutableAuthorizationVerifier(),
+  ) {}
+
   async read(
     manifest: Readonly<RuntimeLaunchManifest>,
     authorization: Readonly<LinuxExecutableAuthorization>,
   ): Promise<Readonly<TrustedSupervisorAdmissionEvidence>> {
-    return new LinuxExecutableEvidenceReader([authorization]).read(manifest);
+    return new LinuxExecutableEvidenceReader([authorization], this.authorizationVerifier).read(
+      manifest,
+    );
   }
 }
 
@@ -212,6 +218,7 @@ function digest(value: unknown): string {
 function validateAuthorizationDecision(
   input: unknown,
   requestHash: string,
+  authorizationVerifier: LinuxExecutableAuthorizationVerifier,
 ): Readonly<TrustedSupervisorAuthorizationDecision> {
   const record = exactObject(input, [
     'authorization',
@@ -229,7 +236,7 @@ function validateAuthorizationDecision(
     requestHash,
     supervisionId: reference(record.supervisionId),
     launchNonce: reference(record.launchNonce),
-    authorization: validateLinuxExecutableAuthorization(record.authorization),
+    authorization: authorizationVerifier.verify(record.authorization),
   });
 }
 
@@ -306,6 +313,7 @@ export class TrustedSupervisorComposition {
     private readonly authorizationSource: TrustedSupervisorAuthorizationSource,
     private readonly evidenceReader: PerAdmissionSupervisorEvidenceReader,
     launcherFactory: RuntimeProcessLauncherFactory,
+    private readonly authorizationVerifier: LinuxExecutableAuthorizationVerifier = new DenyLinuxExecutableAuthorizationVerifier(),
   ) {
     this.#launcher = launcherFactory((handoff) => this.#consumeNativeLaunchHandoff(handoff));
   }
@@ -341,6 +349,7 @@ export class TrustedSupervisorComposition {
       authorizationDecision = validateAuthorizationDecision(
         await this.authorizationSource.read(authorizationRequest),
         authorizationRequestHash,
+        this.authorizationVerifier,
       );
     } catch (error) {
       if (
@@ -375,7 +384,11 @@ export class TrustedSupervisorComposition {
     let admission: Readonly<ValidatedSupervisorAdmission>;
     let processBinding: Readonly<SupervisorProcessBinding>;
     try {
-      admission = validateSupervisorAdmission(manifest, evidence);
+      admission = validateSupervisorAdmissionWithAuthorizationVerifier(
+        manifest,
+        evidence,
+        this.authorizationVerifier,
+      );
       if (
         admission.evidence.authorizationId !== authorization.authorizationId ||
         admission.evidence.authorizationVersion !== authorization.authorizationVersion ||
@@ -383,12 +396,19 @@ export class TrustedSupervisorComposition {
         admission.evidence.authorizationHash !== linuxExecutableAuthorizationHash(authorization)
       )
         throw new Error('authorization evidence mismatch');
-      processBinding = createSupervisorProcessBinding(
-        manifest,
-        evidence,
-        authorizationDecision.supervisionId,
-        authorizationDecision.launchNonce,
-      );
+      processBinding = validateSupervisorProcessBinding({
+        schemaVersion: 1,
+        supervisionId: authorizationDecision.supervisionId,
+        launchNonce: authorizationDecision.launchNonce,
+        workspaceId: admission.manifest.workspaceId,
+        runtimeId: admission.manifest.runtimeId,
+        connectionId: admission.manifest.connectionId,
+        platform: admission.manifest.platform,
+        manifestHash: admission.manifestHash,
+        admissionEvidenceHash: admission.evidenceHash,
+        admissionBindingHash: admission.bindingHash,
+        testOnly: admission.manifest.testOnly,
+      });
     } catch {
       throw new TrustedSupervisorCompositionError('BINDING_MISMATCH');
     }
@@ -430,6 +450,7 @@ export class TrustedSupervisorComposition {
       plan,
       this.#launchPlanStates,
       this.#launchRequestStates,
+      this.authorizationVerifier,
     );
     const consumedRequest = consumeRuntimeProcessLaunchRequest(
       activatedPlan.request,
@@ -463,6 +484,7 @@ function activateTrustedSupervisorLaunchPlan(
   plan: unknown,
   launchPlanStates: WeakMap<object, LaunchPlanState>,
   launchRequestStates: WeakMap<object, LaunchRequestState>,
+  authorizationVerifier: LinuxExecutableAuthorizationVerifier,
 ): Readonly<ActivatedSupervisorLaunchPlan> {
   if (typeof plan !== 'object' || plan === null)
     throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
@@ -518,7 +540,11 @@ function activateTrustedSupervisorLaunchPlan(
   ]);
   let admission: Readonly<ValidatedSupervisorAdmission>;
   try {
-    admission = validateSupervisorAdmission(admissionRecord.manifest, admissionRecord.evidence);
+    admission = validateSupervisorAdmissionWithAuthorizationVerifier(
+      admissionRecord.manifest,
+      admissionRecord.evidence,
+      authorizationVerifier,
+    );
   } catch {
     throw new TrustedSupervisorCompositionError('BINDING_MISMATCH');
   }
@@ -543,6 +569,7 @@ function activateTrustedSupervisorLaunchPlan(
     authorizationDecision = validateAuthorizationDecision(
       record.authorizationDecision,
       authorizationRequestHash,
+      authorizationVerifier,
     );
   } catch {
     throw new TrustedSupervisorCompositionError('BINDING_MISMATCH');

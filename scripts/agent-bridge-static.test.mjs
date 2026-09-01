@@ -882,15 +882,20 @@ test('trusted executable evidence is Linux-only, opened-file bound, and cannot l
   assert.match(reader, /identityReference !== authorization\.identityReference/u);
   assert.match(reader, /sha256 !== authorization\.sha256/u);
   const revalidationIndex = reader.indexOf(
-    'authorization = validateLinuxExecutableAuthorization(storedAuthorization)',
+    'authorization = this.authorizationVerifier.verify(storedAuthorization)',
   );
   const openIndex = reader.indexOf('handle = await fs.open(');
   assert.ok(revalidationIndex >= 0 && openIndex > revalidationIndex);
   assert.match(reader, /Math\.min\([\s\S]*authorizationExpiryMilliseconds/u);
   assert.match(authorization, /authorization\.testOnly !== true/u);
-  assert.match(authorization, /verify\(/u);
+  assert.match(authorization, /class DenyLinuxExecutableAuthorizationVerifier/u);
+  assert.match(authorization, /class TestOnlyLinuxExecutableAuthorizationVerifier/u);
+  assert.match(reader, /new DenyLinuxExecutableAuthorizationVerifier\(\)/u);
   assert.match(reader, /authorizationHash: linuxExecutableAuthorizationHash\(authorization\)/u);
-  assert.match(reader, /return validateSupervisorAdmission\(manifest, evidence\)\.evidence/u);
+  assert.match(
+    reader,
+    /validateSupervisorAdmissionWithAuthorizationVerifier\([\s\S]*this\.authorizationVerifier/u,
+  );
   assert.doesNotMatch(
     reader,
     /from\s+['"]node:(?:child_process|cluster|net|http|https|tls|dgram|worker_threads)['"]/u,
@@ -948,7 +953,7 @@ test('OS supervision policy is inert and the production launcher remains deny-on
   assert.doesNotMatch(supervision, /\b(?:execute|launch)\s*\(/u);
   assert.match(
     supervision,
-    /export function validateSupervisorAdmission\(\s*manifestInput: unknown,\s*evidenceInput: unknown,\s*\): ValidatedSupervisorAdmission/u,
+    /export function validateSupervisorAdmissionWithAuthorizationVerifier\([\s\S]*authorizationVerifier: LinuxExecutableAuthorizationVerifier/u,
   );
   assert.match(supervision, /const nowMs = Date\.now\(\)/u);
   assert.match(supervision, /authorizedWorktreeRoot/u);
@@ -997,9 +1002,11 @@ test('trusted supervisor composition requires live authority and remains deny-wi
     composition,
     /interface PrepareTrustedSupervisorLaunchInput[\s\S]{0,180}readonly (?:supervisionId|launchNonce)/u,
   );
-  assert.match(composition, /validateLinuxExecutableAuthorization/u);
-  assert.match(composition, /validateSupervisorAdmission/u);
-  assert.match(composition, /createSupervisorProcessBinding/u);
+  assert.match(composition, /authorizationVerifier\.verify/u);
+  assert.match(composition, /new DenyLinuxExecutableAuthorizationVerifier\(\)/u);
+  assert.doesNotMatch(composition, /validateLinuxExecutableAuthorization/u);
+  assert.match(composition, /validateSupervisorAdmissionWithAuthorizationVerifier/u);
+  assert.match(composition, /validateSupervisorProcessBinding/u);
   assert.match(composition, /async execute\(plan: unknown\): Promise<never>/u);
   assert.match(composition, /this\.#launchPlanStates/u);
   assert.match(composition, /this\.#launchRequestStates/u);
@@ -1026,6 +1033,9 @@ test('trusted supervisor composition requires live authority and remains deny-wi
   );
   assert.match(module, /new DenyTrustedSupervisorAuthorizationSource\(\)/u);
   assert.match(module, /provide:\s*TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE/u);
+  assert.match(module, /new DenyLinuxExecutableAuthorizationVerifier\(\)/u);
+  assert.match(module, /provide:\s*LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER/u);
+  assert.doesNotMatch(module, /TestOnlyLinuxExecutableAuthorizationVerifier/u);
   assert.match(module, /new DenyRuntimeProcessLauncher\(\)/u);
   assert.match(module, /provide:\s*RUNTIME_PROCESS_LAUNCHER/u);
   assert.match(

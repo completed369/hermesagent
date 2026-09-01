@@ -13,6 +13,22 @@ import {
 } from './policy';
 import { canonicalJson } from './codec';
 import {
+  CODEX_APP_SERVER_ADAPTER_KIND,
+  CODEX_APP_SERVER_ARGUMENT_POLICY,
+  CODEX_APP_SERVER_ARGV,
+  validateCodexAppServerManifest,
+} from './codex-app-server-policy';
+import {
+  linuxExecutableAuthorizationHash,
+  type LinuxExecutableAuthorization,
+  type LinuxExecutableAuthorizationVerifier,
+  TestOnlyLinuxExecutableAuthorizationVerifier,
+} from './supervision-authorization';
+import type {
+  RuntimeLaunchManifest,
+  TrustedSupervisorAdmissionEvidence,
+} from './supervision-policy';
+import {
   DenyTrustedSupervisorAuthorizationSource,
   type PerAdmissionSupervisorEvidenceReader,
   TrustedSupervisorComposition,
@@ -89,6 +105,74 @@ function input(manifest: unknown = deterministicLinuxAdmission().manifest) {
   };
 }
 
+class ExactFixtureAuthorizationVerifier implements LinuxExecutableAuthorizationVerifier {
+  constructor(private readonly expected: Readonly<LinuxExecutableAuthorization>) {}
+
+  verify(input: unknown): Readonly<LinuxExecutableAuthorization> {
+    if (canonicalJson(input) !== canonicalJson(this.expected))
+      throw new Error('fixture authorization denied');
+    return Object.freeze({ ...this.expected });
+  }
+}
+
+function productionShapedCodexAdmission(): {
+  manifest: RuntimeLaunchManifest;
+  evidence: TrustedSupervisorAdmissionEvidence;
+  authorization: LinuxExecutableAuthorization;
+} {
+  const fixture = deterministicLinuxAdmission();
+  const manifest: RuntimeLaunchManifest = {
+    ...fixture.manifest,
+    manifestId: 'codex-supervisor-manifest-v1',
+    runtimeId: 'runtime-codex',
+    connectionId: 'connection-codex',
+    adapterKind: CODEX_APP_SERVER_ADAPTER_KIND,
+    testOnly: false,
+    executable: {
+      canonicalPath: '/opt/ventureos/runtimes/codex/codex',
+      sha256: '8'.repeat(64),
+      identityReference: 'device-8:inode-12',
+    },
+    argv: [...CODEX_APP_SERVER_ARGV],
+    argumentPolicyReference: CODEX_APP_SERVER_ARGUMENT_POLICY,
+  };
+  const authorization: LinuxExecutableAuthorization = {
+    ...fixture.authorization,
+    authorizationId: 'codex-production-shaped-authorization-v1',
+    signerKeyId: 'fixture-explicit-authority-v1',
+    adapterKind: manifest.adapterKind,
+    testOnly: false,
+    canonicalPath: manifest.executable.canonicalPath,
+    sha256: manifest.executable.sha256,
+    identityReference: manifest.executable.identityReference,
+    authorizedWorktreeRoot: manifest.worktreeRoot,
+    argumentPolicyReference: manifest.argumentPolicyReference,
+    signature: 'fixture-explicit-signature',
+  };
+  const hash = (value: unknown): string =>
+    createHash('sha256').update(canonicalJson(value)).digest('hex');
+  const evidence: TrustedSupervisorAdmissionEvidence = {
+    ...fixture.evidence,
+    evidenceId: 'codex-production-shaped-evidence-v1',
+    runtimeId: manifest.runtimeId,
+    connectionId: manifest.connectionId,
+    manifestId: manifest.manifestId,
+    authorizedManifestHash: hash(manifest),
+    adapterKind: manifest.adapterKind,
+    testOnly: false,
+    canonicalPath: manifest.executable.canonicalPath,
+    sha256: manifest.executable.sha256,
+    identityReference: manifest.executable.identityReference,
+    argvHash: hash(manifest.argv),
+    argumentPolicyReference: manifest.argumentPolicyReference,
+    authorizationId: authorization.authorizationId,
+    authorizationHash: linuxExecutableAuthorizationHash(authorization),
+    authorizationSignerKeyId: authorization.signerKeyId,
+    authorizationSignature: authorization.signature,
+  };
+  return { manifest, evidence, authorization };
+}
+
 describe('trusted supervisor composition', () => {
   beforeEach(() => vi.useFakeTimers({ now: new Date('2026-08-26T00:00:00.000Z') }));
   afterEach(() => {
@@ -104,6 +188,7 @@ describe('trusted supervisor composition', () => {
       source,
       evidence,
       new RecordingDenyLauncher().factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
 
     const first = await composition.prepare(input(fixture.manifest));
@@ -159,6 +244,39 @@ describe('trusted supervisor composition', () => {
     expect(launcher.request).toBeUndefined();
   });
 
+  it('requires an explicit verifier for a production-shaped Codex authorization', async () => {
+    const fixture = productionShapedCodexAdmission();
+    expect(validateCodexAppServerManifest(fixture.manifest).manifest).toEqual(fixture.manifest);
+
+    const deniedEvidence = new FixtureEvidenceReader(fixture.evidence);
+    const denied = new TrustedSupervisorComposition(
+      new FixtureAuthorizationSource(fixture.authorization),
+      deniedEvidence,
+      new RecordingDenyLauncher().factory(),
+    );
+    await expect(denied.prepare(input(fixture.manifest))).rejects.toMatchObject({
+      code: 'AUTHORIZATION_DENIED',
+    });
+    expect(deniedEvidence.calls).toBe(0);
+
+    const verifier = new ExactFixtureAuthorizationVerifier(fixture.authorization);
+    const admittedEvidence = new FixtureEvidenceReader(fixture.evidence);
+    const admitted = new TrustedSupervisorComposition(
+      new FixtureAuthorizationSource(fixture.authorization),
+      admittedEvidence,
+      new RecordingDenyLauncher().factory(),
+      verifier,
+    );
+    const plan = await admitted.prepare(input(fixture.manifest));
+
+    expect(plan.admission.manifest.testOnly).toBe(false);
+    expect(plan.admission.manifest.adapterKind).toBe(CODEX_APP_SERVER_ADAPTER_KIND);
+    expect(plan.authorizationDecision.authorization.signerKeyId).toBe(
+      'fixture-explicit-authority-v1',
+    );
+    expect(admittedEvidence.calls).toBe(1);
+  });
+
   it('rejects malformed requests and unsupported platforms before consulting authority', async () => {
     const fixture = deterministicLinuxAdmission();
     const source = new FixtureAuthorizationSource(fixture.authorization);
@@ -166,6 +284,7 @@ describe('trusted supervisor composition', () => {
       source,
       new FixtureEvidenceReader(fixture.evidence),
       new RecordingDenyLauncher().factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
 
     await expect(
@@ -196,6 +315,7 @@ describe('trusted supervisor composition', () => {
       }),
       evidence,
       new RecordingDenyLauncher().factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
 
     await replayedDecision.prepare(input());
@@ -211,6 +331,7 @@ describe('trusted supervisor composition', () => {
       }),
       duplicateNonceEvidence,
       new RecordingDenyLauncher().factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     await duplicateNonce.prepare(input());
     await expect(duplicateNonce.prepare(input())).rejects.toMatchObject({
@@ -225,6 +346,7 @@ describe('trusted supervisor composition', () => {
       new FixtureAuthorizationSource({ ...fixture.authorization, authorizationVersion: 2 }),
       new FixtureEvidenceReader(fixture.evidence),
       new RecordingDenyLauncher().factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     await expect(malformed.prepare(input())).rejects.toMatchObject({
       code: 'AUTHORIZATION_DENIED',
@@ -237,6 +359,7 @@ describe('trusted supervisor composition', () => {
         authorizationId: 'different-authorization',
       }),
       new RecordingDenyLauncher().factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     await expect(mismatchedEvidence.prepare(input())).rejects.toMatchObject({
       code: 'BINDING_MISMATCH',
@@ -250,6 +373,7 @@ describe('trusted supervisor composition', () => {
       new FixtureAuthorizationSource(fixture.authorization),
       new FixtureEvidenceReader(fixture.evidence),
       launcher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const plan = await composition.prepare(input());
 
@@ -302,11 +426,13 @@ describe('trusted supervisor composition', () => {
       new FixtureAuthorizationSource(fixture.authorization),
       new FixtureEvidenceReader(fixture.evidence),
       ownerLauncher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const foreign = new TrustedSupervisorComposition(
       new DenyTrustedSupervisorAuthorizationSource(),
       new FixtureEvidenceReader(fixture.evidence),
       foreignLauncher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const plan = await owner.prepare(input());
 
@@ -332,6 +458,7 @@ describe('trusted supervisor composition', () => {
       new FixtureAuthorizationSource(fixture.authorization),
       new FixtureEvidenceReader(fixture.evidence),
       expiredPlanLauncher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const expiredPlan = await expiredPlanComposition.prepare(input());
     vi.setSystemTime(new Date(expiredPlan.expiresAt));
@@ -346,6 +473,7 @@ describe('trusted supervisor composition', () => {
       new FixtureAuthorizationSource(fixture.authorization),
       new FixtureEvidenceReader(fixture.evidence),
       expiredRequestLauncher.factory(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const expiredRequestPlan = await expiredRequestComposition.prepare(input());
     const activeTime = Date.parse('2026-08-26T00:00:00.000Z');
@@ -368,6 +496,7 @@ describe('trusted supervisor composition', () => {
       new FixtureAuthorizationSource(fixture.authorization),
       evidence,
       () => new DenyRuntimeProcessLauncher(),
+      new TestOnlyLinuxExecutableAuthorizationVerifier(),
     );
     const plan = await composition.prepare(input());
 

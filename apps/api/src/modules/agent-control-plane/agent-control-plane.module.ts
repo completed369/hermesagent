@@ -22,7 +22,9 @@ import {
   DenyCodexRegistrationAuthorizationSource,
   DenyCodexValidationDispatchAuthorizationSource,
   DenyRuntimeProcessLauncher,
+  DenyLinuxExecutableAuthorizationVerifier,
   DenyTrustedSupervisorAuthorizationSource,
+  LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER,
   PerAdmissionLinuxExecutableEvidenceReader,
   RUNTIME_PROCESS_LAUNCHER,
   TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE,
@@ -43,11 +45,13 @@ const denyCodexCapabilityAuthorization = new DenyCodexCapabilityExchangeAuthoriz
 const denyCodexValidationDispatchAuthorization =
   new DenyCodexValidationDispatchAuthorizationSource();
 const denySupervisorAuthorization = new DenyTrustedSupervisorAuthorizationSource();
+const denyExecutableAuthorizationVerifier = new DenyLinuxExecutableAuthorizationVerifier();
 const denyRuntimeProcessLauncher = new DenyRuntimeProcessLauncher();
 const trustedSupervisorComposition = new TrustedSupervisorComposition(
   denySupervisorAuthorization,
-  new PerAdmissionLinuxExecutableEvidenceReader(),
+  new PerAdmissionLinuxExecutableEvidenceReader(denyExecutableAuthorizationVerifier),
   () => denyRuntimeProcessLauncher,
+  denyExecutableAuthorizationVerifier,
 );
 const denyCandidates: TrustedBrokerCandidateReader = {
   async read() {
@@ -108,6 +112,10 @@ const denyTestOnlyGate: BridgeTestOnlyGate = {
     {
       provide: TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE,
       useValue: denySupervisorAuthorization,
+    },
+    {
+      provide: LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER,
+      useValue: denyExecutableAuthorizationVerifier,
     },
     { provide: RUNTIME_PROCESS_LAUNCHER, useValue: denyRuntimeProcessLauncher },
     { provide: TrustedSupervisorComposition, useValue: trustedSupervisorComposition },

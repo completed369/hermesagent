@@ -2,14 +2,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import { constants, promises as fs } from 'node:fs';
 
 import {
+  DenyLinuxExecutableAuthorizationVerifier,
   type LinuxExecutableAuthorization,
+  type LinuxExecutableAuthorizationVerifier,
   linuxExecutableAuthorizationHash,
-  validateLinuxExecutableAuthorization,
 } from './supervision-authorization';
 import {
   type RuntimeLaunchManifest,
   type TrustedSupervisorAdmissionEvidence,
-  validateSupervisorAdmission,
+  validateSupervisorAdmissionWithAuthorizationVerifier,
   validateSupervisorManifest,
 } from './supervision-policy';
 
@@ -67,10 +68,15 @@ export function validatedLinuxInspectionFlags(input: {
 export class LinuxExecutableEvidenceReader {
   private readonly authorizations: ReadonlyMap<string, Readonly<LinuxExecutableAuthorization>>;
 
-  constructor(authorizations: readonly unknown[]) {
+  constructor(
+    authorizations: readonly unknown[],
+    private readonly authorizationVerifier: LinuxExecutableAuthorizationVerifier = new DenyLinuxExecutableAuthorizationVerifier(),
+  ) {
     let parsed: Readonly<LinuxExecutableAuthorization>[];
     try {
-      parsed = authorizations.map(validateLinuxExecutableAuthorization);
+      parsed = authorizations.map((authorization) =>
+        this.authorizationVerifier.verify(authorization),
+      );
     } catch {
       throw new SupervisorEvidenceReaderError('INVALID_AUTHORIZATION');
     }
@@ -94,7 +100,7 @@ export class LinuxExecutableEvidenceReader {
     if (!storedAuthorization) throw new SupervisorEvidenceReaderError('AUTHORIZATION_NOT_FOUND');
     let authorization: Readonly<LinuxExecutableAuthorization>;
     try {
-      authorization = validateLinuxExecutableAuthorization(storedAuthorization);
+      authorization = this.authorizationVerifier.verify(storedAuthorization);
     } catch {
       throw new SupervisorEvidenceReaderError('INVALID_AUTHORIZATION');
     }
@@ -197,7 +203,11 @@ export class LinuxExecutableEvidenceReader {
           symbolicLink: false,
         },
       };
-      return validateSupervisorAdmission(manifest, evidence).evidence;
+      return validateSupervisorAdmissionWithAuthorizationVerifier(
+        manifest,
+        evidence,
+        this.authorizationVerifier,
+      ).evidence;
     } catch (error) {
       if (error instanceof SupervisorEvidenceReaderError) throw error;
       throw new SupervisorEvidenceReaderError('UNSAFE_EXECUTABLE');
