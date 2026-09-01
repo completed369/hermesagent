@@ -12,7 +12,7 @@ BEGIN
       OR handoff."state" IS DISTINCT FROM 'CLAIMED'
       OR handoff."expiresAt" IS DISTINCT FROM claim."expiresAt"
       OR claim."claimedAt" < handoff."claimedAt"
-      OR claim."claimedAt" > CURRENT_TIMESTAMP
+      OR claim."claimedAt" > LOCALTIMESTAMP(3)
       OR claim."claimedAt" >= handoff."expiresAt"
   ) THEN
     RAISE EXCEPTION 'Existing Codex validation process-session claim crossed trusted handoff authority';
@@ -37,7 +37,7 @@ BEGIN
      handoff."state" IS DISTINCT FROM 'CLAIMED' OR
      handoff."expiresAt" IS DISTINCT FROM NEW."expiresAt" OR
      NEW."claimedAt" < handoff."claimedAt" OR
-     NEW."claimedAt" > CURRENT_TIMESTAMP OR
+     NEW."claimedAt" > LOCALTIMESTAMP(3) OR
      NEW."claimedAt" >= handoff."expiresAt" THEN
     RAISE EXCEPTION 'Codex validation process-session claim crossed trusted handoff authority'
       USING ERRCODE = '23514';

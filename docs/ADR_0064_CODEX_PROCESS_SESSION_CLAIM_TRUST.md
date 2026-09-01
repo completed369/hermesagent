@@ -10,6 +10,10 @@ the relative claim time. The service's idempotent replay path also rechecked onl
 persisted supervisor binding. A privileged direct database writer could therefore insert a
 constraint-valid but drifted claim and cause a later trusted replay to return poisoned metadata.
 
+The claim timestamp is stored at millisecond precision. Database-clock comparisons therefore use
+the matching `LOCALTIMESTAMP(3)` precision so PostgreSQL cannot round a legitimate default timestamp
+one millisecond beyond a higher-precision transaction timestamp.
+
 ## Decision
 
 Add a database `BEFORE INSERT` trust trigger that requires every process-session claim to reproduce

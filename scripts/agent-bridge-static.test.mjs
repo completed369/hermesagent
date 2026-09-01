@@ -1590,7 +1590,7 @@ test('Codex process-session claims reproduce trusted handoff authority on insert
   assert.match(migration, /handoff\."state" IS DISTINCT FROM 'CLAIMED'/u);
   assert.match(migration, /handoff\."expiresAt" IS DISTINCT FROM NEW\."expiresAt"/u);
   assert.match(migration, /NEW\."claimedAt" < handoff\."claimedAt"/u);
-  assert.match(migration, /NEW\."claimedAt" > CURRENT_TIMESTAMP/u);
+  assert.match(migration, /NEW\."claimedAt" > LOCALTIMESTAMP\(3\)/u);
   assert.match(migration, /NEW\."claimedAt" >= handoff\."expiresAt"/u);
   assert.doesNotMatch(migration, /CONNECTED|credential|provider|payload|transcript|secret/u);
 });
