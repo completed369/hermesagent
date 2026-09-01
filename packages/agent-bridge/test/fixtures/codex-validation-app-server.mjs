@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline';
 
 const mode = process.argv[2];
-if (mode !== 'success' && mode !== 'unsafe-tool') process.exit(64);
+if (mode !== 'success' && mode !== 'unsafe-tool' && mode !== 'interrupted') process.exit(64);
 
 const emit = (...messages) => {
   process.stdout.write(`${messages.map((message) => JSON.stringify(message)).join('\n')}\n`);
@@ -103,6 +103,24 @@ lines.on('line', (line) => {
         mode === 'unsafe-tool'
           ? { type: 'commandExecution', id: 'item_unsafe', command: 'denied' }
           : { type: 'agentMessage', id: 'item_safe', text: token };
+      if (mode === 'interrupted') {
+        emit(
+          {
+            id: 3,
+            result: {
+              turn: { id: 'turn_composed_456', status: 'inProgress', items: [], error: null },
+            },
+          },
+          {
+            method: 'turn/started',
+            params: {
+              threadId: 'thr_composed_123',
+              turn: { id: 'turn_composed_456', status: 'inProgress', items: [], error: null },
+            },
+          },
+        );
+        return;
+      }
       emit(
         {
           id: 3,
@@ -130,6 +148,31 @@ lines.on('line', (line) => {
           params: {
             threadId: 'thr_composed_123',
             turn: { id: 'turn_composed_456', status: 'completed', items: [item], error: null },
+          },
+        },
+      );
+      return;
+    }
+    if (request.method === 'turn/interrupt' && request.id === 4 && mode === 'interrupted') {
+      if (
+        request.params?.threadId !== 'thr_composed_123' ||
+        request.params?.turnId !== 'turn_composed_456'
+      ) {
+        fail('interrupt correlation');
+        return;
+      }
+      emit(
+        { id: 4, result: {} },
+        {
+          method: 'turn/completed',
+          params: {
+            threadId: 'thr_composed_123',
+            turn: {
+              id: 'turn_composed_456',
+              status: 'interrupted',
+              items: [],
+              error: null,
+            },
           },
         },
       );

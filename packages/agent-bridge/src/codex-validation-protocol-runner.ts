@@ -185,11 +185,14 @@ export class BoundedCodexValidationProtocolRunner {
     if (options.signal?.aborted) throw new CodexValidationProtocolRunnerError('CANCELLED');
     const deadline = startedAt + timeoutMs;
     const session = new CodexAppServerProtocolSession();
-    const ioOptions = () => {
+    const ioOptions = (includeSignal = true) => {
       const remaining = deadline - this.clock().getTime();
       if (!Number.isFinite(remaining) || remaining < 1)
         throw new CodexValidationProtocolRunnerError('INVALID_TIMEOUT');
-      return { timeoutMs: Math.min(5_000, remaining), signal: options.signal };
+      return {
+        timeoutMs: Math.min(5_000, remaining),
+        signal: includeSignal ? options.signal : undefined,
+      };
     };
     const exchange = async (request: Readonly<JsonRecord>): Promise<Readonly<JsonRecord>> => {
       await this.transport.write(request, ioOptions());
@@ -211,21 +214,64 @@ export class BoundedCodexValidationProtocolRunner {
     if (!snapshot.threadId || !snapshot.turnId)
       throw new CodexValidationProtocolRunnerError('CORRELATION_MISMATCH');
 
-    for (let count = 0; count <= MAX_PROGRESS_EVENTS; count += 1) {
-      if (count === MAX_PROGRESS_EVENTS)
-        throw new CodexValidationProtocolRunnerError('LIMIT_EXCEEDED');
-      const message = await this.transport.read(ioOptions());
-      if (message.method === 'turn/completed') {
-        if (finalText(message) !== terminalToken(dispatch.dispatchId))
-          throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
-        const evidence = session.acceptTurnCompleted(message);
-        if (evidence.status !== 'completed')
-          throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
-        return evidence;
+    let interruptRequestId: number | undefined;
+    let interruptWrite: Promise<void> | undefined;
+    let interruptAcknowledged = false;
+    let rejectInterruptFailure!: (reason?: unknown) => void;
+    const interruptFailure = new Promise<never>((_resolve, reject) => {
+      rejectInterruptFailure = reject;
+    });
+    const requestInterrupt = () => {
+      if (interruptRequestId !== undefined) return;
+      try {
+        const request = session.interrupt();
+        interruptRequestId = request.id as number;
+        interruptWrite = this.transport.write(request, ioOptions(false));
+        void interruptWrite.catch(rejectInterruptFailure);
+      } catch (error) {
+        rejectInterruptFailure(error);
       }
-      admitProgress(message, snapshot.threadId, snapshot.turnId);
+    };
+    options.signal?.addEventListener('abort', requestInterrupt, { once: true });
+    if (options.signal?.aborted) requestInterrupt();
+    try {
+      for (let count = 0; count <= MAX_PROGRESS_EVENTS; count += 1) {
+        if (count === MAX_PROGRESS_EVENTS)
+          throw new CodexValidationProtocolRunnerError('LIMIT_EXCEEDED');
+        const message = await Promise.race([
+          this.transport.read(ioOptions(false)),
+          interruptFailure,
+        ]);
+        if (interruptRequestId !== undefined && Object.hasOwn(message, 'id')) {
+          if (message.id !== interruptRequestId)
+            throw new CodexValidationProtocolRunnerError('CORRELATION_MISMATCH');
+          await interruptWrite;
+          session.acceptInterruptResponse(message);
+          interruptAcknowledged = true;
+          continue;
+        }
+        if (message.method === 'turn/completed') {
+          if (interruptRequestId !== undefined && !interruptAcknowledged)
+            throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
+          if (
+            interruptRequestId === undefined &&
+            finalText(message) !== terminalToken(dispatch.dispatchId)
+          )
+            throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
+          const evidence = session.acceptTurnCompleted(message);
+          if (
+            (interruptRequestId === undefined && evidence.status !== 'completed') ||
+            (interruptRequestId !== undefined && evidence.status !== 'interrupted')
+          )
+            throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
+          return evidence;
+        }
+        admitProgress(message, snapshot.threadId, snapshot.turnId);
+      }
+      throw new CodexValidationProtocolRunnerError('LIMIT_EXCEEDED');
+    } finally {
+      options.signal?.removeEventListener('abort', requestInterrupt);
     }
-    throw new CodexValidationProtocolRunnerError('LIMIT_EXCEEDED');
   }
 }
 
