@@ -7,7 +7,7 @@ import {
   verifyBridgeEnvelope,
 } from './auth';
 import type { AuthenticatedJsonlSessionContext } from './authenticated-jsonl-session';
-import { canonicalJson, encodeBridgeLine } from './codec';
+import { canonicalJson, encodeBridgeLine, validateBridgeEnvelope } from './codec';
 import type { CodexTerminalEvidence } from './codex-app-server-session';
 import {
   CODEX_VALIDATION_CHALLENGE,
@@ -34,6 +34,9 @@ import {
 } from './secret-lease';
 
 const MAX_WRITE_MS = 5_000;
+const MAX_TRACKED_DISPATCHES = 1_024;
+const MAX_FRAME_NODES = 1_024;
+const MAX_FRAME_DEPTH = 8;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
 
@@ -61,6 +64,7 @@ export type CodexValidationRuntimeAdapterErrorCode =
   | 'AUTHORITY_EXPIRED'
   | 'CONCURRENT_DISPATCH'
   | 'USED_DISPATCH'
+  | 'LIMIT_EXCEEDED'
   | 'CANCELLED'
   | 'SECRET_LEASE_DENIED'
   | 'WRITE_TIMEOUT'
@@ -228,10 +232,44 @@ function unsigned(envelope: Readonly<BridgeEnvelope>): Omit<BridgeEnvelope, 'mac
   return value;
 }
 
+function enforceFrameBounds(value: unknown): void {
+  const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+  let nodes = 0;
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    nodes += 1;
+    if (nodes > MAX_FRAME_NODES || current.depth > MAX_FRAME_DEPTH)
+      throw new CodexValidationRuntimeAdapterError('LIMIT_EXCEEDED');
+    if (current.value === null || ['string', 'boolean', 'number'].includes(typeof current.value))
+      continue;
+    if (Array.isArray(current.value)) {
+      if (current.value.length > 256)
+        throw new CodexValidationRuntimeAdapterError('LIMIT_EXCEEDED');
+      for (const child of current.value) pending.push({ value: child, depth: current.depth + 1 });
+      continue;
+    }
+    if (!current.value || typeof current.value !== 'object')
+      throw new CodexValidationRuntimeAdapterError('INVALID_FRAME');
+    const prototype = Object.getPrototypeOf(current.value);
+    if (prototype !== Object.prototype && prototype !== null)
+      throw new CodexValidationRuntimeAdapterError('INVALID_FRAME');
+    const entries = Object.entries(current.value);
+    if (entries.length > 64) throw new CodexValidationRuntimeAdapterError('LIMIT_EXCEEDED');
+    for (const [, child] of entries) pending.push({ value: child, depth: current.depth + 1 });
+  }
+}
+
 function validateDispatchFrame(
   dispatch: Readonly<CodexValidationDispatchCandidate>,
   envelope: Readonly<BridgeEnvelope>,
 ): void {
+  try {
+    enforceFrameBounds(envelope);
+    validateBridgeEnvelope(envelope);
+  } catch (error) {
+    if (error instanceof CodexValidationRuntimeAdapterError) throw error;
+    throw new CodexValidationRuntimeAdapterError('INVALID_FRAME');
+  }
   if (
     envelope.protocolVersion !== BRIDGE_PROTOCOL_VERSION ||
     envelope.type !== 'DISPATCH' ||
@@ -335,6 +373,8 @@ export class BoundedCodexValidationRuntimeAdapter {
     const id = `${bridge.sessionId}:${dispatch.dispatchId}`;
     if (this.#active.has(id)) throw new CodexValidationRuntimeAdapterError('CONCURRENT_DISPATCH');
     if (this.#used.has(id)) throw new CodexValidationRuntimeAdapterError('USED_DISPATCH');
+    if (this.#used.size >= MAX_TRACKED_DISPATCHES)
+      throw new CodexValidationRuntimeAdapterError('LIMIT_EXCEEDED');
     this.#active.add(id);
     this.#used.set(id, deadline);
     try {

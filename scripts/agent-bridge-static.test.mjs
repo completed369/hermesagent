@@ -154,6 +154,9 @@ test('Codex validation runtime adapter authenticates both directions without lau
   assert.match(adapter, /bridge,\s*'SIGN_FRAME'/u);
   assert.match(adapter, /keys\.parentToRuntime/u);
   assert.match(adapter, /keys\.runtimeToParent/u);
+  assert.match(adapter, /MAX_TRACKED_DISPATCHES = 1_024/u);
+  assert.match(adapter, /MAX_FRAME_NODES = 1_024/u);
+  assert.match(adapter, /MAX_FRAME_DEPTH = 8/u);
   assert.match(adapter, /sequence === 2 \? 'DISPATCH_ACCEPTED' : 'RESULT'/u);
   assert.match(adapter, /new DenyBridgeSecretLeaseResolver\(\)/u);
   assert.match(adapter, /new DenyBridgeEgressTransport\(\)/u);

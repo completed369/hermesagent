@@ -35,9 +35,10 @@ For one exact dispatch it:
    local writes before returning the existing immutable round-trip candidate.
 
 The adapter consumes each session/dispatch pair at most once. A failed, timed-out, or partially
-written attempt cannot be replayed through the same adapter instance. Response identifiers use a
-bounded hash of the dispatch reference, so a valid maximum-length dispatch cannot expand a bridge
-message beyond protocol limits.
+written attempt cannot be replayed through the same adapter instance. It caps live replay tracking
+at 1,024 dispatches and bounds input frames to eight levels and 1,024 values before canonicalizing
+them. Response identifiers use a bounded hash of the dispatch reference, so a valid maximum-length
+dispatch cannot expand a bridge message beyond protocol limits.
 
 ## Runtime truth and authority
 

@@ -270,6 +270,21 @@ describe('bounded Codex validation runtime adapter', () => {
     }
   });
 
+  it('rejects deeply nested frame input before canonicalization or protocol execution', async () => {
+    const input = fixture();
+    let payload: unknown = 'leaf';
+    for (let depth = 0; depth < 10; depth += 1) payload = { nested: payload };
+    const runner = new FixedRunner();
+    const { subject } = adapter(runner);
+    await expect(
+      subject.execute({
+        ...input,
+        dispatchEnvelope: { ...input.dispatchEnvelope, payload } as never,
+      }),
+    ).rejects.toMatchObject({ code: 'LIMIT_EXCEEDED' });
+    expect(runner.calls).toBe(0);
+  });
+
   it('rejects replay and concurrent use of the same dispatch', async () => {
     const input = fixture();
     let release!: () => void;
