@@ -21,6 +21,7 @@ const packageFiles = [
   'packages/agent-bridge/src/index.ts',
   'packages/agent-bridge/src/policy.ts',
   'packages/agent-bridge/src/protocol.ts',
+  'packages/agent-bridge/src/retained-native-supervisor-recovery.ts',
   'packages/agent-bridge/src/secret-lease.ts',
   'packages/agent-bridge/src/supervision-authorization.ts',
   'packages/agent-bridge/src/supervision-evidence-reader.ts',
@@ -43,6 +44,29 @@ test('Agent Bridge foundation contains no transport, network, or process executi
   );
   assert.doesNotMatch(source, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork)\s*\(/u);
   assert.doesNotMatch(source, /@Controller\s*\(/u);
+});
+
+test('retained-native recovery is challenge-bound, signed, bounded, and process-handle-free', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-recovery.ts',
+    'utf8',
+  );
+  assert.doesNotMatch(
+    source,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(source, /\b(?:fetch|spawn|spawnSync|exec|execFile|fork|kill)\s*\(/u);
+  assert.doesNotMatch(source, /\b(?:processId|pid|pidfd|nativeHandle|processHandle)\b/u);
+  assert.match(source, /randomBytes\(32\)/u);
+  assert.match(source, /REQUEST_LIFETIME_MS = 2_000/u);
+  assert.match(source, /domain: 'ventureos\.retained-native-supervisor\.recovery-request\.v1'/u);
+  assert.match(source, /purpose: 'RETAINED_NATIVE_RECOVERY_OBSERVATION'/u);
+  assert.match(source, /identityAuthority: 'RETAINED_NATIVE_IDENTITY'/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(source, /new AbortController\(\)/u);
+  assert.match(source, /class DenyRetainedNativeSupervisorRecoveryTransport/u);
+  assert.match(source, /class DenyRetainedNativeSupervisorRecoveryResponseVerifier/u);
+  assert.doesNotMatch(source, /runtimeConnection:\s*'(?:CONNECTED|HEALTHY)'/u);
 });
 
 test('Codex app-server policy is exact, inert, and cannot promote runtime truth', () => {
@@ -1377,7 +1401,7 @@ test('native supervisor evidence stays Linux-test-only and final images deny its
     testSource,
     /this\.addon\.bind\(\(handoff\) => this\.boundTuple\(consume\(handoff\)\)\)/u,
   );
-  assert.doesNotMatch(index, /native-supervisor|native-runtime-fixture/u);
+  assert.doesNotMatch(index, /native-supervisor-boundary|native-runtime-fixture|test\/native/u);
   assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
   assert.match(policy, /class DenyRuntimeProcessLauncher implements RuntimeProcessLauncher/u);
   assert.match(dockerignore, /^packages\/agent-bridge\/test\/native$/mu);
