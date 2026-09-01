@@ -256,7 +256,10 @@ published and current `main` has not been deployed to private staging.
    before stream open and exact cleanup completion before terminal egress (ADR-0061), but no
    production composition binds it by default. A typed Level-3 control-plane adapter now connects
    the port to the existing durable methods while rejecting tenant/identity/binding drift
-   (ADR-0062), but no service supplies a positive owner, secret resolver, or transport. Validation
+   (ADR-0062), but no service supplies a positive owner, secret resolver, or transport. An internal
+   Level-3 recovery inventory now provides bounded, owner-scoped discovery of claims with no matching
+   completion and classifies them from the database clock (ADR-0063). It performs no recovery action;
+   a positive owner and exclusive recovery lease remain absent. Validation
    against a real authenticated Codex process remains approval- and
    provisioning-gated.
    Merged contracts are not runtime-connectivity evidence.

@@ -369,6 +369,10 @@ interface CodexValidationProcessSessionCompletionRow {
   readonly createdAt: Date;
 }
 
+interface CodexValidationProcessSessionRecoveryRow extends CodexValidationProcessSessionClaimRow {
+  readonly recoveryState: 'ACTIVE' | 'EXPIRED';
+}
+
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
 const CAPABILITY_OWNER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
@@ -528,6 +532,33 @@ export interface CodexValidationProcessSessionAuthorityIdentity {
   readonly handoffAttemptId: string;
   readonly claimIdempotencyKey: string;
   readonly completionIdempotencyKey: string;
+}
+
+export interface ListCodexValidationProcessSessionRecoveryInput {
+  readonly limit: number;
+  readonly afterClaimId?: string;
+}
+
+export interface CodexValidationProcessSessionRecoveryItem {
+  readonly schemaVersion: 1;
+  readonly claimId: string;
+  readonly handoffAttemptId: string;
+  readonly validationDispatchCandidateHash: string;
+  readonly sessionId: string;
+  readonly dispatchId: string;
+  readonly binding: Readonly<SupervisorProcessBinding>;
+  readonly recoveryState: 'ACTIVE' | 'EXPIRED';
+  readonly claimedAt: string;
+  readonly expiresAt: string;
+  readonly runtimeConnection: 'NOT_CONFIGURED';
+}
+
+export interface CodexValidationProcessSessionRecoveryPage {
+  readonly schemaVersion: 1;
+  readonly items: readonly Readonly<CodexValidationProcessSessionRecoveryItem>[];
+  readonly nextCursor: string | null;
+  readonly observedAt: string;
+  readonly runtimeConnection: 'NOT_CONFIGURED';
 }
 
 export interface AcceptCodexValidationRoundTripEvidenceInput {
@@ -2162,6 +2193,81 @@ export class AcpBridgeAdmissionService
       },
     };
     return Object.freeze(authority);
+  }
+
+  /**
+   * Lists a bounded owner-scoped snapshot of durable claims that have no
+   * matching cleanup completion. This is recovery discovery only: it cannot
+   * open, signal, terminate, retry, or promote a runtime.
+   */
+  async listCodexValidationProcessSessionRecoveryInventory(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    input: ListCodexValidationProcessSessionRecoveryInput,
+  ): Promise<Readonly<CodexValidationProcessSessionRecoveryPage>> {
+    const actorKind = assertControlPlane(capability, context, 3);
+    if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 100)
+      throw new AcpBridgeAdmissionDeniedError(
+        'Codex validation process-session recovery limit is invalid',
+      );
+    if (input.afterClaimId !== undefined) auditSubjectReference(input.afterClaimId, 'afterClaimId');
+    const afterClaimId = input.afterClaimId ?? '';
+    const [rows, observedAt] = await prisma.$transaction(async (tx) =>
+      Promise.all([
+        tx.$queryRaw<CodexValidationProcessSessionRecoveryRow[]>(Prisma.sql`
+          SELECT claim.*,
+            CASE WHEN claim."expiresAt" <= CURRENT_TIMESTAMP THEN 'EXPIRED' ELSE 'ACTIVE' END
+              AS "recoveryState"
+          FROM "acp_codex_validation_process_session_claims" claim
+          LEFT JOIN "acp_codex_validation_process_session_completions" completion
+            ON completion."workspaceId" = claim."workspaceId"
+            AND completion."claimId" = claim."id"
+          WHERE claim."workspaceId" = CAST(${context.workspaceId} AS uuid)
+            AND claim."ownerReference" = ${context.principalId}
+            AND claim."ownerActorKind" = ${actorKind}
+            AND claim."id" > ${afterClaimId}
+            AND completion."claimId" IS NULL
+          ORDER BY claim."id" ASC
+          LIMIT ${input.limit + 1}
+        `),
+        databaseNow(tx),
+      ]),
+    );
+    const selected = rows.slice(0, input.limit);
+    const items = selected.map((row) =>
+      Object.freeze({
+        schemaVersion: 1 as const,
+        claimId: row.id,
+        handoffAttemptId: row.handoffAttemptId,
+        validationDispatchCandidateHash: row.validationDispatchCandidateHash,
+        sessionId: row.sessionId,
+        dispatchId: row.dispatchId,
+        binding: Object.freeze({
+          schemaVersion: 1 as const,
+          supervisionId: row.supervisionId,
+          launchNonce: row.launchNonce,
+          workspaceId: row.workspaceId,
+          runtimeId: row.runtimeId,
+          connectionId: row.connectionId,
+          platform: row.platform as SupervisorProcessBinding['platform'],
+          manifestHash: row.manifestHash,
+          admissionEvidenceHash: row.admissionEvidenceHash,
+          admissionBindingHash: row.admissionBindingHash,
+          testOnly: row.testOnly,
+        }),
+        recoveryState: row.recoveryState,
+        claimedAt: row.claimedAt.toISOString(),
+        expiresAt: row.expiresAt.toISOString(),
+        runtimeConnection: 'NOT_CONFIGURED' as const,
+      }),
+    );
+    return Object.freeze({
+      schemaVersion: 1 as const,
+      items: Object.freeze(items),
+      nextCursor: rows.length > input.limit ? (items.at(-1)?.claimId ?? null) : null,
+      observedAt: observedAt.toISOString(),
+      runtimeConnection: 'NOT_CONFIGURED' as const,
+    });
   }
 
   /**

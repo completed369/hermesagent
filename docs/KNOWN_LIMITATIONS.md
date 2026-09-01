@@ -172,7 +172,10 @@
 > before terminal egress (ADR-0061), but its default denies and no production service binds it to
 > those durable operations by default. A Level-3 control-plane adapter can now bind the port to the
 > exact durable methods (ADR-0062), but no service supplies it alongside a positive owner, secret
-> resolver, or transport.
+> resolver, or transport. A separate bounded Level-3 recovery inventory can list only that
+> workspace/principal/actor owner's claims with no cleanup completion, using the database clock to
+> distinguish active from expired rows (ADR-0063). It is read-only and supplies no recovery lease,
+> process signal, termination, retry, cleanup proof, or status promotion.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

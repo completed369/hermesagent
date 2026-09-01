@@ -116,6 +116,38 @@ describe('Codex validation process-session control-plane authority', () => {
       }),
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
   });
+
+  it('rejects recovery discovery without Level-3 authority or bounded input', async () => {
+    const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
+    const lowCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'AGENT', authorityLevel: 1 },
+    ]);
+    await expect(
+      service.listCodexValidationProcessSessionRecoveryInventory(
+        lowCapability,
+        { workspaceId, principalId },
+        { limit: 1 },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+
+    const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+    await expect(
+      service.listCodexValidationProcessSessionRecoveryInventory(
+        capability,
+        { workspaceId, principalId },
+        { limit: 0 },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      service.listCodexValidationProcessSessionRecoveryInventory(
+        capability,
+        { workspaceId, principalId },
+        { limit: 101 },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+  });
 });
 
 function processBinding(supervisionId: string): SupervisorProcessBinding {
