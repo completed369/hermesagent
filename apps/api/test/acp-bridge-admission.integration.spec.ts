@@ -1021,9 +1021,17 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       testOnly: true,
     };
     const processClaimId = `codex-process-claim-${registrationSuffix}`;
+    const level1ControlPlaneCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      {
+        workspaceId,
+        principalId,
+        actorKind: 'AGENT',
+        authorityLevel: 1,
+      },
+    ]);
     expect(() =>
       authorizedBridge.createCodexValidationProcessSessionAuthority(
-        plannerCapability,
+        level1ControlPlaneCapability,
         { workspaceId, principalId },
         {
           claimId: processClaimId,
