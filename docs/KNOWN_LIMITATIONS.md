@@ -155,8 +155,11 @@
 > replacement TOCTOU after the final check. Production authorization and Windows
 > remain fail-closed: the reader and API composition default to an explicit deny
 > verifier, while the pinned deterministic key requires a test-only verifier. A
-> production trust-record source, signer registry, and revocation evidence are
-> still absent pending reviewed authority and native owner/reparse-point/handle designs.
+> bounded static verifier can authenticate explicitly supplied Ed25519 trust
+> records with exact scope, validity, and revocation constraints, but the API
+> supplies none. A production trust-record source, signer registry, and live
+> revocation evidence are still absent pending reviewed authority and native
+> owner/reparse-point/handle designs.
 
 > The supervisor composition issues a deeply frozen, non-serializable in-process
 > plan only after exact authorization, evidence, admission, and lifecycle binding.
@@ -172,7 +175,7 @@
 > authorization source, or verifier. The same explicit verifier is applied to
 > the live decision, filesystem evidence, admission, and launch-time
 > revalidation; production injects only the deny implementation. Revocation is
-> only as current as its one source read for
+> only as current as its injected immutable trust snapshot and one source read for
 > an admission; post-decision revocation and atomic launch-time revalidation
 > remain unresolved.
 >

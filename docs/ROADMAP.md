@@ -128,7 +128,10 @@ published and current `main` has not been deployed to private staging.
   The supervisor now applies one explicit executable-authorization verifier to
   its decision, evidence, admission, and launch-time revalidation paths.
   Production and direct evidence-reader defaults deny; the pinned deterministic
-  key is available only through an explicitly injected test verifier.
+  key is available only through an explicitly injected test verifier. A bounded
+  unconfigured verifier can validate explicitly supplied, fingerprinted Ed25519
+  trust records with exact adapter, argument-policy, worktree, validity, and
+  revocation scope. The API supplies no such records and remains deny-wired.
   Production process/stream composition and an authenticated real-process
   exercise remain the next reviewed boundaries.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
@@ -178,7 +181,9 @@ published and current `main` has not been deployed to private staging.
    decision to an immutable, process-local launch plan. Production authority,
    executable verification, and the sole launcher remain deny-only. The generic
    supervisor is no longer coupled to the pinned test key, but no production
-   trust record, signer registry, or revocation source is configured. A bounded I/O-free post-authentication
+   trust-record source, signer registry, or live revocation source is configured.
+   The available static trust-record verifier is an unconfigured primitive, not
+   runtime authority. A bounded I/O-free post-authentication
    JSONL session now verifies runtime-to-parent batches in memory; it is not a
    transport, durable writer, or connection. Windows native identity inspection and
    actual production process supervision remain required before any process creation or

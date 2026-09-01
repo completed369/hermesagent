@@ -889,6 +889,7 @@ test('trusted executable evidence is Linux-only, opened-file bound, and cannot l
   assert.match(reader, /Math\.min\([\s\S]*authorizationExpiryMilliseconds/u);
   assert.match(authorization, /authorization\.testOnly !== true/u);
   assert.match(authorization, /class DenyLinuxExecutableAuthorizationVerifier/u);
+  assert.match(authorization, /class BoundedLinuxExecutableAuthorizationVerifier/u);
   assert.match(authorization, /class TestOnlyLinuxExecutableAuthorizationVerifier/u);
   assert.match(reader, /new DenyLinuxExecutableAuthorizationVerifier\(\)/u);
   assert.match(reader, /authorizationHash: linuxExecutableAuthorizationHash\(authorization\)/u);
@@ -1036,6 +1037,7 @@ test('trusted supervisor composition requires live authority and remains deny-wi
   assert.match(module, /new DenyLinuxExecutableAuthorizationVerifier\(\)/u);
   assert.match(module, /provide:\s*LINUX_EXECUTABLE_AUTHORIZATION_VERIFIER/u);
   assert.doesNotMatch(module, /TestOnlyLinuxExecutableAuthorizationVerifier/u);
+  assert.doesNotMatch(module, /BoundedLinuxExecutableAuthorizationVerifier/u);
   assert.match(module, /new DenyRuntimeProcessLauncher\(\)/u);
   assert.match(module, /provide:\s*RUNTIME_PROCESS_LAUNCHER/u);
   assert.match(
