@@ -80,7 +80,8 @@ static napi_value launch(napi_env env, napi_callback_info info) {
       return deny_native(env, "LIFECYCLE_BINDING");
   }
   if (strcmp(lifecycle_mode, "authenticated-success") != 0 &&
-      strcmp(lifecycle_mode, "authenticated-cancel") != 0)
+      strcmp(lifecycle_mode, "authenticated-cancel") != 0 &&
+      strcmp(lifecycle_mode, "authenticated-dispatch") != 0)
     return deny_native(env, "LIFECYCLE_BINDING");
 
   bool is_typed_array = false;

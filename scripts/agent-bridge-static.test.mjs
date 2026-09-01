@@ -1313,6 +1313,7 @@ test('authenticated supervised lifecycle and dispatch evidence is test-only, bou
   assert.match(addon, /napi_get_typedarray_info/u);
   assert.match(addon, /secret_length != LIFECYCLE_SECRET_BYTES/u);
   assert.match(addon, /dispatch_length > LIFECYCLE_DISPATCH_BYTES/u);
+  assert.match(addon, /strcmp\(lifecycle_mode, "authenticated-dispatch"\) != 0/u);
   assert.match(addon, /memset\(owned_secret, 0, sizeof\(owned_secret\)\)/u);
   assert.match(addon, /memset\(owned_dispatch, 0, sizeof\(owned_dispatch\)\)/u);
   assert.match(addon, /napi_call_function\(env, global, consumer, 1, arguments, &tuple\)/u);
