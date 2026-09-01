@@ -1715,12 +1715,47 @@ test('Codex recovery exit evidence is retained-identity-only, lease-bound, and d
   );
 });
 
+test('Codex recovery completion is lease-bound, cancellation-only, append-only, and non-operational', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const start = service.indexOf('async completeCodexValidationProcessSessionRecovery');
+  const method = service.slice(start, service.indexOf('/** Records exact owner-reported', start));
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260901210000_codex_process_session_recovery_completion/migration.sql',
+    'utf8',
+  );
+  assert.ok(start > 0);
+  assert.match(method, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(
+    method,
+    /validateCodexValidationProcessSessionRecoveryWorkItem\(input\.workItem, now\)/u,
+  );
+  assert.match(method, /validateCodexValidationProcessSessionRecoveryExitEvidence/u);
+  assert.match(method, /reason: 'CANCELLED'/u);
+  assert.match(method, /Prisma\.TransactionIsolationLevel\.Serializable/u);
+  assert.ok(
+    method.indexOf('INSERT INTO "acp_codex_validation_process_session_recovery_exit_evidence"') <
+      method.indexOf('INSERT INTO "acp_codex_validation_process_session_completions"'),
+  );
+  assert.match(migration, /NEW\."reason" = 'CANCELLED'/u);
+  assert.match(migration, /lease\."expiresAt" > clock_timestamp\(\)/u);
+  assert.match(migration, /completion drifted from recovery evidence/u);
+  assert.match(migration, /recovery_exit_evidence_immutable/u);
+  assert.doesNotMatch(
+    method,
+    /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess|process\.kill|\b(?:pid|processHandle|nativeHandle)\b/iu,
+  );
+  assert.doesNotMatch(migration, /'CONNECTED'|"(?:payload|transcript|credential|secret)"/iu);
+});
+
 test('Codex process-session completions reproduce trusted claim authority on insert and replay', () => {
   const service = readFileSync(
     'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
     'utf8',
   );
-  const methodStart = service.indexOf('async completeCodexValidationProcessSession');
+  const methodStart = service.indexOf('async completeCodexValidationProcessSession(\n');
   const replay = service.slice(
     service.indexOf('const existing = existingByClaim', methodStart),
     service.indexOf('const [completion] = await tx.$queryRaw', methodStart),

@@ -192,6 +192,9 @@
 > A shared exit-evidence contract now requires an independently retained native launch identity and
 > revalidates the lease after observation (ADR-0069). Its production source denies, so this is not
 > retained identity, process action, cleanup completion, or runtime connectivity in production.
+> Durable recovery-completion admission now stores exact retained-identity exit evidence before one
+> matching cancellation cleanup under the active lease (ADR-0070). No production evidence source or
+> cleanup actor is composed, so abandoned native processes are still not acted on automatically.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
