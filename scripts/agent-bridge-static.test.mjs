@@ -1665,3 +1665,21 @@ test('Codex process sessions require durable authority before open and terminal 
     /createCodexValidationProcessCleanupEvidence[\s\S]*await this\.authority\.complete[\s\S]*adapter\.execute/u,
   );
 });
+
+test('control-plane Codex process authority is Level-3, identity-bound, and non-launching', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const factory = service.slice(
+    service.indexOf('createCodexValidationProcessSessionAuthority('),
+    service.indexOf('async claimCodexValidationProcessSession('),
+  );
+  assert.match(factory, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(factory, /Object\.freeze\(\{[\s\S]*workspaceId:[\s\S]*principalId:/u);
+  assert.match(factory, /claimCodexValidationProcessSession/u);
+  assert.match(factory, /completeCodexValidationProcessSession/u);
+  assert.match(factory, /canonicalJson\(validatedBinding\) !== canonicalJson\(cleanup\.binding\)/u);
+  assert.doesNotMatch(factory, /\.\.\.identity/u);
+  assert.doesNotMatch(factory, /spawn|exec|credential|accessToken|apiKey|CONNECTED/u);
+});

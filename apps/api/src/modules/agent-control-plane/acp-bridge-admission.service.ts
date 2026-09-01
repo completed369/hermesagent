@@ -66,6 +66,7 @@ import {
   type CodexValidationDispatchAuthorizationSource,
   type CodexValidationDispatchCandidate,
   type CodexValidationProcessCleanupEvidence,
+  type CodexValidationProcessSessionAuthority,
   type CodexTerminalEvidence,
   type CodexValidationRoundTripCandidate,
   type CodexValidationUsageObservationEvidence,
@@ -520,6 +521,13 @@ export interface CompleteCodexValidationProcessSessionInput {
   readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
   readonly cleanup: Readonly<CodexValidationProcessCleanupEvidence>;
   readonly idempotencyKey: string;
+}
+
+export interface CodexValidationProcessSessionAuthorityIdentity {
+  readonly claimId: string;
+  readonly handoffAttemptId: string;
+  readonly claimIdempotencyKey: string;
+  readonly completionIdempotencyKey: string;
 }
 
 export interface AcceptCodexValidationRoundTripEvidenceInput {
@@ -2095,6 +2103,65 @@ export class AcpBridgeAdmissionService
         );
       throw error;
     }
+  }
+
+  /**
+   * Binds the runtime-side fail-closed authority port to the exact durable
+   * Level-3 claim/completion operations. This grants no owner, stream, secret,
+   * transport, provider, or runtime-status authority.
+   */
+  createCodexValidationProcessSessionAuthority(
+    capability: OperationalEventCapability,
+    context: WorkspaceContext,
+    identity: CodexValidationProcessSessionAuthorityIdentity,
+  ): Readonly<CodexValidationProcessSessionAuthority> {
+    assertControlPlane(capability, context, 3);
+    auditSubjectReference(identity.claimId, 'claimId');
+    auditSubjectReference(identity.handoffAttemptId, 'handoffAttemptId');
+    publicReference(identity.claimIdempotencyKey, 'claimIdempotencyKey');
+    publicReference(identity.completionIdempotencyKey, 'completionIdempotencyKey');
+    const boundContext = Object.freeze({
+      workspaceId: context.workspaceId,
+      principalId: context.principalId,
+    });
+    const boundIdentity = Object.freeze({
+      claimId: identity.claimId,
+      handoffAttemptId: identity.handoffAttemptId,
+      claimIdempotencyKey: identity.claimIdempotencyKey,
+      completionIdempotencyKey: identity.completionIdempotencyKey,
+    });
+    const authority: CodexValidationProcessSessionAuthority = {
+      claim: async ({ binding, dispatch }) => {
+        await this.claimCodexValidationProcessSession(capability, boundContext, {
+          claimId: boundIdentity.claimId,
+          handoffAttemptId: boundIdentity.handoffAttemptId,
+          dispatch,
+          binding,
+          idempotencyKey: boundIdentity.claimIdempotencyKey,
+        });
+      },
+      complete: async ({ binding, dispatch, cleanup }) => {
+        let validatedBinding: Readonly<SupervisorProcessBinding>;
+        try {
+          validatedBinding = validateSupervisorProcessBinding(binding);
+        } catch {
+          throw new AcpBridgeAdmissionDeniedError(
+            'Codex validation process-session authority binding is invalid',
+          );
+        }
+        if (canonicalJson(validatedBinding) !== canonicalJson(cleanup.binding))
+          throw new AcpBridgeAdmissionDeniedError(
+            'Codex validation process-session authority binding drifted',
+          );
+        await this.completeCodexValidationProcessSession(capability, boundContext, {
+          claimId: boundIdentity.claimId,
+          dispatch,
+          cleanup,
+          idempotencyKey: boundIdentity.completionIdempotencyKey,
+        });
+      },
+    };
+    return Object.freeze(authority);
   }
 
   /**

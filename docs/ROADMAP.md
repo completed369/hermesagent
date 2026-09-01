@@ -254,7 +254,10 @@ published and current `main` has not been deployed to private staging.
    new validation terminal outcome (ADR-0060). A positive recovery worker and owner are still
    absent. The coordinator now has a deny-by-default durable authority port that orders exact claim
    before stream open and exact cleanup completion before terminal egress (ADR-0061), but no
-   production composition binds it. Validation against a real authenticated Codex process remains approval- and
+   production composition binds it by default. A typed Level-3 control-plane adapter now connects
+   the port to the existing durable methods while rejecting tenant/identity/binding drift
+   (ADR-0062), but no service supplies a positive owner, secret resolver, or transport. Validation
+   against a real authenticated Codex process remains approval- and
    provisioning-gated.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
