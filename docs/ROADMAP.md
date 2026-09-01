@@ -287,6 +287,9 @@ published and current `main` has not been deployed to private staging.
    A Level-3 factory now snapshots one exact recovery work item, durable dispatch, caller context, and
    idempotency key into the coordinator's completion port (ADR-0072). No evidence source, worker,
    process action, or runtime-status transition is composed.
+   Recovery lease acquisition now returns the validated durable dispatch with the active work item in
+   one serializable bundle, and expired replay returns neither (ADR-0073). A positive worker,
+   retained-identity source, and native cleanup action remain absent.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

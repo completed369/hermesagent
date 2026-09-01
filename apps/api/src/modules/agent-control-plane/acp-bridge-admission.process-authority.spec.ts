@@ -316,6 +316,7 @@ describe('Codex validation process-session control-plane authority', () => {
     const claimExpiresAt = new Date(now.getTime() - 1_000);
     const leaseExpiresAt = new Date(now.getTime() + 15_000);
     const binding = processBinding('supervision-recovery-unit');
+    const dispatch = recoveryDispatch(claimExpiresAt.toISOString());
     const queryRaw = vi
       .fn()
       .mockResolvedValueOnce([])
@@ -326,11 +327,11 @@ describe('Codex validation process-session control-plane authority', () => {
           ownerReference: principalId,
           ownerActorKind: 'SYSTEM',
           handoffAttemptId: 'handoff-recovery-unit',
-          validationDispatchCandidateHash: '4'.repeat(64),
+          validationDispatchCandidateHash: dispatch.validationDispatchCandidateHash,
           runtimeId: binding.runtimeId,
           connectionId: binding.connectionId,
-          sessionId: 'session-recovery-unit',
-          dispatchId: 'dispatch-recovery-unit',
+          sessionId: dispatch.sessionId,
+          dispatchId: dispatch.dispatchId,
           supervisionId: binding.supervisionId,
           launchNonce: binding.launchNonce,
           platform: binding.platform,
@@ -342,9 +343,10 @@ describe('Codex validation process-session control-plane authority', () => {
           runtimeConnection: 'NOT_CONFIGURED',
           claimedAt: new Date(claimExpiresAt.getTime() - 1_000),
           expiresAt: claimExpiresAt,
-          runId: 'run-recovery-unit',
+          runId: dispatch.runId,
         },
       ])
+      .mockResolvedValueOnce([recoveryDispatchRow(dispatch)])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
@@ -400,10 +402,10 @@ describe('Codex validation process-session control-plane authority', () => {
         recoveryGeneration: 1,
         claimId: 'claim-recovery-unit',
         handoffAttemptId: 'handoff-recovery-unit',
-        validationDispatchCandidateHash: '4'.repeat(64),
-        sessionId: 'session-recovery-unit',
-        dispatchId: 'dispatch-recovery-unit',
-        runId: 'run-recovery-unit',
+        validationDispatchCandidateHash: dispatch.validationDispatchCandidateHash,
+        sessionId: dispatch.sessionId,
+        dispatchId: dispatch.dispatchId,
+        runId: dispatch.runId,
         binding,
         processClaimedAt: new Date(claimExpiresAt.getTime() - 1_000).toISOString(),
         processExpiresAt: claimExpiresAt.toISOString(),
@@ -411,12 +413,14 @@ describe('Codex validation process-session control-plane authority', () => {
         leaseExpiresAt: leaseExpiresAt.toISOString(),
         runtimeConnection: 'NOT_CONFIGURED',
       },
+      dispatch,
       replayed: false,
     });
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.lease)).toBe(true);
     expect(Object.isFrozen(result.workItem)).toBe(true);
     expect(Object.isFrozen(result.workItem?.binding)).toBe(true);
+    expect(Object.isFrozen(result.dispatch)).toBe(true);
     const storedLease = {
       workspaceId,
       id: 'lease-recovery-unit',
@@ -432,40 +436,38 @@ describe('Codex validation process-session control-plane authority', () => {
       expiresAt: leaseExpiresAt,
       createdAt: now,
     };
+    const claimRows = await queryRaw.mock.results[1]?.value;
+    const dispatchRows = await queryRaw.mock.results[2]?.value;
+    const replayQueryAt = (observedAt: Date) =>
+      vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(claimRows)
+        .mockResolvedValueOnce(dispatchRows)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([storedLease])
+        .mockResolvedValueOnce([storedLease])
+        .mockResolvedValueOnce([{ now: observedAt }]);
+    const activeReplayQueryRaw = replayQueryAt(new Date(now.getTime() + 1));
+    databaseMocks.transaction.mockImplementationOnce(async (operation) =>
+      operation({ $queryRaw: activeReplayQueryRaw }),
+    );
+    const activeReplay = await service.claimCodexValidationProcessSessionRecoveryLease(
+      capability,
+      { workspaceId, principalId },
+      {
+        recoveryLeaseId: 'lease-recovery-unit',
+        claimId: 'claim-recovery-unit',
+        idempotencyKey: 'lease-recovery-unit',
+      },
+    );
+    expect(activeReplay.replayed).toBe(true);
+    expect(activeReplay.lease.leaseState).toBe('ACTIVE');
+    expect(activeReplay.workItem).toEqual(result.workItem);
+    expect(activeReplay.dispatch).toEqual(dispatch);
+
     const expiredNow = new Date(leaseExpiresAt.getTime() + 1);
-    const replayQueryRaw = vi
-      .fn()
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          workspaceId,
-          id: 'claim-recovery-unit',
-          ownerReference: principalId,
-          ownerActorKind: 'SYSTEM',
-          handoffAttemptId: 'handoff-recovery-unit',
-          validationDispatchCandidateHash: '4'.repeat(64),
-          runtimeId: binding.runtimeId,
-          connectionId: binding.connectionId,
-          sessionId: 'session-recovery-unit',
-          dispatchId: 'dispatch-recovery-unit',
-          supervisionId: binding.supervisionId,
-          launchNonce: binding.launchNonce,
-          platform: binding.platform,
-          manifestHash: binding.manifestHash,
-          admissionEvidenceHash: binding.admissionEvidenceHash,
-          admissionBindingHash: binding.admissionBindingHash,
-          testOnly: binding.testOnly,
-          state: 'CLAIMED',
-          runtimeConnection: 'NOT_CONFIGURED',
-          claimedAt: new Date(claimExpiresAt.getTime() - 1_000),
-          expiresAt: claimExpiresAt,
-          runId: 'run-recovery-unit',
-        },
-      ])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([storedLease])
-      .mockResolvedValueOnce([storedLease])
-      .mockResolvedValueOnce([{ now: expiredNow }]);
+    const replayQueryRaw = replayQueryAt(expiredNow);
     databaseMocks.transaction.mockImplementationOnce(async (operation) =>
       operation({ $queryRaw: replayQueryRaw }),
     );
@@ -481,8 +483,9 @@ describe('Codex validation process-session control-plane authority', () => {
     expect(expiredReplay.replayed).toBe(true);
     expect(expiredReplay.lease.leaseState).toBe('EXPIRED');
     expect(expiredReplay.workItem).toBeNull();
+    expect(expiredReplay.dispatch).toBeNull();
     expect(recordOperationalEvent).toHaveBeenCalledOnce();
-    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
   });
 
   it('stores retained-identity recovery evidence before one cancellation cleanup', async () => {
@@ -787,6 +790,14 @@ function recoveryDispatch(expiresAt: string): CodexValidationDispatchCandidate {
   };
   const normalized = { ...base, payloadDigest, unsignedEnvelopeDigest: sha256(unsigned) };
   return { ...normalized, validationDispatchCandidateHash: sha256(normalized) };
+}
+
+function recoveryDispatchRow(dispatch: CodexValidationDispatchCandidate) {
+  return {
+    ...dispatch,
+    issuedAt: new Date(dispatch.issuedAt),
+    expiresAt: new Date(dispatch.expiresAt),
+  };
 }
 
 function recoveryAuthorityFixture() {

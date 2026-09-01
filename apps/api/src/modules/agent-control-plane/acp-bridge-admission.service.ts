@@ -439,6 +439,54 @@ function exactPayload(value: Readonly<Record<string, unknown>>, keys: readonly s
   }
 }
 
+function recoveryDispatchCandidateFromRow(
+  row: Readonly<CodexValidationDispatchEvidenceRow>,
+): Readonly<CodexValidationDispatchCandidate> {
+  try {
+    return validateCodexValidationDispatchCandidate({
+      schemaVersion: 1,
+      adapterKind: row.adapterKind,
+      workspaceId: row.workspaceId,
+      runtimeId: row.runtimeId,
+      connectionId: row.connectionId,
+      sessionId: row.sessionId,
+      principalReference: row.principalReference,
+      authGeneration: row.authGeneration,
+      registrationCandidateHash: row.registrationCandidateHash,
+      capabilityCandidateHash: row.capabilityCandidateHash,
+      heartbeatCandidateHash: row.heartbeatCandidateHash,
+      capabilityDigest: row.capabilityDigest,
+      bridgeIdentityHash: row.bridgeIdentityHash,
+      secretBindingHash: row.secretBindingHash,
+      dispatchId: row.dispatchId,
+      taskId: row.taskId,
+      runId: row.runId,
+      agentId: row.agentId,
+      authorityLevel: row.authorityLevel,
+      taskPolicyHash: row.taskPolicyHash,
+      maximumCostMinorUnits: row.maximumCostMinorUnits,
+      maximumComputeUnits: row.maximumComputeUnits,
+      maximumDurationMs: row.maximumDurationMs,
+      outboundSequence: row.outboundSequence,
+      messageId: row.messageId,
+      challengeCode: row.challengeCode,
+      payloadDigest: row.payloadDigest,
+      unsignedEnvelopeDigest: row.unsignedEnvelopeDigest,
+      issuedAt: row.issuedAt.toISOString(),
+      expiresAt: row.expiresAt.toISOString(),
+      assignmentState: 'NOT_CONFIGURED',
+      deliveryState: 'NOT_SENT',
+      providerAccess: 'NOT_CONFIGURED',
+      runtimeConnection: 'NOT_CONFIGURED',
+      validationDispatchCandidateHash: row.validationDispatchCandidateHash,
+    });
+  } catch {
+    throw new AcpBridgeAdmissionDeniedError(
+      'Codex validation process-session recovery dispatch is invalid',
+    );
+  }
+}
+
 function reference(value: unknown, field: string): asserts value is string {
   if (typeof value !== 'string') throw new AcpBridgeAdmissionDeniedError(`${field} is required`);
   try {
@@ -633,6 +681,13 @@ export interface CodexValidationProcessSessionRecoveryLease {
   readonly claimedAt: string;
   readonly expiresAt: string;
   readonly runtimeConnection: 'NOT_CONFIGURED';
+}
+
+export interface CodexValidationProcessSessionRecoveryLeaseBundle {
+  readonly lease: Readonly<CodexValidationProcessSessionRecoveryLease>;
+  readonly workItem: Readonly<CodexValidationProcessSessionRecoveryWorkItem> | null;
+  readonly dispatch: Readonly<CodexValidationDispatchCandidate> | null;
+  readonly replayed: boolean;
 }
 
 export interface CompleteCodexValidationProcessSessionRecoveryInput {
@@ -2445,7 +2500,7 @@ export class AcpBridgeAdmissionService
     capability: OperationalEventCapability,
     context: WorkspaceContext,
     input: ClaimCodexValidationProcessSessionRecoveryLeaseInput,
-  ) {
+  ): Promise<Readonly<CodexValidationProcessSessionRecoveryLeaseBundle>> {
     const actorKind = assertControlPlane(capability, context, 3);
     auditSubjectReference(input.recoveryLeaseId, 'recoveryLeaseId');
     auditSubjectReference(input.claimId, 'claimId');
@@ -2457,8 +2512,9 @@ export class AcpBridgeAdmissionService
           await tx.$queryRaw(
             Prisma.sql`SELECT "id" FROM "acp_codex_validation_process_session_claims" WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid) AND "id"=${input.claimId} FOR UPDATE`,
           );
-          const [claimRows, completionRows, existingRows, latestRows, now] = await Promise.all([
-            tx.$queryRaw<CodexValidationProcessSessionRecoveryClaimRow[]>(Prisma.sql`
+          const [claimRows, dispatchRows, completionRows, existingRows, latestRows, now] =
+            await Promise.all([
+              tx.$queryRaw<CodexValidationProcessSessionRecoveryClaimRow[]>(Prisma.sql`
               SELECT claim.*, dispatch."runId"
               FROM "acp_codex_validation_process_session_claims" claim
               JOIN "acp_codex_validation_dispatch_evidence" dispatch
@@ -2469,20 +2525,31 @@ export class AcpBridgeAdmissionService
                 AND claim."id"=${input.claimId}
               FOR SHARE OF claim, dispatch
             `),
-            tx.$queryRaw<CodexValidationProcessSessionCompletionRow[]>(Prisma.sql`
+              tx.$queryRaw<CodexValidationDispatchEvidenceRow[]>(Prisma.sql`
+              SELECT dispatch.*
+              FROM "acp_codex_validation_dispatch_evidence" dispatch
+              JOIN "acp_codex_validation_process_session_claims" claim
+                ON claim."workspaceId" = dispatch."workspaceId"
+                AND claim."validationDispatchCandidateHash" =
+                  dispatch."validationDispatchCandidateHash"
+              WHERE claim."workspaceId"=CAST(${context.workspaceId} AS uuid)
+                AND claim."id"=${input.claimId}
+              FOR SHARE OF dispatch
+            `),
+              tx.$queryRaw<CodexValidationProcessSessionCompletionRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_process_session_completions"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND "claimId"=${input.claimId}
               FOR SHARE
             `),
-            tx.$queryRaw<CodexValidationProcessSessionRecoveryLeaseRow[]>(Prisma.sql`
+              tx.$queryRaw<CodexValidationProcessSessionRecoveryLeaseRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_process_session_recovery_leases"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND ("id"=${input.recoveryLeaseId} OR
                   "recoveryIdempotencyKey"=${input.idempotencyKey})
               FOR SHARE
             `),
-            tx.$queryRaw<CodexValidationProcessSessionRecoveryLeaseRow[]>(Prisma.sql`
+              tx.$queryRaw<CodexValidationProcessSessionRecoveryLeaseRow[]>(Prisma.sql`
               SELECT * FROM "acp_codex_validation_process_session_recovery_leases"
               WHERE "workspaceId"=CAST(${context.workspaceId} AS uuid)
                 AND "claimId"=${input.claimId}
@@ -2490,12 +2557,13 @@ export class AcpBridgeAdmissionService
               LIMIT 1
               FOR SHARE
             `),
-            databaseNow(tx),
-          ]);
+              databaseNow(tx),
+            ]);
           const claim = claimRows[0];
-          if (!claim)
+          const durableDispatch = dispatchRows[0];
+          if (!claim || !durableDispatch)
             throw new AcpBridgeAdmissionNotFoundError(
-              'Codex validation process-session recovery claim not found',
+              'Codex validation process-session recovery claim or dispatch not found',
             );
           if (
             claim.ownerReference !== context.principalId ||
@@ -2505,6 +2573,21 @@ export class AcpBridgeAdmissionService
           )
             throw new AcpBridgeAdmissionDeniedError(
               'Codex validation process-session recovery crossed owner authority',
+            );
+          const recoveryDispatch = recoveryDispatchCandidateFromRow(durableDispatch);
+          if (
+            recoveryDispatch.workspaceId !== context.workspaceId ||
+            recoveryDispatch.validationDispatchCandidateHash !==
+              claim.validationDispatchCandidateHash ||
+            recoveryDispatch.runtimeId !== claim.runtimeId ||
+            recoveryDispatch.connectionId !== claim.connectionId ||
+            recoveryDispatch.sessionId !== claim.sessionId ||
+            recoveryDispatch.dispatchId !== claim.dispatchId ||
+            recoveryDispatch.runId !== claim.runId ||
+            recoveryDispatch.expiresAt !== claim.expiresAt.toISOString()
+          )
+            throw new AcpBridgeAdmissionDeniedError(
+              'Codex validation process-session recovery dispatch crossed durable authority',
             );
           let recoveryBinding: Readonly<SupervisorProcessBinding>;
           try {
@@ -2577,6 +2660,10 @@ export class AcpBridgeAdmissionService
               throw new AcpBridgeAdmissionConflictError(
                 'Codex validation process-session recovery lease replay drifted',
               );
+            const workItem =
+              completionRows.length === 0 && existing.expiresAt > now
+                ? workItemFor(existing)
+                : null;
             return Object.freeze({
               lease: Object.freeze({
                 schemaVersion: 1 as const,
@@ -2591,10 +2678,8 @@ export class AcpBridgeAdmissionService
                 expiresAt: existing.expiresAt.toISOString(),
                 runtimeConnection: 'NOT_CONFIGURED' as const,
               }),
-              workItem:
-                completionRows.length === 0 && existing.expiresAt > now
-                  ? workItemFor(existing)
-                  : null,
+              workItem,
+              dispatch: workItem ? recoveryDispatch : null,
               replayed: true,
             });
           }
@@ -2669,6 +2754,7 @@ export class AcpBridgeAdmissionService
               runtimeConnection: 'NOT_CONFIGURED' as const,
             }),
             workItem: workItemFor(lease),
+            dispatch: recoveryDispatch,
             replayed: false,
           });
         },

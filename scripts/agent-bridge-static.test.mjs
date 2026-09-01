@@ -1630,8 +1630,14 @@ test('Codex process recovery leases are expired-only, exclusive, append-only, an
   assert.match(method, /validateSupervisorProcessBinding/u);
   assert.match(
     method,
-    /workItem:\s+completionRows\.length === 0 && existing\.expiresAt > now\s+\? workItemFor\(existing\)\s+: null/u,
+    /const workItem =\s+completionRows\.length === 0 && existing\.expiresAt > now\s+\? workItemFor\(existing\)\s+: null/u,
   );
+  assert.match(service, /function recoveryDispatchCandidateFromRow/u);
+  assert.match(service, /validateCodexValidationDispatchCandidate/u);
+  assert.match(method, /FOR SHARE OF dispatch/u);
+  assert.match(method, /dispatch: workItem \? recoveryDispatch : null/u);
+  assert.match(method, /dispatch: recoveryDispatch/u);
+  assert.match(method, /recoveryDispatch\.expiresAt !== claim\.expiresAt\.toISOString\(\)/u);
   for (const field of [
     'recoveryLeaseId',
     'recoveryGeneration',

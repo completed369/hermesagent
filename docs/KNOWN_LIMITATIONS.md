@@ -201,6 +201,9 @@
 > A Level-3 recovery-completion authority adapter now snapshots one exact lease work item, durable
 > dispatch, caller context, and idempotency key before delegating to serializable completion
 > (ADR-0072). No positive evidence source or worker is composed, so production recovery remains inert.
+> An active recovery lease now returns its validated immutable durable dispatch and work item as one
+> serializable bundle; expired replay returns both as null (ADR-0073). This adds no worker, retained
+> native identity, cleanup action, or runtime connectivity.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
