@@ -391,12 +391,11 @@ export class BoundedCodexValidationRuntimeAdapter {
       });
       const runRemaining = deadline - this.validClock().getTime();
       if (runRemaining < 1) throw new CodexValidationRuntimeAdapterError('AUTHORITY_EXPIRED');
-      const terminal = validateTerminal(
-        await this.runner.run(dispatch, {
-          ...options,
-          timeoutMs: Math.min(options.timeoutMs ?? runRemaining, runRemaining),
-        }),
-      );
+      const runOptions =
+        options.timeoutMs === undefined
+          ? { signal: options.signal }
+          : { signal: options.signal, timeoutMs: Math.min(options.timeoutMs, runRemaining) };
+      const terminal = validateTerminal(await this.runner.run(dispatch, runOptions));
       const statusAt = this.authorizedTimestamp(deadline);
       const terminalAt = this.authorizedTimestamp(deadline, statusAt);
       const evidenceExpiresAt = new Date(deadline).toISOString();

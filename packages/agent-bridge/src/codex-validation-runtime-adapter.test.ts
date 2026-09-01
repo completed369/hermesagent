@@ -1,3 +1,7 @@
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { once } from 'node:events';
+import { resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -27,6 +31,8 @@ import {
   CodexValidationRuntimeAdapterError,
   type CodexValidationRuntimeProtocolRunner,
 } from './codex-validation-runtime-adapter';
+import { BoundedCodexAppServerStdioTransport } from './codex-app-server-stdio-transport';
+import { BoundedCodexValidationProtocolRunner } from './codex-validation-protocol-runner';
 import type { BridgeEgressTransport, BridgeEgressTransportRequest } from './egress-controller';
 import { BRIDGE_PROTOCOL_VERSION, type BridgeEnvelope } from './protocol';
 import { ScopedBridgeSecretLeaseResolver } from './secret-lease';
@@ -207,7 +213,129 @@ function adapter(
   };
 }
 
+function launchProtocolFixture(mode: 'success' | 'unsafe-tool') {
+  const child = spawn(
+    process.execPath,
+    [resolve(__dirname, '..', 'test', 'fixtures', 'codex-validation-app-server.mjs'), mode],
+    {
+      env: {},
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+    if (Buffer.byteLength(stderr, 'utf8') > 4_096) child.kill();
+  });
+  return { child, stderr: () => stderr };
+}
+
+async function stopProtocolFixture(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  child.stdin.end();
+  child.kill();
+  await Promise.race([
+    once(child, 'close'),
+    new Promise<never>((_resolve, reject) =>
+      setTimeout(() => reject(new Error('protocol fixture cleanup timed out')), 2_000),
+    ),
+  ]);
+}
+
 describe('bounded Codex validation runtime adapter', () => {
+  it('composes authenticated dispatch through bounded stdio and the exact app-server protocol', async () => {
+    const input = fixture();
+    const bridgeTransport = new RecordingTransport();
+    const processFixture = launchProtocolFixture('success');
+    const stdio = new BoundedCodexAppServerStdioTransport(
+      processFixture.child.stdin,
+      processFixture.child.stdout,
+    );
+    const runner = new BoundedCodexValidationProtocolRunner(stdio, () => new Date(now));
+    const subject = new BoundedCodexValidationRuntimeAdapter(
+      runner,
+      resolver(),
+      bridgeTransport,
+      () => new Date(now),
+    );
+
+    try {
+      const result = await subject.execute(input);
+      expect(result).toMatchObject({
+        dispatchId: input.dispatch.dispatchId,
+        providerAccess: 'NOT_CONFIGURED',
+        runtimeConnection: 'NOT_CONFIGURED',
+        connectionTransition: 'NOT_APPLIED',
+      });
+      expect(bridgeTransport.frames.map((frame) => [frame.sequence, frame.type])).toEqual([
+        [2, 'DISPATCH_ACCEPTED'],
+        [3, 'RESULT'],
+      ]);
+      expect(stdio.snapshot()).toMatchObject({
+        state: 'ACTIVE',
+        runtimeConnection: 'NOT_CONFIGURED',
+      });
+      expect(stdio.snapshot().writtenBytes).toBeGreaterThan(0);
+      expect(stdio.snapshot().readBytes).toBeGreaterThan(0);
+      expect(processFixture.stderr()).toBe('');
+    } finally {
+      await stopProtocolFixture(processFixture.child);
+    }
+  });
+
+  it('does not contact the process when dispatch authentication fails', async () => {
+    const input = fixture();
+    const bridgeTransport = new RecordingTransport();
+    const processFixture = launchProtocolFixture('success');
+    const stdio = new BoundedCodexAppServerStdioTransport(
+      processFixture.child.stdin,
+      processFixture.child.stdout,
+    );
+    const runner = new BoundedCodexValidationProtocolRunner(stdio, () => new Date(now));
+    const subject = new BoundedCodexValidationRuntimeAdapter(
+      runner,
+      resolver(new Uint8Array(32).fill(8)),
+      bridgeTransport,
+      () => new Date(now),
+    );
+
+    try {
+      await expect(subject.execute(input)).rejects.toMatchObject({ code: 'SECRET_LEASE_DENIED' });
+      expect(stdio.snapshot().writtenBytes).toBe(0);
+      expect(stdio.snapshot().readBytes).toBe(0);
+      expect(bridgeTransport.frames).toHaveLength(0);
+    } finally {
+      await stopProtocolFixture(processFixture.child);
+    }
+  });
+
+  it('fails closed without bridge output when the process reports tool activity', async () => {
+    const input = fixture();
+    const bridgeTransport = new RecordingTransport();
+    const processFixture = launchProtocolFixture('unsafe-tool');
+    const stdio = new BoundedCodexAppServerStdioTransport(
+      processFixture.child.stdin,
+      processFixture.child.stdout,
+    );
+    const runner = new BoundedCodexValidationProtocolRunner(stdio, () => new Date(now));
+    const subject = new BoundedCodexValidationRuntimeAdapter(
+      runner,
+      resolver(),
+      bridgeTransport,
+      () => new Date(now),
+    );
+
+    try {
+      await expect(subject.execute(input)).rejects.toMatchObject({ code: 'UNSAFE_ACTIVITY' });
+      expect(bridgeTransport.frames).toHaveLength(0);
+      expect(stdio.snapshot().runtimeConnection).toBe('NOT_CONFIGURED');
+    } finally {
+      await stopProtocolFixture(processFixture.child);
+    }
+  });
+
   it('authenticates the dispatch, emits signed status/result, and preserves runtime truth', async () => {
     const input = fixture();
     const runner = new FixedRunner();
@@ -235,6 +363,21 @@ describe('bounded Codex validation runtime adapter', () => {
     ).not.toThrow();
     keys.parentToRuntime.fill(0);
     keys.runtimeToParent.fill(0);
+  });
+
+  it('leaves the default runner timeout to its stricter policy and bounds an explicit timeout', async () => {
+    const observed: Array<{ readonly timeoutMs?: number; readonly signal?: AbortSignal }> = [];
+    const runner: CodexValidationRuntimeProtocolRunner = {
+      async run(_dispatch, options) {
+        observed.push(options ?? {});
+        return new FixedRunner().run();
+      },
+    };
+
+    await adapter(runner).subject.execute(fixture());
+    await adapter(runner).subject.execute(fixture(), { timeoutMs: 500 });
+
+    expect(observed).toEqual([{ signal: undefined }, { signal: undefined, timeoutMs: 500 }]);
   });
 
   it('fails closed with deny defaults before running the protocol', async () => {

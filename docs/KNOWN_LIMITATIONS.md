@@ -98,8 +98,10 @@
 > initialize/thread/turn/interrupt lifecycle. A separate JSONL transport now
 > provides bounded reads and writes over already-open Node streams, including
 > framing, timeout, cancellation, malformed-output, and byte-limit enforcement.
-> The two are not composed, and no production source supplies a process or
-> streams. A separate evidence-only path now MAC-verifies and immutably retains
+> A deterministic test-only composition now exercises both against a separate Node process and the
+> authenticated runtime adapter (ADR-0055), including fail-closed wrong-secret and reported-tool
+> cases. No production source supplies a process or streams. A separate evidence-only path now
+> MAC-verifies and immutably retains
 > one exact correlated accepted-status/result pair without assigning the run or
 > promoting connection truth. Synthetic or caller-supplied evidence is not a
 > live provider round trip. There is still no production process launch,
@@ -185,11 +187,9 @@
 > The exported composition interface supplies no production signer, positive
 > authorization source, or verifier. The same explicit verifier is applied to
 > the live decision, filesystem evidence, admission, and launch-time
-> revalidation; production injects only the deny implementation. The
-> authenticated snapshot source is not yet consumed by the supervisor, so
-> revocation is only as current as its injected immutable verifier;
-> per-decision source reads, post-decision revocation, and atomic launch-time
-> revalidation remain unresolved.
+> revalidation; production injects only the deny implementation. The authenticated snapshot source
+> is consumed before authorization and again immediately before native handoff. Post-handoff
+> revocation and atomic kernel launch-time revocation checks remain unresolved.
 >
 > The authenticated JSONL session is likewise an I/O-free post-authentication
 > verifier only. It owns bounded parsing, runtime-to-parent sequence and batch
