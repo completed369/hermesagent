@@ -252,7 +252,9 @@ published and current `main` has not been deployed to private staging.
    access. Durable append-only claims now retain the exact owner/supervisor/handoff identity across
    service restarts, and matching cleanup evidence is a database-enforced prerequisite for every
    new validation terminal outcome (ADR-0060). A positive recovery worker and owner are still
-   absent. Validation against a real authenticated Codex process remains approval- and
+   absent. The coordinator now has a deny-by-default durable authority port that orders exact claim
+   before stream open and exact cleanup completion before terminal egress (ADR-0061), but no
+   production composition binds it. Validation against a real authenticated Codex process remains approval- and
    provisioning-gated.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
