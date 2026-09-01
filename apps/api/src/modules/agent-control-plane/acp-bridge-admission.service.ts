@@ -67,6 +67,7 @@ import {
   type CodexValidationDispatchCandidate,
   type CodexValidationProcessCleanupEvidence,
   type CodexValidationProcessSessionAuthority,
+  type CodexValidationProcessSessionRecoveryWorkItem,
   type CodexTerminalEvidence,
   type CodexValidationRoundTripCandidate,
   type CodexValidationUsageObservationEvidence,
@@ -598,24 +599,6 @@ export interface CodexValidationProcessSessionRecoveryLease {
   readonly claimExpiresAt: string;
   readonly claimedAt: string;
   readonly expiresAt: string;
-  readonly runtimeConnection: 'NOT_CONFIGURED';
-}
-
-export interface CodexValidationProcessSessionRecoveryWorkItem {
-  readonly schemaVersion: 1;
-  readonly recoveryLeaseId: string;
-  readonly recoveryGeneration: number;
-  readonly claimId: string;
-  readonly handoffAttemptId: string;
-  readonly validationDispatchCandidateHash: string;
-  readonly sessionId: string;
-  readonly dispatchId: string;
-  readonly runId: string;
-  readonly binding: Readonly<SupervisorProcessBinding>;
-  readonly processClaimedAt: string;
-  readonly processExpiresAt: string;
-  readonly leaseClaimedAt: string;
-  readonly leaseExpiresAt: string;
   readonly runtimeConnection: 'NOT_CONFIGURED';
 }
 
