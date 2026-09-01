@@ -49,6 +49,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > authorization port. Executable-signature verification is now an explicit
 > dependency across authorization, evidence, admission, and launch revalidation;
 > production injects only a deny verifier, and the pinned key is test-only.
+> A bounded verifier for explicitly supplied, fingerprinted Ed25519 trust records
+> is available but unconfigured; no production trust source or live revocation
+> feed is wired.
 > Production authorization and launching still deny.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
