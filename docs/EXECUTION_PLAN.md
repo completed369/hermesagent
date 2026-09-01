@@ -88,6 +88,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > New Codex validation terminal evidence requires a matching completed claim even for direct SQL
 > insertion. This survives service restarts but adds no positive owner, recovery worker, launch,
 > provider access, or connected-state transition.
+> The process-session coordinator now also requires an injected durable authority claim before
+> opening streams and durable cleanup acceptance before terminal egress (ADR-0061). Its default
+> authority denies, and no production composition or positive owner is present.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

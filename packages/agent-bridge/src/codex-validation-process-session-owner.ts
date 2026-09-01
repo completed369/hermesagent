@@ -33,6 +33,7 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 
 export type CodexValidationProcessSessionErrorCode =
   | 'INVALID_INPUT'
+  | 'AUTHORITY_DENIED'
   | 'OWNER_DENIED'
   | 'INVALID_SESSION'
   | 'CLEANUP_FAILED'
@@ -89,6 +90,37 @@ export interface CodexValidationProcessSessionOwner {
 export class DenyCodexValidationProcessSessionOwner implements CodexValidationProcessSessionOwner {
   async open(_request: Readonly<CodexValidationProcessOpenRequest>): Promise<never> {
     throw new CodexValidationProcessSessionError('OWNER_DENIED');
+  }
+}
+
+export interface CodexValidationProcessSessionClaimRequest {
+  readonly binding: Readonly<SupervisorProcessBinding>;
+  readonly dispatch: Readonly<CodexValidationDispatchCandidate>;
+}
+
+export interface CodexValidationProcessSessionCompletionRequest extends CodexValidationProcessSessionClaimRequest {
+  readonly cleanup: Readonly<CodexValidationProcessCleanupEvidence>;
+}
+
+/**
+ * Durable authority port. A control-plane composition may bind these calls to
+ * the append-only claim/completion operations without giving this package
+ * database, capability, credential, or launch authority.
+ */
+export interface CodexValidationProcessSessionAuthority {
+  claim(request: Readonly<CodexValidationProcessSessionClaimRequest>): Promise<void>;
+  complete(request: Readonly<CodexValidationProcessSessionCompletionRequest>): Promise<void>;
+}
+
+export class DenyCodexValidationProcessSessionAuthority implements CodexValidationProcessSessionAuthority {
+  async claim(_request: Readonly<CodexValidationProcessSessionClaimRequest>): Promise<never> {
+    throw new CodexValidationProcessSessionError('AUTHORITY_DENIED');
+  }
+
+  async complete(
+    _request: Readonly<CodexValidationProcessSessionCompletionRequest>,
+  ): Promise<never> {
+    throw new CodexValidationProcessSessionError('AUTHORITY_DENIED');
   }
 }
 
@@ -363,6 +395,7 @@ export class BoundedCodexValidationProcessSessionCoordinator {
     private readonly secretLeaseResolver: BridgeSecretLeaseResolver = new DenyBridgeSecretLeaseResolver(),
     private readonly transport: BridgeEgressTransport = new DenyBridgeEgressTransport(),
     private readonly clock: () => Date = () => new Date(),
+    private readonly authority: CodexValidationProcessSessionAuthority = new DenyCodexValidationProcessSessionAuthority(),
   ) {}
 
   async execute(
@@ -410,6 +443,13 @@ export class BoundedCodexValidationProcessSessionCoordinator {
       throw new CodexValidationProcessSessionError('LIMIT_EXCEEDED');
     this.#active.add(id);
     this.#used.set(id, Date.parse(dispatch.expiresAt));
+    try {
+      await this.authority.claim(Object.freeze({ binding, dispatch }));
+    } catch (error) {
+      this.#active.delete(id);
+      if (error instanceof CodexValidationProcessSessionError) throw error;
+      throw new CodexValidationProcessSessionError('AUTHORITY_DENIED');
+    }
     const opened = openRequest(binding, dispatch);
     let session: Readonly<CodexValidationOwnedProcessSession> | undefined;
     let terminal: Readonly<CodexValidationProtocolEvidence> | undefined;
@@ -457,6 +497,12 @@ export class BoundedCodexValidationProcessSessionCoordinator {
     if (!terminal || !closed || !closeRequest)
       throw new CodexValidationProcessSessionError('CLEANUP_FAILED');
     const cleanup = createCodexValidationProcessCleanupEvidence(closed, closeRequest, this.clock());
+    try {
+      await this.authority.complete(Object.freeze({ binding, dispatch, cleanup }));
+    } catch (error) {
+      if (error instanceof CodexValidationProcessSessionError) throw error;
+      throw new CodexValidationProcessSessionError('AUTHORITY_DENIED');
+    }
     terminalRunner.terminal = terminal;
     const admitted = await adapter.execute(input, {
       timeoutMs: options.timeoutMs,

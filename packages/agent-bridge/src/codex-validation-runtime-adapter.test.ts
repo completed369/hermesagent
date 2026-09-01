@@ -37,6 +37,9 @@ import {
   BoundedCodexValidationProcessSessionCoordinator,
   validateCodexValidationProcessCleanupEvidence,
   type CodexValidationProcessOpenRequest,
+  type CodexValidationProcessSessionAuthority,
+  type CodexValidationProcessSessionClaimRequest,
+  type CodexValidationProcessSessionCompletionRequest,
   type CodexValidationProcessSessionOwner,
 } from './codex-validation-process-session-owner';
 import { BoundedCodexAppServerStdioTransport } from './codex-app-server-stdio-transport';
@@ -353,6 +356,31 @@ class FixtureProcessSessionOwner implements CodexValidationProcessSessionOwner {
 
   async cleanup(): Promise<void> {
     await Promise.all(this.children.map((child) => stopProtocolFixture(child)));
+  }
+}
+
+class FixtureProcessSessionAuthority implements CodexValidationProcessSessionAuthority {
+  claimCalls = 0;
+  completeCalls = 0;
+  bridgeFramesAtCompletion = -1;
+  failClaim = false;
+  failComplete = false;
+  claimed?: Readonly<CodexValidationProcessSessionClaimRequest>;
+  completed?: Readonly<CodexValidationProcessSessionCompletionRequest>;
+
+  constructor(private readonly bridgeTransport: RecordingTransport) {}
+
+  async claim(request: Readonly<CodexValidationProcessSessionClaimRequest>): Promise<void> {
+    this.claimCalls += 1;
+    this.claimed = request;
+    if (this.failClaim) throw new Error('durable claim denied');
+  }
+
+  async complete(request: Readonly<CodexValidationProcessSessionCompletionRequest>): Promise<void> {
+    this.completeCalls += 1;
+    this.bridgeFramesAtCompletion = this.bridgeTransport.frames.length;
+    this.completed = request;
+    if (this.failComplete) throw new Error('durable completion denied');
   }
 }
 
@@ -783,11 +811,13 @@ describe('bounded Codex validation process session owner', () => {
     const input = fixture();
     const bridgeTransport = new RecordingTransport();
     const owner = new FixtureProcessSessionOwner('success', bridgeTransport);
+    const authority = new FixtureProcessSessionAuthority(bridgeTransport);
     const subject = new BoundedCodexValidationProcessSessionCoordinator(
       owner,
       resolver(),
       bridgeTransport,
       () => new Date(now),
+      authority,
     );
 
     try {
@@ -795,6 +825,13 @@ describe('bounded Codex validation process session owner', () => {
       expect(owner.openCalls).toBe(1);
       expect(owner.closeCalls).toBe(1);
       expect(owner.bridgeFramesAtClose).toBe(0);
+      expect(authority.claimCalls).toBe(1);
+      expect(authority.completeCalls).toBe(1);
+      expect(authority.bridgeFramesAtCompletion).toBe(0);
+      expect(authority.claimed).toEqual({
+        binding: processBinding(input),
+        dispatch: input.dispatch,
+      });
       expect(bridgeTransport.frames.map((frame) => [frame.sequence, frame.type])).toEqual([
         [2, 'DISPATCH_ACCEPTED'],
         [3, 'RESULT'],
@@ -838,6 +875,9 @@ describe('bounded Codex validation process session owner', () => {
           new Date(now),
         ),
       ).toThrow();
+      expect(authority.completed?.cleanup.cleanupEvidenceHash).toBe(
+        result.cleanup.cleanupEvidenceHash,
+      );
       await expect(
         subject.execute({ ...input, binding: processBinding(input) }),
       ).rejects.toMatchObject({ code: 'USED_DISPATCH' });
@@ -851,17 +891,20 @@ describe('bounded Codex validation process session owner', () => {
     const input = fixture();
     const bridgeTransport = new RecordingTransport();
     const owner = new FixtureProcessSessionOwner('success', bridgeTransport);
+    const authority = new FixtureProcessSessionAuthority(bridgeTransport);
     const wrongSecret = new BoundedCodexValidationProcessSessionCoordinator(
       owner,
       resolver(new Uint8Array(32).fill(8)),
       bridgeTransport,
       () => new Date(now),
+      authority,
     );
 
     await expect(
       wrongSecret.execute({ ...input, binding: processBinding(input) }),
     ).rejects.toMatchObject({ code: 'SECRET_LEASE_DENIED' });
     expect(owner.openCalls).toBe(0);
+    expect(authority.claimCalls).toBe(0);
     expect(bridgeTransport.frames).toHaveLength(0);
 
     await expect(
@@ -870,9 +913,62 @@ describe('bounded Codex validation process session owner', () => {
         resolver(),
         bridgeTransport,
         () => new Date(now),
+        authority,
       ).execute({ ...input, binding: processBinding(input) }),
     ).rejects.toMatchObject({ code: 'OWNER_DENIED' });
     expect(bridgeTransport.frames).toHaveLength(0);
+  });
+
+  it('fails closed before opening streams when the durable claim is denied', async () => {
+    const input = fixture();
+    const bridgeTransport = new RecordingTransport();
+    const owner = new FixtureProcessSessionOwner('success', bridgeTransport);
+    const authority = new FixtureProcessSessionAuthority(bridgeTransport);
+    authority.failClaim = true;
+    const subject = new BoundedCodexValidationProcessSessionCoordinator(
+      owner,
+      resolver(),
+      bridgeTransport,
+      () => new Date(now),
+      authority,
+    );
+
+    await expect(
+      subject.execute({ ...input, binding: processBinding(input) }),
+    ).rejects.toMatchObject({ code: 'AUTHORITY_DENIED' });
+    expect(authority.claimCalls).toBe(1);
+    expect(authority.completeCalls).toBe(0);
+    expect(owner.openCalls).toBe(0);
+    expect(bridgeTransport.frames).toHaveLength(0);
+  });
+
+  it('withholds terminal egress when durable cleanup completion is denied', async () => {
+    const input = fixture();
+    const bridgeTransport = new RecordingTransport();
+    const owner = new FixtureProcessSessionOwner('success', bridgeTransport);
+    const authority = new FixtureProcessSessionAuthority(bridgeTransport);
+    authority.failComplete = true;
+    const subject = new BoundedCodexValidationProcessSessionCoordinator(
+      owner,
+      resolver(),
+      bridgeTransport,
+      () => new Date(now),
+      authority,
+    );
+
+    try {
+      await expect(
+        subject.execute({ ...input, binding: processBinding(input) }),
+      ).rejects.toMatchObject({ code: 'AUTHORITY_DENIED' });
+      expect(authority.claimCalls).toBe(1);
+      expect(authority.completeCalls).toBe(1);
+      expect(authority.bridgeFramesAtCompletion).toBe(0);
+      expect(owner.openCalls).toBe(1);
+      expect(owner.closeCalls).toBe(1);
+      expect(bridgeTransport.frames).toHaveLength(0);
+    } finally {
+      await owner.cleanup();
+    }
   });
 
   it('cleans up unsafe sessions and emits nothing when protocol or cleanup evidence fails', async () => {
@@ -896,6 +992,7 @@ describe('bounded Codex validation process session owner', () => {
         resolver(),
         bridgeTransport,
         () => new Date(now),
+        new FixtureProcessSessionAuthority(bridgeTransport),
       );
       try {
         await expect(

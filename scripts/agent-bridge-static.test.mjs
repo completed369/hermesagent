@@ -1651,3 +1651,17 @@ test('assignment reservation and dispatch terminal state share durable lifecycle
     /OLD\."state" IN \('ACCEPTED', 'CANCEL_REQUESTED'\)[\s\S]*durable_run_status IS DISTINCT FROM 'RUNNING'[\s\S]*assignmentEvidenceHash/u,
   );
 });
+
+test('Codex process sessions require durable authority before open and terminal egress', () => {
+  const owner = readFileSync(
+    'packages/agent-bridge/src/codex-validation-process-session-owner.ts',
+    'utf8',
+  );
+  assert.match(owner, /class DenyCodexValidationProcessSessionAuthority/u);
+  assert.match(owner, /authority: CodexValidationProcessSessionAuthority = new Deny/u);
+  assert.match(owner, /await this\.authority\.claim[\s\S]*await this\.owner\.open/u);
+  assert.match(
+    owner,
+    /createCodexValidationProcessCleanupEvidence[\s\S]*await this\.authority\.complete[\s\S]*adapter\.execute/u,
+  );
+});
