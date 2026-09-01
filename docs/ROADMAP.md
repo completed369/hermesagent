@@ -133,9 +133,10 @@ published and current `main` has not been deployed to private staging.
   trust records with exact adapter, argument-policy, worktree, validity, and
   revocation scope. A separate unconfigured source now authenticates bounded
   15-minute signer-registry snapshots and requires a durable monotonic hash-linked
-  compare-and-swap checkpoint before exposing that verifier. The API supplies
-  no reader, checkpoint store, root records, or positive source and remains
-  deny-wired. The supervisor now re-reads authenticated trust before each
+  compare-and-swap checkpoint before exposing that verifier. Durable PostgreSQL
+  reader/checkpoint adapters and append-only checkpoint audit evidence now exist
+  (ADR-0053), but the API supplies no root records or positive source and remains
+  deny-wired. The supervisor re-reads authenticated trust before each
   authorization decision and immediately before native handoff (ADR-0052).
   Production process/stream ownership and an authenticated real-process
   exercise remain later reviewed boundaries.
@@ -187,8 +188,10 @@ published and current `main` has not been deployed to private staging.
    executable verification, and the sole launcher remain deny-only. The generic
    supervisor is no longer coupled to the pinned test key. An authenticated,
    versioned trust-snapshot source and durable anti-rollback checkpoint port now
-   exist, but no positive reader, checkpoint backend, root provisioning, signer
-   registry, or live revocation source is configured. The available static
+   exist. PostgreSQL reader/checkpoint adapters and immutable transition audit
+   evidence are implemented, but no root provisioning, signer registry,
+   snapshot publication procedure, live revocation source, or positive source
+   is configured. The available static
    verifier and snapshot source are unconfigured primitives, not runtime
    authority. A bounded I/O-free post-authentication
    JSONL session now verifies runtime-to-parent batches in memory; it is not a

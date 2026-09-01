@@ -54,8 +54,11 @@ evidence; broker reservations remain estimates rather than financial charges.
 > purpose-bound, 15-minute signed trust snapshot and advance a trusted durable
 > compare-and-swap checkpoint, denying rollback, skipped versions, broken hash
 > links, equivocation, stale roots, and revocation. The repository provides no
-> positive snapshot reader, durable checkpoint backend, root provisioning, or
-> live revocation feed. The supervisor consumes the source freshly before an
+> PostgreSQL-backed snapshot-reader and atomic checkpoint adapters now persist
+> immutable signed inputs, exact checkpoint bindings, and append-only transition
+> audit evidence (ADR-0053), but are not composed. The repository provides no
+> positive root provisioning, snapshot publication path, or live revocation feed.
+> The supervisor consumes the source freshly before an
 > authorization decision and again immediately before native handoff (ADR-0052),
 > while the API supplies only the deny source.
 > Production authorization and launching still deny.

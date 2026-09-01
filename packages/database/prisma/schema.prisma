@@ -1703,6 +1703,65 @@ model AcpExecutionPermit {
   @@map("acp_execution_permits")
 }
 
+/// Immutable, signed platform trust snapshot consumed by the executable
+/// authority source. This is platform security state, not tenant runtime
+/// evidence; it contains public keys/signatures only and has no workspace
+/// relationship. No application mutation route is composed.
+model AcpExecutableAuthorityTrustSnapshot {
+  signerKeyId          String
+  snapshotVersion      Int
+  snapshotId           String
+  snapshotHash         String   @unique(map: "acp_executable_authority_trust_snapshots_hash_key")
+  previousSnapshotHash String?
+  snapshot             Json
+  issuedAt             DateTime @db.Timestamptz(3)
+  validUntil           DateTime @db.Timestamptz(3)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+
+  currentCheckpoint AcpExecutableAuthorityTrustCheckpoint?
+
+  @@id([signerKeyId, snapshotVersion])
+  @@unique([signerKeyId, snapshotId], map: "acp_executable_authority_trust_snapshots_signer_id_key")
+  @@unique([signerKeyId, snapshotVersion, snapshotId, snapshotHash], map: "acp_executable_authority_trust_snapshot_checkpoint_binding_key")
+  @@index([signerKeyId, snapshotVersion(sort: Desc)], map: "acp_executable_authority_trust_snapshot_latest_idx")
+  @@map("acp_executable_authority_trust_snapshots")
+}
+
+/// One mutable monotonic checkpoint per platform snapshot signer. All changes
+/// are constrained to an exact +1 version transition and audited by a database
+/// trigger in AcpExecutableAuthorityTrustCheckpointEvent.
+model AcpExecutableAuthorityTrustCheckpoint {
+  signerKeyId     String   @id
+  snapshotId      String
+  snapshotVersion Int
+  snapshotHash    String
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  snapshot AcpExecutableAuthorityTrustSnapshot @relation(fields: [signerKeyId, snapshotVersion, snapshotId, snapshotHash], references: [signerKeyId, snapshotVersion, snapshotId, snapshotHash], onDelete: Restrict, onUpdate: Restrict, map: "acp_executable_authority_trust_checkpoints_snapshot_fkey")
+
+  @@unique([signerKeyId, snapshotVersion, snapshotId, snapshotHash], map: "acp_executable_authority_trust_checkpoint_snapshot_binding_key")
+  @@map("acp_executable_authority_trust_checkpoints")
+}
+
+/// Append-only database audit evidence for every checkpoint bootstrap or
+/// successful compare-and-swap transition. It stores hashes and bounded
+/// references only, never snapshot bodies, private keys, or credentials.
+model AcpExecutableAuthorityTrustCheckpointEvent {
+  id                      String   @id @default(uuid()) @db.Uuid
+  signerKeyId             String
+  previousSnapshotId      String?
+  previousSnapshotVersion Int?
+  previousSnapshotHash    String?
+  nextSnapshotId          String
+  nextSnapshotVersion     Int
+  nextSnapshotHash        String
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([signerKeyId, createdAt(sort: Desc)], map: "acp_executable_authority_trust_checkpoint_events_signer_idx")
+  @@map("acp_executable_authority_trust_checkpoint_events")
+}
+
 // ---------------------------------------------------------------------------
 // Product and Listing Studio (Phase 4, master spec sections 21/22/25/30)
 // ---------------------------------------------------------------------------
