@@ -1047,6 +1047,237 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
           AND "roundTripCandidateHash" = ${acceptedRoundTrip.evidence.roundTripCandidateHash}
       `),
     ).rejects.toThrow();
+
+    const cancellationProjectId = `codex-cancellation-project-${registrationSuffix}`;
+    const cancellationPlan: DurableObjectivePlanInput = {
+      ...validationPlan,
+      idempotencyKey: `codex-cancellation-plan-${registrationSuffix}`,
+      objective: {
+        ...validationPlan.objective,
+        id: `codex-cancellation-objective-${registrationSuffix}`,
+        title: 'Validate Codex runtime cancellation',
+      },
+      projects: [
+        {
+          ...validationPlan.projects[0]!,
+          id: cancellationProjectId,
+          title: 'Codex runtime cancellation',
+        },
+      ],
+      tasks: [
+        {
+          ...validationPlan.tasks[0]!,
+          id: `codex-cancellation-task-${registrationSuffix}`,
+          projectId: cancellationProjectId,
+          title: 'Perform zero-spend runtime cancellation',
+        },
+      ],
+    };
+    const cancellationObjective = await taskRuns.createPlan(
+      plannerCapability,
+      { workspaceId, principalId },
+      cancellationPlan,
+    );
+    const cancellationTask = cancellationObjective.objective.tasks[0]!;
+    const cancellationRun = cancellationTask.runs[0]!;
+    const cancellationDispatchAt = new Date();
+    const cancellationDispatch = createCodexValidationDispatchCandidate({
+      heartbeat: heartbeatCandidate,
+      dispatchId: `codex-cancellation-dispatch-${registrationSuffix}`,
+      taskId: cancellationTask.id,
+      runId: cancellationRun.id,
+      agentId: `agent:codex-validator-cancel-${registrationSuffix}`,
+      authorityLevel: 3,
+      taskPolicyHash: cancellationRun.policyHash,
+      maximumCostMinorUnits: 0,
+      maximumComputeUnits: 10,
+      maximumDurationMs: 30_000,
+      issuedAt: cancellationDispatchAt.toISOString(),
+      expiresAt: new Date(cancellationDispatchAt.getTime() + 30_000).toISOString(),
+    });
+    const preparedCancellation = await authorizedBridge.prepareCodexValidationDispatch(
+      capability,
+      { workspaceId, principalId },
+      {
+        candidate: cancellationDispatch,
+        bridge: heartbeatContext,
+        idempotencyKey: `codex-cancellation-dispatch-${registrationSuffix}`,
+      },
+    );
+    const cancellationHandoffId = `codex-cancellation-egress-${registrationSuffix}`;
+    const claimedCancellation = await authorizedBridge.claimCodexValidationEgressHandoff(
+      capability,
+      { workspaceId, principalId },
+      {
+        attemptId: cancellationHandoffId,
+        validationDispatchCandidateHash: cancellationDispatch.validationDispatchCandidateHash,
+        bridge: heartbeatContext,
+        idempotencyKey: cancellationHandoffId,
+      },
+    );
+    expect(claimedCancellation.frame).toEqual(preparedCancellation.frame);
+    const cancellationIssuedAt = new Date(claimedCancellation.attempt.claimedAt.getTime() + 1);
+    const cancellationExpiresAt = new Date(
+      Math.min(Date.parse(cancellationDispatch.expiresAt), cancellationIssuedAt.getTime() + 5_000),
+    );
+    const cancellationTerminal = {
+      threadId: `codex-cancellation-thread-${registrationSuffix}`,
+      turnId: `codex-cancellation-turn-${registrationSuffix}`,
+      status: 'interrupted' as const,
+      messageHash: 'd'.repeat(64),
+      interruptRequestId: 4,
+      interruptResponseHash: 'c'.repeat(64),
+      runtimeConnection: 'NOT_CONFIGURED' as const,
+    };
+    const cancellationPayload = {
+      challengeCode: 'codex.runtime.round-trip.v1',
+      dispatchId: cancellationDispatch.dispatchId,
+      taskId: cancellationDispatch.taskId,
+      runId: cancellationDispatch.runId,
+      resultCode: 'VALIDATION_CANCELLED',
+      interruptRequestId: cancellationTerminal.interruptRequestId,
+      interruptResponseHash: cancellationTerminal.interruptResponseHash,
+      terminalStatus: 'interrupted',
+      terminalThreadId: cancellationTerminal.threadId,
+      terminalTurnId: cancellationTerminal.turnId,
+      terminalMessageHash: cancellationTerminal.messageHash,
+    };
+    const cancellationKeys = deriveBridgeKeys(codexSecret, heartbeatContext);
+    const cancellationEnvelope = signBridgeEnvelope(
+      {
+        protocolVersion: BRIDGE_PROTOCOL_VERSION,
+        type: 'CANCELLED',
+        workspaceId,
+        runtimeId: heartbeatContext.runtimeId,
+        connectionId: heartbeatContext.connectionId,
+        sessionId: heartbeatContext.sessionId,
+        principalReference: heartbeatContext.principalReference,
+        sequence: 2,
+        messageId: `codex-validation-cancelled-${registrationSuffix}`,
+        issuedAt: cancellationIssuedAt.toISOString(),
+        expiresAt: cancellationExpiresAt.toISOString(),
+        payload: cancellationPayload,
+        payloadDigest: digestBridgePayload(cancellationPayload),
+      },
+      cancellationKeys.runtimeToParent,
+    );
+    cancellationKeys.parentToRuntime.fill(0);
+    cancellationKeys.runtimeToParent.fill(0);
+    const cancellationInput = {
+      handoffAttemptId: cancellationHandoffId,
+      dispatch: cancellationDispatch,
+      bridge: heartbeatContext,
+      terminal: cancellationTerminal,
+      cancellationEnvelope,
+      idempotencyKey: `codex-validation-cancellation-${registrationSuffix}`,
+    };
+    const collisionKeys = deriveBridgeKeys(codexSecret, heartbeatContext);
+    const completedMessageCollision = signBridgeEnvelope(
+      {
+        protocolVersion: BRIDGE_PROTOCOL_VERSION,
+        type: 'CANCELLED',
+        workspaceId,
+        runtimeId: heartbeatContext.runtimeId,
+        connectionId: heartbeatContext.connectionId,
+        sessionId: heartbeatContext.sessionId,
+        principalReference: heartbeatContext.principalReference,
+        sequence: 2,
+        messageId: statusEnvelope.messageId,
+        issuedAt: cancellationIssuedAt.toISOString(),
+        expiresAt: cancellationExpiresAt.toISOString(),
+        payload: cancellationPayload,
+        payloadDigest: digestBridgePayload(cancellationPayload),
+      },
+      collisionKeys.runtimeToParent,
+    );
+    collisionKeys.parentToRuntime.fill(0);
+    collisionKeys.runtimeToParent.fill(0);
+    await expect(
+      authorizedBridge.acceptCodexValidationCancellationEvidence(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...cancellationInput,
+          cancellationEnvelope: completedMessageCollision,
+          idempotencyKey: `codex-validation-cancellation-message-collision-${registrationSuffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    const acceptedCancellation = await authorizedBridge.acceptCodexValidationCancellationEvidence(
+      capability,
+      { workspaceId, principalId },
+      cancellationInput,
+    );
+    expect(acceptedCancellation.replayed).toBe(false);
+    expect(acceptedCancellation.runtime.status).toBe('NOT_CONFIGURED');
+    expect(acceptedCancellation.connection.status).toBe('NOT_CONFIGURED');
+    expect(acceptedCancellation.run).toMatchObject({
+      status: 'PREPARED',
+      assignedAgentId: null,
+      assignedRuntimeId: null,
+      assignedConnectionId: null,
+    });
+    expect(acceptedCancellation.evidence).toMatchObject({
+      handoffAttemptId: cancellationHandoffId,
+      validationDispatchCandidateHash: cancellationDispatch.validationDispatchCandidateHash,
+      cancellationSequence: 2,
+      interruptRequestId: 4,
+      interruptResponseHash: cancellationTerminal.interruptResponseHash,
+      resultCode: 'VALIDATION_CANCELLED',
+      terminalState: 'INTERRUPTED',
+      providerAccess: 'NOT_CONFIGURED',
+      runtimeConnection: 'NOT_CONFIGURED',
+      connectionTransition: 'NOT_APPLIED',
+      maximumCostMinorUnits: 0,
+    });
+    expect(JSON.stringify(acceptedCancellation.evidence)).not.toContain(cancellationEnvelope.mac);
+    expect(
+      (
+        await authorizedBridge.acceptCodexValidationCancellationEvidence(
+          capability,
+          { workspaceId, principalId },
+          cancellationInput,
+        )
+      ).replayed,
+    ).toBe(true);
+    await expect(
+      authorizedBridge.acceptCodexValidationCancellationEvidence(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...cancellationInput,
+          idempotencyKey: `codex-validation-cancellation-drift-${registrationSuffix}`,
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionConflictError);
+    await expect(
+      authorizedBridge.acceptCodexValidationCancellationEvidence(
+        capability,
+        { workspaceId, principalId },
+        {
+          ...cancellationInput,
+          cancellationEnvelope: {
+            ...cancellationEnvelope,
+            payload: { ...cancellationPayload, interruptResponseHash: 'e'.repeat(64) },
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "acp_codex_validation_cancellation_evidence"
+        SET "connectionTransition" = 'APPLIED'
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "cancellationCandidateHash" = ${acceptedCancellation.evidence.cancellationCandidateHash}
+      `),
+    ).rejects.toThrow();
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        DELETE FROM "acp_codex_validation_cancellation_evidence"
+        WHERE "workspaceId" = CAST(${workspaceId} AS uuid)
+          AND "cancellationCandidateHash" = ${acceptedCancellation.evidence.cancellationCandidateHash}
+      `),
+    ).rejects.toThrow();
     await expect(
       authorizedBridge.prepareCodexValidationDispatch(
         capability,

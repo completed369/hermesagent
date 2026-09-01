@@ -101,11 +101,12 @@
 > A deterministic test-only composition now exercises both against a separate Node process and the
 > authenticated runtime adapter (ADR-0055), including fail-closed wrong-secret and reported-tool
 > cases. The same test-only process now proves one correlated `turn/interrupt` acknowledgement and
-> interrupted terminal with no bridge result emission (ADR-0056). No production source supplies a
-> process or streams. A separate evidence-only path now
-> MAC-verifies and immutably retains
-> one exact correlated accepted-status/result pair without assigning the run or
-> promoting connection truth. Synthetic or caller-supplied evidence is not a
+> interrupted terminal (ADR-0056). After that proof the adapter emits one authenticated cancellation
+> evidence frame, and a tenant-bound immutable admission verifies its MAC and prevents completion and
+> cancellation from both being retained for the same handoff (ADR-0057). No production source
+> supplies a process or streams. Separate evidence-only paths now MAC-verify and immutably retain one
+> exact accepted-status/result pair or one exact acknowledged-cancellation terminal without assigning
+> the run or promoting connection truth. Synthetic or caller-supplied evidence is not a
 > live provider round trip. There is still no production process launch,
 > credential source, provider call, artifact/usage admission for this path, or
 > runtime promotion. Codex remains **NOT_CONFIGURED**.
@@ -148,7 +149,12 @@
 > immutable evidence operation now verifies the exact runtime-to-parent MACs
 > for a sequence-2 accepted status and sequence-3 terminal validation result,
 > binds them to the claimed handoff, and deliberately leaves the ready run
-> unassigned and all runtime truth unchanged. There is still no Codex process
+> unassigned and all runtime truth unchanged. The cancellation counterpart
+> verifies one sequence-2 `CANCELLED` envelope bound to the exact interrupt
+> acknowledgement and interrupted terminal, stores only normalized hashes and
+> safe references, and is database-exclusive with completed evidence for that
+> handoff. It likewise leaves the ready run unassigned and runtime truth
+> unchanged. There is still no Codex process
 > controller, real authenticated provider round trip, or connected-state
 > transition; Codex remains **NOT_CONFIGURED**.
 

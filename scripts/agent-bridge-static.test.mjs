@@ -162,11 +162,13 @@ test('Codex validation runtime adapter authenticates both directions without lau
   assert.match(adapter, /MAX_FRAME_NODES = 1_024/u);
   assert.match(adapter, /MAX_FRAME_DEPTH = 8/u);
   assert.match(adapter, /sequence === 2 \? 'DISPATCH_ACCEPTED' : 'RESULT'/u);
+  assert.match(adapter, /type: 'CANCELLED'/u);
+  assert.match(adapter, /this\.write\(dispatch, cancellationEnvelope, deadline, undefined\)/u);
   assert.match(adapter, /new DenyBridgeSecretLeaseResolver\(\)/u);
   assert.match(adapter, /new DenyBridgeEgressTransport\(\)/u);
   assert.match(
     adapter,
-    /terminal\.status === 'interrupted'[\s\S]*CodexValidationRuntimeAdapterError\('CANCELLED'\)/u,
+    /terminal\.status === 'interrupted'[\s\S]*createCodexValidationCancellationCandidate/u,
   );
   assert.doesNotMatch(adapter, /runtimeConnection:\s*'(?:CONNECTED|HEALTHY)'/u);
 });
@@ -486,6 +488,67 @@ test('Codex validation round-trip evidence is authenticated, immutable, and trut
   assert.match(migration, /acp_codex_validation_round_trip_messages_pkey/u);
   assert.match(migration, /acp_codex_validation_round_trip_messages_immutable/u);
   assert.match(migration, /ventureos_reject_codex_validation_round_trip_change/u);
+  assert.match(
+    migration,
+    /TG_OP = 'DELETE'[\s\S]*NOT EXISTS[\s\S]*FROM "workspaces"[\s\S]*RETURN OLD/u,
+  );
+  assert.doesNotMatch(
+    migration,
+    /^\s+"(?:mac|rawPayload|prompt|transcript|credential|accessToken|apiKey)"\s+/mu,
+  );
+});
+
+test('Codex validation cancellation evidence is authenticated, immutable, and truth preserving', () => {
+  const cancellation = readFileSync(
+    'packages/agent-bridge/src/codex-validation-cancellation.ts',
+    'utf8',
+  );
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260901080000_codex_validation_cancellation_evidence/migration.sql',
+    'utf8',
+  );
+  const acceptance = service.slice(
+    service.indexOf('async acceptCodexValidationCancellationEvidence('),
+    service.indexOf('async acceptCodexValidationRoundTripEvidence('),
+  );
+  assert.doesNotMatch(
+    cancellation,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(
+    cancellation,
+    /\b(?:fetch|spawn|spawnSync|exec|execFile|fork|connect|createConnection|createServer)\s*\(/u,
+  );
+  assert.match(cancellation, /cancellationEnvelope\.type !== 'CANCELLED'/u);
+  assert.match(cancellation, /cancellationEnvelope\.sequence !== 2/u);
+  assert.match(cancellation, /maximumCostMinorUnits: 0 as const/u);
+  assert.match(cancellation, /providerAccess: 'NOT_CONFIGURED'/u);
+  assert.match(cancellation, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(cancellation, /connectionTransition: 'NOT_APPLIED'/u);
+  assert.match(acceptance, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(acceptance, /purpose: 'VERIFY_FRAME'/u);
+  assert.match(acceptance, /verifyBridgeEnvelope\([\s\S]*keys\.runtimeToParent/u);
+  assert.match(acceptance, /completedRows\.length > 0/u);
+  assert.match(acceptance, /connection\.status !== 'NOT_CONFIGURED'/u);
+  assert.match(acceptance, /run\.status !== 'PREPARED'/u);
+  assert.doesNotMatch(
+    acceptance,
+    /acp(?:Run|Task|Runtime|RuntimeConnection)\.(?:create|update|upsert)/u,
+  );
+  assert.match(migration, /maximumCostMinorUnits" = 0/u);
+  assert.match(migration, /runtimeConnection" = 'NOT_CONFIGURED'/u);
+  assert.match(migration, /connectionTransition" = 'NOT_APPLIED'/u);
+  assert.match(migration, /acp_codex_validation_cancellation_handoff_fkey/u);
+  assert.match(migration, /acp_codex_validation_cancellation_handoff_key/u);
+  assert.match(migration, /ventureos_enforce_codex_validation_terminal_exclusivity/u);
+  assert.match(migration, /acp_codex_validation_cancellation_terminal_exclusive/u);
+  assert.match(migration, /acp_codex_validation_round_trip_terminal_exclusive/u);
+  assert.match(migration, /acp_codex_validation_egress_handoff_attempts[\s\S]*FOR UPDATE/u);
+  assert.match(migration, /ventureos_reject_codex_validation_cancellation_change/u);
   assert.match(
     migration,
     /TG_OP = 'DELETE'[\s\S]*NOT EXISTS[\s\S]*FROM "workspaces"[\s\S]*RETURN OLD/u,

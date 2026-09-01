@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { canonicalJson } from './codec';
 import {
   CodexAppServerProtocolSession,
+  type CodexCancellationTerminalEvidence,
+  type CodexInterruptEvidence,
   type CodexTerminalEvidence,
 } from './codex-app-server-session';
 import type { CodexAppServerStdioTransportOptions } from './codex-app-server-stdio-transport';
@@ -39,6 +41,9 @@ export interface CodexValidationProtocolRunOptions {
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
 }
+
+export type CodexValidationProtocolEvidence =
+  CodexTerminalEvidence | CodexCancellationTerminalEvidence;
 
 export type CodexValidationProtocolRunnerErrorCode =
   | 'INVALID_DISPATCH'
@@ -165,7 +170,7 @@ export class BoundedCodexValidationProtocolRunner {
   async run(
     dispatchInput: unknown,
     options: Readonly<CodexValidationProtocolRunOptions> = {},
-  ): Promise<Readonly<CodexTerminalEvidence>> {
+  ): Promise<Readonly<CodexValidationProtocolEvidence>> {
     let dispatch: Readonly<CodexValidationDispatchCandidate>;
     try {
       dispatch = validateCodexValidationDispatchCandidate(dispatchInput);
@@ -217,6 +222,7 @@ export class BoundedCodexValidationProtocolRunner {
     let interruptRequestId: number | undefined;
     let interruptWrite: Promise<void> | undefined;
     let interruptAcknowledged = false;
+    let interruptEvidence: Readonly<CodexInterruptEvidence> | undefined;
     let rejectInterruptFailure!: (reason?: unknown) => void;
     const interruptFailure = new Promise<never>((_resolve, reject) => {
       rejectInterruptFailure = reject;
@@ -246,7 +252,7 @@ export class BoundedCodexValidationProtocolRunner {
           if (message.id !== interruptRequestId)
             throw new CodexValidationProtocolRunnerError('CORRELATION_MISMATCH');
           await interruptWrite;
-          session.acceptInterruptResponse(message);
+          interruptEvidence = session.acceptInterruptResponse(message);
           interruptAcknowledged = true;
           continue;
         }
@@ -264,6 +270,10 @@ export class BoundedCodexValidationProtocolRunner {
             (interruptRequestId !== undefined && evidence.status !== 'interrupted')
           )
             throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
+          if (evidence.status === 'interrupted') {
+            if (!interruptEvidence) throw new CodexValidationProtocolRunnerError('RESULT_MISMATCH');
+            return Object.freeze({ ...evidence, ...interruptEvidence });
+          }
           return evidence;
         }
         admitProgress(message, snapshot.threadId, snapshot.turnId);
