@@ -26,3 +26,4 @@ export * from './codex-validation-protocol-runner';
 export * from './codex-validation-runtime-adapter';
 export * from './codex-validation-process-session-owner';
 export * from './codex-validation-process-session-recovery';
+export * from './codex-validation-process-session-recovery-evidence';

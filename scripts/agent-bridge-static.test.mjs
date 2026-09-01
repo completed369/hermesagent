@@ -1697,6 +1697,24 @@ test('Codex recovery work-item validation is exact, active-only, and non-operati
   );
 });
 
+test('Codex recovery exit evidence is retained-identity-only, lease-bound, and deny-default', () => {
+  const evidence = readFileSync(
+    'packages/agent-bridge/src/codex-validation-process-session-recovery-evidence.ts',
+    'utf8',
+  );
+  assert.match(evidence, /class DenyCodexValidationProcessSessionRecoveryEvidenceSource/u);
+  assert.match(evidence, /identityAuthority: 'RETAINED_NATIVE_IDENTITY'/u);
+  assert.match(evidence, /validateCodexValidationProcessSessionRecoveryWorkItem\(workItemInput/u);
+  assert.match(evidence, /Date\.parse\(exitedAt\) > Date\.parse\(workItem\.processExpiresAt\)/u);
+  assert.match(evidence, /Date\.parse\(verifiedAt\) >= Date\.parse\(workItem\.leaseExpiresAt\)/u);
+  assert.match(evidence, /Date\.parse\(evidence\.verifiedAt\) < startedAt\.getTime\(\)/u);
+  assert.match(evidence, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(
+    evidence,
+    /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess|process\.kill|\b(?:pid|processHandle|nativeHandle)\b/iu,
+  );
+});
+
 test('Codex process-session completions reproduce trusted claim authority on insert and replay', () => {
   const service = readFileSync(
     'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',

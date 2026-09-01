@@ -113,6 +113,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > The shared Agent Bridge boundary now revalidates that work item's exact shape, safe identities,
 > supervisor binding, claim ordering, fixed lease window, database-clock activity, and
 > `NOT_CONFIGURED` truth before return (ADR-0068). It still performs no recovery action.
+> A deny-default evidence-source boundary now accepts only lease-current exit observations from an
+> independently retained native launch identity (ADR-0069). No positive source or process action is
+> composed, and reusable process identifiers remain insufficient authority.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned
