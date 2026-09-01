@@ -186,6 +186,9 @@
 > An active recovery lease now carries an atomic frozen supervisor/dispatch work item (ADR-0067),
 > but it contains no PID or native handle and cannot inspect, signal, terminate, or complete a
 > process. Reusable PID lookup is explicitly insufficient recovery authority.
+> A shared active-only validator now rejects malformed, stale, extended, secret-bearing, or
+> runtime-promoting recovery work items (ADR-0068). This validates metadata only; no retained native
+> identity or independent OS-process evidence exists in production.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies

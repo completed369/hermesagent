@@ -1674,6 +1674,29 @@ test('Codex process recovery leases are expired-only, exclusive, append-only, an
   );
 });
 
+test('Codex recovery work-item validation is exact, active-only, and non-operational', () => {
+  const validator = readFileSync(
+    'packages/agent-bridge/src/codex-validation-process-session-recovery.ts',
+    'utf8',
+  );
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  assert.match(validator, /validateCodexValidationProcessSessionRecoveryWorkItem/u);
+  assert.match(validator, /validateSupervisorProcessBinding/u);
+  assert.match(validator, /leaseClaimedAtMs < processExpiresAtMs/u);
+  assert.match(validator, /leaseExpiresAtMs !== leaseClaimedAtMs \+ LEASE_DURATION_MS/u);
+  assert.match(validator, /observedAt\.getTime\(\) < leaseClaimedAtMs/u);
+  assert.match(validator, /observedAt\.getTime\(\) >= leaseExpiresAtMs/u);
+  assert.match(validator, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(service, /validateCodexValidationProcessSessionRecoveryWorkItem\(candidate, now\)/u);
+  assert.doesNotMatch(
+    validator,
+    /CONNECTED|spawn\s*\(|exec\s*\(|node:child_process|providerAccess|\b(?:pid|processHandle|nativeHandle)\b/iu,
+  );
+});
+
 test('Codex process-session completions reproduce trusted claim authority on insert and replay', () => {
   const service = readFileSync(
     'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',

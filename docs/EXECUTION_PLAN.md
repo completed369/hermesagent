@@ -110,6 +110,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > Active recovery-lease acquisition now atomically returns one frozen, revalidated supervisor and
 > dispatch work item; expired replay returns no work item (ADR-0067). It contains no PID, handle,
 > stream, process operation, or runtime authority.
+> The shared Agent Bridge boundary now revalidates that work item's exact shape, safe identities,
+> supervisor binding, claim ordering, fixed lease window, database-clock activity, and
+> `NOT_CONFIGURED` truth before return (ADR-0068). It still performs no recovery action.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned
