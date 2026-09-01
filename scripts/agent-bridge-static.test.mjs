@@ -112,7 +112,7 @@ test('Codex app-server session is bounded, I/O-free, and cannot promote runtime 
   assert.doesNotMatch(session, /experimentalApi:\s*true/u);
 });
 
-test('Codex validation runner is dispatch-bound, side-effect denied, and uncomposed', () => {
+test('Codex validation runner is dispatch-bound, side-effect denied, and injection-only', () => {
   const runner = readFileSync(
     'packages/agent-bridge/src/codex-validation-protocol-runner.ts',
     'utf8',
@@ -161,6 +161,36 @@ test('Codex validation runtime adapter authenticates both directions without lau
   assert.match(adapter, /new DenyBridgeSecretLeaseResolver\(\)/u);
   assert.match(adapter, /new DenyBridgeEgressTransport\(\)/u);
   assert.doesNotMatch(adapter, /runtimeConnection:\s*'(?:CONNECTED|HEALTHY)'/u);
+});
+
+test('composed Codex validation process evidence remains deterministic and test-only', () => {
+  const adapter = readFileSync(
+    'packages/agent-bridge/src/codex-validation-runtime-adapter.ts',
+    'utf8',
+  );
+  const composition = readFileSync(
+    'packages/agent-bridge/src/codex-validation-runtime-adapter.test.ts',
+    'utf8',
+  );
+  const fixture = readFileSync(
+    'packages/agent-bridge/test/fixtures/codex-validation-app-server.mjs',
+    'utf8',
+  );
+  const production = serviceFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
+  assert.match(composition, /new BoundedCodexAppServerStdioTransport/u);
+  assert.match(composition, /new BoundedCodexValidationProtocolRunner/u);
+  assert.match(composition, /new BoundedCodexValidationRuntimeAdapter/u);
+  assert.match(composition, /env:\s*\{\}/u);
+  assert.match(composition, /stdio:\s*\['pipe', 'pipe', 'pipe'\]/u);
+  assert.match(adapter, /options\.timeoutMs === undefined/u);
+  assert.match(fixture, /approvalPolicy !== 'never'/u);
+  assert.match(fixture, /sandboxPolicy\?\.networkAccess !== false/u);
+  assert.doesNotMatch(
+    fixture,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(production, /codex-validation-app-server|unsafe-tool/u);
+  assert.doesNotMatch(production, /runtimeConnection:\s*'(?:CONNECTED|HEALTHY)'/u);
 });
 
 test('Codex registration translation hashes account evidence and grants no authority', () => {

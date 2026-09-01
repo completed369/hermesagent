@@ -228,10 +228,12 @@ published and current `main` has not been deployed to private staging.
    owns framing, backpressure completion, timeouts, cancellation, and limits
    for already-open Codex app-server streams. A coordinator over that injected
    boundary now enforces ephemeral read-only/no-network execution, bounded
-   correlated safe progress, and exact dispatch-bound terminal output, but no
-   production composition supplies those streams. Authenticated status/result evidence can now be
-   admitted immutably without promoting runtime truth; composed validation
-   against a real authenticated process remains the next safe adapter slice.
+   correlated safe progress, and exact dispatch-bound terminal output. A deterministic test-only
+   child process now composes that transport and coordinator with the authenticated runtime adapter
+   and proves that wrong-secret and reported-tool paths emit no bridge result (ADR-0055), but no
+   production composition supplies streams. Authenticated status/result evidence can now be
+   admitted immutably without promoting runtime truth; validation against a real authenticated
+   Codex process remains approval- and provisioning-gated.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

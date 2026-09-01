@@ -66,6 +66,10 @@ evidence; broker reservations remain estimates rather than financial charges.
 > parent-authenticated `DISPATCH` to authenticated `DISPATCH_ACCEPTED`/`RESULT` round trip after
 > complete process cleanup (ADR-0054). This is CI-only evidence, not a production stream owner or
 > runtime connection.
+> The bounded Codex stdio transport, zero-cost protocol runner, and authenticated runtime adapter
+> are also composed in a deterministic child-process test (ADR-0055). That evidence repairs and
+> protects their timeout contract, denies pre-authentication I/O and reported tool activity, and
+> remains excluded from production composition and runtime truth.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned
