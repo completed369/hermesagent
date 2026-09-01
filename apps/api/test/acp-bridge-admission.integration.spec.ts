@@ -1021,6 +1021,29 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       testOnly: true,
     };
     const processClaimId = `codex-process-claim-${registrationSuffix}`;
+    expect(() =>
+      authorizedBridge.createCodexValidationProcessSessionAuthority(
+        plannerCapability,
+        { workspaceId, principalId },
+        {
+          claimId: processClaimId,
+          handoffAttemptId: validationHandoffInput.attemptId,
+          claimIdempotencyKey: processClaimId,
+          completionIdempotencyKey: `codex-process-completion-${registrationSuffix}`,
+        },
+      ),
+    ).toThrow(AcpBridgeAdmissionDeniedError);
+    const processAuthority = authorizedBridge.createCodexValidationProcessSessionAuthority(
+      capability,
+      { workspaceId, principalId },
+      {
+        claimId: processClaimId,
+        handoffAttemptId: validationHandoffInput.attemptId,
+        claimIdempotencyKey: processClaimId,
+        completionIdempotencyKey: `codex-process-completion-${registrationSuffix}`,
+      },
+    );
+    await processAuthority.claim({ binding: processBinding, dispatch: validationCandidate });
     const processClaim = await authorizedBridge.claimCodexValidationProcessSession(
       capability,
       { workspaceId, principalId },
@@ -1032,27 +1055,12 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         idempotencyKey: processClaimId,
       },
     );
-    expect(processClaim.replayed).toBe(false);
+    expect(processClaim.replayed).toBe(true);
     expect(processClaim.claim).toMatchObject({
       state: 'CLAIMED',
       runtimeConnection: 'NOT_CONFIGURED',
       supervisionId: processBinding.supervisionId,
     });
-    expect(
-      (
-        await authorizedBridge.claimCodexValidationProcessSession(
-          capability,
-          { workspaceId, principalId },
-          {
-            claimId: processClaimId,
-            handoffAttemptId: validationHandoffInput.attemptId,
-            dispatch: validationCandidate,
-            binding: processBinding,
-            idempotencyKey: processClaimId,
-          },
-        )
-      ).replayed,
-    ).toBe(true);
     await expect(
       authorizedBridge.claimCodexValidationProcessSession(
         capability,
@@ -1101,6 +1109,18 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       processCloseRequest,
       processClosedAt,
     );
+    await expect(
+      processAuthority.complete({
+        binding: { ...processBinding, launchNonce: `authority-drift-${registrationSuffix}` },
+        dispatch: validationCandidate,
+        cleanup: processCleanup,
+      }),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await processAuthority.complete({
+      binding: processBinding,
+      dispatch: validationCandidate,
+      cleanup: processCleanup,
+    });
     const processCompletion = await authorizedBridge.completeCodexValidationProcessSession(
       capability,
       { workspaceId, principalId },
@@ -1111,27 +1131,13 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         idempotencyKey: `codex-process-completion-${registrationSuffix}`,
       },
     );
-    expect(processCompletion.replayed).toBe(false);
+    expect(processCompletion.replayed).toBe(true);
     expect(processCompletion.completion).toMatchObject({
       cleanupEvidenceHash: processCleanup.cleanupEvidenceHash,
       reason: 'COMPLETED',
       processState: 'EXITED',
       runtimeConnection: 'NOT_CONFIGURED',
     });
-    expect(
-      (
-        await authorizedBridge.completeCodexValidationProcessSession(
-          capability,
-          { workspaceId, principalId },
-          {
-            claimId: processClaimId,
-            dispatch: validationCandidate,
-            cleanup: processCleanup,
-            idempotencyKey: `codex-process-completion-${registrationSuffix}`,
-          },
-        )
-      ).replayed,
-    ).toBe(true);
     await expect(
       authorizedBridge.completeCodexValidationProcessSession(
         capability,

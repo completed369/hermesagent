@@ -91,6 +91,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > The process-session coordinator now also requires an injected durable authority claim before
 > opening streams and durable cleanup acceptance before terminal egress (ADR-0061). Its default
 > authority denies, and no production composition or positive owner is present.
+> The control plane now exposes an immutable Level-3 adapter that binds that authority port to the
+> exact append-only claim/completion operations (ADR-0062). It snapshots tenant and idempotency
+> identity and rejects cleanup-binding drift, but no service composes a runnable owner or transport.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

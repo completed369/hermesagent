@@ -170,7 +170,9 @@
 > hash remains owner-reported integrity evidence rather than independent OS-process proof.
 > The coordinator's durable authority port now orders claim before stream open and completion
 > before terminal egress (ADR-0061), but its default denies and no production service binds it to
-> those durable operations.
+> those durable operations by default. A Level-3 control-plane adapter can now bind the port to the
+> exact durable methods (ADR-0062), but no service supplies it alongside a positive owner, secret
+> resolver, or transport.
 
 > The proposed Linux evidence reader opens one exact path with no-follow and
 > non-blocking flags, inspects and hashes the same opened regular file, verifies
