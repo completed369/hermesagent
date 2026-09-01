@@ -135,9 +135,10 @@ published and current `main` has not been deployed to private staging.
   15-minute signer-registry snapshots and requires a durable monotonic hash-linked
   compare-and-swap checkpoint before exposing that verifier. The API supplies
   no reader, checkpoint store, root records, or positive source and remains
-  deny-wired. Fresh trust revalidation in the supervisor immediately before
-  native handoff, production process/stream ownership, and an authenticated
-  real-process exercise remain the next reviewed boundaries.
+  deny-wired. The supervisor now re-reads authenticated trust before each
+  authorization decision and immediately before native handoff (ADR-0052).
+  Production process/stream ownership and an authenticated real-process
+  exercise remain later reviewed boundaries.
 - Product PR #80: verified durable broker decisions and short-lived capacity,
   cost, and compute reservations bound to exact workspace, task, run, trusted
   agent evidence, runtime, connection, policy, and candidate evidence. Database

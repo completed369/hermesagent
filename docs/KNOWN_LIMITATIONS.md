@@ -160,7 +160,9 @@
 > source can authenticate exact 15-minute Ed25519 signer-registry snapshots and
 > advance a trusted durable compare-and-swap checkpoint, rejecting rollback,
 > version skips, broken hash links, equivocation, stale roots, and revocation.
-> The API supplies neither primitive. No positive snapshot reader, durable
+> The supervisor reads that source before preparation and again immediately
+> before native handoff (ADR-0052); the API supplies only its deny implementation.
+> No positive snapshot reader, durable
 > checkpoint backend, root provisioning, signer registry, or live revocation
 > publisher is configured pending reviewed authority and native
 > owner/reparse-point/handle designs.

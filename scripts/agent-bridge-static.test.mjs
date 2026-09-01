@@ -1004,6 +1004,9 @@ test('trusted supervisor composition requires live authority and remains deny-wi
     /interface PrepareTrustedSupervisorLaunchInput[\s\S]{0,180}readonly (?:supervisionId|launchNonce)/u,
   );
   assert.match(composition, /authorizationVerifier\.verify/u);
+  assert.match(composition, /this\.authorityTrustSource\.read\(\)/u);
+  assert.ok((composition.match(/await this\.#freshAuthorizationVerifier\(/gu) ?? []).length === 2);
+  assert.match(composition, /if \(allowTestOnlyFallback\) return this\.authorizationVerifier/u);
   assert.match(composition, /new DenyLinuxExecutableAuthorizationVerifier\(\)/u);
   assert.doesNotMatch(composition, /validateLinuxExecutableAuthorization/u);
   assert.match(composition, /validateSupervisorAdmissionWithAuthorizationVerifier/u);
@@ -1024,13 +1027,21 @@ test('trusted supervisor composition requires live authority and remains deny-wi
     composition,
     /export function (?:activateTrustedSupervisorLaunchPlan|consumeRuntimeProcessLaunchRequest|validateRuntimeProcessLaunchRequest)/u,
   );
+  const freshTrustRead = composition.indexOf(
+    'const authorizationVerifier = await this.#freshAuthorizationVerifier(manifest.testOnly)',
+  );
   const authorityRead = composition.indexOf('this.authorizationSource.read(authorizationRequest)');
   const decisionConsumption = composition.indexOf(
     'consumeAuthorizationDecision(authorizationDecision)',
   );
-  const evidenceRead = composition.indexOf('this.evidenceReader.read(manifest, authorization)');
+  const evidenceRead = composition.indexOf(
+    'this.evidenceReader.read(manifest, authorization, authorizationVerifier)',
+  );
   assert.ok(
-    authorityRead >= 0 && decisionConsumption > authorityRead && evidenceRead > decisionConsumption,
+    freshTrustRead >= 0 &&
+      authorityRead > freshTrustRead &&
+      decisionConsumption > authorityRead &&
+      evidenceRead > decisionConsumption,
   );
   assert.match(module, /new DenyTrustedSupervisorAuthorizationSource\(\)/u);
   assert.match(module, /provide:\s*TRUSTED_SUPERVISOR_AUTHORIZATION_SOURCE/u);
@@ -1042,7 +1053,7 @@ test('trusted supervisor composition requires live authority and remains deny-wi
   assert.match(module, /provide:\s*RUNTIME_PROCESS_LAUNCHER/u);
   assert.match(
     module,
-    /new TrustedSupervisorComposition\([\s\S]*denyRuntimeProcessLauncher[\s\S]*\)/u,
+    /new TrustedSupervisorComposition\([\s\S]*denyRuntimeProcessLauncher[\s\S]*denyExecutableAuthorityTrust[\s\S]*\)/u,
   );
   assert.equal((policy.match(/implements RuntimeProcessLauncher/gu) ?? []).length, 1);
   assert.doesNotMatch(index, /deterministic-supervision/u);

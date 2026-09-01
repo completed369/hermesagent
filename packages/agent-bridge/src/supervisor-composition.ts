@@ -7,6 +7,10 @@ import {
   type LinuxExecutableAuthorization,
   type LinuxExecutableAuthorizationVerifier,
 } from './supervision-authorization';
+import {
+  DenyLinuxExecutableAuthorityTrustSource,
+  type LinuxExecutableAuthorityTrustSource,
+} from './supervision-authority-trust-source';
 import { LinuxExecutableEvidenceReader } from './supervision-evidence-reader';
 import {
   type SupervisorProcessBinding,
@@ -31,6 +35,7 @@ interface LaunchPlanState {
   status: LaunchCapabilityStatus;
   readonly request: object;
   readonly expiresAt: number;
+  readonly testOnly: boolean;
 }
 interface LaunchRequestState {
   status: LaunchCapabilityStatus;
@@ -123,6 +128,7 @@ export interface PerAdmissionSupervisorEvidenceReader {
   read(
     manifest: Readonly<RuntimeLaunchManifest>,
     authorization: Readonly<LinuxExecutableAuthorization>,
+    authorizationVerifier?: LinuxExecutableAuthorizationVerifier,
   ): Promise<Readonly<TrustedSupervisorAdmissionEvidence>>;
 }
 
@@ -134,10 +140,9 @@ export class PerAdmissionLinuxExecutableEvidenceReader implements PerAdmissionSu
   async read(
     manifest: Readonly<RuntimeLaunchManifest>,
     authorization: Readonly<LinuxExecutableAuthorization>,
+    authorizationVerifier: LinuxExecutableAuthorizationVerifier = this.authorizationVerifier,
   ): Promise<Readonly<TrustedSupervisorAdmissionEvidence>> {
-    return new LinuxExecutableEvidenceReader([authorization], this.authorizationVerifier).read(
-      manifest,
-    );
+    return new LinuxExecutableEvidenceReader([authorization], authorizationVerifier).read(manifest);
   }
 }
 
@@ -314,8 +319,25 @@ export class TrustedSupervisorComposition {
     private readonly evidenceReader: PerAdmissionSupervisorEvidenceReader,
     launcherFactory: RuntimeProcessLauncherFactory,
     private readonly authorizationVerifier: LinuxExecutableAuthorizationVerifier = new DenyLinuxExecutableAuthorizationVerifier(),
+    private readonly authorityTrustSource?: LinuxExecutableAuthorityTrustSource,
   ) {
     this.#launcher = launcherFactory((handoff) => this.#consumeNativeLaunchHandoff(handoff));
+  }
+
+  async #freshAuthorizationVerifier(
+    allowTestOnlyFallback: boolean,
+  ): Promise<LinuxExecutableAuthorizationVerifier> {
+    if (!this.authorityTrustSource) {
+      if (allowTestOnlyFallback) return this.authorizationVerifier;
+      throw new TrustedSupervisorCompositionError('AUTHORIZATION_NOT_CONFIGURED');
+    }
+    if (this.authorityTrustSource instanceof DenyLinuxExecutableAuthorityTrustSource)
+      throw new TrustedSupervisorCompositionError('AUTHORIZATION_NOT_CONFIGURED');
+    try {
+      return (await this.authorityTrustSource.read()).authorizationVerifier;
+    } catch {
+      throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
+    }
   }
 
   #consumeNativeLaunchHandoff(handoff: unknown): Readonly<TrustedNativeLaunchEnvelope> {
@@ -344,12 +366,13 @@ export class TrustedSupervisorComposition {
     const manifest = validatedManifest.manifest;
     const authorizationRequest = authorizationRequestFor(manifest, validatedManifest.manifestHash);
     const authorizationRequestHash = sha256(authorizationRequest);
+    const authorizationVerifier = await this.#freshAuthorizationVerifier(manifest.testOnly);
     let authorizationDecision: Readonly<TrustedSupervisorAuthorizationDecision>;
     try {
       authorizationDecision = validateAuthorizationDecision(
         await this.authorizationSource.read(authorizationRequest),
         authorizationRequestHash,
-        this.authorizationVerifier,
+        authorizationVerifier,
       );
     } catch (error) {
       if (
@@ -377,7 +400,7 @@ export class TrustedSupervisorComposition {
       throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
     let evidence: Readonly<TrustedSupervisorAdmissionEvidence>;
     try {
-      evidence = await this.evidenceReader.read(manifest, authorization);
+      evidence = await this.evidenceReader.read(manifest, authorization, authorizationVerifier);
     } catch {
       throw new TrustedSupervisorCompositionError('EVIDENCE_DENIED');
     }
@@ -387,7 +410,7 @@ export class TrustedSupervisorComposition {
       admission = validateSupervisorAdmissionWithAuthorizationVerifier(
         manifest,
         evidence,
-        this.authorizationVerifier,
+        authorizationVerifier,
       );
       if (
         admission.evidence.authorizationId !== authorization.authorizationId ||
@@ -436,6 +459,7 @@ export class TrustedSupervisorComposition {
       status: 'PENDING',
       request: launchRequest,
       expiresAt: expiresAtMilliseconds,
+      testOnly: manifest.testOnly,
     });
     this.#launchRequestStates.set(launchRequest, {
       status: 'PENDING',
@@ -446,11 +470,23 @@ export class TrustedSupervisorComposition {
   }
 
   async execute(plan: unknown): Promise<never> {
+    if (typeof plan !== 'object' || plan === null)
+      throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
+    const issuedState = this.#launchPlanStates.get(plan);
+    if (!issuedState || issuedState.status !== 'PENDING')
+      throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
+    if (Date.now() >= issuedState.expiresAt) {
+      issuedState.status = 'CONSUMED';
+      const requestState = this.#launchRequestStates.get(issuedState.request);
+      if (requestState) requestState.status = 'CONSUMED';
+      throw new TrustedSupervisorCompositionError('AUTHORIZATION_DENIED');
+    }
+    const authorizationVerifier = await this.#freshAuthorizationVerifier(issuedState.testOnly);
     const activatedPlan = activateTrustedSupervisorLaunchPlan(
       plan,
       this.#launchPlanStates,
       this.#launchRequestStates,
-      this.authorizationVerifier,
+      authorizationVerifier,
     );
     const consumedRequest = consumeRuntimeProcessLaunchRequest(
       activatedPlan.request,
