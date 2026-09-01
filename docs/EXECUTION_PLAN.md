@@ -55,7 +55,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > compare-and-swap checkpoint, denying rollback, skipped versions, broken hash
 > links, equivocation, stale roots, and revocation. The repository provides no
 > positive snapshot reader, durable checkpoint backend, root provisioning, or
-> live revocation feed, and the API does not consume the source.
+> live revocation feed. The supervisor consumes the source freshly before an
+> authorization decision and again immediately before native handoff (ADR-0052),
+> while the API supplies only the deny source.
 > Production authorization and launching still deny.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or

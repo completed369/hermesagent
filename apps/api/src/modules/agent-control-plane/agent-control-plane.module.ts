@@ -55,6 +55,7 @@ const trustedSupervisorComposition = new TrustedSupervisorComposition(
   new PerAdmissionLinuxExecutableEvidenceReader(denyExecutableAuthorizationVerifier),
   () => denyRuntimeProcessLauncher,
   denyExecutableAuthorizationVerifier,
+  denyExecutableAuthorityTrust,
 );
 const denyCandidates: TrustedBrokerCandidateReader = {
   async read() {
