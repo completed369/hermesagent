@@ -1778,6 +1778,27 @@ test('Codex recovery coordinator is ordered, bounded, deny-default, and non-oper
   );
 });
 
+test('control-plane Codex recovery completion authority is exact, frozen, and non-operational', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const start = service.indexOf('createCodexValidationProcessSessionRecoveryCompletionAuthority(');
+  const authority = service.slice(
+    start,
+    service.indexOf('/**\n   * Lists a bounded owner-scoped snapshot', start),
+  );
+  assert.ok(start > 0);
+  assert.match(authority, /assertControlPlane\(capability, context, 3\)/u);
+  assert.match(authority, /validateCodexValidationProcessSessionRecoveryWorkItem/u);
+  assert.match(authority, /validateCodexValidationDispatchCandidate/u);
+  assert.match(authority, /Object\.freeze\(\{[\s\S]*workspaceId:[\s\S]*principalId:/u);
+  assert.match(authority, /canonicalJson\(requestedWorkItem\) !== canonicalJson\(boundWorkItem\)/u);
+  assert.match(authority, /completeCodexValidationProcessSessionRecovery/u);
+  assert.match(authority, /runtimeConnection !== 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(authority, /\.\.\.identity|CONNECTED|spawn\s*\(|exec\s*\(|process\.kill/u);
+});
+
 test('Codex process-session completions reproduce trusted claim authority on insert and replay', () => {
   const service = readFileSync(
     'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',

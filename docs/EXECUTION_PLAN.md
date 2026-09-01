@@ -122,6 +122,9 @@ evidence; broker reservations remain estimates rather than financial charges.
 > A bounded deny-default coordinator now orders active work-item validation, retained-identity exit
 > observation, final lease revalidation, and durable recovery completion (ADR-0071). It supplies no
 > positive evidence source, completion authority, worker, or process action.
+> A Level-3 control-plane factory now binds that coordinator completion port to one immutable recovery
+> work item, exact dispatch, caller context, and idempotency identity (ADR-0072). It is not composed
+> with an evidence source or worker and grants no process action or runtime-status transition.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
 > durable state. Process creation, handshake transport, and supervisor-owned

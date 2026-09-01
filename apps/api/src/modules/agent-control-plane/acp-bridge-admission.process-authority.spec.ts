@@ -132,6 +132,112 @@ describe('Codex validation process-session control-plane authority', () => {
     ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
   });
 
+  it('snapshots one exact recovery identity and delegates only its completion request', async () => {
+    const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
+    const complete = vi
+      .spyOn(service, 'completeCodexValidationProcessSessionRecovery')
+      .mockResolvedValue({} as never);
+    const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+    const context = { workspaceId, principalId };
+    const fixture = recoveryAuthorityFixture();
+    const identity = {
+      workItem: fixture.workItem,
+      dispatch: fixture.dispatch,
+      completionIdempotencyKey: 'recovery-authority-completion-unit',
+    };
+    const authority = service.createCodexValidationProcessSessionRecoveryCompletionAuthority(
+      capability,
+      context,
+      identity,
+    );
+    context.principalId = 'mutated-principal';
+    identity.completionIdempotencyKey = 'mutated-idempotency';
+
+    await authority.complete({
+      workItem: fixture.workItem,
+      exitEvidence: fixture.exitEvidence,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+
+    expect(Object.isFrozen(authority)).toBe(true);
+    expect(complete).toHaveBeenCalledWith(
+      capability,
+      { workspaceId, principalId },
+      {
+        workItem: fixture.workItem,
+        exitEvidence: fixture.exitEvidence,
+        dispatch: fixture.dispatch,
+        idempotencyKey: 'recovery-authority-completion-unit',
+      },
+    );
+  });
+
+  it('denies recovery completion authority escalation and identity drift', async () => {
+    const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
+    vi.spyOn(service, 'completeCodexValidationProcessSessionRecovery').mockResolvedValue(
+      {} as never,
+    );
+    const fixture = recoveryAuthorityFixture();
+    const lowCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'AGENT', authorityLevel: 1 },
+    ]);
+    expect(() =>
+      service.createCodexValidationProcessSessionRecoveryCompletionAuthority(
+        lowCapability,
+        { workspaceId, principalId },
+        {
+          workItem: fixture.workItem,
+          dispatch: fixture.dispatch,
+          completionIdempotencyKey: 'recovery-authority-low',
+        },
+      ),
+    ).toThrow(AcpBridgeAdmissionDeniedError);
+
+    const capability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { workspaceId, principalId, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+    expect(() =>
+      service.createCodexValidationProcessSessionRecoveryCompletionAuthority(
+        capability,
+        { workspaceId, principalId },
+        {
+          workItem: {
+            ...fixture.workItem,
+            binding: { ...fixture.workItem.binding, runtimeId: 'runtime-drift' },
+          },
+          dispatch: fixture.dispatch,
+          completionIdempotencyKey: 'recovery-authority-binding-drift',
+        },
+      ),
+    ).toThrow(AcpBridgeAdmissionDeniedError);
+
+    const authority = service.createCodexValidationProcessSessionRecoveryCompletionAuthority(
+      capability,
+      { workspaceId, principalId },
+      {
+        workItem: fixture.workItem,
+        dispatch: fixture.dispatch,
+        completionIdempotencyKey: 'recovery-authority-drift',
+      },
+    );
+    await expect(
+      authority.complete({
+        workItem: { ...fixture.workItem, claimId: 'claim-recovery-authority-drift' },
+        exitEvidence: fixture.exitEvidence,
+        runtimeConnection: 'NOT_CONFIGURED',
+      }),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+    await expect(
+      authority.complete({
+        workItem: fixture.workItem,
+        exitEvidence: fixture.exitEvidence,
+        runtimeConnection: 'CONNECTED',
+      } as never),
+    ).rejects.toBeInstanceOf(AcpBridgeAdmissionDeniedError);
+  });
+
   it('rejects recovery discovery without Level-3 authority or bounded input', async () => {
     const service = Object.create(AcpBridgeAdmissionService.prototype) as AcpBridgeAdmissionService;
     const lowCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
@@ -681,4 +787,59 @@ function recoveryDispatch(expiresAt: string): CodexValidationDispatchCandidate {
   };
   const normalized = { ...base, payloadDigest, unsignedEnvelopeDigest: sha256(unsigned) };
   return { ...normalized, validationDispatchCandidateHash: sha256(normalized) };
+}
+
+function recoveryAuthorityFixture() {
+  const now = Date.now();
+  const processClaimedAt = new Date(now - 62_000);
+  const processExpiresAt = new Date(now - 2_000);
+  const leaseClaimedAt = new Date(now - 1_000);
+  const leaseExpiresAt = new Date(now + 14_000);
+  const binding = processBinding('supervision-recovery-authority-unit');
+  const dispatch = recoveryDispatch(processExpiresAt.toISOString());
+  const workItem = {
+    schemaVersion: 1 as const,
+    recoveryLeaseId: 'lease-recovery-authority-unit',
+    recoveryGeneration: 1,
+    claimId: 'claim-recovery-authority-unit',
+    handoffAttemptId: 'handoff-recovery-authority-unit',
+    validationDispatchCandidateHash: dispatch.validationDispatchCandidateHash,
+    sessionId: dispatch.sessionId,
+    dispatchId: dispatch.dispatchId,
+    runId: dispatch.runId,
+    binding,
+    processClaimedAt: processClaimedAt.toISOString(),
+    processExpiresAt: processExpiresAt.toISOString(),
+    leaseClaimedAt: leaseClaimedAt.toISOString(),
+    leaseExpiresAt: leaseExpiresAt.toISOString(),
+    runtimeConnection: 'NOT_CONFIGURED' as const,
+  };
+  const exitValue = {
+    schemaVersion: 1 as const,
+    evidenceId: 'exit-recovery-authority-unit',
+    recoveryLeaseId: workItem.recoveryLeaseId,
+    recoveryGeneration: workItem.recoveryGeneration,
+    claimId: workItem.claimId,
+    supervisionId: binding.supervisionId,
+    launchNonce: binding.launchNonce,
+    sessionId: workItem.sessionId,
+    dispatchId: workItem.dispatchId,
+    validationDispatchCandidateHash: workItem.validationDispatchCandidateHash,
+    identityEstablishedAt: new Date(processClaimedAt.getTime() + 1_000).toISOString(),
+    exitedAt: new Date(processExpiresAt.getTime() - 1_000).toISOString(),
+    verifiedAt: new Date(leaseClaimedAt.getTime() + 500).toISOString(),
+    processState: 'EXITED' as const,
+    exitCode: 0,
+    signal: null,
+    identityAuthority: 'RETAINED_NATIVE_IDENTITY' as const,
+    runtimeConnection: 'NOT_CONFIGURED' as const,
+  };
+  return {
+    dispatch,
+    workItem,
+    exitEvidence: {
+      ...exitValue,
+      evidenceHash: createCodexValidationProcessSessionRecoveryExitEvidenceHash(exitValue),
+    },
+  };
 }
