@@ -1048,6 +1048,37 @@ test('trusted supervisor composition requires live authority and remains deny-wi
   assert.doesNotMatch(index, /deterministic-supervision/u);
 });
 
+test('executable trust snapshots are authenticated, anti-rollback, and unconfigured', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/supervision-authority-trust-source.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  assert.match(source, /class DenyLinuxExecutableAuthorityTrustSource/u);
+  assert.match(source, /class BoundedLinuxExecutableAuthorityTrustSource/u);
+  assert.match(source, /LinuxExecutableAuthorityTrustCheckpointStore/u);
+  assert.match(source, /compareAndSwap/u);
+  assert.match(source, /snapshot\.snapshotVersion !== current\.snapshotVersion \+ 1/u);
+  assert.match(source, /snapshot\.previousSnapshotHash !== current\.snapshotHash/u);
+  assert.match(source, /minimumSnapshotVersion/u);
+  assert.match(source, /MAX_SNAPSHOT_LIFETIME_MS = 15 \* 60 \* 1_000/u);
+  assert.match(source, /class SnapshotBoundAuthorizationVerifier/u);
+  assert.match(source, /snapshot\.previousSnapshotHash !== null/u);
+  assert.match(source, /value\.purpose !== 'LINUX_EXECUTABLE_AUTHORITY_TRUST_SNAPSHOT'/u);
+  assert.match(source, /new BoundedLinuxExecutableAuthorizationVerifier/u);
+  assert.doesNotMatch(
+    source,
+    /from\s+['"]node:(?:child_process|cluster|fs|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(source, /\bprocess\.(?:env|cwd|platform)\b|\bfetch\s*\(/u);
+  assert.match(module, /new DenyLinuxExecutableAuthorityTrustSource\(\)/u);
+  assert.match(module, /provide:\s*LINUX_EXECUTABLE_AUTHORITY_TRUST_SOURCE/u);
+  assert.doesNotMatch(module, /BoundedLinuxExecutableAuthorityTrustSource/u);
+});
+
 test('native supervisor evidence stays Linux-test-only and final images deny its fixtures', () => {
   const helper = readFileSync(
     'packages/agent-bridge/test/native/native-supervisor-helper.c',

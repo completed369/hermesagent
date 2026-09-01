@@ -50,8 +50,12 @@ evidence; broker reservations remain estimates rather than financial charges.
 > dependency across authorization, evidence, admission, and launch revalidation;
 > production injects only a deny verifier, and the pinned key is test-only.
 > A bounded verifier for explicitly supplied, fingerprinted Ed25519 trust records
-> is available but unconfigured; no production trust source or live revocation
-> feed is wired.
+> is available but unconfigured. A separate source can now authenticate a
+> purpose-bound, 15-minute signed trust snapshot and advance a trusted durable
+> compare-and-swap checkpoint, denying rollback, skipped versions, broken hash
+> links, equivocation, stale roots, and revocation. The repository provides no
+> positive snapshot reader, durable checkpoint backend, root provisioning, or
+> live revocation feed, and the API does not consume the source.
 > Production authorization and launching still deny.
 > A pure bounded post-authentication runtime-to-parent JSONL driver now verifies
 > atomic in-memory batches through scoped secret leases, without owning I/O or
