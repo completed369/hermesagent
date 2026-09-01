@@ -1637,6 +1637,54 @@ test('Codex process recovery leases are expired-only, exclusive, append-only, an
   );
 });
 
+test('Codex process-session completions reproduce trusted claim authority on insert and replay', () => {
+  const service = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  const methodStart = service.indexOf('async completeCodexValidationProcessSession');
+  const replay = service.slice(
+    service.indexOf('const existing = existingByClaim', methodStart),
+    service.indexOf('const [completion] = await tx.$queryRaw', methodStart),
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260901190000_codex_process_session_completion_trust/migration.sql',
+    'utf8',
+  );
+  for (const field of [
+    'workspaceId',
+    'cleanupEvidenceHash',
+    'claimId',
+    'handoffAttemptId',
+    'validationDispatchCandidateHash',
+    'runtimeId',
+    'connectionId',
+    'sessionId',
+    'dispatchId',
+    'reason',
+    'processState',
+    'exitCode',
+    'signal',
+    'closedAt',
+    'runtimeConnection',
+    'completionIdempotencyKey',
+  ])
+    assert.match(replay, new RegExp(`existing\\.${field}`));
+  assert.match(migration, /BEFORE INSERT ON "acp_codex_validation_process_session_completions"/u);
+  assert.match(migration, /Existing Codex validation process-session completion crossed/u);
+  assert.match(migration, /FOR UPDATE/u);
+  assert.match(migration, /trusted_claim\."state" IS DISTINCT FROM 'CLAIMED'/u);
+  assert.match(migration, /trusted_claim\."runtimeConnection" IS DISTINCT FROM 'NOT_CONFIGURED'/u);
+  assert.match(migration, /NEW\."closedAt" < trusted_claim\."claimedAt"/u);
+  assert.match(migration, /NEW\."closedAt" > trusted_claim\."expiresAt"/u);
+  assert.match(migration, /NEW\."createdAt" < trusted_claim\."claimedAt"/u);
+  assert.match(migration, /NEW\."createdAt" IS DISTINCT FROM LOCALTIMESTAMP\(3\)/u);
+  assert.doesNotMatch(
+    migration,
+    /CONNECTED|"(?:payload|transcript|credential|providerResponse|secretReference)"\s+(?:TEXT|JSON)/u,
+  );
+});
+
 test('deterministic fake is test-only and no real runtime can be marked connected', () => {
   const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
   const migration = readFileSync(

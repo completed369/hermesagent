@@ -266,6 +266,9 @@ published and current `main` has not been deployed to private staging.
    unfinished claims now support one immutable 15-second, owner-scoped recovery lease generation at
    a time, mutually exclusive with late completion (ADR-0065). The lease has no process, transport,
    secret, provider, cleanup, or runtime-truth authority.
+   Completion inserts now lock and reproduce the exact claim binding, `NOT_CONFIGURED` truth, and
+   claim-bounded close time; replay compares every persisted cleanup field (ADR-0066). The cleanup
+   hash remains owner-reported and no positive recovery owner exists.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

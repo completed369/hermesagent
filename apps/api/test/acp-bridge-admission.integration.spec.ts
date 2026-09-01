@@ -1230,6 +1230,24 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
       processClosedAt,
     );
     await expect(
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "acp_codex_validation_process_session_completions" (
+          "workspaceId", "cleanupEvidenceHash", "claimId", "handoffAttemptId",
+          "validationDispatchCandidateHash", "runtimeId", "connectionId", "sessionId",
+          "dispatchId", "reason", "processState", "exitCode", "signal", "closedAt",
+          "runtimeConnection", "completionIdempotencyKey"
+        ) VALUES (
+          CAST(${workspaceId} AS uuid), ${'e'.repeat(64)}, ${processClaimId},
+          ${validationHandoffInput.attemptId},
+          ${validationCandidate.validationDispatchCandidateHash}, ${validationCandidate.runtimeId},
+          ${validationCandidate.connectionId}, ${validationCandidate.sessionId},
+          ${validationCandidate.dispatchId}, 'COMPLETED', 'EXITED', 0, NULL,
+          ${new Date(processClaim.claim.claimedAt.getTime() - 1)}, 'NOT_CONFIGURED',
+          ${`forged-process-completion-${registrationSuffix}`}
+        )
+      `),
+    ).rejects.toThrow(/crossed trusted claim authority/u);
+    await expect(
       processAuthority.complete({
         binding: { ...processBinding, launchNonce: `authority-drift-${registrationSuffix}` },
         dispatch: validationCandidate,

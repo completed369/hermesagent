@@ -2856,7 +2856,23 @@ export class AcpBridgeAdmissionService
               existingByClaim?.completionIdempotencyKey !== input.idempotencyKey ||
               existingByHash?.claimId !== input.claimId ||
               existingByKey?.cleanupEvidenceHash !== cleanup.cleanupEvidenceHash ||
-              existing.reason !== cleanup.reason
+              existing.workspaceId !== context.workspaceId ||
+              existing.cleanupEvidenceHash !== cleanup.cleanupEvidenceHash ||
+              existing.claimId !== input.claimId ||
+              existing.handoffAttemptId !== claim.handoffAttemptId ||
+              existing.validationDispatchCandidateHash !==
+                cleanup.validationDispatchCandidateHash ||
+              existing.runtimeId !== claim.runtimeId ||
+              existing.connectionId !== claim.connectionId ||
+              existing.sessionId !== cleanup.sessionId ||
+              existing.dispatchId !== cleanup.dispatchId ||
+              existing.reason !== cleanup.reason ||
+              existing.processState !== cleanup.processState ||
+              existing.exitCode !== cleanup.exitCode ||
+              existing.signal !== cleanup.signal ||
+              existing.closedAt.toISOString() !== cleanup.closedAt ||
+              existing.runtimeConnection !== cleanup.runtimeConnection ||
+              existing.completionIdempotencyKey !== input.idempotencyKey
             )
               throw new AcpBridgeAdmissionConflictError(
                 'Codex validation process-session completion replay drifted',

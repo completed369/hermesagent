@@ -182,6 +182,7 @@ test('the immutable migration chain matches the reviewed sequence', () => {
     '20260901130000_codex_validation_process_sessions',
     '20260901153000_codex_process_session_claim_trust',
     '20260901170000_codex_process_session_recovery_leases',
+    '20260901190000_codex_process_session_completion_trust',
   ]);
   const unsafeRestoreReference =
     /(?:password|passwd|secret|token|cookie|authorization|chain[-_.:/ ]?of[-_.:/ ]?thought)/u;
