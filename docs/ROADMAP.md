@@ -333,7 +333,10 @@ published and current `main` has not been deployed to private staging.
    both supervisor and worker (ADR-0083). It remains uncomposed: no socket or listener is created and
    no caller-asserted metadata grants authority. No root/snapshot publisher, private-key custodian,
    Linux native IPC adapter, protected socket lifecycle, production native authority, or worker
-   wiring is supplied.
+   wiring is supplied. A Linux-x64-only native fixture now exercises real `AF_UNIX`, `lstat(2)`, and
+   bidirectional `SO_PEERCRED` evidence through both contract sides, including path substitution,
+   ownership-safe cleanup, peer drift, frame bounds, and replay denial (ADR-0084). The fixture is
+   test-only and excluded from runtime exports; it does not create a production listener or service.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
