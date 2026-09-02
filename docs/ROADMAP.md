@@ -355,6 +355,12 @@ published and current `main` has not been deployed to private staging.
    parent metadata, no-replacement Unix bind, exact `0600` listener identity, backlog `1`, accepted
    `SO_PEERCRED`, bounded frames, synchronous close, exact-identity unlink, and substituted-path
    preservation (ADR-0088). The fixture is test-only, unexported, and excluded from runtime output.
+   An exported but uncomposed production-facing adapter now narrows a future Linux native listener
+   module to one exact versioned ABI and one frozen no-replacement creation request, wraps listener
+   and accepted-session handles in ordered one-shot state machines, enforces the 32 KiB frame limit and
+   synchronous identity-owned cleanup, clears its native response copy, and cleans an allocation when
+   cancellation wins creation (ADR-0089). It does not load a binary, select or provision a path, supply
+   native syscalls, loop, compose a service, or change `NOT_CONFIGURED` runtime truth.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
