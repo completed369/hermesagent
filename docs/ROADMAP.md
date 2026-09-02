@@ -322,11 +322,14 @@ published and current `main` has not been deployed to private staging.
    purpose-bound 15-minute signed key snapshot, supports monotonic explicit revocation and linked key
    rotation, and advances a durable-CAS checkpoint that binds the active key fingerprint and trust-
    record version (ADR-0080). Rollback, skipped versions, equivocation, adjacent key-ID
-   substitution, record-version rollback, stale roots, and conflicting races deny. No positive
-   PostgreSQL reader and supervisor-instance-scoped checkpoint store now persist immutable snapshots,
+   substitution, record-version rollback, stale roots, and conflicting races deny. A PostgreSQL
+   reader and supervisor-instance-scoped checkpoint store now persist immutable snapshots,
    exact full-field CAS state, and append-only transition audit evidence without positive composition
-   (ADR-0081). No root/snapshot publisher, private-key custodian, fresh exchange composition, or IPC
-   is supplied.
+   (ADR-0081). A bounded evidence-source composition now reads that authenticated trust immediately
+   before and after one recovery exchange, requires the complete snapshot identity to remain exact,
+   and verifies only with the post-exchange verifier (ADR-0082). It remains uncomposed. No
+   root/snapshot publisher, private-key custodian, authenticated local IPC, production native
+   authority, or worker wiring is supplied.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
