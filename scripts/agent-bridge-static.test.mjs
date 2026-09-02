@@ -2318,6 +2318,46 @@ test('Linux retained-native listener lifecycle is ownership-safe, bounded, and u
   assert.doesNotMatch(apiComposition, /retained-native-supervisor-listener-lifecycle/u);
 });
 
+test('retained-native listener lifecycle kernel evidence is Linux-test-only and ownership-safe', () => {
+  const fixture = readFileSync(
+    'packages/agent-bridge/test/native/retained-native-listener-lifecycle-addon.c',
+    'utf8',
+  );
+  const evidence = readFileSync(
+    'packages/agent-bridge/src/retained-native-listener-lifecycle-linux-evidence.test.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const runtimeAssertion = readFileSync(
+    'packages/agent-bridge/scripts/assert-runtime-boundary.mjs',
+    'utf8',
+  );
+  assert.match(fixture, /lstat\(parent_path/u);
+  assert.match(fixture, /\(fixture_state\.parent_identity\.st_mode & 0777\) != 0700/u);
+  assert.match(fixture, /lstat\(path, &existing\) == 0/u);
+  assert.match(fixture, /bind\(listener/u);
+  assert.match(fixture, /chmod\(path, 0600\)/u);
+  assert.match(fixture, /listen\(listener, 1\)/u);
+  assert.match(
+    fixture,
+    /same_directory_identity\(&fixture_state\.parent_identity, &current_parent\)/u,
+  );
+  assert.match(fixture, /SO_PEERCRED/u);
+  assert.match(fixture, /MAX_FRAME_BYTES 32768/u);
+  assert.match(fixture, /volatile uint8_t \*cursor = data/u);
+  assert.match(fixture, /clear_bytes\(buffer, sizeof\(buffer\)\)/u);
+  assert.match(fixture, /clear_bytes\(observed, sizeof\(observed\)\)/u);
+  assert.match(fixture, /same_identity\(&fixture_state\.listener_identity, &current\)/u);
+  assert.match(fixture, /SUBSTITUTION_PRESERVED/u);
+  assert.match(fixture, /if \(!listener_closed\)[\s\S]*LISTENER_CLOSE_FAILED/u);
+  assert.match(evidence, /process\.platform === 'linux' && process\.arch === 'x64'/u);
+  assert.match(evidence, /expectedWorkerPid: process\.pid/u);
+  assert.match(evidence, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(index, /retained-native-listener-lifecycle-linux-evidence/u);
+  assert.match(runtimeAssertion, /retained-native-listener-lifecycle-addon/u);
+  assert.doesNotMatch(evidence, /runtimeConnection:\s*'CONNECTED'/u);
+});
+
 test('retained-native supervisor trust snapshots are fresh, revocable, and anti-rollback', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-trust-source.ts',
