@@ -1386,6 +1386,7 @@ test('native supervisor evidence stays Linux-test-only and final images deny its
   assert.match(testSource, /composition\.execute\(plan\)/u);
   assert.match(testSource, /manifest\.executable\.sha256/u);
   assert.match(testSource, /env: \{\}/u);
+  assert.match(testSource, /beforeAll\([\s\S]*?\}, 60_000\);/u);
   assert.match(addon, /#include "native-supervisor-helper\.c"/u);
   assert.match(
     addon,
