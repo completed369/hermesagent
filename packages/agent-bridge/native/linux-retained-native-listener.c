@@ -293,7 +293,12 @@ static napi_value abort_operation(napi_env env, napi_callback_info info) {
   atomic_store_explicit(&operation->cancelled, true, memory_order_release);
   if (operation->cancellation[1] >= 0) {
     const uint8_t marker = 1;
-    (void)write(operation->cancellation[1], &marker, sizeof(marker));
+    ssize_t written;
+    do {
+      written = write(operation->cancellation[1], &marker, sizeof(marker));
+    } while (written < 0 && errno == EINTR);
+    if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+      close_descriptor(&operation->cancellation[1]);
   }
   napi_value undefined;
   return napi_get_undefined(env, &undefined) == napi_ok ? undefined : NULL;
