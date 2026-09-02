@@ -285,8 +285,9 @@ static int signal_is_aborted(napi_env env, napi_value signal) {
 
 static napi_value abort_operation(napi_env env, napi_callback_info info) {
   void *data = NULL;
-  size_t argc = 0;
-  if (napi_get_cb_info(env, info, &argc, NULL, NULL, &data) != napi_ok || argc != 0 ||
+  size_t argc = 1;
+  napi_value event;
+  if (napi_get_cb_info(env, info, &argc, &event, NULL, &data) != napi_ok || argc != 1 ||
       data == NULL)
     return deny(env);
   struct async_operation *operation = data;

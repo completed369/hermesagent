@@ -195,9 +195,10 @@ describeLinux('production Linux retained-native listener module evidence', () =>
     const run = lifecycle.runOne(peer(), controller.signal);
     await waitForPath(socketPath);
     await new Promise<void>((resolveTurn) => setImmediate(resolveTurn));
+    const denied = expect(run).rejects.toMatchObject({ code: 'EXCHANGE_DENIED' });
     controller.abort();
 
-    await expect(run).rejects.toMatchObject({ code: 'EXCHANGE_DENIED' });
+    await denied;
     expect(existsSync(socketPath)).toBe(false);
   });
 
