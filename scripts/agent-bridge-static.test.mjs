@@ -23,6 +23,7 @@ const packageFiles = [
   'packages/agent-bridge/src/protocol.ts',
   'packages/agent-bridge/src/retained-native-supervisor-linux-client.ts',
   'packages/agent-bridge/src/retained-native-supervisor-linux-session.ts',
+  'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',
   'packages/agent-bridge/src/retained-native-supervisor-recovery.ts',
   'packages/agent-bridge/src/secret-lease.ts',
   'packages/agent-bridge/src/supervision-authorization.ts',
@@ -2278,6 +2279,34 @@ test('Linux retained-native supervisor session is bounded, deny-default, and unc
   assert.doesNotMatch(source, /\b(?:bind|listen|unlink|chmod)\s*\(/u);
   assert.doesNotMatch(source, /\bCONNECTED\b|provider|deployment|publish|spend/u);
   assert.doesNotMatch(apiComposition, /retained-native-supervisor-linux-session/u);
+});
+
+test('Linux retained-native listener lifecycle is ownership-safe, bounded, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  assert.match(source, /class DenyLinuxRetainedNativeSupervisorListenerLifecycleBinding/u);
+  assert.match(source, /class BoundedLinuxRetainedNativeSupervisorListenerLifecycle/u);
+  assert.match(source, /createOwnedListener/u);
+  assert.match(source, /pathDisposition: 'FAIL_IF_PRESENT'/u);
+  assert.match(source, /bindDisposition !== 'CREATED_WITHOUT_REPLACEMENT'/u);
+  assert.match(source, /value\.parentMode !== 0o700/u);
+  assert.match(source, /value\.socketMode !== 0o600/u);
+  assert.match(source, /value\.listenBacklog !== 1/u);
+  assert.match(source, /assertCleanup\(listener\.closeAndUnlinkOwned\(\), identity\)/u);
+  assert.match(source, /evidence\.disposition !== 'OWNED_SOCKET_REMOVED'/u);
+  assert.match(source, /new BoundedLinuxRetainedNativeSupervisorSession/u);
+  assert.doesNotMatch(
+    source,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(source, /runtimeConnection:\s*'CONNECTED'/u);
+  assert.doesNotMatch(apiComposition, /retained-native-supervisor-listener-lifecycle/u);
 });
 
 test('retained-native supervisor trust snapshots are fresh, revocable, and anti-rollback', () => {
