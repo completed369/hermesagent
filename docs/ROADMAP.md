@@ -345,6 +345,11 @@ published and current `main` has not been deployed to private staging.
    injected already-authorized listener boundary, authenticates the worker with raw `SO_PEERCRED`,
    revalidates the listener identity before handler effects and response release, bounds both frames,
    and closes on every path (ADR-0086). It cannot create, publish, loop, or compose a real listener.
+   An exported but unconfigured listener lifecycle now authorizes one atomic no-replacement creation
+   under an exact owner-only parent, proves the created owner-only socket identity, runs exactly one
+   authenticated supervisor session, and synchronously closes and removes only that retained identity
+   on every path (ADR-0087). It supplies no native implementation, path provisioning, key custody,
+   service loop, or runtime composition.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
