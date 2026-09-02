@@ -431,7 +431,7 @@ describeLinux('Linux native supervisor evidence helper', () => {
     compileAddon(join(nativeSourceRoot, 'native-supervisor-addon.c'), addonPath);
     addon = nativeRequire(addonPath) as NativeSupervisorAddon;
     fixtureDigest = createHash('sha256').update(readFileSync(fixture)).digest('hex');
-  });
+  }, 60_000);
 
   afterEach(() => {
     vi.restoreAllMocks();
