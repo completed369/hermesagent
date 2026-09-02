@@ -236,6 +236,7 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
       'session-close',
       'cleanup',
     ]);
+    expect(binding.listener.closeAndUnlinkOwned.mock.results[0]?.value).not.toBeInstanceOf(Promise);
     expect(peer.exchange).toHaveBeenCalledOnce();
   });
 
@@ -327,7 +328,7 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
     ['wrong owned inode', { expectedInode: listenerIdentity.inode + 1 }],
   ])('denies invalid cleanup evidence: %s', async (_label, drift) => {
     const { binding, handler, lifecycle } = fixture();
-    binding.listener.closeAndUnlinkOwned.mockResolvedValue({
+    binding.listener.closeAndUnlinkOwned.mockReturnValue({
       schemaVersion: 1,
       listenerClosed: true,
       disposition: 'OWNED_SOCKET_REMOVED',
