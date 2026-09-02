@@ -148,6 +148,7 @@ describeLinux('Linux retained-pidfd recovery authority evidence', () => {
     const processExpiresAt = establishedAt + 200;
     await delayUntil(processExpiresAt + 25);
     const issuedAt = new Date();
+    const leaseClaimedAt = processExpiresAt + 1;
     const request = createRetainedNativeSupervisorRecoveryRequest(
       {
         schemaVersion: 1,
@@ -162,8 +163,8 @@ describeLinux('Linux retained-pidfd recovery authority evidence', () => {
         binding,
         processClaimedAt: new Date(establishedAt - 1_000).toISOString(),
         processExpiresAt: new Date(processExpiresAt).toISOString(),
-        leaseClaimedAt: new Date(processExpiresAt + 1).toISOString(),
-        leaseExpiresAt: new Date(issuedAt.getTime() + 10_000).toISOString(),
+        leaseClaimedAt: new Date(leaseClaimedAt).toISOString(),
+        leaseExpiresAt: new Date(leaseClaimedAt + 15_000).toISOString(),
         runtimeConnection: 'NOT_CONFIGURED',
       },
       issuedAt,
