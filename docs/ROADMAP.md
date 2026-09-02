@@ -351,6 +351,10 @@ published and current `main` has not been deployed to private staging.
    known, and synchronously closes and removes only that retained identity on every path (ADR-0087).
    Expected worker credentials are pinned before creation. It supplies no native implementation,
    path provisioning, key custody, service loop, or runtime composition.
+   A Linux-x64-only native fixture now proves that boundary against real kernel behavior: owner-only
+   parent metadata, no-replacement Unix bind, exact `0600` listener identity, backlog `1`, accepted
+   `SO_PEERCRED`, bounded frames, synchronous close, exact-identity unlink, and substituted-path
+   preservation (ADR-0088). The fixture is test-only, unexported, and excluded from runtime output.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
