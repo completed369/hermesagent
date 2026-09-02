@@ -361,6 +361,12 @@ published and current `main` has not been deployed to private staging.
    synchronous identity-owned cleanup, clears its native response copy, and cleans an allocation when
    cancellation wins creation (ADR-0089). It does not load a binary, select or provision a path, supply
    native syscalls, loop, compose a service, or change `NOT_CONFIGURED` runtime truth.
+   A source-only Linux N-API listener now implements that exact injected ABI with no-replacement
+   owner-only socket creation, retained kernel identity, asynchronous cancellable accept/read/write,
+   real `SO_PEERCRED`, bounded cleared frames, and synchronous substitution-safe cleanup (ADR-0090).
+   Linux-x64 tests compile the production source with warnings as errors and hardening flags and run
+   one authenticated kernel exchange plus cancellation evidence. No loader, compiled repository
+   artifact, path provisioner, service loop, worker wiring, or positive runtime composition exists.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
