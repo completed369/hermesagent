@@ -32,3 +32,4 @@ export * from './retained-native-supervisor-recovery';
 export * from './retained-native-supervisor-peer';
 export * from './retained-native-supervisor-trust-source';
 export * from './retained-native-supervisor-trust-composition';
+export * from './retained-native-supervisor-local-ipc';
