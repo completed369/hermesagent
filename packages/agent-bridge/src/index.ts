@@ -31,3 +31,4 @@ export * from './codex-validation-process-session-recovery-coordinator';
 export * from './retained-native-supervisor-recovery';
 export * from './retained-native-supervisor-peer';
 export * from './retained-native-supervisor-trust-source';
+export * from './retained-native-supervisor-trust-composition';
