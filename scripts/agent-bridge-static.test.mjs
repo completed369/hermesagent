@@ -2156,3 +2156,36 @@ test('retained-native recovery peer signs only after bounded native cleanup evid
   assert.doesNotMatch(peer, /\bCONNECTED\b|provider|deployment|publish|spend/u);
   assert.doesNotMatch(apiComposition, /AuthenticatedLocalRetainedNativeSupervisorRecoveryPeer/u);
 });
+
+test('Linux retained-pidfd recovery fixture keeps native identity test-only and one-shot', () => {
+  const fixture = readFileSync(
+    'packages/agent-bridge/test/native/retained-pidfd-recovery-addon.c',
+    'utf8',
+  );
+  const evidence = readFileSync(
+    'packages/agent-bridge/src/retained-pidfd-recovery-authority.test.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const runtimeAssertion = readFileSync(
+    'packages/agent-bridge/scripts/assert-runtime-boundary.mjs',
+    'utf8',
+  );
+  assert.match(fixture, /SYS_pidfd_open/u);
+  assert.match(fixture, /static struct retained_launch launch_state/u);
+  assert.match(fixture, /poll\(&retained, 1, 1000\)/u);
+  assert.match(fixture, /strcmp\(supervision_id, launch_state\.supervision_id\)/u);
+  assert.match(fixture, /strcmp\(launch_nonce, launch_state\.launch_nonce\)/u);
+  assert.match(fixture, /kill\(-launch_state\.process_group, SIGTERM\)/u);
+  assert.match(fixture, /errno == ESRCH/u);
+  assert.match(fixture, /napi_add_env_cleanup_hook\(env, environment_cleanup/u);
+  assert.match(fixture, /close_state\(\);[\s\S]*return result/u);
+  assert.match(evidence, /class LinuxRetainedPidfdAuthority/u);
+  assert.match(evidence, /Object\.isFrozen\(request\)/u);
+  assert.match(evidence, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(evidence, /substituted-supervision/u);
+  assert.match(evidence, /verify\([\s\S]*response\.signature/u);
+  assert.doesNotMatch(evidence, /\bCONNECTED\b|provider|deployment|publish|spend/u);
+  assert.doesNotMatch(index, /retained-pidfd-recovery/u);
+  assert.match(runtimeAssertion, /retained-pidfd-recovery/u);
+});
