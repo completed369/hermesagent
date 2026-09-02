@@ -2358,6 +2358,36 @@ test('retained-native listener lifecycle kernel evidence is Linux-test-only and 
   assert.doesNotMatch(evidence, /runtimeConnection:\s*'CONNECTED'/u);
 });
 
+test('Linux retained-native listener native binding is exact, one-shot, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-linux-native-listener-binding.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/acp-bridge-admission.service.ts',
+    'utf8',
+  );
+  assert.match(source, /class DenyLinuxRetainedNativeSupervisorListenerNativeModule/u);
+  assert.match(source, /class BoundedLinuxRetainedNativeSupervisorNativeListenerBinding/u);
+  assert.match(source, /const MODULE_KEYS = \['abiVersion', 'createOwnedListener', 'platform'\]/u);
+  assert.match(source, /value\.createOwnedListener[\s\S]*\.bind\(\s*native/u);
+  assert.match(source, /pathDisposition !== 'FAIL_IF_PRESENT'/u);
+  assert.match(source, /maximumBytes !== MAX_RETAINED_NATIVE_SUPERVISOR_IPC_FRAME_BYTES/u);
+  assert.match(source, /socketPath !== this\.socketPath/u);
+  assert.match(source, /ownedFrame\.fill\(0\)/u);
+  assert.match(source, /if \(result instanceof Promise\) deny\('EXCHANGE_DENIED'\)/u);
+  assert.match(source, /if \(signal\.aborted\) \{[\s\S]*listener\.closeAndUnlinkOwned\(\)/u);
+  assert.match(index, /retained-native-supervisor-linux-native-listener-binding/u);
+  assert.doesNotMatch(
+    source,
+    /from\s+['"]node:(?:child_process|cluster|fs|module|net|os|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(source, /(?:require|import)\s*\(/u);
+  assert.doesNotMatch(source, /runtimeConnection:\s*'CONNECTED'/u);
+  assert.doesNotMatch(apiComposition, /retained-native-supervisor-linux-native-listener-binding/u);
+});
+
 test('retained-native supervisor trust snapshots are fresh, revocable, and anti-rollback', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-trust-source.ts',

@@ -36,3 +36,4 @@ export * from './retained-native-supervisor-local-ipc';
 export * from './retained-native-supervisor-linux-client';
 export * from './retained-native-supervisor-linux-session';
 export * from './retained-native-supervisor-listener-lifecycle';
+export * from './retained-native-supervisor-linux-native-listener-binding';
