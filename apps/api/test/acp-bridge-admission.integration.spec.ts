@@ -4874,15 +4874,14 @@ describe('durable Agent Bridge admission foundation (PostgreSQL integration)', (
         })
       ).state,
     ).toBe('COMPLETED');
-    const usage = await prisma.acpRunUsage.findFirstOrThrow({ where: { workspaceId, runId } });
     expect(
       await prisma.auditEvent.findFirst({
         where: {
           workspaceReference: workspaceId,
           source: 'CONTROL_PLANE',
-          idempotencyKey: `bridge-receipt:${usage.receiptId}`,
+          idempotencyKey: `bridge-receipt:${cumulativeUsage.receiptId}`,
           entityType: 'AcpRunUsage',
-          entityId: usage.id,
+          entityId: cumulativeUsage.id,
         },
       }),
     ).not.toBeNull();
