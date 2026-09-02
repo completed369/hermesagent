@@ -311,6 +311,12 @@ published and current `main` has not been deployed to private staging.
    caller-selected process locator and is not API-, worker-, scheduler-, or runtime-wired. The
    positive Linux native authority, IPC, durable trust/key provisioning, and real runtime round trip
    remain absent.
+   A Linux-x64-only native integration fixture now retains a pidfd from launch across the later fresh
+   challenge, rejects a substituted launch binding, observes exit through that retained identity,
+   terminates and reaps the process group, requires kernel-confirmed group absence, and rejects replay
+   before the existing peer signs normalized recovery evidence (ADR-0079). This authority is test-only
+   and excluded from runtime exports. Production native supervision, authenticated IPC, durable
+   trust/key lifecycle, worker composition, and a real runtime round trip remain absent.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
