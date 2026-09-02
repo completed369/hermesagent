@@ -341,6 +341,10 @@ published and current `main` has not been deployed to private staging.
    write/shutdown-read/EOF-lstat-close sequence over an injected native syscall binding, derives
    authority-labelled attestations only from validated raw kernel facts, and closes on every path
    (ADR-0085). No concrete binding, path discovery, listener, retry, or runtime wiring is supplied.
+   An exported but unconfigured supervisor session owner now accepts exactly one connection from an
+   injected already-authorized listener boundary, authenticates the worker with raw `SO_PEERCRED`,
+   revalidates the listener identity before handler effects and response release, bounds both frames,
+   and closes on every path (ADR-0086). It cannot create, publish, loop, or compose a real listener.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
