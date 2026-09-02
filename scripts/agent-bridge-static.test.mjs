@@ -2190,6 +2190,36 @@ test('Linux retained-pidfd recovery fixture keeps native identity test-only and 
   assert.match(runtimeAssertion, /retained-pidfd-recovery/u);
 });
 
+test('retained-native local IPC kernel evidence remains test-only and substitution-safe', () => {
+  const fixture = readFileSync(
+    'packages/agent-bridge/test/native/retained-native-local-ipc-addon.c',
+    'utf8',
+  );
+  const evidence = readFileSync(
+    'packages/agent-bridge/src/retained-native-local-ipc-linux-evidence.test.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const runtimeAssertion = readFileSync(
+    'packages/agent-bridge/scripts/assert-runtime-boundary.mjs',
+    'utf8',
+  );
+  assert.match(fixture, /AF_UNIX/u);
+  assert.match(fixture, /SO_PEERCRED/u);
+  assert.match(fixture, /lstat\(fixture_state\.path, &before\)/u);
+  assert.match(fixture, /lstat\(fixture_state\.path, &after\)/u);
+  assert.match(fixture, /same_identity\(&before, &after\)/u);
+  assert.match(fixture, /unlink_owned/u);
+  assert.match(fixture, /napi_add_env_cleanup_hook\(env, environment_cleanup/u);
+  assert.match(evidence, /describeLinux/u);
+  assert.match(evidence, /INVALID_ATTESTATION/u);
+  assert.match(evidence, /substituted-marker/u);
+  assert.match(evidence, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(evidence, /\bCONNECTED\b|provider|deployment|publish|spend/u);
+  assert.doesNotMatch(index, /retained-native-local-ipc-linux-evidence/u);
+  assert.match(runtimeAssertion, /retained-native-local-ipc-addon/u);
+});
+
 test('retained-native supervisor trust snapshots are fresh, revocable, and anti-rollback', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-trust-source.ts',
