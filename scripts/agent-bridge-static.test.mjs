@@ -2219,3 +2219,51 @@ test('retained-native supervisor trust snapshots are fresh, revocable, and anti-
   assert.doesNotMatch(source, /process\.env|\bCONNECTED\b|provider|deployment|publish|spend/u);
   assert.doesNotMatch(apiComposition, /BoundedRetainedNativeSupervisorTrustSource/u);
 });
+
+test('durable retained-native supervisor trust state is exact, audited, and uncomposed', () => {
+  const adapter = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-supervisor-trust-state.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260902030000_retained_native_supervisor_trust_state/migration.sql',
+    'utf8',
+  );
+  const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const integration = readFileSync(
+    'apps/api/test/retained-native-supervisor-trust-state.integration.spec.ts',
+    'utf8',
+  );
+
+  assert.match(adapter, /implements RetainedNativeSupervisorTrustSnapshotReader/u);
+  assert.match(adapter, /implements RetainedNativeSupervisorTrustCheckpointStore/u);
+  assert.match(adapter, /WHERE "supervisorInstanceId" = \$\{this\.#supervisorInstanceId\}/u);
+  assert.match(adapter, /ON CONFLICT \("supervisorInstanceId"\) DO NOTHING/u);
+  assert.match(adapter, /successor\.snapshotVersion !== current\.snapshotVersion \+ 1/u);
+  assert.match(adapter, /IS NOT DISTINCT FROM \$\{current\.activeTrustRecordVersion\}/u);
+  assert.doesNotMatch(
+    adapter,
+    /\bprocess\.(?:env|cwd|platform)\b|\bfetch\s*\(|\$queryRawUnsafe|\$executeRawUnsafe/u,
+  );
+
+  assert.match(migration, /CREATE TABLE "acp_retained_native_supervisor_trust_snapshots"/u);
+  assert.match(migration, /CREATE TABLE "acp_retained_native_supervisor_trust_checkpoints"/u);
+  assert.match(migration, /CREATE TABLE "acp_retained_native_supervisor_trust_checkpoint_events"/u);
+  assert.match(migration, /INTERVAL '15 minutes'/u);
+  assert.match(migration, /BEFORE INSERT OR UPDATE OR DELETE/u);
+  assert.match(migration, /bound_record->>'publicKeySpkiSha256'/u);
+  assert.match(migration, /NEW\."snapshotVersion" <> OLD\."snapshotVersion" \+ 1/u);
+  assert.match(migration, /AFTER INSERT OR UPDATE/u);
+  assert.match(migration, /checkpoint_events_immutable/u);
+  assert.match(schema, /model AcpRetainedNativeSupervisorTrustSnapshot/u);
+  assert.match(schema, /model AcpRetainedNativeSupervisorTrustCheckpoint/u);
+  assert.match(schema, /model AcpRetainedNativeSupervisorTrustCheckpointEvent/u);
+  assert.match(integration, /exactly one winner/u);
+  assert.match(integration, /wrong-native-key/u);
+  assert.doesNotMatch(module, /PostgresRetainedNativeSupervisorTrust/u);
+  assert.doesNotMatch(adapter, /\bCONNECTED\b|provider|deployment|publish|spend/u);
+});
