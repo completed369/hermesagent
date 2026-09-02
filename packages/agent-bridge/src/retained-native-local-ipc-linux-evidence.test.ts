@@ -206,7 +206,7 @@ describeLinux('retained-native local IPC Linux kernel evidence', () => {
         frame('WORKER_TO_SUPERVISOR', request),
         frame('SUPERVISOR_TO_WORKER', response),
       ),
-    ).toThrow(/RETAINED_NATIVE_LOCAL_IPC_DENIED/u);
+    ).toThrow(/Retained native local IPC evidence denied/u);
   });
 
   it('feeds kernel-authenticated worker credentials into the supervisor handler', async () => {
@@ -251,7 +251,7 @@ describeLinux('retained-native local IPC Linux kernel evidence', () => {
   it('refuses an existing path without replacing or deleting it', () => {
     const socketPath = nextSocket();
     writeFileSync(socketPath, 'owned-marker', { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-    expect(() => addon.prepare(socketPath)).toThrow(/RETAINED_NATIVE_LOCAL_IPC_DENIED/u);
+    expect(() => addon.prepare(socketPath)).toThrow(/Retained native local IPC evidence denied/u);
     expect(existsSync(socketPath)).toBe(true);
   });
 
@@ -265,7 +265,7 @@ describeLinux('retained-native local IPC Linux kernel evidence', () => {
         frame('WORKER_TO_SUPERVISOR', request),
         frame('SUPERVISOR_TO_WORKER', response),
       ),
-    ).toThrow(/RETAINED_NATIVE_LOCAL_IPC_DENIED/u);
+    ).toThrow(/Retained native local IPC evidence denied/u);
     expect(existsSync(socketPath)).toBe(true);
   });
 
@@ -277,7 +277,7 @@ describeLinux('retained-native local IPC Linux kernel evidence', () => {
         Buffer.alloc(MAX_RETAINED_NATIVE_SUPERVISOR_IPC_FRAME_BYTES + 1, 65),
         frame('SUPERVISOR_TO_WORKER', response),
       ),
-    ).toThrow(/RETAINED_NATIVE_LOCAL_IPC_DENIED/u);
+    ).toThrow(/Retained native local IPC evidence denied/u);
     expect(existsSync(socketPath)).toBe(false);
   });
 });
