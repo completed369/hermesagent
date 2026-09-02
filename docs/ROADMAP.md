@@ -327,9 +327,13 @@ published and current `main` has not been deployed to private staging.
    exact full-field CAS state, and append-only transition audit evidence without positive composition
    (ADR-0081). A bounded evidence-source composition now reads that authenticated trust immediately
    before and after one recovery exchange, requires the complete snapshot identity to remain exact,
-   and verifies only with the post-exchange verifier (ADR-0082). It remains uncomposed. No
-   root/snapshot publisher, private-key custodian, authenticated local IPC, production native
-   authority, or worker wiring is supplied.
+   and verifies only with the post-exchange verifier (ADR-0082). A two-sided Linux local IPC contract
+   now requires canonical bounded one-request/one-response framing, a pinned owner-only Unix-socket
+   device/inode identity before and after each exchange, and exact kernel `SO_PEERCRED` identities for
+   both supervisor and worker (ADR-0083). It remains uncomposed: no socket or listener is created and
+   no caller-asserted metadata grants authority. No root/snapshot publisher, private-key custodian,
+   Linux native IPC adapter, protected socket lifecycle, production native authority, or worker
+   wiring is supplied.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
