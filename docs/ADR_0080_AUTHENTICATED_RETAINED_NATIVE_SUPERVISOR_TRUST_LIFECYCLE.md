@@ -50,7 +50,7 @@ A signed snapshot with a null active record first advances the durable checkpoin
 ## Consequences
 
 Retained-native recovery now has a fresh cryptographic trust and key-rotation contract rather than a
-long-lived injected public key. The next safe slices are durable PostgreSQL checkpoint/snapshot
-adapters with append-only audit evidence, then a composition that reads trust immediately before and
-after the bounded exchange. Authenticated Linux local IPC remains necessary before production worker
-composition or any real runtime round-trip claim.
+long-lived injected public key. ADR-0081 supplies uncomposed durable PostgreSQL checkpoint/snapshot
+adapters with append-only audit evidence. The next safe slice is a composition that reads trust
+immediately before and after the bounded exchange. Authenticated Linux local IPC remains necessary
+before production worker composition or any real runtime round-trip claim.

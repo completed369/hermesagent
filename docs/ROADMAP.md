@@ -323,8 +323,10 @@ published and current `main` has not been deployed to private staging.
    rotation, and advances a durable-CAS checkpoint that binds the active key fingerprint and trust-
    record version (ADR-0080). Rollback, skipped versions, equivocation, adjacent key-ID
    substitution, record-version rollback, stale roots, and conflicting races deny. No positive
-   reader, durable store,
-   root/snapshot publisher, private-key custodian, fresh exchange composition, or IPC is supplied.
+   PostgreSQL reader and supervisor-instance-scoped checkpoint store now persist immutable snapshots,
+   exact full-field CAS state, and append-only transition audit evidence without positive composition
+   (ADR-0081). No root/snapshot publisher, private-key custodian, fresh exchange composition, or IPC
+   is supplied.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

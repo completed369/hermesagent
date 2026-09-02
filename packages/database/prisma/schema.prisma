@@ -1762,6 +1762,76 @@ model AcpExecutableAuthorityTrustCheckpointEvent {
   @@map("acp_executable_authority_trust_checkpoint_events")
 }
 
+/// Immutable signed trust snapshots for one retained native supervisor
+/// instance. This is platform public-key state, not tenant runtime evidence,
+/// and has no composed application mutation route.
+model AcpRetainedNativeSupervisorTrustSnapshot {
+  supervisorInstanceId String
+  snapshotVersion      Int
+  snapshotId           String
+  snapshotHash         String   @unique(map: "acp_retained_native_supervisor_trust_snapshots_hash_key")
+  signerKeyId          String
+  previousSnapshotHash String?
+  snapshot             Json
+  issuedAt             DateTime @db.Timestamptz(3)
+  validUntil           DateTime @db.Timestamptz(3)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+
+  currentCheckpoint AcpRetainedNativeSupervisorTrustCheckpoint?
+
+  @@id([supervisorInstanceId, snapshotVersion])
+  @@unique([supervisorInstanceId, snapshotId], map: "acp_retained_native_supervisor_trust_snapshots_instance_id_key")
+  @@unique([supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], map: "acp_rn_supervisor_trust_snapshot_checkpoint_binding_key")
+  @@index([supervisorInstanceId, snapshotVersion(sort: Desc)], map: "acp_retained_native_supervisor_trust_snapshot_latest_idx")
+  @@map("acp_retained_native_supervisor_trust_snapshots")
+}
+
+/// One monotonic checkpoint per retained native supervisor instance. The root
+/// signer is data within this single chain, so signer rotation cannot create a
+/// parallel rollback history.
+model AcpRetainedNativeSupervisorTrustCheckpoint {
+  supervisorInstanceId      String   @id
+  signerKeyId               String
+  snapshotId                String
+  snapshotVersion           Int
+  snapshotHash              String
+  activeSupervisorKeyId     String?
+  activePublicKeySpkiSha256 String?
+  activeTrustRecordId       String?
+  activeTrustRecordVersion  Int?
+  createdAt                 DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime @updatedAt @db.Timestamptz(3)
+
+  snapshot AcpRetainedNativeSupervisorTrustSnapshot @relation(fields: [supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], references: [supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], onDelete: Restrict, onUpdate: Restrict, map: "acp_retained_native_supervisor_trust_checkpoints_snapshot_fkey")
+
+  @@unique([supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], map: "acp_rn_supervisor_trust_checkpoint_snapshot_binding_key")
+  @@map("acp_retained_native_supervisor_trust_checkpoints")
+}
+
+/// Append-only hash/reference audit evidence for every successful trust
+/// checkpoint bootstrap or transition. No private key or raw exchange content
+/// is stored.
+model AcpRetainedNativeSupervisorTrustCheckpointEvent {
+  id                            String   @id @default(uuid()) @db.Uuid
+  supervisorInstanceId          String
+  previousSignerKeyId           String?
+  previousSnapshotId            String?
+  previousSnapshotVersion       Int?
+  previousSnapshotHash          String?
+  nextSignerKeyId               String
+  nextSnapshotId                String
+  nextSnapshotVersion           Int
+  nextSnapshotHash              String
+  nextActiveSupervisorKeyId     String?
+  nextActivePublicKeySpkiSha256 String?
+  nextActiveTrustRecordId       String?
+  nextActiveTrustRecordVersion  Int?
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([supervisorInstanceId, createdAt(sort: Desc)], map: "acp_rn_supervisor_trust_checkpoint_events_instance_idx")
+  @@map("acp_retained_native_supervisor_trust_checkpoint_events")
+}
+
 // ---------------------------------------------------------------------------
 // Product and Listing Studio (Phase 4, master spec sections 21/22/25/30)
 // ---------------------------------------------------------------------------
