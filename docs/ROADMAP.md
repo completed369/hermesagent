@@ -316,7 +316,15 @@ published and current `main` has not been deployed to private staging.
    terminates and reaps the process group, requires kernel-confirmed group absence, and rejects replay
    before the existing peer signs normalized recovery evidence (ADR-0079). This authority is test-only
    and excluded from runtime exports. Production native supervision, authenticated IPC, durable
-   trust/key lifecycle, worker composition, and a real runtime round trip remain absent.
+   trust/key storage and provisioning, worker composition, and a real runtime round trip remain
+   absent.
+   A production-capable but unconfigured retained-native supervisor trust source now authenticates a
+   purpose-bound 15-minute signed key snapshot, supports monotonic explicit revocation and linked key
+   rotation, and advances a durable-CAS checkpoint that binds the active key fingerprint and trust-
+   record version (ADR-0080). Rollback, skipped versions, equivocation, adjacent key-ID
+   substitution, record-version rollback, stale roots, and conflicting races deny. No positive
+   reader, durable store,
+   root/snapshot publisher, private-key custodian, fresh exchange composition, or IPC is supplied.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
