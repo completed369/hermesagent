@@ -337,6 +337,10 @@ published and current `main` has not been deployed to private staging.
    bidirectional `SO_PEERCRED` evidence through both contract sides, including path substitution,
    ownership-safe cleanup, peer drift, frame bounds, and replay denial (ADR-0084). The fixture is
    test-only and excluded from runtime exports; it does not create a production listener or service.
+   An exported but unconfigured Linux client adapter now owns one exact lstat-connect-peer-
+   write/shutdown-read/EOF-lstat-close sequence over an injected native syscall binding, derives
+   authority-labelled attestations only from validated raw kernel facts, and closes on every path
+   (ADR-0085). No concrete binding, path discovery, listener, retry, or runtime wiring is supplied.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
