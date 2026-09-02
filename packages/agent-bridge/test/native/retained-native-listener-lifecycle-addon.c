@@ -98,6 +98,14 @@ static int write_all(int descriptor, const uint8_t *data, size_t length) {
   return 0;
 }
 
+static void clear_bytes(void *data, size_t length) {
+  volatile uint8_t *cursor = data;
+  while (length > 0) {
+    length -= 1;
+    cursor[length] = 0;
+  }
+}
+
 static int close_session_state(void) {
   int failed = 0;
   if (fixture_state.accepted >= 0 && close(fixture_state.accepted) != 0)
@@ -336,11 +344,11 @@ static napi_value read_request(napi_env env, napi_callback_info info) {
   if (total < 3 || total > MAX_FRAME_BYTES ||
       napi_create_buffer_copy(env, total, buffer, NULL, &result) != napi_ok)
     goto denied;
-  memset(buffer, 0, sizeof(buffer));
+  clear_bytes(buffer, sizeof(buffer));
   return result;
 
 denied:
-  memset(buffer, 0, sizeof(buffer));
+  clear_bytes(buffer, sizeof(buffer));
   return deny(env);
 }
 
@@ -370,11 +378,11 @@ static napi_value write_response(napi_env env, napi_callback_info info) {
   if (total != response_length || memcmp(observed, response, response_length) != 0 ||
       napi_create_buffer_copy(env, total, observed, NULL, &result) != napi_ok)
     goto denied;
-  memset(observed, 0, sizeof(observed));
+  clear_bytes(observed, sizeof(observed));
   return result;
 
 denied:
-  memset(observed, 0, sizeof(observed));
+  clear_bytes(observed, sizeof(observed));
   return deny(env);
 }
 

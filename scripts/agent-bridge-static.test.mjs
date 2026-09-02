@@ -2344,6 +2344,9 @@ test('retained-native listener lifecycle kernel evidence is Linux-test-only and 
   );
   assert.match(fixture, /SO_PEERCRED/u);
   assert.match(fixture, /MAX_FRAME_BYTES 32768/u);
+  assert.match(fixture, /volatile uint8_t \*cursor = data/u);
+  assert.match(fixture, /clear_bytes\(buffer, sizeof\(buffer\)\)/u);
+  assert.match(fixture, /clear_bytes\(observed, sizeof\(observed\)\)/u);
   assert.match(fixture, /same_identity\(&fixture_state\.listener_identity, &current\)/u);
   assert.match(fixture, /SUBSTITUTION_PRESERVED/u);
   assert.match(fixture, /if \(!listener_closed\)[\s\S]*LISTENER_CLOSE_FAILED/u);
