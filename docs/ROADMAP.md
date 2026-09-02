@@ -305,6 +305,12 @@ published and current `main` has not been deployed to private staging.
    normalized exit facts into ADR-0069 evidence, exposes no process locator or action handle, and
    rejects incomplete deny composition. No transport peer, trust provisioning, retained native
    implementation, cleanup action, scheduler, or production wiring is supplied.
+   A bounded local peer controller now validates that exact challenge again before calling one
+   injected native authority, requires retained pidfd identity revalidation plus process-group-gone
+   cleanup evidence, and only then signs the existing normalized response (ADR-0078). It accepts no
+   caller-selected process locator and is not API-, worker-, scheduler-, or runtime-wired. The
+   positive Linux native authority, IPC, durable trust/key provisioning, and real runtime round trip
+   remain absent.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
