@@ -2,10 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { canonicalJson } from './codec';
 import {
-  AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler,
-  type RetainedNativeSupervisorLocalIpcAuthorization,
-} from './retained-native-supervisor-local-ipc';
-import {
   BoundedLinuxRetainedNativeSupervisorListenerLifecycle,
   DenyLinuxRetainedNativeSupervisorListenerLifecycleBinding,
   type LinuxRetainedNativeSupervisorListenerAuthorization,
@@ -17,9 +13,10 @@ import type {
   LinuxRetainedNativeSupervisorAcceptedSession,
   LinuxRetainedNativeSupervisorWorkerCredentials,
 } from './retained-native-supervisor-linux-session';
-import type {
+import {
+  DenyRetainedNativeSupervisorRecoveryTransport,
   RetainedNativeSupervisorRecoveryRequest,
-  RetainedNativeSupervisorRecoveryTransport,
+  type RetainedNativeSupervisorRecoveryTransport,
 } from './retained-native-supervisor-recovery';
 
 const socketPath = '/run/ventureos/retained-native-supervisor.sock';
@@ -91,26 +88,12 @@ function authorization(
     socketOwnerUid: listenerIdentity.ownerUid,
     socketOwnerGid: listenerIdentity.ownerGid,
     socketMode: listenerIdentity.mode,
+    expectedWorkerPid: workerCredentials.pid,
+    expectedWorkerUid: workerCredentials.uid,
+    expectedWorkerGid: workerCredentials.gid,
     listenBacklog: 1,
     runtimeConnection: 'NOT_CONFIGURED',
     ...drift,
-  };
-}
-
-function sessionAuthorization(): RetainedNativeSupervisorLocalIpcAuthorization {
-  return {
-    schemaVersion: 1,
-    platform: 'LINUX',
-    socketPath,
-    socketDevice: listenerIdentity.device,
-    socketInode: listenerIdentity.inode,
-    socketOwnerUid: listenerIdentity.ownerUid,
-    socketOwnerGid: listenerIdentity.ownerGid,
-    socketMode: listenerIdentity.mode,
-    expectedPeerPid: workerCredentials.pid,
-    expectedPeerUid: workerCredentials.uid,
-    expectedPeerGid: workerCredentials.gid,
-    runtimeConnection: 'NOT_CONFIGURED',
   };
 }
 
@@ -175,13 +158,8 @@ function fixture(auth: unknown = authorization()) {
   const peer: RetainedNativeSupervisorRecoveryTransport = {
     exchange: vi.fn(async () => response),
   };
-  const handler = new AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler(
-    peer,
-    sessionAuthorization(),
-  );
   return {
     binding,
-    handler,
     peer,
     lifecycle: new BoundedLinuxRetainedNativeSupervisorListenerLifecycle(binding, auth),
   };
@@ -193,7 +171,7 @@ function expectCode(code: string) {
 
 describe('bounded Linux retained-native supervisor listener lifecycle', () => {
   it('owns one no-replacement listener, one session, and exact cleanup', async () => {
-    const { binding, handler, lifecycle, peer } = fixture();
+    const { binding, lifecycle, peer } = fixture();
     binding.listener.accepted.peerCredentials.mockImplementation(async () => {
       binding.listener.calls.push('peer');
       return workerCredentials;
@@ -210,7 +188,7 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
       binding.listener.calls.push('session-close');
     });
 
-    await expect(lifecycle.runOne(handler, new AbortController().signal)).resolves.toBeUndefined();
+    await expect(lifecycle.runOne(peer, new AbortController().signal)).resolves.toBeUndefined();
 
     expect(binding.createOwnedListener).toHaveBeenCalledOnce();
     const creationRequest = binding.createOwnedListener.mock.calls[0]?.[0];
@@ -257,6 +235,17 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
     ).toThrow(expectCode('NOT_CONFIGURED'));
   });
 
+  it('rejects a deny peer before creating a listener', async () => {
+    const { binding, lifecycle } = fixture();
+    await expect(
+      lifecycle.runOne(
+        new DenyRetainedNativeSupervisorRecoveryTransport(),
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('NOT_CONFIGURED'));
+    expect(binding.createOwnedListener).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['relative path', { socketPath: 'run/ventureos/supervisor.sock' }],
     ['parent traversal', { socketPath: '/run/../tmp/supervisor.sock' }],
@@ -265,6 +254,9 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
     ['unbounded backlog', { listenBacklog: 2 }],
     ['zero parent inode', { parentInode: 0 }],
     ['negative socket owner', { socketOwnerUid: -1 }],
+    ['zero worker PID', { expectedWorkerPid: 0 }],
+    ['negative worker UID', { expectedWorkerUid: -1 }],
+    ['negative worker GID', { expectedWorkerGid: -1 }],
     ['runtime promotion', { runtimeConnection: 'CONNECTED' }],
   ])('denies invalid lifecycle authorization: %s', (_label, drift) => {
     expect(
@@ -282,7 +274,7 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
     ['parent drift', { parentIdentity: { ...parentIdentity, inode: 8001 } }],
     ['listener owner drift', { listenerIdentity: { ...listenerIdentity, ownerUid: 999 } }],
   ])('denies invalid creation evidence and still cleans up: %s', async (_label, drift) => {
-    const { binding, handler, lifecycle, peer } = fixture();
+    const { binding, lifecycle, peer } = fixture();
     binding.listener.creationEvidence.mockResolvedValue({
       schemaVersion: 1,
       pathStateBefore: 'ABSENT',
@@ -291,7 +283,7 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
       listenerIdentity,
       ...drift,
     });
-    await expect(lifecycle.runOne(handler, new AbortController().signal)).rejects.toEqual(
+    await expect(lifecycle.runOne(peer, new AbortController().signal)).rejects.toEqual(
       expectCode('INVALID_ATTESTATION'),
     );
     expect(peer.exchange).not.toHaveBeenCalled();
@@ -299,12 +291,12 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
   });
 
   it('denies post-creation identity substitution before accept and cleans up', async () => {
-    const { binding, handler, lifecycle, peer } = fixture();
+    const { binding, lifecycle, peer } = fixture();
     binding.listener.lstatUnixSocket.mockResolvedValue({
       ...listenerIdentity,
       inode: listenerIdentity.inode + 1,
     });
-    await expect(lifecycle.runOne(handler, new AbortController().signal)).rejects.toEqual(
+    await expect(lifecycle.runOne(peer, new AbortController().signal)).rejects.toEqual(
       expectCode('INVALID_ATTESTATION'),
     );
     expect(binding.listener.acceptAuthorizedUnixSocket).not.toHaveBeenCalled();
@@ -313,11 +305,25 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
   });
 
   it('denies session failure and still performs listener cleanup', async () => {
-    const { binding, handler, lifecycle } = fixture();
+    const { binding, lifecycle, peer } = fixture();
     binding.listener.accepted.readToEof.mockRejectedValue(new Error('private read detail'));
-    await expect(lifecycle.runOne(handler, new AbortController().signal)).rejects.toEqual(
+    await expect(lifecycle.runOne(peer, new AbortController().signal)).rejects.toEqual(
       expectCode('EXCHANGE_DENIED'),
     );
+    expect(binding.listener.accepted.close).toHaveBeenCalledOnce();
+    expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
+  });
+
+  it('binds the post-creation handler to authorization-pinned worker credentials', async () => {
+    const { binding, lifecycle, peer } = fixture();
+    binding.listener.accepted.peerCredentials.mockResolvedValue({
+      ...workerCredentials,
+      pid: workerCredentials.pid + 1,
+    });
+    await expect(lifecycle.runOne(peer, new AbortController().signal)).rejects.toEqual(
+      expectCode('INVALID_ATTESTATION'),
+    );
+    expect(peer.exchange).not.toHaveBeenCalled();
     expect(binding.listener.accepted.close).toHaveBeenCalledOnce();
     expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
   });
@@ -327,7 +333,7 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
     ['listener not closed', { listenerClosed: false }],
     ['wrong owned inode', { expectedInode: listenerIdentity.inode + 1 }],
   ])('denies invalid cleanup evidence: %s', async (_label, drift) => {
-    const { binding, handler, lifecycle } = fixture();
+    const { binding, lifecycle, peer } = fixture();
     binding.listener.closeAndUnlinkOwned.mockReturnValue({
       schemaVersion: 1,
       listenerClosed: true,
@@ -336,23 +342,23 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
       expectedInode: listenerIdentity.inode,
       ...drift,
     });
-    await expect(lifecycle.runOne(handler, new AbortController().signal)).rejects.toEqual(
+    await expect(lifecycle.runOne(peer, new AbortController().signal)).rejects.toEqual(
       expectCode('EXCHANGE_DENIED'),
     );
   });
 
   it('denies native cleanup failure without exposing its detail', async () => {
-    const { binding, handler, lifecycle } = fixture();
+    const { binding, lifecycle, peer } = fixture();
     binding.listener.closeAndUnlinkOwned.mockImplementation(() => {
       throw new Error('private cleanup detail');
     });
-    await expect(lifecycle.runOne(handler, new AbortController().signal)).rejects.toEqual(
+    await expect(lifecycle.runOne(peer, new AbortController().signal)).rejects.toEqual(
       expectCode('EXCHANGE_DENIED'),
     );
   });
 
   it('cancels after creation and still performs identity-owned cleanup', async () => {
-    const { binding, handler, lifecycle } = fixture();
+    const { binding, lifecycle, peer } = fixture();
     const controller = new AbortController();
     binding.listener.creationEvidence.mockImplementation(async () => {
       controller.abort();
@@ -364,14 +370,14 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
         listenerIdentity,
       };
     });
-    await expect(lifecycle.runOne(handler, controller.signal)).rejects.toEqual(
+    await expect(lifecycle.runOne(peer, controller.signal)).rejects.toEqual(
       expectCode('EXCHANGE_DENIED'),
     );
     expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
   });
 
   it('cannot retry or concurrently create through one consumed lifecycle', async () => {
-    const { binding, handler, lifecycle } = fixture();
+    const { binding, lifecycle, peer } = fixture();
     let release!: () => void;
     binding.createOwnedListener.mockImplementationOnce(
       async () =>
@@ -379,13 +385,13 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
           release = () => resolve(binding.listener);
         }),
     );
-    const first = lifecycle.runOne(handler, new AbortController().signal);
-    await expect(lifecycle.runOne(handler, new AbortController().signal)).rejects.toEqual(
+    const first = lifecycle.runOne(peer, new AbortController().signal);
+    await expect(lifecycle.runOne(peer, new AbortController().signal)).rejects.toEqual(
       expectCode('EXCHANGE_DENIED'),
     );
     release();
     await expect(first).resolves.toBeUndefined();
-    await expect(lifecycle.runOne(handler, new AbortController().signal)).rejects.toEqual(
+    await expect(lifecycle.runOne(peer, new AbortController().signal)).rejects.toEqual(
       expectCode('EXCHANGE_DENIED'),
     );
     expect(binding.createOwnedListener).toHaveBeenCalledOnce();

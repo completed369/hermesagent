@@ -3,6 +3,10 @@ import {
   RetainedNativeSupervisorLocalIpcError,
 } from './retained-native-supervisor-local-ipc';
 import {
+  DenyRetainedNativeSupervisorRecoveryTransport,
+  type RetainedNativeSupervisorRecoveryTransport,
+} from './retained-native-supervisor-recovery';
+import {
   BoundedLinuxRetainedNativeSupervisorSession,
   type LinuxRetainedNativeSupervisorSessionBinding,
 } from './retained-native-supervisor-linux-session';
@@ -19,6 +23,9 @@ export interface LinuxRetainedNativeSupervisorListenerAuthorization {
   readonly socketOwnerUid: number;
   readonly socketOwnerGid: number;
   readonly socketMode: number;
+  readonly expectedWorkerPid: number;
+  readonly expectedWorkerUid: number;
+  readonly expectedWorkerGid: number;
   readonly listenBacklog: number;
   readonly runtimeConnection: 'NOT_CONFIGURED';
 }
@@ -59,6 +66,9 @@ export class DenyLinuxRetainedNativeSupervisorListenerLifecycleBinding implement
 
 const AUTHORIZATION_KEYS = [
   'listenBacklog',
+  'expectedWorkerGid',
+  'expectedWorkerPid',
+  'expectedWorkerUid',
   'parentDevice',
   'parentInode',
   'parentMode',
@@ -169,6 +179,9 @@ function parseAuthorization(
     socketOwnerUid: nonnegative(value.socketOwnerUid, 'INVALID_AUTHORIZATION'),
     socketOwnerGid: nonnegative(value.socketOwnerGid, 'INVALID_AUTHORIZATION'),
     socketMode: 0o600,
+    expectedWorkerPid: positive(value.expectedWorkerPid, 'INVALID_AUTHORIZATION'),
+    expectedWorkerUid: nonnegative(value.expectedWorkerUid, 'INVALID_AUTHORIZATION'),
+    expectedWorkerGid: nonnegative(value.expectedWorkerGid, 'INVALID_AUTHORIZATION'),
     listenBacklog: 1,
     runtimeConnection: 'NOT_CONFIGURED',
   });
@@ -291,15 +304,16 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
   }
 
   async runOne(
-    handler: AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler,
+    peer: RetainedNativeSupervisorRecoveryTransport,
     signal: AbortSignal,
   ): Promise<void> {
     if (
-      this.#consumed ||
-      !(handler instanceof AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler) ||
-      !(signal instanceof AbortSignal) ||
-      signal.aborted
+      peer instanceof DenyRetainedNativeSupervisorRecoveryTransport ||
+      !peer ||
+      typeof peer.exchange !== 'function'
     )
+      deny('NOT_CONFIGURED');
+    if (this.#consumed || !(signal instanceof AbortSignal) || signal.aborted)
       deny('EXCHANGE_DENIED');
     this.#consumed = true;
     let listener: LinuxRetainedNativeSupervisorOwnedListener | undefined;
@@ -326,6 +340,20 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
         'SOCKET',
       );
       if (signal.aborted || !sameIdentity(identity, current)) deny('INVALID_ATTESTATION');
+      const handler = new AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler(peer, {
+        schemaVersion: 1,
+        platform: 'LINUX',
+        socketPath: this.#authorization.socketPath,
+        socketDevice: identity.device,
+        socketInode: identity.inode,
+        socketOwnerUid: identity.ownerUid,
+        socketOwnerGid: identity.ownerGid,
+        socketMode: identity.mode,
+        expectedPeerPid: this.#authorization.expectedWorkerPid,
+        expectedPeerUid: this.#authorization.expectedWorkerUid,
+        expectedPeerGid: this.#authorization.expectedWorkerGid,
+        runtimeConnection: 'NOT_CONFIGURED',
+      });
       await new BoundedLinuxRetainedNativeSupervisorSession(listener, handler).handleOne(
         this.#authorization.socketPath,
         signal,

@@ -2298,6 +2298,15 @@ test('Linux retained-native listener lifecycle is ownership-safe, bounded, and u
   assert.match(source, /value\.parentMode !== 0o700/u);
   assert.match(source, /value\.socketMode !== 0o600/u);
   assert.match(source, /value\.listenBacklog !== 1/u);
+  assert.match(source, /expectedWorkerPid: positive/u);
+  assert.match(source, /expectedPeerPid: this\.#authorization\.expectedWorkerPid/u);
+  assert.match(source, /new AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler/u);
+  assert.ok(
+    source.indexOf('identity = assertAuthorizedCreation(') <
+      source.indexOf(
+        'const handler = new AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler',
+      ),
+  );
   assert.match(source, /assertCleanup\(listener\.closeAndUnlinkOwned\(\), identity\)/u);
   assert.match(source, /evidence\.disposition !== 'OWNED_SOCKET_REMOVED'/u);
   assert.match(source, /new BoundedLinuxRetainedNativeSupervisorSession/u);
