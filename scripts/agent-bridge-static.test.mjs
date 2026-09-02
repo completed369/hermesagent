@@ -22,6 +22,7 @@ const packageFiles = [
   'packages/agent-bridge/src/policy.ts',
   'packages/agent-bridge/src/protocol.ts',
   'packages/agent-bridge/src/retained-native-supervisor-linux-client.ts',
+  'packages/agent-bridge/src/retained-native-supervisor-linux-session.ts',
   'packages/agent-bridge/src/retained-native-supervisor-recovery.ts',
   'packages/agent-bridge/src/secret-lease.ts',
   'packages/agent-bridge/src/supervision-authorization.ts',
@@ -2247,6 +2248,35 @@ test('Linux retained-native IPC client owns a bounded deny-default lifecycle and
   );
   assert.doesNotMatch(source, /\bCONNECTED\b|provider|deployment|publish|spend/u);
   assert.doesNotMatch(apiComposition, /retained-native-supervisor-linux-client/u);
+});
+
+test('Linux retained-native supervisor session is bounded, deny-default, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-linux-session.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  assert.match(source, /class DenyLinuxRetainedNativeSupervisorSessionBinding/u);
+  assert.match(source, /class BoundedLinuxRetainedNativeSupervisorSession/u);
+  assert.match(source, /acceptAuthorizedUnixSocket/u);
+  assert.match(source, /peerCredentials/u);
+  assert.match(source, /readToEof/u);
+  assert.match(source, /handler\.handle/u);
+  assert.match(source, /writeAndShutdown/u);
+  assert.match(source, /await opened\.close\(\)/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_SUPERVISOR_IPC_FRAME_BYTES/u);
+  assert.match(source, /authority: 'LINUX_LSTAT_UNIX_SOCKET'/u);
+  assert.match(source, /authority: 'LINUX_SO_PEERCRED'/u);
+  assert.doesNotMatch(
+    source,
+    /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(source, /\b(?:bind|listen|unlink|chmod)\s*\(/u);
+  assert.doesNotMatch(source, /\bCONNECTED\b|provider|deployment|publish|spend/u);
+  assert.doesNotMatch(apiComposition, /retained-native-supervisor-linux-session/u);
 });
 
 test('retained-native supervisor trust snapshots are fresh, revocable, and anti-rollback', () => {

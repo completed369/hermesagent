@@ -34,3 +34,4 @@ export * from './retained-native-supervisor-trust-source';
 export * from './retained-native-supervisor-trust-composition';
 export * from './retained-native-supervisor-local-ipc';
 export * from './retained-native-supervisor-linux-client';
+export * from './retained-native-supervisor-linux-session';
