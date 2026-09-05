@@ -30,14 +30,14 @@ BEGIN
   IF jsonb_typeof(value) <> 'array' OR jsonb_array_length(value) > 2 THEN RETURN FALSE; END IF;
   FOR authorization IN SELECT item FROM jsonb_array_elements(value) AS item LOOP
     position := position + 1;
-    IF jsonb_typeof(authorization) <> 'object' OR NOT authorization ?& ARRAY[
+    IF jsonb_typeof(authorization) <> 'object' OR NOT (authorization ?& ARRAY[
       'schemaVersion', 'platform', 'architecture', 'moduleKind', 'canonicalModulePath',
       'socketPath', 'runtimeConnection', 'authorizationId', 'authorizationVersion',
       'requestHash', 'validFrom', 'validUntil', 'moduleSha256', 'moduleIdentityReference',
       'moduleOwnerUid', 'moduleOwnerGid', 'moduleMode', 'moduleSizeBytes', 'socketDirectory',
       'socketDirectoryIdentityReference', 'socketDirectoryOwnerUid', 'socketDirectoryOwnerGid',
       'socketDirectoryMode'
-    ] OR (authorization - ARRAY[
+    ]) OR (authorization - ARRAY[
       'schemaVersion', 'platform', 'architecture', 'moduleKind', 'canonicalModulePath',
       'socketPath', 'runtimeConnection', 'authorizationId', 'authorizationVersion',
       'requestHash', 'validFrom', 'validUntil', 'moduleSha256', 'moduleIdentityReference',
