@@ -57,6 +57,7 @@ test('staging image and topology contracts are fail-closed', () => {
   assert.doesNotMatch(dockerfile, /distroless\/nodejs22-debian13/);
   assert.match(dockerStage(dockerfile, 'runtime'), /ENTRYPOINT \["\/nodejs\/bin\/node"\]/);
   assert.match(dockerfile, /pnpm install --frozen-lockfile/);
+  assert.match(dockerfile, /COPY patches \.\/patches[\s\S]*RUN pnpm install --frozen-lockfile/);
   for (const target of ['api', 'worker', 'tools', 'web', 'ingress']) {
     const stage = dockerStage(dockerfile, target);
     assert.match(stage, /^USER 65532:65532$/m, `${target} must declare the exact runtime user`);
