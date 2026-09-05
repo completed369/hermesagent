@@ -224,7 +224,7 @@ describeLinux('production Linux retained-native client module evidence', () => {
   it('denies a substituted socket identity after the connected response', async () => {
     const socketPath = nextSocket();
     let replacement: Server | undefined;
-    const server = createServer((socket) => {
+    const server = createServer({ allowHalfOpen: true }, (socket) => {
       socket.resume();
       socket.once('end', async () => {
         unlinkSync(socketPath);
