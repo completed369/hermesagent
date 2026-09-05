@@ -62,6 +62,23 @@ production MinIO/Temporal connectivity was not exercised.
   known vulnerabilities. A repository contract binds the override and lockfile
   resolution so a future refresh cannot silently restore the vulnerable child.
 
+### MinIO notification parser advisory amendment — 2026-09-05
+
+- GitHub reported `CVE-2026-71429` / `GHSA-528h-pc64-c93x` against
+  `stream-json@1.9.1`, retained only by `minio@8.0.7` for its bucket-notification
+  JSON-lines parser. VentureOS does not call that notification API, but the
+  vulnerable package still remained in the production dependency graph.
+- MinIO's upstream version-only update to `stream-json@3.5.0` fails its own
+  CommonJS test path because 3.5.0 is ESM-only and moved the imported module.
+  The focused remediation therefore pins the fixed release and applies a
+  lockfile-hashed patch that replaces MinIO's single parser use with a
+  one-megabyte-bounded Node transform in its source, CommonJS, and ESM builds.
+- Repository tests load both shipped module formats, split a multibyte UTF-8
+  character across chunks, parse newline-terminated and EOF-terminated records,
+  and reject oversized terminated or unterminated records. No MinIO endpoint,
+  credentials, provider mode, storage authorization policy, or request behavior
+  is changed.
+
 ## Security model observed
 
 - Passwords use salted scrypt and constant-time verification.

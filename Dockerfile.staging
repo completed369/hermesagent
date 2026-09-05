@@ -16,6 +16,7 @@ RUN mkdir -p "$COREPACK_HOME" \
  && corepack prepare pnpm@9.12.0 --activate \
  && chmod -R a+rX "$COREPACK_HOME"
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY patches ./patches
 COPY apps ./apps
 COPY packages ./packages
 COPY scripts/assert-api-entrypoint.mjs scripts/assert-worker-entrypoint.mjs ./scripts/
