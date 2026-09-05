@@ -296,7 +296,10 @@
 > controller-minted Level-3 approval evidence. The database rejects stale evidence, fixes each
 > supervisor chain to one workspace, foreign-key binds evidence to the snapshot, and denies
 > updates/deletes, while exact replay rechecks every field.
-> These boundaries therefore do not prove runtime connectivity.
+> A separate uncomposed adapter can issue one exact one-minute grant from an exact Level-3 trusted
+> control-plane capability; it rejects Level 4 and does not invoke the Founder approval workflow.
+> It has no signer, key, publisher, loader, or service composition. These boundaries therefore do
+> not prove runtime connectivity.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an
