@@ -47,23 +47,28 @@ function exactDataObject(
   expected: readonly string[],
   code: 'NOT_CONFIGURED' | 'EXCHANGE_DENIED',
 ): Record<string, unknown> {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) deny(code);
-  const prototype = Object.getPrototypeOf(input);
-  if (prototype !== Object.prototype && prototype !== null) deny(code);
-  const record = input as Record<string, unknown>;
-  const actual = Object.keys(record).sort();
-  const keys = [...expected].sort();
-  const ownKeys = Reflect.ownKeys(record);
-  const descriptors = Object.getOwnPropertyDescriptors(record);
-  if (
-    actual.length !== keys.length ||
-    ownKeys.length !== actual.length ||
-    ownKeys.some((key) => typeof key !== 'string') ||
-    actual.some((key, index) => key !== keys[index]) ||
-    actual.some((key) => !Object.hasOwn(descriptors[key] ?? {}, 'value'))
-  )
-    deny(code);
-  return record;
+  try {
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) deny(code);
+    const prototype = Object.getPrototypeOf(input);
+    if (prototype !== Object.prototype && prototype !== null) deny(code);
+    const record = input as Record<string, unknown>;
+    const actual = Object.keys(record).sort();
+    const keys = [...expected].sort();
+    const ownKeys = Reflect.ownKeys(record);
+    const descriptors = Object.getOwnPropertyDescriptors(record);
+    if (
+      actual.length !== keys.length ||
+      ownKeys.length !== actual.length ||
+      ownKeys.some((key) => typeof key !== 'string') ||
+      actual.some((key, index) => key !== keys[index]) ||
+      actual.some((key) => !Object.hasOwn(descriptors[key] ?? {}, 'value'))
+    )
+      deny(code);
+    return record;
+  } catch (error) {
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+    return deny(code);
+  }
 }
 
 function validSocketPath(value: unknown): value is string {
@@ -74,6 +79,15 @@ function validSocketPath(value: unknown): value is string {
     !value.split('/').some((segment) => segment === '.' || segment === '..') &&
     Buffer.byteLength(value, 'utf8') <= 107
   );
+}
+
+function cleanupMalformedOwnedListener(input: unknown): void {
+  try {
+    const result = ownMethod(input, 'closeAndUnlinkOwned')();
+    if (result instanceof Promise) void result.catch(() => undefined);
+  } catch {
+    // A malformed allocation cannot be trusted further; the public failure remains redacted.
+  }
 }
 
 function request(input: unknown): Readonly<LinuxRetainedNativeSupervisorListenerCreationRequest> {
@@ -98,15 +112,20 @@ function request(input: unknown): Readonly<LinuxRetainedNativeSupervisorListener
 }
 
 function ownMethod(input: unknown, method: string): (...args: unknown[]) => unknown {
-  if (typeof input !== 'object' || input === null) deny('NOT_CONFIGURED');
-  const descriptor = Object.getOwnPropertyDescriptor(input, method);
-  if (
-    descriptor === undefined ||
-    !Object.hasOwn(descriptor, 'value') ||
-    typeof descriptor.value !== 'function'
-  )
-    deny('NOT_CONFIGURED');
-  return (descriptor.value as (...args: unknown[]) => unknown).bind(input);
+  try {
+    if (typeof input !== 'object' || input === null) deny('NOT_CONFIGURED');
+    const descriptor = Object.getOwnPropertyDescriptor(input, method);
+    if (
+      descriptor === undefined ||
+      !Object.hasOwn(descriptor, 'value') ||
+      typeof descriptor.value !== 'function'
+    )
+      deny('NOT_CONFIGURED');
+    return (descriptor.value as (...args: unknown[]) => unknown).bind(input);
+  } catch (error) {
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+    return deny('NOT_CONFIGURED');
+  }
 }
 
 class BoundedNativeAcceptedSession implements LinuxRetainedNativeSupervisorAcceptedSession {
@@ -275,8 +294,6 @@ export class BoundedLinuxRetainedNativeSupervisorNativeListenerBinding implement
   #consumed = false;
 
   constructor(native: unknown) {
-    if (native instanceof DenyLinuxRetainedNativeSupervisorListenerNativeModule)
-      deny('NOT_CONFIGURED');
     const value = exactDataObject(native, MODULE_KEYS, 'NOT_CONFIGURED');
     if (
       value.abiVersion !== 1 ||
@@ -299,7 +316,13 @@ export class BoundedLinuxRetainedNativeSupervisorNativeListenerBinding implement
     const trustedRequest = request(candidate);
     try {
       const native = await this.#createOwnedListener(trustedRequest, signal);
-      const listener = new BoundedNativeOwnedListener(native, trustedRequest.socketPath);
+      let listener: BoundedNativeOwnedListener;
+      try {
+        listener = new BoundedNativeOwnedListener(native, trustedRequest.socketPath);
+      } catch {
+        cleanupMalformedOwnedListener(native);
+        deny('NOT_CONFIGURED');
+      }
       if (signal.aborted) {
         listener.closeAndUnlinkOwned();
         deny('EXCHANGE_DENIED');

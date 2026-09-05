@@ -367,6 +367,13 @@ published and current `main` has not been deployed to private staging.
    Linux-x64 tests compile the production source with warnings as errors and hardening flags and run
    one authenticated kernel exchange plus cancellation evidence. No loader, compiled repository
    artifact, path provisioner, service loop, worker wiring, or positive runtime composition exists.
+   An exported but uncomposed worker-side native adapter now narrows the ADR-0085 client binding to
+   one exact versioned ABI, captures module and handle methods against drift, pins initial stat,
+   connect, ordered bounded exchange, and final stat to one socket path, clears request/native-
+   response/intermediate copies, and closes allocations rejected by cancellation or malformed handle
+   shape (ADR-0091). The listener adapter also cleans malformed returned listener allocations. No
+   binary loader, native client implementation, path selection, worker composition, or runtime truth
+   promotion is supplied.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

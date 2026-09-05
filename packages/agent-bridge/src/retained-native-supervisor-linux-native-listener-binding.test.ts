@@ -181,6 +181,20 @@ describe('bounded Linux retained-native supervisor native listener binding', () 
     expect(create).not.toHaveBeenCalled();
   });
 
+  it('redacts module shape-inspection trap details', () => {
+    const native = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error('private proxy trap detail');
+        },
+      },
+    );
+    expect(() => new BoundedLinuxRetainedNativeSupervisorNativeListenerBinding(native)).toThrow(
+      expectCode('NOT_CONFIGURED'),
+    );
+  });
+
   it.each([
     ['relative path', { socketPath: 'run/ventureos/supervisor.sock' }],
     ['replacement disposition', { pathDisposition: 'REPLACE' }],
@@ -236,6 +250,44 @@ describe('bounded Linux retained-native supervisor native listener binding', () 
     ).rejects.toEqual(expectCode('EXCHANGE_DENIED'));
     expect(fixture.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
     expect(fixture.calls).toEqual(['create', 'cleanup']);
+  });
+
+  it('cleans a malformed allocated listener without invoking accessors', async () => {
+    const fixture = nativeFixture();
+    const creationAccessor = vi.fn();
+    const cleanup = vi.fn(() => ({ disposition: 'OWNED_SOCKET_REMOVED' }));
+    fixture.native.createOwnedListener.mockResolvedValueOnce({
+      get creationEvidence() {
+        creationAccessor();
+        return vi.fn();
+      },
+      lstatUnixSocket: vi.fn(),
+      acceptAuthorizedUnixSocket: vi.fn(),
+      closeAndUnlinkOwned: cleanup,
+    });
+    await expect(
+      new BoundedLinuxRetainedNativeSupervisorNativeListenerBinding(
+        fixture.native,
+      ).createOwnedListener(createRequest, new AbortController().signal),
+    ).rejects.toEqual(expectCode('NOT_CONFIGURED'));
+    expect(creationAccessor).not.toHaveBeenCalled();
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it('does not let malformed asynchronous listener cleanup stall denial', async () => {
+    const fixture = nativeFixture();
+    const cleanup = vi.fn(() => new Promise<never>(() => undefined));
+    fixture.native.createOwnedListener.mockResolvedValueOnce({
+      creationEvidence: vi.fn(),
+      lstatUnixSocket: vi.fn(),
+      closeAndUnlinkOwned: cleanup,
+    } as never);
+    await expect(
+      new BoundedLinuxRetainedNativeSupervisorNativeListenerBinding(
+        fixture.native,
+      ).createOwnedListener(createRequest, new AbortController().signal),
+    ).rejects.toEqual(expectCode('NOT_CONFIGURED'));
+    expect(cleanup).toHaveBeenCalledOnce();
   });
 
   it('denies out-of-order or repeated handle operations', async () => {
