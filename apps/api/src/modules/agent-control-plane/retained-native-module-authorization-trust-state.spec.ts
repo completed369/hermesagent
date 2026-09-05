@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@ventureos/database';
-import type { RetainedNativeSupervisorModuleAuthorizationCheckpoint } from '@ventureos/agent-bridge';
+import {
+  AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot,
+  type RetainedNativeSupervisorModuleAuthorizationCheckpoint,
+} from '@ventureos/agent-bridge';
 
 import {
   PostgresRetainedNativeModuleAuthorizationCheckpointStore,
+  PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore,
   PostgresRetainedNativeModuleAuthorizationSnapshotReader,
   type RetainedNativeModuleAuthorizationTrustSqlClient,
 } from './retained-native-module-authorization-trust-state';
@@ -54,6 +58,17 @@ function sqlText(query: Prisma.Sql): string {
 }
 
 describe('durable retained-native module authorization trust adapters', () => {
+  it('rejects a forged publication proof before issuing SQL', async () => {
+    const database = new ScriptedSqlClient([]);
+    const store = new PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore(database);
+    const forged = Object.create(
+      AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot.prototype,
+    ) as AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot;
+    await expect(store.append(forged)).rejects.toThrow();
+    expect(database.queries).toHaveLength(0);
+    expect(Object.isFrozen(store)).toBe(true);
+  });
+
   it('reads the highest snapshot for one explicit supervisor and returns an owned copy', async () => {
     const snapshot = { schemaVersion: 1, supervisorInstanceId: 'native-supervisor-1' };
     const database = new ScriptedSqlClient([[{ snapshot }]]);

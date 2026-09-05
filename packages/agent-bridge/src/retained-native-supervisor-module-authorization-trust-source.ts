@@ -92,6 +92,43 @@ interface ParsedRootRecord {
   readonly publicKey: KeyObject;
 }
 
+const AUTHENTICATED_SNAPSHOT = Symbol('authenticated-retained-native-module-snapshot');
+
+export class AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot {
+  readonly #token: symbol;
+
+  constructor(
+    token: symbol,
+    readonly snapshot: Readonly<RetainedNativeSupervisorModuleAuthorizationSnapshot>,
+    readonly snapshotHash: string,
+    readonly authenticatedAt: number,
+  ) {
+    if (token !== AUTHENTICATED_SNAPSHOT) deny();
+    this.#token = token;
+    Object.freeze(this);
+  }
+
+  static assertAuthenticated(
+    value: unknown,
+  ): asserts value is AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot {
+    try {
+      if (
+        !(value instanceof AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot) ||
+        value.#token !== AUTHENTICATED_SNAPSHOT
+      )
+        deny();
+    } catch {
+      deny();
+    }
+  }
+}
+
+export interface RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore {
+  append(
+    authenticated: AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot,
+  ): Promise<'APPENDED' | 'REPLAYED'>;
+}
+
 function deny(): never {
   throw new RetainedNativeSupervisorLocalIpcError('NOT_CONFIGURED');
 }
@@ -419,24 +456,12 @@ function sameCheckpoint(
   );
 }
 
-export class DenyRetainedNativeSupervisorModuleAuthorizationTrustSource implements LinuxRetainedNativeSupervisorModuleAuthorizationSource {
-  async read(_request: Readonly<LinuxRetainedNativeSupervisorModuleLoadRequest>): Promise<never> {
-    deny();
-  }
-}
-
-/**
- * Authenticates one fresh module-authorization snapshot and advances its
- * durable monotonic checkpoint before exposing an exact request-bound grant.
- */
-export class BoundedRetainedNativeSupervisorModuleAuthorizationTrustSource implements LinuxRetainedNativeSupervisorModuleAuthorizationSource {
+export class BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotAuthenticator {
   readonly #roots: ReadonlyMap<string, Readonly<ParsedRootRecord>>;
   readonly #supervisorInstanceId: string;
 
   constructor(
     expectedSupervisorInstanceId: string,
-    private readonly reader: RetainedNativeSupervisorModuleAuthorizationSnapshotReader,
-    private readonly checkpoints: RetainedNativeSupervisorModuleAuthorizationCheckpointStore,
     roots: readonly unknown[],
     private readonly clock: () => number = Date.now,
   ) {
@@ -461,18 +486,10 @@ export class BoundedRetainedNativeSupervisorModuleAuthorizationTrustSource imple
     Object.freeze(this);
   }
 
-  async read(
-    request: Readonly<LinuxRetainedNativeSupervisorModuleLoadRequest>,
-  ): Promise<Readonly<LinuxRetainedNativeSupervisorModuleAuthorization>> {
-    let validatedRequest: Readonly<LinuxRetainedNativeSupervisorModuleLoadRequest>;
-    try {
-      validatedRequest = validateLinuxRetainedNativeSupervisorModuleLoadRequest(request);
-    } catch {
-      deny();
-    }
+  authenticate(input: unknown): AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot {
     let snapshot: Readonly<RetainedNativeSupervisorModuleAuthorizationSnapshot>;
     try {
-      snapshot = parseSnapshot(await this.reader.read());
+      snapshot = parseSnapshot(input);
     } catch {
       deny();
     }
@@ -514,7 +531,101 @@ export class BoundedRetainedNativeSupervisorModuleAuthorizationTrustSource imple
       )
         deny();
     }
-    const snapshotHash = retainedNativeSupervisorModuleAuthorizationSnapshotHash(snapshot);
+    return new AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot(
+      AUTHENTICATED_SNAPSHOT,
+      snapshot,
+      retainedNativeSupervisorModuleAuthorizationSnapshotHash(snapshot),
+      now,
+    );
+  }
+}
+
+export class DenyRetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore implements RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore {
+  async append(
+    _authenticated: AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot,
+  ): Promise<never> {
+    deny();
+  }
+}
+
+export class BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher {
+  readonly #authenticator: BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotAuthenticator;
+
+  constructor(
+    expectedSupervisorInstanceId: string,
+    roots: readonly unknown[],
+    private readonly store: RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore = new DenyRetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore(),
+    clock: () => number = Date.now,
+  ) {
+    this.#authenticator =
+      new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotAuthenticator(
+        expectedSupervisorInstanceId,
+        roots,
+        clock,
+      );
+    Object.freeze(this);
+  }
+
+  async publish(input: unknown): Promise<'APPENDED' | 'REPLAYED'> {
+    const authenticated = this.#authenticator.authenticate(input);
+    let result: 'APPENDED' | 'REPLAYED';
+    try {
+      result = await this.store.append(authenticated);
+    } catch {
+      deny();
+    }
+    if (result !== 'APPENDED' && result !== 'REPLAYED') deny();
+    return result;
+  }
+}
+
+export class DenyRetainedNativeSupervisorModuleAuthorizationTrustSource implements LinuxRetainedNativeSupervisorModuleAuthorizationSource {
+  async read(_request: Readonly<LinuxRetainedNativeSupervisorModuleLoadRequest>): Promise<never> {
+    deny();
+  }
+}
+
+/**
+ * Authenticates one fresh module-authorization snapshot and advances its
+ * durable monotonic checkpoint before exposing an exact request-bound grant.
+ */
+export class BoundedRetainedNativeSupervisorModuleAuthorizationTrustSource implements LinuxRetainedNativeSupervisorModuleAuthorizationSource {
+  readonly #authenticator: BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotAuthenticator;
+
+  constructor(
+    expectedSupervisorInstanceId: string,
+    private readonly reader: RetainedNativeSupervisorModuleAuthorizationSnapshotReader,
+    private readonly checkpoints: RetainedNativeSupervisorModuleAuthorizationCheckpointStore,
+    roots: readonly unknown[],
+    private readonly clock: () => number = Date.now,
+  ) {
+    this.#authenticator =
+      new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotAuthenticator(
+        expectedSupervisorInstanceId,
+        roots,
+        clock,
+      );
+    Object.freeze(this);
+  }
+
+  async read(
+    request: Readonly<LinuxRetainedNativeSupervisorModuleLoadRequest>,
+  ): Promise<Readonly<LinuxRetainedNativeSupervisorModuleAuthorization>> {
+    let validatedRequest: Readonly<LinuxRetainedNativeSupervisorModuleLoadRequest>;
+    try {
+      validatedRequest = validateLinuxRetainedNativeSupervisorModuleLoadRequest(request);
+    } catch {
+      deny();
+    }
+    let authenticated: AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot;
+    try {
+      authenticated = this.#authenticator.authenticate(await this.reader.read());
+    } catch {
+      deny();
+    }
+    const { snapshot, snapshotHash } = authenticated;
+    const now = authenticated.authenticatedAt;
+    const validUntil = Date.parse(snapshot.validUntil);
     await this.#advanceCheckpoint(snapshot, nextCheckpoint(snapshot, snapshotHash));
     const finishedAt = this.clock();
     if (!Number.isFinite(finishedAt) || finishedAt < now || finishedAt >= validUntil) deny();

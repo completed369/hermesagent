@@ -1,9 +1,11 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 
 import { Prisma, prisma } from '@ventureos/database';
 import {
   canonicalJson,
+  BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher,
   linuxRetainedNativeSupervisorModuleLoadRequestHash,
+  retainedNativeSupervisorModuleAuthorizationSnapshotHash,
   type LinuxRetainedNativeSupervisorModuleAuthorization,
   type RetainedNativeSupervisorModuleAuthorizationCheckpoint,
 } from '@ventureos/agent-bridge';
@@ -11,6 +13,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   PostgresRetainedNativeModuleAuthorizationCheckpointStore,
+  PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore,
   PostgresRetainedNativeModuleAuthorizationSnapshotReader,
 } from '../src/modules/agent-control-plane/retained-native-module-authorization-trust-state';
 
@@ -227,5 +230,91 @@ describe('durable retained-native module authorization trust state (PostgreSQL i
         WHERE "supervisorInstanceId" = ${supervisorInstanceId}
       `),
     ).rejects.toThrow();
+  });
+
+  it('publishes only authenticated adjacent snapshots and serializes concurrent forks', async () => {
+    const publicationInstanceId = `native-publisher-${suffix}`;
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+    const spki = publicKey.export({ format: 'der', type: 'spki' });
+    const root = {
+      schemaVersion: 1 as const,
+      rootRecordId: `publisher-root-record-${suffix}`,
+      rootRecordVersion: 1,
+      signerKeyId: `publisher-root-signer-${suffix}`,
+      algorithm: 'ED25519' as const,
+      purpose: 'RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION_SNAPSHOT' as const,
+      publicKeySpkiBase64: spki.toString('base64'),
+      publicKeySpkiSha256: createHash('sha256').update(spki).digest('hex'),
+      minimumSnapshotVersion: 1,
+      validFrom: '2029-01-01T00:00:00.000Z',
+      validUntil: '2031-01-01T00:00:00.000Z',
+      revokedAt: null,
+      testOnly: false as const,
+    };
+    const signedSnapshot = (
+      version: number,
+      previousSnapshotHash: string | null,
+      label = 'canonical',
+    ) => {
+      const payload = {
+        schemaVersion: 1 as const,
+        purpose: 'RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION' as const,
+        snapshotId: `published-snapshot-${suffix}-${version}-${label}`,
+        snapshotVersion: version,
+        signerKeyId: root.signerKeyId,
+        algorithm: 'ED25519' as const,
+        supervisorInstanceId: publicationInstanceId,
+        issuedAt: '2030-01-01T11:59:59.000Z',
+        validUntil: '2030-01-01T12:04:00.000Z',
+        previousSnapshotHash,
+        authorizations: [],
+      };
+      return {
+        ...payload,
+        signature: sign(null, Buffer.from(canonicalJson(payload)), privateKey).toString('base64'),
+      };
+    };
+    const publicationStore = new PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore(
+      prisma,
+    );
+    const publisher = new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher(
+      publicationInstanceId,
+      [root],
+      publicationStore,
+      () => Date.parse('2030-01-01T12:00:00.000Z'),
+    );
+    const first = signedSnapshot(1, null);
+    await expect(publisher.publish(first)).resolves.toBe('APPENDED');
+    await expect(publisher.publish(first)).resolves.toBe('REPLAYED');
+
+    const firstHash = retainedNativeSupervisorModuleAuthorizationSnapshotHash(first);
+    const competing = [
+      signedSnapshot(2, firstHash, 'fork-a'),
+      signedSnapshot(2, firstHash, 'fork-b'),
+    ];
+    const outcomes = await Promise.allSettled(competing.map((value) => publisher.publish(value)));
+    expect(outcomes.filter((value) => value.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((value) => value.status === 'rejected')).toHaveLength(1);
+    expect(outcomes.find((value) => value.status === 'fulfilled')).toMatchObject({
+      value: 'APPENDED',
+    });
+
+    const winner = competing[outcomes[0]?.status === 'fulfilled' ? 0 : 1]!;
+    await expect(
+      publisher.publish(
+        signedSnapshot(4, retainedNativeSupervisorModuleAuthorizationSnapshotHash(winner), 'gap'),
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_CONFIGURED' });
+    await expect(
+      publisher.publish(signedSnapshot(3, 'f'.repeat(64), 'broken-link')),
+    ).rejects.toMatchObject({ code: 'NOT_CONFIGURED' });
+
+    const rows = await prisma.$queryRaw<readonly { snapshotVersion: number }[]>(Prisma.sql`
+      SELECT "snapshotVersion"
+      FROM "acp_retained_native_module_authorization_snapshots"
+      WHERE "supervisorInstanceId" = ${publicationInstanceId}
+      ORDER BY "snapshotVersion"
+    `);
+    expect(rows).toEqual([{ snapshotVersion: 1 }, { snapshotVersion: 2 }]);
   });
 });

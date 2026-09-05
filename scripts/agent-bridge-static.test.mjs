@@ -2622,6 +2622,19 @@ test('retained-native module authorization trust is signed, revocable, and uncom
   const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
   assert.match(source, /class DenyRetainedNativeSupervisorModuleAuthorizationTrustSource/u);
   assert.match(source, /class BoundedRetainedNativeSupervisorModuleAuthorizationTrustSource/u);
+  assert.match(
+    source,
+    /class BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotAuthenticator/u,
+  );
+  assert.match(
+    source,
+    /class DenyRetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore/u,
+  );
+  assert.match(
+    source,
+    /class BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher/u,
+  );
+  assert.match(source, /new AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot/u);
   assert.match(source, /RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION_SNAPSHOT/u);
   assert.match(source, /RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION/u);
   assert.match(source, /MAX_SNAPSHOT_LIFETIME_MS = 5 \* 60 \* 1_000/u);
@@ -2632,7 +2645,8 @@ test('retained-native module authorization trust is signed, revocable, and uncom
   assert.match(source, /snapshot\.authorizations\.find/u);
   assert.match(index, /retained-native-supervisor-module-authorization-trust-source/u);
   assert.doesNotMatch(source, /from 'node:(?:child_process|fs|net|tls)'/u);
-  assert.doesNotMatch(source, /process\.env|\bCONNECTED\b|provider|deployment|publish|spend/u);
+  assert.doesNotMatch(source, /process\.env|\bCONNECTED\b|provider|deployment|spend/u);
+  assert.doesNotMatch(source, /createPrivateKey|generateKeyPair|\.sign\(/u);
   assert.doesNotMatch(
     apiComposition,
     /BoundedRetainedNativeSupervisorModuleAuthorizationTrustSource/u,
@@ -2730,6 +2744,10 @@ test('durable native-module authorization state is grant-bound, audited, and unc
     'packages/database/prisma/migrations/20260905183000_retained_native_module_trust_state/migration.sql',
     'utf8',
   );
+  const publicationMigration = readFileSync(
+    'packages/database/prisma/migrations/20260905210000_guard_native_module_snapshot_publication/migration.sql',
+    'utf8',
+  );
   const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
   const module = readFileSync(
     'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
@@ -2741,6 +2759,15 @@ test('durable native-module authorization state is grant-bound, audited, and unc
   );
 
   assert.match(adapter, /implements RetainedNativeSupervisorModuleAuthorizationSnapshotReader/u);
+  assert.match(
+    adapter,
+    /implements RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore/u,
+  );
+  assert.match(
+    adapter,
+    /AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot\.assertAuthenticated/u,
+  );
+  assert.match(adapter, /ON CONFLICT \("supervisorInstanceId", "snapshotVersion"\) DO NOTHING/u);
   assert.match(adapter, /implements RetainedNativeSupervisorModuleAuthorizationCheckpointStore/u);
   assert.match(adapter, /ON CONFLICT \("supervisorInstanceId"\) DO NOTHING/u);
   assert.match(adapter, /successor\.snapshotVersion !== current\.snapshotVersion \+ 1/u);
@@ -2760,6 +2787,10 @@ test('durable native-module authorization state is grant-bound, audited, and unc
   assert.match(migration, /NEW\."snapshotVersion" <> OLD\."snapshotVersion" \+ 1/u);
   assert.match(migration, /AFTER INSERT OR UPDATE/u);
   assert.match(migration, /checkpoint_events_immutable/u);
+  assert.match(publicationMigration, /pg_advisory_xact_lock/u);
+  assert.match(publicationMigration, /snapshot bootstrap denied/u);
+  assert.match(publicationMigration, /snapshot equivocation denied/u);
+  assert.match(publicationMigration, /snapshot chain transition denied/u);
   assert.match(schema, /model AcpRetainedNativeModuleAuthorizationSnapshot/u);
   assert.match(schema, /model AcpRetainedNativeModuleAuthorizationCheckpoint/u);
   assert.match(schema, /model AcpRetainedNativeModuleAuthorizationCheckpointEvent/u);
