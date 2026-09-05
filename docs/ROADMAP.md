@@ -396,8 +396,12 @@ published and current `main` has not been deployed to private staging.
    revocation, rollback, gaps, equivocation, and authorization-version rollback have fail-closed
    contracts. PostgreSQL snapshot-reader and checkpoint adapters now persist immutable signed
    snapshots, exact grant-bound CAS state, and append-only transition evidence (ADR-0095), but remain
-   uncomposed. No root/key provisioning, snapshot publication, path provisioning, module loading
-   composition, or runtime connection is configured.
+   uncomposed. An identity-preserving Linux-x64 path provisioner now copies one explicitly attested
+   retained source into an absent owner-only `0500` module path and creates one absent owner-only
+   `0700` socket directory through retained parents (ADR-0096). It denies by default, never replaces
+   an existing target, keeps the socket absent, and returns only exact identities for later signing.
+   No root/key provisioning, snapshot publication, module loading composition, service loop, or
+   runtime connection is configured.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

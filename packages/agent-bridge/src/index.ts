@@ -39,4 +39,5 @@ export * from './retained-native-supervisor-listener-lifecycle';
 export * from './retained-native-supervisor-linux-native-listener-binding';
 export * from './retained-native-supervisor-linux-native-client-binding';
 export * from './retained-native-supervisor-linux-module-loader';
+export * from './retained-native-supervisor-linux-path-provisioner';
 export * from './retained-native-supervisor-module-authorization-trust-source';
