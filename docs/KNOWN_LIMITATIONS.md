@@ -264,6 +264,17 @@
 > launcher, general sandbox, or general process-tree containment. Native execution was not run on the Windows
 > authoring host; Ubuntu CI is authoritative for those claims.
 
+> The source-only Linux retained-native listener and client now have an uncomposed loader boundary.
+> A positive load requires an exact short-lived authorization binding module digest, retained
+> device/inode identity, owner, non-writable mode, size, module kind, exact socket path, and an
+> existing identity-bound `0700` socket directory. The Linux host verifies `O_NOFOLLOW` descriptors
+> before loading through `/proc/self/fd` and retains at most one immutable descriptor for each module
+> kind to prevent dynamic-loader aliasing after descriptor-number reuse; both authorization and host
+> deny by default. This is not a
+> configured service: there is no positive authorization source, packaged native binary, path
+> provisioner, loop, API/worker wiring, provider access, or runtime status promotion. Codex, Hermes,
+> and Pi remain **NOT_CONFIGURED**.
+
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an
 > anonymous inherited descriptor, the fixed ELF emits bounded success or cancellation frames, and
