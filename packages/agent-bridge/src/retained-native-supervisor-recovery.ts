@@ -225,7 +225,9 @@ export function createRetainedNativeSupervisorRecoveryRequest(
   const request = {
     schemaVersion: 1 as const,
     requestId: `recovery-observation-${randomUUID()}`,
-    challengeNonce: randomBytes(32).toString('base64url'),
+    // Lowercase hexadecimal cannot collide with the canonical payload secret vocabulary.
+    // Forty-three nibbles retain 172 bits of entropy while preserving the exact peer ABI length.
+    challengeNonce: randomBytes(32).toString('hex').slice(0, 43),
     issuedAt: observedAt.toISOString(),
     expiresAt: new Date(expiresAtMilliseconds).toISOString(),
     workspaceId: workItem.binding.workspaceId,

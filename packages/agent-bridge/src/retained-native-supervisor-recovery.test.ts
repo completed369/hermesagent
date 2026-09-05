@@ -172,6 +172,7 @@ describe('authenticated retained-native supervisor recovery', () => {
       requestHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
     expect(first.requestId).not.toBe(second.requestId);
+    expect(first.challengeNonce).toMatch(/^[a-f0-9]{43}$/u);
     expect(first.challengeNonce).not.toBe(second.challengeNonce);
     expect(Object.isFrozen(first)).toBe(true);
   });
