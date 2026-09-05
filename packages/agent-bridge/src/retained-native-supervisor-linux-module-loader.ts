@@ -225,7 +225,9 @@ function canonicalPath(value: unknown, pattern: RegExp, maximumBytes: number): s
   return value;
 }
 
-function parseRequest(input: unknown): Readonly<LinuxRetainedNativeSupervisorModuleLoadRequest> {
+export function validateLinuxRetainedNativeSupervisorModuleLoadRequest(
+  input: unknown,
+): Readonly<LinuxRetainedNativeSupervisorModuleLoadRequest> {
   const value = plainRecord(input, REQUEST_KEYS, 'INVALID_AUTHORIZATION');
   if (
     value.schemaVersion !== 1 ||
@@ -256,11 +258,13 @@ export function linuxRetainedNativeSupervisorModuleLoadRequestHash(
   return createHash('sha256').update(canonicalJson(request)).digest('hex');
 }
 
-function parseAuthorization(
+export function validateLinuxRetainedNativeSupervisorModuleAuthorization(
   input: unknown,
 ): Readonly<LinuxRetainedNativeSupervisorModuleAuthorization> {
   const value = plainRecord(input, AUTHORIZATION_KEYS, 'INVALID_AUTHORIZATION');
-  const request = parseRequest(Object.fromEntries(REQUEST_KEYS.map((key) => [key, value[key]])));
+  const request = validateLinuxRetainedNativeSupervisorModuleLoadRequest(
+    Object.fromEntries(REQUEST_KEYS.map((key) => [key, value[key]])),
+  );
   const moduleMode = nonnegativeInteger(value.moduleMode);
   if (
     moduleMode > 0o777 ||
@@ -303,6 +307,12 @@ function parseAuthorization(
     socketDirectoryOwnerGid: nonnegativeInteger(value.socketDirectoryOwnerGid),
     socketDirectoryMode: 0o700,
   });
+}
+
+export function linuxRetainedNativeSupervisorModuleAuthorizationHash(
+  authorization: Readonly<LinuxRetainedNativeSupervisorModuleAuthorization>,
+): string {
+  return createHash('sha256').update(canonicalJson(authorization)).digest('hex');
 }
 
 function sameRequest(
@@ -523,10 +533,12 @@ export class BoundedLinuxRetainedNativeSupervisorModuleLoader {
     if (this.#attempted) deny('INVALID_AUTHORIZATION');
     this.#attempted = true;
     if (!(signal instanceof AbortSignal) || signal.aborted) deny('INVALID_AUTHORIZATION');
-    const request = parseRequest(input);
+    const request = validateLinuxRetainedNativeSupervisorModuleLoadRequest(input);
     let authorization: Readonly<LinuxRetainedNativeSupervisorModuleAuthorization>;
     try {
-      authorization = parseAuthorization(await this.authorizationSource.read(request));
+      authorization = validateLinuxRetainedNativeSupervisorModuleAuthorization(
+        await this.authorizationSource.read(request),
+      );
     } catch (error) {
       if (error instanceof RetainedNativeSupervisorLocalIpcError && error.code === 'NOT_CONFIGURED')
         throw error;
