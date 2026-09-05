@@ -2670,3 +2670,51 @@ test('durable retained-native supervisor trust state is exact, audited, and unco
   assert.doesNotMatch(module, /PostgresRetainedNativeSupervisorTrust/u);
   assert.doesNotMatch(adapter, /\bCONNECTED\b|provider|deployment|publish|spend/u);
 });
+
+test('durable native-module authorization state is grant-bound, audited, and uncomposed', () => {
+  const adapter = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-module-authorization-trust-state.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260905183000_retained_native_module_authorization_trust_state/migration.sql',
+    'utf8',
+  );
+  const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const integration = readFileSync(
+    'apps/api/test/retained-native-module-authorization-trust-state.integration.spec.ts',
+    'utf8',
+  );
+
+  assert.match(adapter, /implements RetainedNativeSupervisorModuleAuthorizationSnapshotReader/u);
+  assert.match(adapter, /implements RetainedNativeSupervisorModuleAuthorizationCheckpointStore/u);
+  assert.match(adapter, /ON CONFLICT \("supervisorInstanceId"\) DO NOTHING/u);
+  assert.match(adapter, /successor\.snapshotVersion !== current\.snapshotVersion \+ 1/u);
+  assert.match(
+    adapter,
+    /"listenerAuthorizationHash" IS NOT DISTINCT FROM \$\{current\.listenerAuthorizationHash\}/u,
+  );
+  assert.doesNotMatch(
+    adapter,
+    /\bprocess\.(?:env|cwd|platform)\b|\bfetch\s*\(|\$queryRawUnsafe|\$executeRawUnsafe/u,
+  );
+
+  assert.match(migration, /CREATE TABLE "acp_retained_native_module_authorization_snapshots"/u);
+  assert.match(migration, /ventureos_canonical_retained_native_module_json/u);
+  assert.match(migration, /INTERVAL '5 minutes'/u);
+  assert.match(migration, /checkpoint grant binding denied/u);
+  assert.match(migration, /NEW\."snapshotVersion" <> OLD\."snapshotVersion" \+ 1/u);
+  assert.match(migration, /AFTER INSERT OR UPDATE/u);
+  assert.match(migration, /checkpoint_events_immutable/u);
+  assert.match(schema, /model AcpRetainedNativeModuleAuthorizationSnapshot/u);
+  assert.match(schema, /model AcpRetainedNativeModuleAuthorizationCheckpoint/u);
+  assert.match(schema, /model AcpRetainedNativeModuleAuthorizationCheckpointEvent/u);
+  assert.match(integration, /exactly one winner/u);
+  assert.match(integration, /wrong-client-grant/u);
+  assert.doesNotMatch(module, /PostgresRetainedNativeModuleAuthorization/u);
+  assert.doesNotMatch(adapter, /\bCONNECTED\b|provider|deployment|publish|spend/u);
+});

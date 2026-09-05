@@ -1,0 +1,241 @@
+import { Prisma } from '@ventureos/database';
+import type {
+  RetainedNativeSupervisorModuleAuthorizationCheckpoint,
+  RetainedNativeSupervisorModuleAuthorizationCheckpointStore,
+  RetainedNativeSupervisorModuleAuthorizationSnapshotReader,
+} from '@ventureos/agent-bridge';
+
+const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
+const PRIVATE_TEXT =
+  /(?:chain[-_. ]?of[-_. ]?thought|private[-_. ]?reasoning|password|credential|api[-_. ]?key|access[-_. ]?token|auth(?:orization)?[-_. ]?token|session[-_. ]?token|secret|transcript|prompt)/iu;
+const SHA256 = /^[a-f0-9]{64}$/u;
+
+export interface RetainedNativeModuleAuthorizationTrustSqlClient {
+  $queryRaw<T = unknown>(query: Prisma.Sql): Promise<T>;
+}
+
+interface SnapshotRow {
+  readonly snapshot: unknown;
+}
+
+interface CheckpointRow {
+  readonly schemaVersion: number;
+  readonly supervisorInstanceId: string;
+  readonly signerKeyId: string;
+  readonly snapshotId: string;
+  readonly snapshotVersion: number;
+  readonly snapshotHash: string;
+  readonly clientAuthorizationId: string | null;
+  readonly clientAuthorizationVersion: number | null;
+  readonly clientAuthorizationHash: string | null;
+  readonly listenerAuthorizationId: string | null;
+  readonly listenerAuthorizationVersion: number | null;
+  readonly listenerAuthorizationHash: string | null;
+}
+
+function deny(): never {
+  throw new Error('Retained-native module authorization trust state denied');
+}
+
+function reference(value: unknown): string {
+  if (typeof value !== 'string' || !SAFE_REFERENCE.test(value) || PRIVATE_TEXT.test(value)) deny();
+  return value;
+}
+
+function positiveInteger(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1 || (value as number) > 1_000_000)
+    deny();
+  return value as number;
+}
+
+function digest(value: unknown): string {
+  if (typeof value !== 'string' || !SHA256.test(value)) deny();
+  return value;
+}
+
+function optionalGrant(
+  record: Record<string, unknown>,
+  prefix: 'client' | 'listener',
+): Readonly<{ id: string | null; version: number | null; hash: string | null }> {
+  const id = record[`${prefix}AuthorizationId`];
+  const version = record[`${prefix}AuthorizationVersion`];
+  const hash = record[`${prefix}AuthorizationHash`];
+  const active = id !== null;
+  if (active !== (version !== null) || active !== (hash !== null)) deny();
+  return Object.freeze({
+    id: active ? reference(id) : null,
+    version: active ? positiveInteger(version) : null,
+    hash: active ? digest(hash) : null,
+  });
+}
+
+function exactCheckpoint(
+  input: unknown,
+): Readonly<RetainedNativeSupervisorModuleAuthorizationCheckpoint> {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) deny();
+  const prototype = Object.getPrototypeOf(input);
+  if (prototype !== Object.prototype && prototype !== null) deny();
+  const record = input as Record<string, unknown>;
+  const expected = [
+    'clientAuthorizationHash',
+    'clientAuthorizationId',
+    'clientAuthorizationVersion',
+    'listenerAuthorizationHash',
+    'listenerAuthorizationId',
+    'listenerAuthorizationVersion',
+    'schemaVersion',
+    'signerKeyId',
+    'snapshotHash',
+    'snapshotId',
+    'snapshotVersion',
+    'supervisorInstanceId',
+  ].sort();
+  const actual = Object.keys(record).sort();
+  const descriptors = Object.getOwnPropertyDescriptors(record);
+  if (
+    actual.length !== expected.length ||
+    Reflect.ownKeys(record).length !== expected.length ||
+    actual.some((key, index) => key !== expected[index]) ||
+    actual.some((key) => !Object.hasOwn(descriptors[key] ?? {}, 'value')) ||
+    record.schemaVersion !== 1
+  )
+    deny();
+  const client = optionalGrant(record, 'client');
+  const listener = optionalGrant(record, 'listener');
+  return Object.freeze({
+    schemaVersion: 1,
+    supervisorInstanceId: reference(record.supervisorInstanceId),
+    signerKeyId: reference(record.signerKeyId),
+    snapshotId: reference(record.snapshotId),
+    snapshotVersion: positiveInteger(record.snapshotVersion),
+    snapshotHash: digest(record.snapshotHash),
+    clientAuthorizationId: client.id,
+    clientAuthorizationVersion: client.version,
+    clientAuthorizationHash: client.hash,
+    listenerAuthorizationId: listener.id,
+    listenerAuthorizationVersion: listener.version,
+    listenerAuthorizationHash: listener.hash,
+  });
+}
+
+export class PostgresRetainedNativeModuleAuthorizationSnapshotReader implements RetainedNativeSupervisorModuleAuthorizationSnapshotReader {
+  readonly #supervisorInstanceId: string;
+
+  constructor(
+    private readonly database: RetainedNativeModuleAuthorizationTrustSqlClient,
+    supervisorInstanceId: string,
+  ) {
+    this.#supervisorInstanceId = reference(supervisorInstanceId);
+    Object.freeze(this);
+  }
+
+  async read(): Promise<unknown> {
+    const rows = await this.database.$queryRaw<readonly SnapshotRow[]>(Prisma.sql`
+      SELECT "snapshot"
+      FROM "acp_retained_native_module_authorization_snapshots"
+      WHERE "supervisorInstanceId" = ${this.#supervisorInstanceId}
+      ORDER BY "snapshotVersion" DESC
+      LIMIT 1
+    `);
+    if (!Array.isArray(rows) || rows.length !== 1 || !Object.hasOwn(rows[0] ?? {}, 'snapshot'))
+      deny();
+    return structuredClone(rows[0]!.snapshot);
+  }
+}
+
+export class PostgresRetainedNativeModuleAuthorizationCheckpointStore implements RetainedNativeSupervisorModuleAuthorizationCheckpointStore {
+  constructor(private readonly database: RetainedNativeModuleAuthorizationTrustSqlClient) {
+    Object.freeze(this);
+  }
+
+  async read(supervisorInstanceId: string): Promise<unknown | null> {
+    const instance = reference(supervisorInstanceId);
+    const rows = await this.database.$queryRaw<readonly CheckpointRow[]>(Prisma.sql`
+      SELECT 1 AS "schemaVersion", "supervisorInstanceId", "signerKeyId", "snapshotId",
+        "snapshotVersion", "snapshotHash", "clientAuthorizationId",
+        "clientAuthorizationVersion", "clientAuthorizationHash", "listenerAuthorizationId",
+        "listenerAuthorizationVersion", "listenerAuthorizationHash"
+      FROM "acp_retained_native_module_authorization_checkpoints"
+      WHERE "supervisorInstanceId" = ${instance}
+      LIMIT 2
+    `);
+    if (!Array.isArray(rows) || rows.length > 1) deny();
+    return rows.length === 0 ? null : exactCheckpoint({ ...rows[0]! });
+  }
+
+  async compareAndSwap(
+    supervisorInstanceId: string,
+    expected: Readonly<RetainedNativeSupervisorModuleAuthorizationCheckpoint> | null,
+    next: Readonly<RetainedNativeSupervisorModuleAuthorizationCheckpoint>,
+  ): Promise<boolean> {
+    const instance = reference(supervisorInstanceId);
+    const successor = exactCheckpoint(next);
+    if (successor.supervisorInstanceId !== instance) deny();
+    let rows: readonly { readonly applied: number }[];
+    if (expected === null) {
+      rows = await this.database.$queryRaw(Prisma.sql`
+        INSERT INTO "acp_retained_native_module_authorization_checkpoints" (
+          "supervisorInstanceId", "signerKeyId", "snapshotId", "snapshotVersion", "snapshotHash",
+          "clientAuthorizationId", "clientAuthorizationVersion", "clientAuthorizationHash",
+          "listenerAuthorizationId", "listenerAuthorizationVersion", "listenerAuthorizationHash"
+        ) VALUES (
+          ${instance}, ${successor.signerKeyId}, ${successor.snapshotId},
+          ${successor.snapshotVersion}, ${successor.snapshotHash}, ${successor.clientAuthorizationId},
+          ${successor.clientAuthorizationVersion}, ${successor.clientAuthorizationHash},
+          ${successor.listenerAuthorizationId}, ${successor.listenerAuthorizationVersion},
+          ${successor.listenerAuthorizationHash}
+        ) ON CONFLICT ("supervisorInstanceId") DO NOTHING
+        RETURNING 1 AS "applied"
+      `);
+    } else {
+      const current = exactCheckpoint(expected);
+      if (
+        current.supervisorInstanceId !== instance ||
+        successor.snapshotVersion !== current.snapshotVersion + 1 ||
+        successor.snapshotId === current.snapshotId ||
+        successor.snapshotHash === current.snapshotHash ||
+        (current.clientAuthorizationId !== null &&
+          current.clientAuthorizationId === successor.clientAuthorizationId &&
+          successor.clientAuthorizationVersion !== null &&
+          current.clientAuthorizationVersion !== null &&
+          (successor.clientAuthorizationVersion < current.clientAuthorizationVersion ||
+            (successor.clientAuthorizationVersion === current.clientAuthorizationVersion &&
+              successor.clientAuthorizationHash !== current.clientAuthorizationHash))) ||
+        (current.listenerAuthorizationId !== null &&
+          current.listenerAuthorizationId === successor.listenerAuthorizationId &&
+          successor.listenerAuthorizationVersion !== null &&
+          current.listenerAuthorizationVersion !== null &&
+          (successor.listenerAuthorizationVersion < current.listenerAuthorizationVersion ||
+            (successor.listenerAuthorizationVersion === current.listenerAuthorizationVersion &&
+              successor.listenerAuthorizationHash !== current.listenerAuthorizationHash)))
+      )
+        deny();
+      rows = await this.database.$queryRaw(Prisma.sql`
+        UPDATE "acp_retained_native_module_authorization_checkpoints"
+        SET "signerKeyId" = ${successor.signerKeyId}, "snapshotId" = ${successor.snapshotId},
+          "snapshotVersion" = ${successor.snapshotVersion}, "snapshotHash" = ${successor.snapshotHash},
+          "clientAuthorizationId" = ${successor.clientAuthorizationId},
+          "clientAuthorizationVersion" = ${successor.clientAuthorizationVersion},
+          "clientAuthorizationHash" = ${successor.clientAuthorizationHash},
+          "listenerAuthorizationId" = ${successor.listenerAuthorizationId},
+          "listenerAuthorizationVersion" = ${successor.listenerAuthorizationVersion},
+          "listenerAuthorizationHash" = ${successor.listenerAuthorizationHash},
+          "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "supervisorInstanceId" = ${instance}
+          AND "signerKeyId" = ${current.signerKeyId}
+          AND "snapshotId" = ${current.snapshotId}
+          AND "snapshotVersion" = ${current.snapshotVersion}
+          AND "snapshotHash" = ${current.snapshotHash}
+          AND "clientAuthorizationId" IS NOT DISTINCT FROM ${current.clientAuthorizationId}
+          AND "clientAuthorizationVersion" IS NOT DISTINCT FROM ${current.clientAuthorizationVersion}
+          AND "clientAuthorizationHash" IS NOT DISTINCT FROM ${current.clientAuthorizationHash}
+          AND "listenerAuthorizationId" IS NOT DISTINCT FROM ${current.listenerAuthorizationId}
+          AND "listenerAuthorizationVersion" IS NOT DISTINCT FROM ${current.listenerAuthorizationVersion}
+          AND "listenerAuthorizationHash" IS NOT DISTINCT FROM ${current.listenerAuthorizationHash}
+        RETURNING 1 AS "applied"
+      `);
+    }
+    if (!Array.isArray(rows) || rows.length > 1) deny();
+    return rows.length === 1 && rows[0]?.applied === 1;
+  }
+}
