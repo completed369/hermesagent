@@ -2534,6 +2534,9 @@ test('Linux retained-native module loading is descriptor-bound, authorized, and 
   assert.match(source, /MAX_AUTHORIZATION_LIFETIME_MS = 5 \* 60 \* 1_000/u);
   assert.match(source, /fsConstants\.O_NOFOLLOW/u);
   assert.match(source, /fsConstants\.O_DIRECTORY/u);
+  assert.match(source, /MAX_RETAINED_MODULE_DESCRIPTORS = 2/u);
+  assert.match(source, /retainedDlopenDescriptors\.add\(descriptor\)/u);
+  assert.match(source, /retainedLoadedModules\.get\(authorization\.moduleKind\)/u);
   assert.match(source, /socketDirectoryMode !== 0o700/u);
   assert.match(source, /createHash\('sha256'\)\.update\(bytes\)\.digest\('hex'\)/u);
   assert.match(source, /dlopen\(holder, `\/proc\/self\/fd\/\$\{descriptor\}`/u);
@@ -2545,6 +2548,7 @@ test('Linux retained-native module loading is descriptor-bound, authorized, and 
   assert.match(evidence, /process\.platform === 'linux' && process\.arch === 'x64'/u);
   assert.match(evidence, /symlinked module/u);
   assert.match(evidence, /symlinked socket directory/u);
+  assert.match(evidence, /replacement identity for an already loaded module kind/u);
   assert.match(index, /retained-native-supervisor-linux-module-loader/u);
   assert.match(runtimeAssertion, /native binary entered runtime output/u);
   assert.doesNotMatch(

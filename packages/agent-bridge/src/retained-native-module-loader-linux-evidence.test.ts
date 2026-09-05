@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -145,6 +153,30 @@ describeLinux('retained-descriptor Linux native module loader evidence', () => {
       });
     },
   );
+
+  it('reuses only the exact retained module identity across authorized socket paths', async () => {
+    const firstRequest = request('CLIENT', clientPath);
+    const first = await load(firstRequest);
+    const secondRequest = {
+      ...firstRequest,
+      socketPath: join(ownedRoot, 'client-second.sock'),
+    };
+    const second = await load(secondRequest, authorization(secondRequest));
+
+    expect(second.nativeModule).toBe(first.nativeModule);
+  });
+
+  it('denies a replacement identity for an already loaded module kind', async () => {
+    await load(request('CLIENT', clientPath));
+    const replacementPath = join(ownedRoot, 'replacement-client.node');
+    copyFileSync(clientPath, replacementPath);
+    chmodSync(replacementPath, 0o555);
+    const replacementRequest = request('CLIENT', replacementPath);
+
+    await expect(load(replacementRequest)).rejects.toMatchObject({
+      code: 'INVALID_ATTESTATION',
+    });
+  });
 
   it('denies a symlinked module even when authority describes its target', async () => {
     const linkedPath = join(ownedRoot, 'linked-client.node');

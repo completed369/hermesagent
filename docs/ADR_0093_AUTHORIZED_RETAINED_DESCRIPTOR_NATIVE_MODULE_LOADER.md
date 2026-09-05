@@ -26,7 +26,9 @@ Add an exported but uncomposed Linux-x64 loader boundary that:
    the bytes on the retained module descriptor, and only then calls `dlopen` through
    `/proc/self/fd/<descriptor>` while the descriptor remains open;
 6. rechecks retained identity after loading, admits only the exact ADR-0089 or ADR-0091 own-data ABI,
-   and returns a frozen module/path result that still reports `NOT_CONFIGURED`; and
+   retains that descriptor for the loaded module's process lifetime, admits at most one exact
+   immutable identity for each of the two module kinds, and returns a frozen module/path result that
+   still reports `NOT_CONFIGURED`; and
 7. uses Linux-x64 evidence to compile both production sources outside the repository, load each
    through the retained-descriptor host, and deny module and socket-directory symlinks.
 
@@ -36,6 +38,9 @@ Add an exported but uncomposed Linux-x64 loader boundary that:
   discovery mechanism. No positive source is composed in the API or worker.
 - No `.node` artifact is committed or admitted to package runtime output. The existing production C
   sources remain outside the package allowlist and Linux tests compile only disposable copies.
+- Retaining at most the client and listener descriptors prevents `/proc/self/fd` number reuse from
+  aliasing dynamic-loader cache entries; an exact already-loaded identity may be reused, while a
+  replacement identity for the same kind is denied until process restart.
 - Loading authorized native code is not listener/client service composition. This change supplies no
   socket-directory provisioner, retry loop, process launcher, trust/key provisioning, provider
   access, deployment, publication, spending, or Level-4 authority.

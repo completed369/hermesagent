@@ -383,8 +383,9 @@ published and current `main` has not been deployed to private staging.
    composition exists; Codex, Hermes, and Pi remain `NOT_CONFIGURED`.
    An exported but uncomposed Linux-x64 loader now requires one exact five-minute module-and-socket
    authorization, retains `O_NOFOLLOW` descriptors, verifies module identity/owner/mode/size/digest
-   before loading through `/proc/self/fd`, binds the existing owner-only socket directory, and admits
-   only the exact listener or client ABI (ADR-0093). Linux-x64 tests load both production sources and
+   before loading through `/proc/self/fd`, retains at most one immutable descriptor per module kind,
+   binds the existing owner-only socket directory, and admits only the exact listener or client ABI
+   (ADR-0093). Linux-x64 tests load both production sources and
    deny module and directory symlinks. The authorization source and host deny by default; no native
    binary is packaged, no path is selected or provisioned, no service is composed, and runtime truth
    remains `NOT_CONFIGURED`.

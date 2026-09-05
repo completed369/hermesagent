@@ -22,6 +22,7 @@ const MAX_NATIVE_MODULE_BYTES = 8 * 1_024 * 1_024;
 const MAX_AUTHORIZATION_LIFETIME_MS = 5 * 60 * 1_000;
 // Linux UAPI value; @types/node omits this platform-specific open(2) flag.
 const LINUX_O_CLOEXEC = 0o2000000;
+const MAX_RETAINED_MODULE_DESCRIPTORS = 2;
 
 export type LinuxRetainedNativeSupervisorModuleKind = 'CLIENT' | 'LISTENER';
 
@@ -361,6 +362,41 @@ function verifyStat(
     deny('INVALID_ATTESTATION');
 }
 
+interface RetainedLoadedModule {
+  readonly descriptor: number;
+  readonly canonicalModulePath: string;
+  readonly moduleSha256: string;
+  readonly moduleIdentityReference: string;
+  readonly moduleOwnerUid: number;
+  readonly moduleOwnerGid: number;
+  readonly moduleMode: number;
+  readonly moduleSizeBytes: number;
+  readonly nativeModule:
+    | LinuxRetainedNativeSupervisorClientNativeModule
+    | LinuxRetainedNativeSupervisorListenerNativeModule;
+}
+
+const retainedLoadedModules = new Map<
+  LinuxRetainedNativeSupervisorModuleKind,
+  RetainedLoadedModule
+>();
+const retainedDlopenDescriptors = new Set<number>();
+
+function sameRetainedModule(
+  retained: RetainedLoadedModule,
+  authorization: Readonly<LinuxRetainedNativeSupervisorModuleAuthorization>,
+): boolean {
+  return (
+    retained.canonicalModulePath === authorization.canonicalModulePath &&
+    retained.moduleSha256 === authorization.moduleSha256 &&
+    retained.moduleIdentityReference === authorization.moduleIdentityReference &&
+    retained.moduleOwnerUid === authorization.moduleOwnerUid &&
+    retained.moduleOwnerGid === authorization.moduleOwnerGid &&
+    retained.moduleMode === authorization.moduleMode &&
+    retained.moduleSizeBytes === authorization.moduleSizeBytes
+  );
+}
+
 /**
  * Linux-x64 host that verifies retained descriptors before loading. Construction
  * does not select a path; the caller must supply a separately authorized record.
@@ -411,10 +447,34 @@ class RetainedDescriptorLinuxNativeSupervisorModuleHost implements LinuxRetained
         beforeLoad >= Date.parse(authorization.validUntil)
       )
         deny('INVALID_AUTHORIZATION');
+      const retained = retainedLoadedModules.get(authorization.moduleKind);
+      if (retained !== undefined) {
+        if (!sameRetainedModule(retained, authorization)) deny('INVALID_ATTESTATION');
+        return retained.nativeModule;
+      }
+      if (retainedDlopenDescriptors.size >= MAX_RETAINED_MODULE_DESCRIPTORS) deny('NOT_CONFIGURED');
       const holder: { exports: unknown } = { exports: {} };
       dlopen(holder, `/proc/self/fd/${descriptor}`, osConstants.dlopen.RTLD_NOW);
-      verifyStat(descriptor, authorization, 'MODULE');
-      return holder.exports;
+      retainedDlopenDescriptors.add(descriptor);
+      const retainedDescriptor = descriptor;
+      descriptor = undefined;
+      verifyStat(retainedDescriptor, authorization, 'MODULE');
+      const nativeModule = validateNativeModule(holder.exports, authorization.moduleKind);
+      retainedLoadedModules.set(
+        authorization.moduleKind,
+        Object.freeze({
+          descriptor: retainedDescriptor,
+          canonicalModulePath: authorization.canonicalModulePath,
+          moduleSha256: authorization.moduleSha256,
+          moduleIdentityReference: authorization.moduleIdentityReference,
+          moduleOwnerUid: authorization.moduleOwnerUid,
+          moduleOwnerGid: authorization.moduleOwnerGid,
+          moduleMode: authorization.moduleMode,
+          moduleSizeBytes: authorization.moduleSizeBytes,
+          nativeModule,
+        }),
+      );
+      return nativeModule;
     } catch (error) {
       if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
       return deny('INVALID_ATTESTATION');

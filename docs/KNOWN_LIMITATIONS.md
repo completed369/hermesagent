@@ -268,7 +268,9 @@
 > A positive load requires an exact short-lived authorization binding module digest, retained
 > device/inode identity, owner, non-writable mode, size, module kind, exact socket path, and an
 > existing identity-bound `0700` socket directory. The Linux host verifies `O_NOFOLLOW` descriptors
-> before loading through `/proc/self/fd`; both authorization and host deny by default. This is not a
+> before loading through `/proc/self/fd` and retains at most one immutable descriptor for each module
+> kind to prevent dynamic-loader aliasing after descriptor-number reuse; both authorization and host
+> deny by default. This is not a
 > configured service: there is no positive authorization source, packaged native binary, path
 > provisioner, loop, API/worker wiring, provider access, or runtime status promotion. Codex, Hermes,
 > and Pi remain **NOT_CONFIGURED**.
