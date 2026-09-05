@@ -2677,7 +2677,7 @@ test('durable native-module authorization state is grant-bound, audited, and unc
     'utf8',
   );
   const migration = readFileSync(
-    'packages/database/prisma/migrations/20260905183000_retained_native_module_authorization_trust_state/migration.sql',
+    'packages/database/prisma/migrations/20260905183000_retained_native_module_trust_state/migration.sql',
     'utf8',
   );
   const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
