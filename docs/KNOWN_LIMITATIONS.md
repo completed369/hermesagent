@@ -280,8 +280,12 @@
 > Hash-linked rotation and signed empty-snapshot revocation prevent stale snapshot replay. This is
 > still an unconfigured trust primitive: PostgreSQL snapshot-reader and checkpoint adapters now
 > preserve immutable grant-bound state and append-only audit evidence across restarts, but no root or
-> signing-key provisioner, publication path, native path provisioner, or API/worker composition
-> exists. It therefore does not load code or prove runtime connectivity.
+> signing-key provisioner, publication path, or API/worker composition exists. An uncomposed
+> Linux-x64 path provisioner can now copy one explicitly attested source module into an absent
+> owner-only `0500` path and create one absent owner-only `0700` socket directory through retained
+> parent descriptors. It denies by default, does not package or load a binary, leaves the socket
+> absent, and returns only identities for later signing. It therefore does not prove runtime
+> connectivity.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an

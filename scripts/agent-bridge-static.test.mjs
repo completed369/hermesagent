@@ -2559,6 +2559,56 @@ test('Linux retained-native module loading is descriptor-bound, authorized, and 
   assert.doesNotMatch(workerComposition, /retained-native-supervisor-linux-module-loader/u);
 });
 
+test('Linux retained-native path provisioning is owner-only, identity-bound, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-linux-path-provisioner.ts',
+    'utf8',
+  );
+  const evidence = readFileSync(
+    'packages/agent-bridge/src/retained-native-path-provisioner-linux-evidence.test.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /class DenyLinuxRetainedNativeSupervisorPathProvisionAuthority/u);
+  assert.match(source, /class DenyLinuxRetainedNativeSupervisorPathProvisionHost/u);
+  assert.match(source, /class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost/u);
+  assert.doesNotMatch(
+    source,
+    /export class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost/u,
+  );
+  assert.match(source, /class BoundedLinuxRetainedNativeSupervisorPathProvisioner/u);
+  assert.match(source, /#attempted = false/u);
+  assert.match(source, /MAX_GRANT_LIFETIME_MS = 5 \* 60 \* 1_000/u);
+  assert.match(source, /OWNER_ONLY_DIRECTORY_MODE = 0o700/u);
+  assert.match(source, /OWNER_ONLY_MODULE_MODE = 0o500/u);
+  assert.match(source, /fsConstants\.O_NOFOLLOW/u);
+  assert.match(source, /fsConstants\.O_EXCL/u);
+  assert.match(source, /`\/proc\/self\/fd\/\$\{moduleParentDescriptor\}/u);
+  assert.match(source, /sameIdentity\(moduleStat, reopenedModule\)/u);
+  assert.match(source, /sourceModulePath === canonicalModulePath/u);
+  assert.match(source, /lstatSync\(grant\.socketPath\)/u);
+  assert.match(source, /fsyncSync\(moduleDescriptor\)/u);
+  assert.match(source, /bytes\?\.fill\(0\)/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(evidence, /process\.platform === 'linux' && process\.arch === 'x64'/u);
+  assert.match(evidence, /symlinked source/u);
+  assert.match(evidence, /non-owner-only retained parent/u);
+  assert.match(evidence, /refuses an existing module without replacing its bytes/u);
+  assert.match(index, /retained-native-supervisor-linux-path-provisioner/u);
+  assert.doesNotMatch(source, /\bdlopen\b|createOwnedListener|connectUnixSocket/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process)'/u,
+  );
+  assert.doesNotMatch(apiComposition, /RetainedNativeSupervisorPathProvision/u);
+  assert.doesNotMatch(workerComposition, /RetainedNativeSupervisorPathProvision/u);
+});
+
 test('retained-native module authorization trust is signed, revocable, and uncomposed', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-module-authorization-trust-source.ts',
