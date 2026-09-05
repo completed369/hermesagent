@@ -389,6 +389,13 @@ published and current `main` has not been deployed to private staging.
    deny module and directory symlinks. The authorization source and host deny by default; no native
    binary is packaged, no path is selected or provisioned, no service is composed, and runtime truth
    remains `NOT_CONFIGURED`.
+   A separate exported but uncomposed trust source now authenticates purpose-bound five-minute
+   Ed25519 module-authorization snapshots, returns only an exact request-bound grant, and advances a
+   supervisor-instance-scoped compare-and-swap checkpoint before exposing authority (ADR-0094).
+   Adjacent hash-linked rotation, identical replay, root rotation, explicit empty-snapshot
+   revocation, rollback, gaps, equivocation, and authorization-version rollback have fail-closed
+   contracts. No positive reader, durable adapter, root/key provisioning, snapshot publication,
+   path provisioning, module loading composition, or runtime connection is configured.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
