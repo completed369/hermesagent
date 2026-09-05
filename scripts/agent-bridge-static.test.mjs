@@ -2732,7 +2732,7 @@ test('native-module issuance Level-3 authority is exact, one-shot, and uncompose
   const worker = readFileSync('apps/worker/src/worker.ts', 'utf8');
   assert.match(source, /class BoundedLevel3RetainedNativeModuleAuthorizationIssuanceAuthority/u);
   assert.match(source, /capability\.assertSource\('CONTROL_PLANE'\)/u);
-  assert.match(source, /capability\.authorityLevelFor\(context\) !== 3/u);
+  assert.match(source, /capability\.authorityLevelFor\(boundContext\) !== 3/u);
   assert.match(source, /actorKind === 'RUNTIME'/u);
   assert.match(source, /#attempted = false/u);
   assert.match(source, /AUTHORIZATION_LIFETIME_MS = 60_000/u);
