@@ -2720,6 +2720,33 @@ test('retained-native module snapshot issuance is approval-bound, keyless, and u
   );
 });
 
+test('native-module issuance Level-3 authority is exact, one-shot, and uncomposed', () => {
+  const source = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-module-authorization-issuance-authority.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const worker = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /class BoundedLevel3RetainedNativeModuleAuthorizationIssuanceAuthority/u);
+  assert.match(source, /capability\.assertSource\('CONTROL_PLANE'\)/u);
+  assert.match(source, /capability\.authorityLevelFor\(boundContext\) !== 3/u);
+  assert.match(source, /actorKind === 'RUNTIME'/u);
+  assert.match(source, /#attempted = false/u);
+  assert.match(source, /AUTHORIZATION_LIFETIME_MS = 60_000/u);
+  assert.match(source, /RETAINED_NATIVE_MODULE_SNAPSHOT_LEVEL3_AUTHORIZATION/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(source, /ApprovalsService|AcpApprovalBridgeService|authorityLevel: 4/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bfetch\s*\(|from 'node:(?:child_process|fs|net|tls)'/u,
+  );
+  assert.doesNotMatch(module, /BoundedLevel3RetainedNativeModuleAuthorizationIssuanceAuthority/u);
+  assert.doesNotMatch(worker, /BoundedLevel3RetainedNativeModuleAuthorizationIssuanceAuthority/u);
+});
+
 test('retained-native supervisor trust snapshots are fresh, revocable, and anti-rollback', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-trust-source.ts',

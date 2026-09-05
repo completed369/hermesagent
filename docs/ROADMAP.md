@@ -413,7 +413,10 @@ published and current `main` has not been deployed to private staging.
    atomically stores the snapshot with exact Level-3 approval evidence (ADR-0099). PostgreSQL rejects
    stale evidence at its own clock, fixes a supervisor chain to one workspace, binds evidence to the
    signed snapshot, and denies mutation; identical replay rechecks every snapshot and audit field.
-   The adapter remains uncomposed.
+   The adapter remains uncomposed. A separate API-side authority adapter can now turn one exact
+   trusted `CONTROL_PLANE` Level-3 capability into one domain-separated, one-minute issuance grant
+   without touching the Founder-only Level-4 workflow (ADR-0100). It rejects Level 4, runtime
+   principals, request drift, and replay, and remains absent from every composition root.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
