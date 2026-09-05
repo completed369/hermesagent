@@ -2469,6 +2469,42 @@ test('Linux retained-native client native binding is exact, ordered, and uncompo
   assert.doesNotMatch(workerComposition, /retained-native-supervisor-linux-native-client-binding/u);
 });
 
+test('production Linux retained-native client source is async, bounded, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/native/linux-retained-native-client.c',
+    'utf8',
+  );
+  const evidence = readFileSync(
+    'packages/agent-bridge/src/retained-native-client-module-linux-evidence.test.ts',
+    'utf8',
+  );
+  const packageJson = JSON.parse(readFileSync('packages/agent-bridge/package.json', 'utf8'));
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /socket\(AF_UNIX, SOCK_STREAM \| SOCK_CLOEXEC \| SOCK_NONBLOCK/u);
+  assert.match(source, /lstat\(path, &identity\)/u);
+  assert.match(source, /connect\(operation->connected_descriptor/u);
+  assert.match(source, /SO_ERROR/u);
+  assert.match(source, /napi_create_async_work/u);
+  assert.match(source, /pipe2\(operation->cancellation, O_CLOEXEC \| O_NONBLOCK\)/u);
+  assert.match(source, /poll\(descriptors, 2, -1\)/u);
+  assert.match(source, /SO_PEERCRED/u);
+  assert.match(source, /MAX_FRAME_BYTES 32768/u);
+  assert.match(source, /MSG_NOSIGNAL/u);
+  assert.match(source, /clear_bytes\(operation->bytes/u);
+  assert.match(evidence, /process\.platform === 'linux' && process\.arch === 'x64'/u);
+  assert.match(evidence, /-Werror/u);
+  assert.match(evidence, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(evidence, /code: 'INVALID_ATTESTATION'/u);
+  assert.deepEqual(packageJson.files, ['dist']);
+  assert.doesNotMatch(apiComposition, /linux-retained-native-client/u);
+  assert.doesNotMatch(workerComposition, /linux-retained-native-client/u);
+  assert.doesNotMatch(source, /runtimeConnection|CONNECTED|provider|deployment|publish|spend/u);
+});
+
 test('retained-native supervisor trust snapshots are fresh, revocable, and anti-rollback', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-trust-source.ts',

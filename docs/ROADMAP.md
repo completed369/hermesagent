@@ -374,6 +374,13 @@ published and current `main` has not been deployed to private staging.
    shape (ADR-0091). The listener adapter also cleans malformed returned listener allocations. No
    binary loader, native client implementation, path selection, worker composition, or runtime truth
    promotion is supplied.
+   A source-only Linux N-API client now implements that exact injected ABI with kernel `lstat(2)` and
+   `SO_PEERCRED` evidence, asynchronous cancellable nonblocking connect/write/read, an ordered one-shot
+   handle, bounded cleared frames, and close-on-every-path ownership (ADR-0092). Linux-x64 tests compile
+   the production source with warnings as errors and hardening flags and prove an authenticated kernel
+   exchange, pending-read cancellation, and final-stat socket substitution denial. No loader,
+   repository binary, selected path, process launcher, retry loop, worker wiring, or positive runtime
+   composition exists; Codex, Hermes, and Pi remain `NOT_CONFIGURED`.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
