@@ -269,7 +269,7 @@ export function validateLinuxRetainedNativeSupervisorModuleAuthorization(
   if (
     moduleMode > 0o777 ||
     (moduleMode & 0o222) !== 0 ||
-    (moduleMode & 0o444) !== 0o444 ||
+    (moduleMode & 0o400) !== 0o400 ||
     typeof value.moduleSha256 !== 'string' ||
     !SHA256.test(value.moduleSha256) ||
     typeof value.requestHash !== 'string' ||

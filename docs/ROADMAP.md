@@ -403,8 +403,12 @@ published and current `main` has not been deployed to private staging.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
-   forks (ADR-0097). It has no signer or private-key custody. No root/key provisioning, authorized
-   signing controller, module loading composition, service loop, or runtime connection is configured.
+   forks (ADR-0097). An uncomposed one-shot controller now exact-binds tenant/supervisor identity,
+   owner-only path attestations, a five-minute Level-3 approval, canonical module-load request hashes,
+   and an injected signer before submitting to that independent publisher (ADR-0098). It supports
+   signed empty-snapshot revocation, rejects Level 4, and has no private-key custody. No root/key
+   provisioning, production signer, approval-source composition, module loading composition, service
+   loop, or runtime connection is configured.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
