@@ -1,0 +1,274 @@
+diff --git a/dist/esm/notification.mjs b/dist/esm/notification.mjs
+index 2fe075b73a9f98ece945993ebc151f601e0d52ee..ca82ff4de87d66f78dc1cdd51ed0242360bd4ad6 100644
+--- a/dist/esm/notification.mjs
++++ b/dist/esm/notification.mjs
+@@ -15,7 +15,8 @@
+  */
+ 
+ import { EventEmitter } from 'eventemitter3';
+-import jsonLineParser from 'stream-json/jsonl/Parser.js';
++import { Transform } from 'node:stream';
++import { StringDecoder } from 'node:string_decoder';
+ import { DEFAULT_REGION } from "./helpers.mjs";
+ import { pipesetup, uriEscape } from "./internal/helper.mjs";
+ 
+@@ -121,6 +122,67 @@ export const ObjectReducedRedundancyLostObject = 's3:ReducedRedundancyLostObject
+ 
+ // put string at least so auto-complete could work
+ // TODO: type this
++const MAX_NOTIFICATION_LINE_BYTES = 1024 * 1024;
++class BoundedJsonLineParser extends Transform {
++  constructor() {
++    super({
++      readableObjectMode: true
++    });
++    this.decoder = new StringDecoder('utf8');
++    this.buffer = '';
++    this.bufferedBytes = 0;
++    this.counter = 0;
++  }
++  _transform(chunk, _encoding, callback) {
++    try {
++      this.append(typeof chunk === 'string' ? chunk : this.decoder.write(chunk));
++      callback();
++    } catch (error) {
++      callback(error instanceof Error ? error : new Error('Invalid notification JSON line'));
++    }
++  }
++  _flush(callback) {
++    try {
++      this.append(this.decoder.end());
++      if (this.buffer) {
++        this.push({
++          key: this.counter++,
++          value: JSON.parse(this.buffer)
++        });
++      }
++      this.buffer = '';
++      this.bufferedBytes = 0;
++      callback();
++    } catch (error) {
++      callback(error instanceof Error ? error : new Error('Invalid notification JSON line'));
++    }
++  }
++  append(text) {
++    if (!text) return;
++    this.buffer += text;
++    this.bufferedBytes += Buffer.byteLength(text);
++    let newline = this.buffer.indexOf('\n');
++    while (newline >= 0) {
++      const line = this.buffer.slice(0, newline);
++      this.buffer = this.buffer.slice(newline + 1);
++      const lineBytes = Buffer.byteLength(line);
++      this.bufferedBytes -= lineBytes + 1;
++      if (lineBytes > MAX_NOTIFICATION_LINE_BYTES) {
++        throw new Error('Notification JSON line exceeds the maximum size');
++      }
++      if (line) {
++        this.push({
++          key: this.counter++,
++          value: JSON.parse(line)
++        });
++      }
++      newline = this.buffer.indexOf('\n');
++    }
++    if (this.bufferedBytes > MAX_NOTIFICATION_LINE_BYTES) {
++      throw new Error('Notification JSON line exceeds the maximum size');
++    }
++  }
++}
+ // Poll for notifications, used in #listenBucketNotification.
+ // Listening constitutes repeatedly requesting s3 whether or not any
+ // changes have occurred.
+@@ -176,7 +238,7 @@ export class NotificationPoller extends EventEmitter {
+       bucketName: this.bucketName,
+       query
+     }, '', [200], region).then(response => {
+-      const asm = jsonLineParser.make();
++      const asm = new BoundedJsonLineParser();
+       pipesetup(response, asm).on('data', data => {
+         // Data is flushed periodically (every 5 seconds), so we should
+         // handle it after flushing from the JSON parser.
+diff --git a/dist/main/notification.js b/dist/main/notification.js
+index 8d8e8b389bc313de072c603b302e4c39d373d345..a1c2fc3f47ec403ed8956367c401101316eb7326 100644
+--- a/dist/main/notification.js
++++ b/dist/main/notification.js
+@@ -4,7 +4,8 @@ Object.defineProperty(exports, "__esModule", {
+   value: true
+ });
+ var _eventemitter = require("eventemitter3");
+-var _Parser = require("stream-json/jsonl/Parser.js");
++var _stream = require("node:stream");
++var _string_decoder = require("node:string_decoder");
+ var _helpers = require("./helpers.js");
+ var _helper = require("./internal/helper.js");
+ /*
+@@ -141,6 +142,67 @@ const ObjectReducedRedundancyLostObject = 's3:ReducedRedundancyLostObject';
+ 
+ // TODO: type this
+ exports.ObjectReducedRedundancyLostObject = ObjectReducedRedundancyLostObject;
++const MAX_NOTIFICATION_LINE_BYTES = 1024 * 1024;
++class BoundedJsonLineParser extends _stream.Transform {
++  constructor() {
++    super({
++      readableObjectMode: true
++    });
++    this.decoder = new _string_decoder.StringDecoder('utf8');
++    this.buffer = '';
++    this.bufferedBytes = 0;
++    this.counter = 0;
++  }
++  _transform(chunk, _encoding, callback) {
++    try {
++      this.append(typeof chunk === 'string' ? chunk : this.decoder.write(chunk));
++      callback();
++    } catch (error) {
++      callback(error instanceof Error ? error : new Error('Invalid notification JSON line'));
++    }
++  }
++  _flush(callback) {
++    try {
++      this.append(this.decoder.end());
++      if (this.buffer) {
++        this.push({
++          key: this.counter++,
++          value: JSON.parse(this.buffer)
++        });
++      }
++      this.buffer = '';
++      this.bufferedBytes = 0;
++      callback();
++    } catch (error) {
++      callback(error instanceof Error ? error : new Error('Invalid notification JSON line'));
++    }
++  }
++  append(text) {
++    if (!text) return;
++    this.buffer += text;
++    this.bufferedBytes += Buffer.byteLength(text);
++    let newline = this.buffer.indexOf('\n');
++    while (newline >= 0) {
++      const line = this.buffer.slice(0, newline);
++      this.buffer = this.buffer.slice(newline + 1);
++      const lineBytes = Buffer.byteLength(line);
++      this.bufferedBytes -= lineBytes + 1;
++      if (lineBytes > MAX_NOTIFICATION_LINE_BYTES) {
++        throw new Error('Notification JSON line exceeds the maximum size');
++      }
++      if (line) {
++        this.push({
++          key: this.counter++,
++          value: JSON.parse(line)
++        });
++      }
++      newline = this.buffer.indexOf('\n');
++    }
++    if (this.bufferedBytes > MAX_NOTIFICATION_LINE_BYTES) {
++      throw new Error('Notification JSON line exceeds the maximum size');
++    }
++  }
++}
+ // Poll for notifications, used in #listenBucketNotification.
+ // Listening constitutes repeatedly requesting s3 whether or not any
+ // changes have occurred.
+@@ -196,7 +258,7 @@ class NotificationPoller extends _eventemitter.EventEmitter {
+       bucketName: this.bucketName,
+       query
+     }, '', [200], region).then(response => {
+-      const asm = _Parser.make();
++      const asm = new BoundedJsonLineParser();
+       (0, _helper.pipesetup)(response, asm).on('data', data => {
+         // Data is flushed periodically (every 5 seconds), so we should
+         // handle it after flushing from the JSON parser.
+diff --git a/src/notification.ts b/src/notification.ts
+index 64c24112d225a234d3b5acf06043020e9fe414af..cc207fdf23ccb3cc6fe9f788769a173d8d654fe2 100644
+--- a/src/notification.ts
++++ b/src/notification.ts
+@@ -15,7 +15,8 @@
+  */
+ 
+ import { EventEmitter } from 'eventemitter3'
+-import jsonLineParser from 'stream-json/jsonl/Parser.js'
++import { Transform, type TransformCallback } from 'node:stream'
++import { StringDecoder } from 'node:string_decoder'
+ 
+ import { DEFAULT_REGION } from './helpers.ts'
+ import type { TypedClient } from './internal/client.ts'
+@@ -147,6 +148,68 @@ export type NotificationEvent =
+ 
+ // TODO: type this
+ export type NotificationRecord = unknown
++
++const MAX_NOTIFICATION_LINE_BYTES = 1024 * 1024
++
++class BoundedJsonLineParser extends Transform {
++  private readonly decoder = new StringDecoder('utf8')
++  private buffer = ''
++  private bufferedBytes = 0
++  private counter = 0
++
++  constructor() {
++    super({ readableObjectMode: true })
++  }
++
++  override _transform(chunk: Buffer | string, _encoding: BufferEncoding, callback: TransformCallback) {
++    try {
++      this.append(typeof chunk === 'string' ? chunk : this.decoder.write(chunk))
++      callback()
++    } catch (error) {
++      callback(error instanceof Error ? error : new Error('Invalid notification JSON line'))
++    }
++  }
++
++  override _flush(callback: TransformCallback) {
++    try {
++      this.append(this.decoder.end())
++      if (this.buffer) {
++        this.push({ key: this.counter++, value: JSON.parse(this.buffer) })
++      }
++      this.buffer = ''
++      this.bufferedBytes = 0
++      callback()
++    } catch (error) {
++      callback(error instanceof Error ? error : new Error('Invalid notification JSON line'))
++    }
++  }
++
++  private append(text: string) {
++    if (!text) return
++    this.buffer += text
++    this.bufferedBytes += Buffer.byteLength(text)
++
++    let newline = this.buffer.indexOf('\n')
++    while (newline >= 0) {
++      const line = this.buffer.slice(0, newline)
++      this.buffer = this.buffer.slice(newline + 1)
++      const lineBytes = Buffer.byteLength(line)
++      this.bufferedBytes -= lineBytes + 1
++      if (lineBytes > MAX_NOTIFICATION_LINE_BYTES) {
++        throw new Error('Notification JSON line exceeds the maximum size')
++      }
++      if (line) {
++        this.push({ key: this.counter++, value: JSON.parse(line) })
++      }
++      newline = this.buffer.indexOf('\n')
++    }
++
++    if (this.bufferedBytes > MAX_NOTIFICATION_LINE_BYTES) {
++      throw new Error('Notification JSON line exceeds the maximum size')
++    }
++  }
++}
++
+ // Poll for notifications, used in #listenBucketNotification.
+ // Listening constitutes repeatedly requesting s3 whether or not any
+ // changes have occurred.
+@@ -216,7 +279,7 @@ export class NotificationPoller extends EventEmitter<{
+ 
+     this.client.makeRequestAsync({ method, bucketName: this.bucketName, query }, '', [200], region).then(
+       (response) => {
+-        const asm = jsonLineParser.make()
++        const asm = new BoundedJsonLineParser()
+ 
+         pipesetup(response, asm)
+           .on('data', (data) => {
