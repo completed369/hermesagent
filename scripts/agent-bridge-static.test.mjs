@@ -2424,6 +2424,51 @@ test('production Linux retained-native listener source is async, bounded, and un
   assert.doesNotMatch(source, /runtimeConnection|CONNECTED|provider|deployment|publish|spend/u);
 });
 
+test('Linux retained-native client native binding is exact, ordered, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-linux-native-client-binding.ts',
+    'utf8',
+  );
+  const listener = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-linux-native-listener-binding.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /class DenyLinuxRetainedNativeSupervisorClientNativeModule/u);
+  assert.match(source, /class BoundedLinuxRetainedNativeSupervisorNativeClientBinding/u);
+  assert.match(
+    source,
+    /const MODULE_KEYS = \[[\s\S]*'connectUnixSocket'[\s\S]*'lstatUnixSocket'[\s\S]*'platform'/u,
+  );
+  assert.match(
+    source,
+    /const CONNECTION_KEYS = \[[\s\S]*'peerCredentials'[\s\S]*'readToEof'[\s\S]*'writeAndShutdown'/u,
+  );
+  assert.match(source, /value\.lstatUnixSocket[\s\S]*\.bind\(native\)/u);
+  assert.match(source, /value\.connectUnixSocket[\s\S]*\.bind\(native\)/u);
+  assert.match(source, /this\.#lstatCount !== 1[\s\S]*!this\.#responseRead/u);
+  assert.match(source, /maximumBytes !== MAX_RETAINED_NATIVE_SUPERVISOR_IPC_FRAME_BYTES/u);
+  assert.match(source, /ownedFrame\.fill\(0\)/u);
+  assert.match(source, /clearUint8Array\.call\(input, 0\)/u);
+  assert.match(source, /this\.#connection\?\.clearDeliveredResponse\(\)/u);
+  assert.match(source, /cleanupMalformedConnection/u);
+  assert.match(listener, /cleanupMalformedOwnedListener/u);
+  assert.match(index, /retained-native-supervisor-linux-native-client-binding/u);
+  assert.doesNotMatch(
+    source,
+    /from\s+['"]node:(?:child_process|cluster|fs|module|net|os|http|https|tls|dgram|worker_threads)['"]/u,
+  );
+  assert.doesNotMatch(source, /(?:require|import)\s*\(/u);
+  assert.doesNotMatch(source, /runtimeConnection:\s*'CONNECTED'/u);
+  assert.doesNotMatch(apiComposition, /retained-native-supervisor-linux-native-client-binding/u);
+  assert.doesNotMatch(workerComposition, /retained-native-supervisor-linux-native-client-binding/u);
+});
+
 test('retained-native supervisor trust snapshots are fresh, revocable, and anti-rollback', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-trust-source.ts',

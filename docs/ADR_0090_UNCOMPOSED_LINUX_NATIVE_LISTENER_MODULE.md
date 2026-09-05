@@ -47,6 +47,6 @@ createOwnedListener }` and validates the fixed creation request again at the sys
 ## Consequences
 
 The first production-native listener implementation is now reviewable and reproducibly exercised
-behind the deny-default ABI without activating it. The next safe slice is an equally bounded Linux
-native client implementation behind the existing ADR-0085 client contract, still injected,
-unloaded, pathless, and uncomposed.
+behind the deny-default ABI without activating it. The next safe slice is an exact, captured native
+client ABI boundary around the existing ADR-0085 client contract before adding its Linux N-API
+implementation, still injected, unloaded, pathless, and uncomposed.
