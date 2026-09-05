@@ -41,7 +41,7 @@ function authorization(
     moduleIdentityReference: 'linux:dev-1:ino-2',
     moduleOwnerUid: 1000,
     moduleOwnerGid: 1000,
-    moduleMode: 0o555,
+    moduleMode: 0o500,
     moduleSizeBytes: 64_000,
     socketDirectory: '/run/ventureos/supervisor',
     socketDirectoryIdentityReference: 'linux:dev-3:ino-4',

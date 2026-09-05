@@ -287,8 +287,12 @@
 > absent, and returns only identities for later signing. An uncomposed publisher can now append only
 > snapshots admitted by that same Ed25519 verifier, and PostgreSQL serializes each supervisor chain
 > to bootstrap, exact latest replay, or one adjacent hash-linked successor. It cannot sign and has
-> no root/key custody, route, worker, or service composition. These boundaries therefore do not
-> prove runtime connectivity.
+> no root/key custody, route, worker, or service composition. An uncomposed one-shot controller can
+> now construct canonical grants from those owner-only attestations only after an exact tenant- and
+> supervisor-bound five-minute Level-3 approval, delegate signing through a deny-default port, and
+> submit the result to the independent authenticator/publisher. It has no production signer, private
+> key, root/key provisioning, approval-source composition, or service owner. These boundaries
+> therefore do not prove runtime connectivity.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an

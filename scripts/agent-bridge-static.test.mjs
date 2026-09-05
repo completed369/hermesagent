@@ -2657,6 +2657,52 @@ test('retained-native module authorization trust is signed, revocable, and uncom
   );
 });
 
+test('retained-native module snapshot issuance is approval-bound, keyless, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-module-authorization-controller.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(
+    source,
+    /class DenyRetainedNativeSupervisorModuleAuthorizationSnapshotIssuanceAuthority/u,
+  );
+  assert.match(source, /class DenyRetainedNativeSupervisorModuleAuthorizationSnapshotSigner/u);
+  assert.match(
+    source,
+    /class DenyRetainedNativeSupervisorModuleAuthorizationSnapshotPublicationSink/u,
+  );
+  assert.match(
+    source,
+    /class BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController/u,
+  );
+  assert.match(source, /#attempted = false/u);
+  assert.match(source, /MAX_LIFETIME_MS = 5 \* 60 \* 1_000/u);
+  assert.match(source, /value\.authorityLevel !== 3/u);
+  assert.match(source, /value\.moduleMode !== 0o500/u);
+  assert.match(source, /value\.socketDirectoryMode !== 0o700/u);
+  assert.match(source, /linuxRetainedNativeSupervisorModuleLoadRequestHash/u);
+  assert.match(source, /approvalEvidenceHash/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(index, /retained-native-supervisor-module-authorization-controller/u);
+  assert.doesNotMatch(source, /from 'node:(?:child_process|fs|net|tls)'/u);
+  assert.doesNotMatch(source, /process\.env|\bCONNECTED\b|provider|deployment|spend/u);
+  assert.doesNotMatch(source, /createPrivateKey|generateKeyPair|privateKey/u);
+  assert.doesNotMatch(
+    apiComposition,
+    /BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController/u,
+  );
+});
+
 test('retained-native supervisor trust snapshots are fresh, revocable, and anti-rollback', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-trust-source.ts',
