@@ -527,6 +527,11 @@ export class BoundedRetainedNativeSupervisorModuleAuthorizationTrustSource imple
         candidate.socketPath === validatedRequest.socketPath,
     );
     if (authorization === undefined) deny();
+    if (
+      Date.parse(authorization.validFrom) > finishedAt ||
+      Date.parse(authorization.validUntil) <= finishedAt
+    )
+      deny();
     return authorization;
   }
 

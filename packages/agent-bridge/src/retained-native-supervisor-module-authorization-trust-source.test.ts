@@ -227,6 +227,13 @@ describe('retained-native module authorization trust source', () => {
           authorizations: [{ ...value.authorization, validUntil: '2030-01-01T12:03:00.000Z' }],
         }),
     ],
+    [
+      'expired enclosed grant',
+      (value: Fixture) =>
+        snapshot(value, {
+          authorizations: [{ ...value.authorization, validUntil: '2030-01-01T12:00:00.000Z' }],
+        }),
+    ],
   ] as const)('denies %s', async (_name, mutate) => {
     const value = fixture();
     await expect(
