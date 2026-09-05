@@ -23,21 +23,21 @@ CREATE OR REPLACE FUNCTION ventureos_valid_retained_native_module_authorizations
 )
 RETURNS BOOLEAN LANGUAGE plpgsql IMMUTABLE STRICT AS $$
 DECLARE
-  authorization JSONB;
+  grant_value JSONB;
   position INTEGER := 0;
   prior_kind TEXT := NULL;
 BEGIN
   IF jsonb_typeof(value) <> 'array' OR jsonb_array_length(value) > 2 THEN RETURN FALSE; END IF;
-  FOR authorization IN SELECT item FROM jsonb_array_elements(value) AS item LOOP
+  FOR grant_value IN SELECT item FROM jsonb_array_elements(value) AS item LOOP
     position := position + 1;
-    IF jsonb_typeof(authorization) <> 'object' OR NOT (authorization ?& ARRAY[
+    IF jsonb_typeof(grant_value) <> 'object' OR NOT (grant_value ?& ARRAY[
       'schemaVersion', 'platform', 'architecture', 'moduleKind', 'canonicalModulePath',
       'socketPath', 'runtimeConnection', 'authorizationId', 'authorizationVersion',
       'requestHash', 'validFrom', 'validUntil', 'moduleSha256', 'moduleIdentityReference',
       'moduleOwnerUid', 'moduleOwnerGid', 'moduleMode', 'moduleSizeBytes', 'socketDirectory',
       'socketDirectoryIdentityReference', 'socketDirectoryOwnerUid', 'socketDirectoryOwnerGid',
       'socketDirectoryMode'
-    ]) OR (authorization - ARRAY[
+    ]) OR (grant_value - ARRAY[
       'schemaVersion', 'platform', 'architecture', 'moduleKind', 'canonicalModulePath',
       'socketPath', 'runtimeConnection', 'authorizationId', 'authorizationVersion',
       'requestHash', 'validFrom', 'validUntil', 'moduleSha256', 'moduleIdentityReference',
@@ -45,15 +45,15 @@ BEGIN
       'socketDirectoryIdentityReference', 'socketDirectoryOwnerUid', 'socketDirectoryOwnerGid',
       'socketDirectoryMode'
     ]) <> '{}'::JSONB OR
-      jsonb_typeof(authorization->'schemaVersion') IS DISTINCT FROM 'number' OR
-      jsonb_typeof(authorization->'authorizationVersion') IS DISTINCT FROM 'number' OR
-      jsonb_typeof(authorization->'moduleOwnerUid') IS DISTINCT FROM 'number' OR
-      jsonb_typeof(authorization->'moduleOwnerGid') IS DISTINCT FROM 'number' OR
-      jsonb_typeof(authorization->'moduleMode') IS DISTINCT FROM 'number' OR
-      jsonb_typeof(authorization->'moduleSizeBytes') IS DISTINCT FROM 'number' OR
-      jsonb_typeof(authorization->'socketDirectoryOwnerUid') IS DISTINCT FROM 'number' OR
-      jsonb_typeof(authorization->'socketDirectoryOwnerGid') IS DISTINCT FROM 'number' OR
-      jsonb_typeof(authorization->'socketDirectoryMode') IS DISTINCT FROM 'number' OR
+      jsonb_typeof(grant_value->'schemaVersion') IS DISTINCT FROM 'number' OR
+      jsonb_typeof(grant_value->'authorizationVersion') IS DISTINCT FROM 'number' OR
+      jsonb_typeof(grant_value->'moduleOwnerUid') IS DISTINCT FROM 'number' OR
+      jsonb_typeof(grant_value->'moduleOwnerGid') IS DISTINCT FROM 'number' OR
+      jsonb_typeof(grant_value->'moduleMode') IS DISTINCT FROM 'number' OR
+      jsonb_typeof(grant_value->'moduleSizeBytes') IS DISTINCT FROM 'number' OR
+      jsonb_typeof(grant_value->'socketDirectoryOwnerUid') IS DISTINCT FROM 'number' OR
+      jsonb_typeof(grant_value->'socketDirectoryOwnerGid') IS DISTINCT FROM 'number' OR
+      jsonb_typeof(grant_value->'socketDirectoryMode') IS DISTINCT FROM 'number' OR
       EXISTS (
         SELECT 1 FROM unnest(ARRAY[
           'platform', 'architecture', 'moduleKind', 'canonicalModulePath', 'socketPath',
@@ -61,38 +61,38 @@ BEGIN
           'moduleSha256', 'moduleIdentityReference', 'socketDirectory',
           'socketDirectoryIdentityReference'
         ]) AS field_name
-        WHERE jsonb_typeof(authorization->field_name) IS DISTINCT FROM 'string'
+        WHERE jsonb_typeof(grant_value->field_name) IS DISTINCT FROM 'string'
       ) OR
-      authorization->>'schemaVersion' <> '1' OR authorization->>'platform' <> 'LINUX' OR
-      authorization->>'architecture' <> 'X64' OR
-      authorization->>'moduleKind' NOT IN ('CLIENT', 'LISTENER') OR
-      authorization->>'runtimeConnection' <> 'NOT_CONFIGURED' OR
-      authorization->>'authorizationId' !~ '^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$' OR
-      authorization->>'requestHash' !~ '^[a-f0-9]{64}$' OR
-      authorization->>'moduleSha256' !~ '^[a-f0-9]{64}$' OR
-      authorization->>'canonicalModulePath' !~ '^/[A-Za-z0-9._/-]+[.]node$' OR
-      authorization->>'socketPath' !~ '^/[A-Za-z0-9._/-]+[.]sock$' OR
-      authorization->>'socketDirectory' !~ '^/[A-Za-z0-9._/-]+$' OR
-      authorization->>'moduleIdentityReference' !~ '^linux:dev-[a-f0-9]+:ino-[a-f0-9]+$' OR
-      authorization->>'socketDirectoryIdentityReference' !~ '^linux:dev-[a-f0-9]+:ino-[a-f0-9]+$' OR
-      (authorization->>'authorizationVersion')::INTEGER NOT BETWEEN 1 AND 1000000 OR
-      (authorization->>'moduleOwnerUid')::INTEGER < 0 OR
-      (authorization->>'moduleOwnerGid')::INTEGER < 0 OR
-      (authorization->>'socketDirectoryOwnerUid')::INTEGER < 0 OR
-      (authorization->>'socketDirectoryOwnerGid')::INTEGER < 0 OR
-      (authorization->>'moduleMode')::INTEGER < 0 OR
-      (authorization->>'moduleSizeBytes')::INTEGER NOT BETWEEN 1 AND 8388608 OR
-      (authorization->>'socketDirectoryMode')::INTEGER <> 448 OR
-      (authorization->>'validUntil')::TIMESTAMPTZ <= (authorization->>'validFrom')::TIMESTAMPTZ OR
-      (authorization->>'validUntil')::TIMESTAMPTZ >
-        (authorization->>'validFrom')::TIMESTAMPTZ + INTERVAL '5 minutes' OR
-      (authorization->>'validFrom')::TIMESTAMPTZ < snapshot_issued_at OR
-      (authorization->>'validUntil')::TIMESTAMPTZ > snapshot_valid_until OR
-      prior_kind = authorization->>'moduleKind' OR
-      (prior_kind = 'LISTENER' AND authorization->>'moduleKind' = 'CLIENT') THEN
+      grant_value->>'schemaVersion' <> '1' OR grant_value->>'platform' <> 'LINUX' OR
+      grant_value->>'architecture' <> 'X64' OR
+      grant_value->>'moduleKind' NOT IN ('CLIENT', 'LISTENER') OR
+      grant_value->>'runtimeConnection' <> 'NOT_CONFIGURED' OR
+      grant_value->>'authorizationId' !~ '^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$' OR
+      grant_value->>'requestHash' !~ '^[a-f0-9]{64}$' OR
+      grant_value->>'moduleSha256' !~ '^[a-f0-9]{64}$' OR
+      grant_value->>'canonicalModulePath' !~ '^/[A-Za-z0-9._/-]+[.]node$' OR
+      grant_value->>'socketPath' !~ '^/[A-Za-z0-9._/-]+[.]sock$' OR
+      grant_value->>'socketDirectory' !~ '^/[A-Za-z0-9._/-]+$' OR
+      grant_value->>'moduleIdentityReference' !~ '^linux:dev-[a-f0-9]+:ino-[a-f0-9]+$' OR
+      grant_value->>'socketDirectoryIdentityReference' !~ '^linux:dev-[a-f0-9]+:ino-[a-f0-9]+$' OR
+      (grant_value->>'authorizationVersion')::INTEGER NOT BETWEEN 1 AND 1000000 OR
+      (grant_value->>'moduleOwnerUid')::INTEGER < 0 OR
+      (grant_value->>'moduleOwnerGid')::INTEGER < 0 OR
+      (grant_value->>'socketDirectoryOwnerUid')::INTEGER < 0 OR
+      (grant_value->>'socketDirectoryOwnerGid')::INTEGER < 0 OR
+      (grant_value->>'moduleMode')::INTEGER < 0 OR
+      (grant_value->>'moduleSizeBytes')::INTEGER NOT BETWEEN 1 AND 8388608 OR
+      (grant_value->>'socketDirectoryMode')::INTEGER <> 448 OR
+      (grant_value->>'validUntil')::TIMESTAMPTZ <= (grant_value->>'validFrom')::TIMESTAMPTZ OR
+      (grant_value->>'validUntil')::TIMESTAMPTZ >
+        (grant_value->>'validFrom')::TIMESTAMPTZ + INTERVAL '5 minutes' OR
+      (grant_value->>'validFrom')::TIMESTAMPTZ < snapshot_issued_at OR
+      (grant_value->>'validUntil')::TIMESTAMPTZ > snapshot_valid_until OR
+      prior_kind = grant_value->>'moduleKind' OR
+      (prior_kind = 'LISTENER' AND grant_value->>'moduleKind' = 'CLIENT') THEN
       RETURN FALSE;
     END IF;
-    prior_kind := authorization->>'moduleKind';
+    prior_kind := grant_value->>'moduleKind';
   END LOOP;
   RETURN position = jsonb_array_length(value);
 EXCEPTION WHEN OTHERS THEN
