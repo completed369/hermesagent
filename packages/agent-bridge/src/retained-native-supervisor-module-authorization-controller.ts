@@ -4,7 +4,6 @@ import { canonicalJson } from './codec';
 import {
   linuxRetainedNativeSupervisorModuleLoadRequestHash,
   validateLinuxRetainedNativeSupervisorModuleAuthorization,
-  type LinuxRetainedNativeSupervisorModuleAuthorization,
   type LinuxRetainedNativeSupervisorModuleLoadRequest,
 } from './retained-native-supervisor-linux-module-loader';
 import type { ProvisionedLinuxRetainedNativeSupervisorPaths } from './retained-native-supervisor-linux-path-provisioner';
@@ -119,12 +118,71 @@ export class DenyRetainedNativeSupervisorModuleAuthorizationSnapshotSigner imple
 }
 
 export interface RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationSink {
-  publish(input: unknown): Promise<'APPENDED' | 'REPLAYED'>;
+  publish(
+    input: unknown,
+    issuance: AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance,
+  ): Promise<'APPENDED' | 'REPLAYED'>;
 }
 
 export class DenyRetainedNativeSupervisorModuleAuthorizationSnapshotPublicationSink implements RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationSink {
-  async publish(_input: unknown): Promise<never> {
+  async publish(
+    _input: unknown,
+    _issuance: AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance,
+  ): Promise<never> {
     return deny('NOT_CONFIGURED');
+  }
+}
+
+export interface RetainedNativeSupervisorModuleAuthorizationSnapshotIssuanceEvidence {
+  readonly schemaVersion: 1;
+  readonly workspaceId: string;
+  readonly supervisorInstanceId: string;
+  readonly snapshotId: string;
+  readonly snapshotVersion: number;
+  readonly signerKeyId: string;
+  readonly snapshotHash: string;
+  readonly issuanceRequestHash: string;
+  readonly issuanceAuthorizationId: string;
+  readonly authorityRequestHash: string;
+  readonly approvalId: string;
+  readonly approvalEvidenceHash: string;
+  readonly authorizedByReference: string;
+  readonly authorityLevel: 3;
+  readonly authorizedFrom: string;
+  readonly authorizedUntil: string;
+  readonly runtimeConnection: 'NOT_CONFIGURED';
+}
+
+const AUTHENTICATED_SNAPSHOT_ISSUANCE = Symbol(
+  'authenticated-retained-native-module-snapshot-issuance',
+);
+
+export class AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance {
+  readonly #token: symbol;
+
+  constructor(
+    token: symbol,
+    readonly evidence: Readonly<RetainedNativeSupervisorModuleAuthorizationSnapshotIssuanceEvidence>,
+  ) {
+    if (token !== AUTHENTICATED_SNAPSHOT_ISSUANCE) deny('INVALID_AUTHORIZATION');
+    this.#token = token;
+    Object.freeze(this);
+  }
+
+  static assertAuthenticated(
+    value: unknown,
+  ): asserts value is AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance {
+    try {
+      if (
+        !(
+          value instanceof AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance
+        ) ||
+        value.#token !== AUTHENTICATED_SNAPSHOT_ISSUANCE
+      )
+        deny('INVALID_AUTHORIZATION');
+    } catch {
+      deny('INVALID_AUTHORIZATION');
+    }
   }
 }
 
@@ -639,9 +697,31 @@ export class BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotControlle
       ...payload,
       signature,
     });
+    const issuance = new AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance(
+      AUTHENTICATED_SNAPSHOT_ISSUANCE,
+      Object.freeze({
+        schemaVersion: 1,
+        workspaceId: request.workspaceId,
+        supervisorInstanceId: request.supervisorInstanceId,
+        snapshotId: request.snapshotId,
+        snapshotVersion: request.snapshotVersion,
+        signerKeyId: request.signerKeyId,
+        snapshotHash: snapshotPayloadHash,
+        issuanceRequestHash: authorityRequest.issuanceRequestHash,
+        issuanceAuthorizationId: approved.issuanceAuthorizationId,
+        authorityRequestHash: approved.authorityRequestHash,
+        approvalId: approved.approvalId,
+        approvalEvidenceHash: approved.approvalEvidenceHash,
+        authorizedByReference: approved.authorizedByReference,
+        authorityLevel: 3,
+        authorizedFrom: approved.validFrom,
+        authorizedUntil: approved.validUntil,
+        runtimeConnection: 'NOT_CONFIGURED',
+      }),
+    );
     let publication: 'APPENDED' | 'REPLAYED';
     try {
-      publication = await this.publisher.publish(snapshot);
+      publication = await this.publisher.publish(snapshot, issuance);
     } catch (error) {
       if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
       return deny('NOT_CONFIGURED');

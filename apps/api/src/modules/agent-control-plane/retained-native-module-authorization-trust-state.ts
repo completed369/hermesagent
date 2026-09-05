@@ -1,9 +1,11 @@
 import { Prisma } from '@ventureos/database';
 import {
+  AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication,
   AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot,
   canonicalJson,
 } from '@ventureos/agent-bridge';
 import type {
+  RetainedNativeSupervisorModuleAuthorizationAuditedPublicationStore,
   RetainedNativeSupervisorModuleAuthorizationCheckpoint,
   RetainedNativeSupervisorModuleAuthorizationCheckpointStore,
   RetainedNativeSupervisorModuleAuthorizationSnapshotReader,
@@ -25,6 +27,23 @@ interface SnapshotRow {
 
 interface PublishedSnapshotRow extends SnapshotRow {
   readonly snapshotHash: string;
+}
+
+interface AuditedPublishedSnapshotRow extends PublishedSnapshotRow {
+  readonly workspaceId: string;
+  readonly supervisorInstanceId: string;
+  readonly snapshotVersion: number;
+  readonly snapshotId: string;
+  readonly signerKeyId: string;
+  readonly issuanceRequestHash: string;
+  readonly issuanceAuthorizationId: string;
+  readonly authorityRequestHash: string;
+  readonly approvalId: string;
+  readonly approvalEvidenceHash: string;
+  readonly authorizedByReference: string;
+  readonly authorityLevel: number;
+  readonly authorizedFrom: Date;
+  readonly authorizedUntil: Date;
 }
 
 interface CheckpointRow {
@@ -194,6 +213,101 @@ export class PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore i
       existing.length !== 1 ||
       existing[0]?.snapshotHash !== snapshotHash ||
       canonicalJson(existing[0]?.snapshot) !== canonicalJson(snapshot)
+    )
+      deny();
+    return 'REPLAYED';
+  }
+}
+
+/** Atomically persists an authenticated snapshot and its controller-minted approval evidence. */
+export class PostgresRetainedNativeModuleAuthorizationAuditedPublicationStore implements RetainedNativeSupervisorModuleAuthorizationAuditedPublicationStore {
+  constructor(private readonly database: RetainedNativeModuleAuthorizationTrustSqlClient) {
+    Object.freeze(this);
+  }
+
+  async append(
+    publication: AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication,
+  ): Promise<'APPENDED' | 'REPLAYED'> {
+    AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication.assertAuthenticated(
+      publication,
+    );
+    const { snapshot, snapshotHash } = publication.snapshot;
+    const evidence = publication.issuance;
+    const rows = await this.database.$queryRaw<readonly { readonly applied: number }[]>(Prisma.sql`
+      WITH inserted_snapshot AS (
+        INSERT INTO "acp_retained_native_module_authorization_snapshots" (
+          "supervisorInstanceId", "snapshotVersion", "snapshotId", "snapshotHash", "signerKeyId",
+          "previousSnapshotHash", "snapshot", "issuedAt", "validUntil"
+        ) VALUES (
+          ${snapshot.supervisorInstanceId}, ${snapshot.snapshotVersion}, ${snapshot.snapshotId},
+          ${snapshotHash}, ${snapshot.signerKeyId}, ${snapshot.previousSnapshotHash},
+          CAST(${JSON.stringify(snapshot)} AS JSONB), ${new Date(snapshot.issuedAt)},
+          ${new Date(snapshot.validUntil)}
+        ) ON CONFLICT ("supervisorInstanceId", "snapshotVersion") DO NOTHING
+        RETURNING 1
+      ), inserted_evidence AS (
+        INSERT INTO "acp_retained_native_module_authorization_issuance_evidence" (
+          "workspaceId", "supervisorInstanceId", "snapshotVersion", "snapshotId", "snapshotHash",
+          "signerKeyId", "issuanceRequestHash", "issuanceAuthorizationId",
+          "authorityRequestHash", "approvalId", "approvalEvidenceHash", "authorizedByReference",
+          "authorityLevel", "authorizedFrom", "authorizedUntil"
+        ) SELECT
+          CAST(${evidence.workspaceId} AS UUID), ${evidence.supervisorInstanceId},
+          ${evidence.snapshotVersion}, ${evidence.snapshotId}, ${evidence.snapshotHash},
+          ${evidence.signerKeyId}, ${evidence.issuanceRequestHash},
+          ${evidence.issuanceAuthorizationId}, ${evidence.authorityRequestHash},
+          ${evidence.approvalId}, ${evidence.approvalEvidenceHash},
+          ${evidence.authorizedByReference}, ${evidence.authorityLevel},
+          ${new Date(evidence.authorizedFrom)}, ${new Date(evidence.authorizedUntil)}
+        FROM inserted_snapshot
+        RETURNING 1
+      )
+      SELECT CASE WHEN EXISTS (SELECT 1 FROM inserted_evidence) THEN 1 ELSE 0 END AS "applied"
+    `);
+    if (!Array.isArray(rows) || rows.length !== 1 || ![0, 1].includes(rows[0]?.applied ?? -1))
+      deny();
+    if (rows[0]!.applied === 1) return 'APPENDED';
+
+    // Re-read after a conflicting insert becomes visible. Both the signed snapshot and every
+    // approval-bound audit field must be identical before returning replay.
+    const existing = await this.database.$queryRaw<readonly AuditedPublishedSnapshotRow[]>(
+      Prisma.sql`
+        SELECT s."snapshotHash", s."snapshot", e."workspaceId"::TEXT AS "workspaceId",
+          e."supervisorInstanceId", e."snapshotVersion", e."snapshotId", e."signerKeyId",
+          e."issuanceRequestHash", e."issuanceAuthorizationId", e."authorityRequestHash",
+          e."approvalId", e."approvalEvidenceHash", e."authorizedByReference",
+          e."authorityLevel", e."authorizedFrom", e."authorizedUntil"
+        FROM "acp_retained_native_module_authorization_snapshots" s
+        JOIN "acp_retained_native_module_authorization_issuance_evidence" e
+          ON e."supervisorInstanceId" = s."supervisorInstanceId"
+         AND e."snapshotVersion" = s."snapshotVersion"
+        WHERE s."supervisorInstanceId" = ${snapshot.supervisorInstanceId}
+          AND s."snapshotVersion" = ${snapshot.snapshotVersion}
+        LIMIT 2
+      `,
+    );
+    const current = existing[0];
+    if (
+      !Array.isArray(existing) ||
+      existing.length !== 1 ||
+      current?.snapshotHash !== snapshotHash ||
+      canonicalJson(current.snapshot) !== canonicalJson(snapshot) ||
+      current.workspaceId !== evidence.workspaceId ||
+      current.supervisorInstanceId !== evidence.supervisorInstanceId ||
+      current.snapshotVersion !== evidence.snapshotVersion ||
+      current.snapshotId !== evidence.snapshotId ||
+      current.signerKeyId !== evidence.signerKeyId ||
+      current.issuanceRequestHash !== evidence.issuanceRequestHash ||
+      current.issuanceAuthorizationId !== evidence.issuanceAuthorizationId ||
+      current.authorityRequestHash !== evidence.authorityRequestHash ||
+      current.approvalId !== evidence.approvalId ||
+      current.approvalEvidenceHash !== evidence.approvalEvidenceHash ||
+      current.authorizedByReference !== evidence.authorizedByReference ||
+      current.authorityLevel !== evidence.authorityLevel ||
+      !(current.authorizedFrom instanceof Date) ||
+      current.authorizedFrom.toISOString() !== evidence.authorizedFrom ||
+      !(current.authorizedUntil instanceof Date) ||
+      current.authorizedUntil.toISOString() !== evidence.authorizedUntil
     )
       deny();
     return 'REPLAYED';

@@ -408,7 +408,12 @@ published and current `main` has not been deployed to private staging.
    and an injected signer before submitting to that independent publisher (ADR-0098). It supports
    signed empty-snapshot revocation, rejects Level 4, and has no private-key custody. No root/key
    provisioning, production signer, approval-source composition, module loading composition, service
-   loop, or runtime connection is configured.
+   loop, or runtime connection is configured. A separate audited publication boundary now carries an
+   unforgeable controller-minted issuance proof through independent signature authentication and
+   atomically stores the snapshot with exact Level-3 approval evidence (ADR-0099). PostgreSQL rejects
+   stale evidence at its own clock, fixes a supervisor chain to one workspace, binds evidence to the
+   signed snapshot, and denies mutation; identical replay rechecks every snapshot and audit field.
+   The adapter remains uncomposed.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

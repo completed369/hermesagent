@@ -4,6 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { canonicalJson } from './codec';
 import type { ProvisionedLinuxRetainedNativeSupervisorPaths } from './retained-native-supervisor-linux-path-provisioner';
 import {
+  AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication,
+  BoundedRetainedNativeSupervisorModuleAuthorizationAuditedPublisher,
+  type RetainedNativeSupervisorModuleAuthorizationAuditedPublicationStore,
+} from './retained-native-supervisor-module-authorization-audited-publisher';
+import {
+  AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance,
   BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController,
   retainedNativeSupervisorModuleAuthorizationSnapshotIssuanceAuthorityRequestHash,
   type RetainedNativeSupervisorModuleAuthorizationSnapshotIssueRequest,
@@ -84,6 +90,23 @@ class MemoryPublicationStore implements RetainedNativeSupervisorModuleAuthorizat
     );
     this.calls += 1;
     this.snapshot = authenticated.snapshot;
+    return 'APPENDED';
+  }
+}
+
+class MemoryAuditedPublicationStore implements RetainedNativeSupervisorModuleAuthorizationAuditedPublicationStore {
+  calls = 0;
+  publication: AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication | null =
+    null;
+
+  async append(
+    publication: AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication,
+  ): Promise<'APPENDED'> {
+    AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication.assertAuthenticated(
+      publication,
+    );
+    this.calls += 1;
+    this.publication = publication;
     return 'APPENDED';
   }
 }
@@ -186,7 +209,7 @@ function fixture() {
     publisher,
     () => NOW,
   );
-  return { authority, signer, store, controller };
+  return { authority, signer, store, controller, root, privateKey };
 }
 
 async function expectCode(promise: Promise<unknown>, code: string): Promise<void> {
@@ -231,6 +254,63 @@ describe('BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController',
     const { store, controller } = fixture();
     await controller.issue(issueRequest([]), new AbortController().signal);
     expect(store.snapshot?.authorizations).toEqual([]);
+  });
+
+  it('mints approval evidence only for the independently authenticated audited publisher', async () => {
+    const base = fixture();
+    const store = new MemoryAuditedPublicationStore();
+    const publisher = new BoundedRetainedNativeSupervisorModuleAuthorizationAuditedPublisher(
+      WORKSPACE,
+      INSTANCE,
+      [base.root],
+      store,
+      () => NOW,
+    );
+    const controller = new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController(
+      WORKSPACE,
+      INSTANCE,
+      new ApprovalAuthority(),
+      new Ed25519Signer(base.privateKey),
+      publisher,
+      () => NOW,
+    );
+
+    await expect(
+      controller.issue(issueRequest([]), new AbortController().signal),
+    ).resolves.toMatchObject({
+      publication: 'APPENDED',
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    expect(store.calls).toBe(1);
+    expect(store.publication?.issuance).toMatchObject({
+      workspaceId: WORKSPACE,
+      supervisorInstanceId: INSTANCE,
+      issuanceAuthorizationId: 'snapshot-issuance-authorization-1',
+      approvalId: 'approval-1',
+      approvalEvidenceHash: 'e'.repeat(64),
+      authorityLevel: 3,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    expect(store.publication?.issuance.snapshotHash).toBe(store.publication?.snapshot.snapshotHash);
+  });
+
+  it('rejects forged issuance proof before authenticated audited storage', async () => {
+    const base = fixture();
+    const store = new MemoryAuditedPublicationStore();
+    const publisher = new BoundedRetainedNativeSupervisorModuleAuthorizationAuditedPublisher(
+      WORKSPACE,
+      INSTANCE,
+      [base.root],
+      store,
+      () => NOW,
+    );
+    const forged = Object.create(
+      AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance.prototype,
+    ) as AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance;
+    await expect(publisher.publish({}, forged)).rejects.toMatchObject({
+      code: 'INVALID_AUTHORIZATION',
+    });
+    expect(store.calls).toBe(0);
   });
 
   it('denies by default before signing or publication', async () => {

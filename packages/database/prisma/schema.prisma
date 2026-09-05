@@ -1848,12 +1848,42 @@ model AcpRetainedNativeModuleAuthorizationSnapshot {
   createdAt            DateTime @default(now()) @db.Timestamptz(3)
 
   currentCheckpoint AcpRetainedNativeModuleAuthorizationCheckpoint?
+  issuanceEvidence  AcpRetainedNativeModuleAuthorizationIssuanceEvidence?
 
   @@id([supervisorInstanceId, snapshotVersion])
   @@unique([supervisorInstanceId, snapshotId], map: "acp_rn_module_auth_snapshots_instance_id_key")
   @@unique([supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], map: "acp_rn_module_auth_snapshot_checkpoint_binding_key")
   @@index([supervisorInstanceId, snapshotVersion(sort: Desc)], map: "acp_rn_module_auth_snapshot_latest_idx")
   @@map("acp_retained_native_module_authorization_snapshots")
+}
+
+/// Immutable tenant- and approval-bound evidence recorded atomically with a
+/// controller-issued native-module authorization snapshot.
+model AcpRetainedNativeModuleAuthorizationIssuanceEvidence {
+  workspaceId             String   @db.Uuid
+  supervisorInstanceId    String
+  snapshotVersion         Int
+  snapshotId              String
+  snapshotHash            String
+  signerKeyId             String
+  issuanceRequestHash     String   @unique(map: "acp_rn_module_auth_issuance_request_hash_key")
+  issuanceAuthorizationId String
+  authorityRequestHash    String
+  approvalId              String
+  approvalEvidenceHash    String
+  authorizedByReference   String
+  authorityLevel          Int
+  authorizedFrom          DateTime @db.Timestamptz(3)
+  authorizedUntil         DateTime @db.Timestamptz(3)
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
+
+  snapshot AcpRetainedNativeModuleAuthorizationSnapshot @relation(fields: [supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], references: [supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], onDelete: Restrict, onUpdate: Restrict, map: "acp_rn_module_auth_issuance_snapshot_fkey")
+
+  @@id([supervisorInstanceId, snapshotVersion])
+  @@unique([supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], map: "acp_rn_module_auth_issuance_snapshot_binding_key")
+  @@unique([workspaceId, issuanceAuthorizationId], map: "acp_rn_module_auth_issuance_workspace_auth_key")
+  @@index([workspaceId, createdAt(sort: Desc)], map: "acp_rn_module_auth_issuance_workspace_idx")
+  @@map("acp_retained_native_module_authorization_issuance_evidence")
 }
 
 /// One monotonic native-module authorization checkpoint per retained native
