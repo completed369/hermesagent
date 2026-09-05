@@ -400,8 +400,11 @@ published and current `main` has not been deployed to private staging.
    retained source into an absent owner-only `0500` module path and creates one absent owner-only
    `0700` socket directory through retained parents (ADR-0096). It denies by default, never replaces
    an existing target, keeps the socket absent, and returns only exact identities for later signing.
-   No root/key provisioning, snapshot publication, module loading composition, service loop, or
-   runtime connection is configured.
+   A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
+   only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
+   only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
+   forks (ADR-0097). It has no signer or private-key custody. No root/key provisioning, authorized
+   signing controller, module loading composition, service loop, or runtime connection is configured.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

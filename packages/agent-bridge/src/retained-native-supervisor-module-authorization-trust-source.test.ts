@@ -9,6 +9,8 @@ import {
 } from './retained-native-supervisor-linux-module-loader';
 import { RetainedNativeSupervisorLocalIpcError } from './retained-native-supervisor-local-ipc';
 import {
+  AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot,
+  BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher,
   BoundedRetainedNativeSupervisorModuleAuthorizationTrustSource,
   DenyRetainedNativeSupervisorModuleAuthorizationTrustSource,
   retainedNativeSupervisorModuleAuthorizationSnapshotHash,
@@ -18,6 +20,7 @@ import {
   type RetainedNativeSupervisorModuleAuthorizationRootRecord,
   type RetainedNativeSupervisorModuleAuthorizationSnapshot,
   type RetainedNativeSupervisorModuleAuthorizationSnapshotReader,
+  type RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore,
 } from './retained-native-supervisor-module-authorization-trust-source';
 
 const INSTANCE = 'native-supervisor-production-1';
@@ -60,6 +63,23 @@ class MemoryCheckpointStore implements RetainedNativeSupervisorModuleAuthorizati
     if (canonicalJson(current) !== canonicalJson(expected)) return false;
     this.values.set(instance, next);
     return true;
+  }
+}
+
+class MemoryPublicationStore implements RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore {
+  calls = 0;
+  authenticated: AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot | null = null;
+  result: 'APPENDED' | 'REPLAYED' = 'APPENDED';
+
+  async append(
+    authenticated: AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot,
+  ): Promise<'APPENDED' | 'REPLAYED'> {
+    AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot.assertAuthenticated(
+      authenticated,
+    );
+    this.calls += 1;
+    this.authenticated = authenticated;
+    return this.result;
   }
 }
 
@@ -178,6 +198,70 @@ function subject(
 }
 
 describe('retained-native module authorization trust source', () => {
+  it('publishes only a cryptographically authenticated owned snapshot', async () => {
+    const value = fixture();
+    const signed = snapshot(value);
+    const store = new MemoryPublicationStore();
+    const publisher = new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher(
+      INSTANCE,
+      [value.root],
+      store,
+      () => NOW,
+    );
+
+    await expect(publisher.publish(signed)).resolves.toBe('APPENDED');
+    expect(store.calls).toBe(1);
+    expect(store.authenticated?.snapshot).toEqual(signed);
+    expect(store.authenticated?.snapshot).not.toBe(signed);
+    expect(store.authenticated?.snapshotHash).toBe(
+      retainedNativeSupervisorModuleAuthorizationSnapshotHash(signed),
+    );
+    expect(Object.isFrozen(store.authenticated)).toBe(true);
+    expect(Object.isFrozen(store.authenticated?.snapshot)).toBe(true);
+    expect(Object.isFrozen(publisher)).toBe(true);
+
+    store.result = 'REPLAYED';
+    await expect(publisher.publish(signed)).resolves.toBe('REPLAYED');
+  });
+
+  it('keeps publication deny-by-default and never calls storage for unauthenticated input', async () => {
+    const value = fixture();
+    const signed = snapshot(value);
+    const store = new MemoryPublicationStore();
+    const publisher = new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher(
+      INSTANCE,
+      [value.root],
+      store,
+      () => NOW,
+    );
+    await expect(
+      publisher.publish({ ...signed, signature: Buffer.alloc(64, 9).toString('base64') }),
+    ).rejects.toMatchObject({ code: 'NOT_CONFIGURED' });
+    expect(store.calls).toBe(0);
+    await expect(
+      new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher(
+        INSTANCE,
+        [value.root],
+        undefined,
+        () => NOW,
+      ).publish(signed),
+    ).rejects.toMatchObject({ code: 'NOT_CONFIGURED' });
+    await expect(publisher.publish(signed)).resolves.toBe('APPENDED');
+    const proxied = new Proxy(store.authenticated!, {});
+    expect(() =>
+      AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot.assertAuthenticated(proxied),
+    ).toThrow(RetainedNativeSupervisorLocalIpcError);
+    expect(
+      () =>
+        new AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot(
+          Symbol('forged'),
+          signed,
+          retainedNativeSupervisorModuleAuthorizationSnapshotHash(signed),
+          NOW,
+        ),
+    ).toThrow(RetainedNativeSupervisorLocalIpcError);
+  });
+
   it('authenticates an exact request-bound grant only after durable checkpoint advance', async () => {
     const value = fixture();
     const checkpoints = new MemoryCheckpointStore();

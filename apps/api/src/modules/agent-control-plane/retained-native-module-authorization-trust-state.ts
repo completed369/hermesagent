@@ -1,8 +1,13 @@
 import { Prisma } from '@ventureos/database';
+import {
+  AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot,
+  canonicalJson,
+} from '@ventureos/agent-bridge';
 import type {
   RetainedNativeSupervisorModuleAuthorizationCheckpoint,
   RetainedNativeSupervisorModuleAuthorizationCheckpointStore,
   RetainedNativeSupervisorModuleAuthorizationSnapshotReader,
+  RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore,
 } from '@ventureos/agent-bridge';
 
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
@@ -16,6 +21,10 @@ export interface RetainedNativeModuleAuthorizationTrustSqlClient {
 
 interface SnapshotRow {
   readonly snapshot: unknown;
+}
+
+interface PublishedSnapshotRow extends SnapshotRow {
+  readonly snapshotHash: string;
 }
 
 interface CheckpointRow {
@@ -140,6 +149,54 @@ export class PostgresRetainedNativeModuleAuthorizationSnapshotReader implements 
     if (!Array.isArray(rows) || rows.length !== 1 || !Object.hasOwn(rows[0] ?? {}, 'snapshot'))
       deny();
     return structuredClone(rows[0]!.snapshot);
+  }
+}
+
+export class PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore implements RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore {
+  constructor(private readonly database: RetainedNativeModuleAuthorizationTrustSqlClient) {
+    Object.freeze(this);
+  }
+
+  async append(
+    authenticated: AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot,
+  ): Promise<'APPENDED' | 'REPLAYED'> {
+    AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot.assertAuthenticated(
+      authenticated,
+    );
+    const { snapshot, snapshotHash } = authenticated;
+    const rows = await this.database.$queryRaw<readonly { readonly applied: number }[]>(Prisma.sql`
+      INSERT INTO "acp_retained_native_module_authorization_snapshots" (
+        "supervisorInstanceId", "snapshotVersion", "snapshotId", "snapshotHash", "signerKeyId",
+        "previousSnapshotHash", "snapshot", "issuedAt", "validUntil"
+      ) VALUES (
+        ${snapshot.supervisorInstanceId}, ${snapshot.snapshotVersion}, ${snapshot.snapshotId},
+        ${snapshotHash}, ${snapshot.signerKeyId}, ${snapshot.previousSnapshotHash},
+        CAST(${JSON.stringify(snapshot)} AS JSONB), ${new Date(snapshot.issuedAt)},
+        ${new Date(snapshot.validUntil)}
+      ) ON CONFLICT ("supervisorInstanceId", "snapshotVersion") DO NOTHING
+      RETURNING 1 AS "applied"
+    `);
+    if (!Array.isArray(rows) || rows.length > 1 || (rows.length === 1 && rows[0]?.applied !== 1))
+      deny();
+    if (rows.length === 1) return 'APPENDED';
+
+    // A conflicting concurrent insert can be invisible to the INSERT statement's snapshot after
+    // it waits on the unique index. Re-read in a new statement before calling the outcome a replay.
+    const existing = await this.database.$queryRaw<readonly PublishedSnapshotRow[]>(Prisma.sql`
+      SELECT "snapshotHash", "snapshot"
+      FROM "acp_retained_native_module_authorization_snapshots"
+      WHERE "supervisorInstanceId" = ${snapshot.supervisorInstanceId}
+        AND "snapshotVersion" = ${snapshot.snapshotVersion}
+      LIMIT 2
+    `);
+    if (
+      !Array.isArray(existing) ||
+      existing.length !== 1 ||
+      existing[0]?.snapshotHash !== snapshotHash ||
+      canonicalJson(existing[0]?.snapshot) !== canonicalJson(snapshot)
+    )
+      deny();
+    return 'REPLAYED';
   }
 }
 
