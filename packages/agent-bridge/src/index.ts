@@ -38,3 +38,4 @@ export * from './retained-native-supervisor-linux-session';
 export * from './retained-native-supervisor-listener-lifecycle';
 export * from './retained-native-supervisor-linux-native-listener-binding';
 export * from './retained-native-supervisor-linux-native-client-binding';
+export * from './retained-native-supervisor-linux-module-loader';

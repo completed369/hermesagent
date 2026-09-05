@@ -23,6 +23,8 @@ for (const path of files) {
   const normalized = relative(output, path).split(sep).join('/');
   if (/(?:^|\/)__tests__(?:\/|$)|(?:^|\/)[^/]+\.(?:test|spec)\.[^/]+$/u.test(normalized))
     throw new Error('Agent Bridge test fixture entered runtime output');
+  if (extname(path).toLowerCase() === '.node')
+    throw new Error('Agent Bridge native binary entered runtime output');
   if (extname(path) === '.js') {
     const source = readFileSync(path, 'utf8');
     if (
