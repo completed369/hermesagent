@@ -2662,6 +2662,10 @@ test('retained-native module snapshot issuance is approval-bound, keyless, and u
     'packages/agent-bridge/src/retained-native-supervisor-module-authorization-controller.ts',
     'utf8',
   );
+  const auditedPublisher = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-module-authorization-audited-publisher.ts',
+    'utf8',
+  );
   const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
   const apiComposition = readFileSync(
     'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
@@ -2690,6 +2694,19 @@ test('retained-native module snapshot issuance is approval-bound, keyless, and u
   assert.match(source, /approvalEvidenceHash/u);
   assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
   assert.match(index, /retained-native-supervisor-module-authorization-controller/u);
+  assert.match(
+    auditedPublisher,
+    /class BoundedRetainedNativeSupervisorModuleAuthorizationAuditedPublisher/u,
+  );
+  assert.match(
+    auditedPublisher,
+    /AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshotIssuance\.assertAuthenticated/u,
+  );
+  assert.match(
+    auditedPublisher,
+    /AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot\.assertAuthenticated/u,
+  );
+  assert.match(index, /retained-native-supervisor-module-authorization-audited-publisher/u);
   assert.doesNotMatch(source, /from 'node:(?:child_process|fs|net|tls)'/u);
   assert.doesNotMatch(source, /process\.env|\bCONNECTED\b|provider|deployment|spend/u);
   assert.doesNotMatch(source, /createPrivateKey|generateKeyPair|privateKey/u);
@@ -2794,6 +2811,10 @@ test('durable native-module authorization state is grant-bound, audited, and unc
     'packages/database/prisma/migrations/20260905210000_guard_native_module_snapshot_publication/migration.sql',
     'utf8',
   );
+  const issuanceMigration = readFileSync(
+    'packages/database/prisma/migrations/20260906000000_native_module_snapshot_issuance_audit/migration.sql',
+    'utf8',
+  );
   const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
   const module = readFileSync(
     'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
@@ -2813,6 +2834,12 @@ test('durable native-module authorization state is grant-bound, audited, and unc
     adapter,
     /AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot\.assertAuthenticated/u,
   );
+  assert.match(
+    adapter,
+    /AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication\.assertAuthenticated/u,
+  );
+  assert.match(adapter, /WITH inserted_snapshot AS/u);
+  assert.match(adapter, /inserted_evidence AS/u);
   assert.match(adapter, /ON CONFLICT \("supervisorInstanceId", "snapshotVersion"\) DO NOTHING/u);
   assert.match(adapter, /implements RetainedNativeSupervisorModuleAuthorizationCheckpointStore/u);
   assert.match(adapter, /ON CONFLICT \("supervisorInstanceId"\) DO NOTHING/u);
@@ -2837,11 +2864,24 @@ test('durable native-module authorization state is grant-bound, audited, and unc
   assert.match(publicationMigration, /snapshot bootstrap denied/u);
   assert.match(publicationMigration, /snapshot equivocation denied/u);
   assert.match(publicationMigration, /snapshot chain transition denied/u);
+  assert.match(
+    issuanceMigration,
+    /CREATE TABLE "acp_retained_native_module_authorization_issuance_evidence"/u,
+  );
+  assert.match(issuanceMigration, /"authorityLevel" = 3/u);
+  assert.match(issuanceMigration, /INTERVAL '5 minutes'/u);
+  assert.match(issuanceMigration, /clock_timestamp\(\)/u);
+  assert.match(issuanceMigration, /issuance_evidence_freshness/u);
+  assert.match(issuanceMigration, /supervisor workspace binding denied/u);
+  assert.match(issuanceMigration, /issuance_evidence_update_deny/u);
+  assert.match(issuanceMigration, /issuance_evidence_delete_deny/u);
   assert.match(schema, /model AcpRetainedNativeModuleAuthorizationSnapshot/u);
+  assert.match(schema, /model AcpRetainedNativeModuleAuthorizationIssuanceEvidence/u);
   assert.match(schema, /model AcpRetainedNativeModuleAuthorizationCheckpoint/u);
   assert.match(schema, /model AcpRetainedNativeModuleAuthorizationCheckpointEvent/u);
   assert.match(integration, /exactly one winner/u);
   assert.match(integration, /wrong-client-grant/u);
+  assert.match(integration, /immutable approval audit evidence/u);
   assert.doesNotMatch(module, /PostgresRetainedNativeModuleAuthorization/u);
   assert.doesNotMatch(adapter, /\bCONNECTED\b|provider|deployment|publish|spend/u);
 });

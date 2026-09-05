@@ -291,8 +291,12 @@
 > now construct canonical grants from those owner-only attestations only after an exact tenant- and
 > supervisor-bound five-minute Level-3 approval, delegate signing through a deny-default port, and
 > submit the result to the independent authenticator/publisher. It has no production signer, private
-> key, root/key provisioning, approval-source composition, or service owner. These boundaries
-> therefore do not prove runtime connectivity.
+> key, root/key provisioning, approval-source composition, or service owner. An uncomposed audited
+> publisher can now atomically persist an independently authenticated snapshot with its exact
+> controller-minted Level-3 approval evidence. The database rejects stale evidence, fixes each
+> supervisor chain to one workspace, foreign-key binds evidence to the snapshot, and denies
+> updates/deletes, while exact replay rechecks every field.
+> These boundaries therefore do not prove runtime connectivity.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an

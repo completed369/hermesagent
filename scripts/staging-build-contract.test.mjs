@@ -188,6 +188,7 @@ test('the immutable migration chain matches the reviewed sequence', () => {
     '20260902030000_retained_native_supervisor_trust_state',
     '20260905183000_retained_native_module_trust_state',
     '20260905210000_guard_native_module_snapshot_publication',
+    '20260906000000_native_module_snapshot_issuance_audit',
   ]);
   const unsafeRestoreReference =
     /(?:password|passwd|secret|token|cookie|authorization|chain[-_.:/ ]?of[-_.:/ ]?thought)/u;

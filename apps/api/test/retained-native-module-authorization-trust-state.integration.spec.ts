@@ -2,17 +2,23 @@ import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 
 import { Prisma, prisma } from '@ventureos/database';
 import {
+  BoundedRetainedNativeSupervisorModuleAuthorizationAuditedPublisher,
+  BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController,
   canonicalJson,
   BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher,
   linuxRetainedNativeSupervisorModuleLoadRequestHash,
+  retainedNativeSupervisorModuleAuthorizationSnapshotIssuanceAuthorityRequestHash,
   retainedNativeSupervisorModuleAuthorizationSnapshotHash,
   type LinuxRetainedNativeSupervisorModuleAuthorization,
   type RetainedNativeSupervisorModuleAuthorizationCheckpoint,
+  type RetainedNativeSupervisorModuleAuthorizationSnapshotIssuanceAuthorityRequest,
+  type RetainedNativeSupervisorModuleAuthorizationSnapshotSigningRequest,
 } from '@ventureos/agent-bridge';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   PostgresRetainedNativeModuleAuthorizationCheckpointStore,
+  PostgresRetainedNativeModuleAuthorizationAuditedPublicationStore,
   PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore,
   PostgresRetainedNativeModuleAuthorizationSnapshotReader,
 } from '../src/modules/agent-control-plane/retained-native-module-authorization-trust-state';
@@ -316,5 +322,178 @@ describe('durable retained-native module authorization trust state (PostgreSQL i
       ORDER BY "snapshotVersion"
     `);
     expect(rows).toEqual([{ snapshotVersion: 1 }, { snapshotVersion: 2 }]);
+  });
+
+  it('atomically publishes controller-authenticated snapshots with immutable approval audit evidence', async () => {
+    const workspaceId = randomUUID();
+    const publicationInstanceId = `native-audited-publisher-${suffix}`;
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    const authorizedFrom = new Date(now - 5_000).toISOString();
+    const authorizedUntil = new Date(now + 4 * 60_000).toISOString();
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+    const spki = publicKey.export({ format: 'der', type: 'spki' });
+    const signerKeyId = `audited-publisher-root-signer-${suffix}`;
+    const root = {
+      schemaVersion: 1 as const,
+      rootRecordId: `audited-publisher-root-record-${suffix}`,
+      rootRecordVersion: 1,
+      signerKeyId,
+      algorithm: 'ED25519' as const,
+      purpose: 'RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION_SNAPSHOT' as const,
+      publicKeySpkiBase64: spki.toString('base64'),
+      publicKeySpkiSha256: createHash('sha256').update(spki).digest('hex'),
+      minimumSnapshotVersion: 1,
+      validFrom: new Date(now - 60 * 60_000).toISOString(),
+      validUntil: new Date(now + 60 * 60_000).toISOString(),
+      revokedAt: null,
+      testOnly: false as const,
+    };
+    const authority = {
+      async authorize(
+        request: Readonly<RetainedNativeSupervisorModuleAuthorizationSnapshotIssuanceAuthorityRequest>,
+      ) {
+        return {
+          ...request,
+          issuanceAuthorizationId: `issuance-authorization-${suffix}`,
+          authorityRequestHash:
+            retainedNativeSupervisorModuleAuthorizationSnapshotIssuanceAuthorityRequestHash(
+              request,
+            ),
+          approvalId: `approval-${suffix}`,
+          approvalEvidenceHash: 'e'.repeat(64),
+          authorizedByReference: `ventureos:policy:${suffix}`,
+          authorityLevel: 3,
+          validFrom: authorizedFrom,
+          validUntil: authorizedUntil,
+        };
+      },
+    };
+    const signer = {
+      async sign(
+        request: Readonly<RetainedNativeSupervisorModuleAuthorizationSnapshotSigningRequest>,
+      ) {
+        return {
+          schemaVersion: 1,
+          purpose: request.purpose,
+          signerKeyId: request.signerKeyId,
+          snapshotPayloadHash: request.snapshotPayloadHash,
+          signature: sign(null, Buffer.from(canonicalJson(request.payload)), privateKey).toString(
+            'base64',
+          ),
+        };
+      },
+    };
+    const publicationStore = new PostgresRetainedNativeModuleAuthorizationAuditedPublicationStore(
+      prisma,
+    );
+    const publisher = new BoundedRetainedNativeSupervisorModuleAuthorizationAuditedPublisher(
+      workspaceId,
+      publicationInstanceId,
+      [root],
+      publicationStore,
+      () => now,
+    );
+    const input = {
+      schemaVersion: 1 as const,
+      purpose: 'RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION_SNAPSHOT_ISSUANCE' as const,
+      workspaceId,
+      supervisorInstanceId: publicationInstanceId,
+      snapshotId: `audited-published-snapshot-${suffix}-1`,
+      snapshotVersion: 1,
+      signerKeyId,
+      previousSnapshotHash: null,
+      issuedAt: nowIso,
+      validUntil: authorizedUntil,
+      authorizations: [],
+      runtimeConnection: 'NOT_CONFIGURED' as const,
+    };
+    const controller = () =>
+      new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController(
+        workspaceId,
+        publicationInstanceId,
+        authority,
+        signer,
+        publisher,
+        () => now,
+      );
+    await expect(controller().issue(input, new AbortController().signal)).resolves.toMatchObject({
+      publication: 'APPENDED',
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    await expect(controller().issue(input, new AbortController().signal)).resolves.toMatchObject({
+      publication: 'REPLAYED',
+    });
+
+    const evidence = await prisma.$queryRaw<
+      readonly {
+        workspaceId: string;
+        snapshotHash: string;
+        issuanceAuthorizationId: string;
+        approvalId: string;
+        approvalEvidenceHash: string;
+        authorityLevel: number;
+      }[]
+    >(Prisma.sql`
+      SELECT "workspaceId"::TEXT AS "workspaceId", "snapshotHash", "issuanceAuthorizationId",
+        "approvalId", "approvalEvidenceHash", "authorityLevel"
+      FROM "acp_retained_native_module_authorization_issuance_evidence"
+      WHERE "supervisorInstanceId" = ${publicationInstanceId}
+    `);
+    expect(evidence).toEqual([
+      {
+        workspaceId,
+        snapshotHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        issuanceAuthorizationId: `issuance-authorization-${suffix}`,
+        approvalId: `approval-${suffix}`,
+        approvalEvidenceHash: 'e'.repeat(64),
+        authorityLevel: 3,
+      },
+    ]);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "acp_retained_native_module_authorization_issuance_evidence" (
+          "workspaceId", "supervisorInstanceId", "snapshotVersion", "snapshotId", "snapshotHash",
+          "signerKeyId", "issuanceRequestHash", "issuanceAuthorizationId",
+          "authorityRequestHash", "approvalId", "approvalEvidenceHash", "authorizedByReference",
+          "authorityLevel", "authorizedFrom", "authorizedUntil"
+        ) SELECT "workspaceId", "supervisorInstanceId", "snapshotVersion", "snapshotId",
+          "snapshotHash", "signerKeyId", "issuanceRequestHash", "issuanceAuthorizationId",
+          "authorityRequestHash", "approvalId", "approvalEvidenceHash", "authorizedByReference",
+          "authorityLevel", clock_timestamp() - INTERVAL '10 minutes',
+          clock_timestamp() - INTERVAL '9 minutes'
+        FROM "acp_retained_native_module_authorization_issuance_evidence"
+        WHERE "supervisorInstanceId" = ${publicationInstanceId}
+      `),
+    ).rejects.toThrow(/not currently authorized/u);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "acp_retained_native_module_authorization_issuance_evidence" (
+          "workspaceId", "supervisorInstanceId", "snapshotVersion", "snapshotId", "snapshotHash",
+          "signerKeyId", "issuanceRequestHash", "issuanceAuthorizationId",
+          "authorityRequestHash", "approvalId", "approvalEvidenceHash", "authorizedByReference",
+          "authorityLevel", "authorizedFrom", "authorizedUntil"
+        ) SELECT CAST(${randomUUID()} AS UUID), "supervisorInstanceId", "snapshotVersion",
+          "snapshotId", "snapshotHash", "signerKeyId", "issuanceRequestHash",
+          "issuanceAuthorizationId", "authorityRequestHash", "approvalId",
+          "approvalEvidenceHash", "authorizedByReference", "authorityLevel", "authorizedFrom",
+          "authorizedUntil"
+        FROM "acp_retained_native_module_authorization_issuance_evidence"
+        WHERE "supervisorInstanceId" = ${publicationInstanceId}
+      `),
+    ).rejects.toThrow(/supervisor workspace binding denied/u);
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "acp_retained_native_module_authorization_issuance_evidence"
+        SET "approvalEvidenceHash" = ${'f'.repeat(64)}
+        WHERE "supervisorInstanceId" = ${publicationInstanceId}
+      `),
+    ).rejects.toThrow();
+    await expect(
+      prisma.$executeRaw(Prisma.sql`
+        DELETE FROM "acp_retained_native_module_authorization_issuance_evidence"
+        WHERE "supervisorInstanceId" = ${publicationInstanceId}
+      `),
+    ).rejects.toThrow();
   });
 });

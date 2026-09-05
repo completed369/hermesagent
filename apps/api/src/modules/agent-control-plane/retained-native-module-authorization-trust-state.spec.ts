@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@ventureos/database';
 import {
+  AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication,
   AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot,
   type RetainedNativeSupervisorModuleAuthorizationCheckpoint,
 } from '@ventureos/agent-bridge';
 
 import {
   PostgresRetainedNativeModuleAuthorizationCheckpointStore,
+  PostgresRetainedNativeModuleAuthorizationAuditedPublicationStore,
   PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore,
   PostgresRetainedNativeModuleAuthorizationSnapshotReader,
   type RetainedNativeModuleAuthorizationTrustSqlClient,
@@ -64,6 +66,17 @@ describe('durable retained-native module authorization trust adapters', () => {
     const forged = Object.create(
       AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot.prototype,
     ) as AuthenticatedRetainedNativeSupervisorModuleAuthorizationSnapshot;
+    await expect(store.append(forged)).rejects.toThrow();
+    expect(database.queries).toHaveLength(0);
+    expect(Object.isFrozen(store)).toBe(true);
+  });
+
+  it('rejects forged audited-publication proof before issuing SQL', async () => {
+    const database = new ScriptedSqlClient([]);
+    const store = new PostgresRetainedNativeModuleAuthorizationAuditedPublicationStore(database);
+    const forged = Object.create(
+      AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication.prototype,
+    ) as AuthenticatedRetainedNativeSupervisorModuleAuthorizationAuditedPublication;
     await expect(store.append(forged)).rejects.toThrow();
     expect(database.queries).toHaveLength(0);
     expect(Object.isFrozen(store)).toBe(true);
