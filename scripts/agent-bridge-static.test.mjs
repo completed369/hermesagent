@@ -2720,6 +2720,49 @@ test('retained-native module snapshot issuance is approval-bound, keyless, and u
   );
 });
 
+test('retained-native module snapshot signing is bounded, keyless, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-module-authorization-keyless-signer.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(
+    source,
+    /class DenyRetainedNativeSupervisorModuleAuthorizationKeylessSigningTransport/u,
+  );
+  assert.match(
+    source,
+    /class BoundedKeylessRetainedNativeSupervisorModuleAuthorizationSnapshotSigner/u,
+  );
+  assert.match(source, /#attempted = false/u);
+  assert.match(source, /MAX_REQUEST_BYTES = 32 \* 1_024/u);
+  assert.match(source, /MAX_RESPONSE_BYTES = 1_024/u);
+  assert.match(source, /MAX_TIMEOUT_MS = 5_000/u);
+  assert.match(source, /signingRequestHash/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(source, /await Promise\.race/u);
+  assert.match(source, /this\.#close\(\)/u);
+  assert.match(index, /retained-native-supervisor-module-authorization-keyless-signer/u);
+  assert.doesNotMatch(source, /from 'node:(?:child_process|fs|net|tls)'/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|createPrivateKey|createSecretKey|generateKeyPair/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /BoundedKeylessRetainedNativeSupervisorModuleAuthorizationSnapshotSigner/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedKeylessRetainedNativeSupervisorModuleAuthorizationSnapshotSigner/u,
+  );
+});
+
 test('native-module issuance Level-3 authority is exact, one-shot, and uncomposed', () => {
   const source = readFileSync(
     'apps/api/src/modules/agent-control-plane/retained-native-module-authorization-issuance-authority.ts',
