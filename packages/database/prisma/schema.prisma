@@ -1832,6 +1832,78 @@ model AcpRetainedNativeSupervisorTrustCheckpointEvent {
   @@map("acp_retained_native_supervisor_trust_checkpoint_events")
 }
 
+/// Immutable signed native-module authorization snapshots for one retained
+/// native supervisor instance. This is uncomposed platform authorization
+/// state and is not tenant runtime evidence.
+model AcpRetainedNativeModuleAuthorizationSnapshot {
+  supervisorInstanceId String
+  snapshotVersion      Int
+  snapshotId           String
+  snapshotHash         String   @unique(map: "acp_retained_native_module_authorization_snapshots_hash_key")
+  signerKeyId          String
+  previousSnapshotHash String?
+  snapshot             Json
+  issuedAt             DateTime @db.Timestamptz(3)
+  validUntil           DateTime @db.Timestamptz(3)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+
+  currentCheckpoint AcpRetainedNativeModuleAuthorizationCheckpoint?
+
+  @@id([supervisorInstanceId, snapshotVersion])
+  @@unique([supervisorInstanceId, snapshotId], map: "acp_rn_module_auth_snapshots_instance_id_key")
+  @@unique([supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], map: "acp_rn_module_auth_snapshot_checkpoint_binding_key")
+  @@index([supervisorInstanceId, snapshotVersion(sort: Desc)], map: "acp_rn_module_auth_snapshot_latest_idx")
+  @@map("acp_retained_native_module_authorization_snapshots")
+}
+
+/// One monotonic native-module authorization checkpoint per retained native
+/// supervisor instance. Null triples record explicit client/listener revocation.
+model AcpRetainedNativeModuleAuthorizationCheckpoint {
+  supervisorInstanceId         String   @id
+  signerKeyId                  String
+  snapshotId                   String
+  snapshotVersion              Int
+  snapshotHash                 String
+  clientAuthorizationId        String?
+  clientAuthorizationVersion   Int?
+  clientAuthorizationHash      String?
+  listenerAuthorizationId      String?
+  listenerAuthorizationVersion Int?
+  listenerAuthorizationHash    String?
+  createdAt                    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                    DateTime @updatedAt @db.Timestamptz(3)
+
+  snapshot AcpRetainedNativeModuleAuthorizationSnapshot @relation(fields: [supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], references: [supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], onDelete: Restrict, onUpdate: Restrict, map: "acp_rn_module_auth_checkpoints_snapshot_fkey")
+
+  @@unique([supervisorInstanceId, snapshotVersion, snapshotId, snapshotHash, signerKeyId], map: "acp_rn_module_auth_checkpoint_snapshot_binding_key")
+  @@map("acp_retained_native_module_authorization_checkpoints")
+}
+
+/// Append-only reference and grant-digest evidence for every successful
+/// native-module authorization checkpoint transition.
+model AcpRetainedNativeModuleAuthorizationCheckpointEvent {
+  id                               String   @id @default(uuid()) @db.Uuid
+  supervisorInstanceId             String
+  previousSignerKeyId              String?
+  previousSnapshotId               String?
+  previousSnapshotVersion          Int?
+  previousSnapshotHash             String?
+  nextSignerKeyId                  String
+  nextSnapshotId                   String
+  nextSnapshotVersion              Int
+  nextSnapshotHash                 String
+  nextClientAuthorizationId        String?
+  nextClientAuthorizationVersion   Int?
+  nextClientAuthorizationHash      String?
+  nextListenerAuthorizationId      String?
+  nextListenerAuthorizationVersion Int?
+  nextListenerAuthorizationHash    String?
+  createdAt                        DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([supervisorInstanceId, createdAt(sort: Desc)], map: "acp_rn_module_auth_checkpoint_events_instance_idx")
+  @@map("acp_retained_native_module_authorization_checkpoint_events")
+}
+
 // ---------------------------------------------------------------------------
 // Product and Listing Studio (Phase 4, master spec sections 21/22/25/30)
 // ---------------------------------------------------------------------------

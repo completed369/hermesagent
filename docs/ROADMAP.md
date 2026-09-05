@@ -394,8 +394,10 @@ published and current `main` has not been deployed to private staging.
    supervisor-instance-scoped compare-and-swap checkpoint before exposing authority (ADR-0094).
    Adjacent hash-linked rotation, identical replay, root rotation, explicit empty-snapshot
    revocation, rollback, gaps, equivocation, and authorization-version rollback have fail-closed
-   contracts. No positive reader, durable adapter, root/key provisioning, snapshot publication,
-   path provisioning, module loading composition, or runtime connection is configured.
+   contracts. PostgreSQL snapshot-reader and checkpoint adapters now persist immutable signed
+   snapshots, exact grant-bound CAS state, and append-only transition evidence (ADR-0095), but remain
+   uncomposed. No root/key provisioning, snapshot publication, path provisioning, module loading
+   composition, or runtime connection is configured.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
