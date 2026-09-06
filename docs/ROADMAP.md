@@ -422,8 +422,10 @@ published and current `main` has not been deployed to private staging.
    uncomposed and supplies neither the missing mount nor authenticated transports. A one-use local
    IPC transport and matching role-local handler can now carry each observation through the existing
    retained endpoint plus `SO_PEERCRED` authentication with canonical role/request binding
-   (ADR-0122). They remain uncomposed and supply no listener lifecycle, cross-container carrier, or
-   shared mount.
+   (ADR-0122). The existing one-attempt service owner and Level-3 authority now recognize separate
+   API/LISTENER and worker/CLIENT observation purposes, create each ADR-0122 handler only after exact
+   no-replacement listener attestation, and guarantee bounded session close plus exact owned-socket
+   cleanup (ADR-0123). The boundary remains uncomposed and supplies no carrier or shared mount.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

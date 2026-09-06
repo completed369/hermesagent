@@ -17,6 +17,12 @@ import {
   authenticateRetainedNativeSupervisorModuleAuthorizationSignerKeyId,
   type RetainedNativeSupervisorModuleAuthorizationSigningCustodySession,
 } from './retained-native-supervisor-module-authorization-signing-handler';
+import { AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler } from './retained-native-supervisor-topology-observation-local-ipc';
+import {
+  DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
+  type LinuxRetainedNativeSupervisorTopologyObservationPort,
+  type LinuxRetainedNativeSupervisorTopologyObserverRole,
+} from './retained-native-supervisor-shared-runtime-topology';
 
 export interface LinuxRetainedNativeSupervisorListenerAuthorization {
   readonly schemaVersion: 1;
@@ -496,6 +502,54 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
         return deny('NOT_CONFIGURED');
       }
     }, signal);
+  }
+
+  /**
+   * Creates one role-local observation listener after exact service authorization. The observer is
+   * reachable only through the created socket's retained identity and the authorized peer.
+   */
+  async runTopologyObservationOne(
+    observer: LinuxRetainedNativeSupervisorTopologyObservationPort,
+    observerRole: LinuxRetainedNativeSupervisorTopologyObserverRole,
+    signal: AbortSignal,
+    timeoutMs = 2_000,
+    clock: () => number = Date.now,
+  ): Promise<void> {
+    if (
+      observer instanceof DenyLinuxRetainedNativeSupervisorTopologyObservationPort ||
+      !observer ||
+      typeof observer.observe !== 'function' ||
+      (observerRole !== 'API_LISTENER' && observerRole !== 'WORKER_CLIENT') ||
+      typeof clock !== 'function' ||
+      !Number.isSafeInteger(timeoutMs) ||
+      timeoutMs < 100 ||
+      timeoutMs > 5_000
+    )
+      deny('NOT_CONFIGURED');
+    return this.runWithHandler(
+      (identity) =>
+        new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler(
+          observer,
+          {
+            schemaVersion: 1,
+            platform: 'LINUX',
+            socketPath: this.#authorization.socketPath,
+            socketDevice: identity.device,
+            socketInode: identity.inode,
+            socketOwnerUid: identity.ownerUid,
+            socketOwnerGid: identity.ownerGid,
+            socketMode: identity.mode,
+            expectedPeerPid: this.#authorization.expectedWorkerPid,
+            expectedPeerUid: this.#authorization.expectedWorkerUid,
+            expectedPeerGid: this.#authorization.expectedWorkerGid,
+            runtimeConnection: 'NOT_CONFIGURED',
+          },
+          observerRole,
+          clock,
+          timeoutMs,
+        ),
+      signal,
+    );
   }
 
   private async runWithHandler(

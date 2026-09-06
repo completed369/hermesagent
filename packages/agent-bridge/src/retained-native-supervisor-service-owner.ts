@@ -15,6 +15,12 @@ import {
   type RetainedNativeSupervisorRecoveryTransport,
 } from './retained-native-supervisor-recovery';
 import { authenticateRetainedNativeSupervisorModuleAuthorizationSignerKeyId } from './retained-native-supervisor-module-authorization-signing-handler';
+import {
+  DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
+  validateLinuxRetainedNativeSupervisorTopologyObservationRequest,
+  type LinuxRetainedNativeSupervisorTopologyObservationPort,
+  type LinuxRetainedNativeSupervisorTopologyObserverRole,
+} from './retained-native-supervisor-shared-runtime-topology';
 
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
 const PRIVATE_TEXT =
@@ -27,7 +33,11 @@ const MAX_AUTHORIZATION_LIFETIME_MS = 60_000;
 const MIN_SESSION_DURATION_MS = 100;
 const MAX_SESSION_DURATION_MS = 5_000;
 
-export type LinuxRetainedNativeSupervisorServiceKind = 'RECOVERY' | 'MODULE_AUTHORIZATION_SIGNING';
+export type LinuxRetainedNativeSupervisorServiceKind =
+  | 'RECOVERY'
+  | 'MODULE_AUTHORIZATION_SIGNING'
+  | 'TOPOLOGY_OBSERVATION_API_LISTENER'
+  | 'TOPOLOGY_OBSERVATION_WORKER_CLIENT';
 
 export interface LinuxRetainedNativeSupervisorServiceRequest {
   readonly schemaVersion: 1;
@@ -210,7 +220,10 @@ export function validateLinuxRetainedNativeSupervisorServiceRequest(
   if (
     value.schemaVersion !== 1 ||
     value.purpose !== 'RETAINED_NATIVE_SUPERVISOR_ONE_SESSION_SERVICE' ||
-    (value.serviceKind !== 'RECOVERY' && value.serviceKind !== 'MODULE_AUTHORIZATION_SIGNING') ||
+    (value.serviceKind !== 'RECOVERY' &&
+      value.serviceKind !== 'MODULE_AUTHORIZATION_SIGNING' &&
+      value.serviceKind !== 'TOPOLOGY_OBSERVATION_API_LISTENER' &&
+      value.serviceKind !== 'TOPOLOGY_OBSERVATION_WORKER_CLIENT') ||
     value.socketDirectoryMode !== 0o700 ||
     value.runtimeConnection !== 'NOT_CONFIGURED'
   )
@@ -346,6 +359,54 @@ export class BoundedLinuxRetainedNativeSupervisorServiceOwner {
         custodyFactory,
         ownedSignal,
         lifecycle.grant.maximumSessionDurationMs,
+      ),
+    );
+  }
+
+  async runTopologyObservationOne(
+    input: unknown,
+    observer: LinuxRetainedNativeSupervisorTopologyObservationPort,
+    observerRole: LinuxRetainedNativeSupervisorTopologyObserverRole,
+    signal: AbortSignal,
+  ): Promise<void> {
+    let observe: LinuxRetainedNativeSupervisorTopologyObservationPort['observe'];
+    try {
+      if (
+        observer instanceof DenyLinuxRetainedNativeSupervisorTopologyObservationPort ||
+        !observer ||
+        typeof observer.observe !== 'function' ||
+        (observerRole !== 'API_LISTENER' && observerRole !== 'WORKER_CLIENT')
+      )
+        deny('NOT_CONFIGURED');
+      observe = observer.observe.bind(observer);
+    } catch (error) {
+      if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+      return deny('NOT_CONFIGURED');
+    }
+    const serviceKind =
+      observerRole === 'API_LISTENER'
+        ? 'TOPOLOGY_OBSERVATION_API_LISTENER'
+        : 'TOPOLOGY_OBSERVATION_WORKER_CLIENT';
+    const lifecycle = await this.authorizeOne(input, serviceKind, signal);
+    const scopedObserver: LinuxRetainedNativeSupervisorTopologyObservationPort = Object.freeze({
+      observe: async (candidate: unknown, observerSignal: AbortSignal) => {
+        const request = validateLinuxRetainedNativeSupervisorTopologyObservationRequest(candidate);
+        if (
+          request.observerRole !== observerRole ||
+          request.workspaceId !== lifecycle.grant.workspaceId ||
+          request.supervisorInstanceId !== lifecycle.grant.supervisorInstanceId
+        )
+          deny('INVALID_AUTHORIZATION');
+        return observe(request, observerSignal);
+      },
+    });
+    return this.runBounded(lifecycle.grant, signal, (ownedSignal) =>
+      lifecycle.owner.runTopologyObservationOne(
+        scopedObserver,
+        observerRole,
+        ownedSignal,
+        lifecycle.grant.maximumSessionDurationMs,
+        this.clock,
       ),
     );
   }

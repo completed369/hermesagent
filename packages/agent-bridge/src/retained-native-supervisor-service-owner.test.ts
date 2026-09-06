@@ -23,6 +23,13 @@ import {
   type LinuxRetainedNativeSupervisorServiceGrant,
   type LinuxRetainedNativeSupervisorServiceRequest,
 } from './retained-native-supervisor-service-owner';
+import {
+  DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
+  linuxRetainedNativeSupervisorTopologyObservationRequestHash,
+  type LinuxRetainedNativeSupervisorTopologyObservationPort,
+  type LinuxRetainedNativeSupervisorTopologyObservationRequest,
+  type LinuxRetainedNativeSupervisorTopologyObserverRole,
+} from './retained-native-supervisor-shared-runtime-topology';
 
 const now = Date.parse('2026-09-06T10:00:00.000Z');
 const socketPath = '/run/ventureos/supervisor/recovery.sock';
@@ -117,6 +124,71 @@ function frame(
       protocol: 'VENTUREOS_RETAINED_NATIVE_RECOVERY_IPC',
       direction,
       message,
+    })}\n`,
+  );
+}
+
+function topologyRequest(
+  observerRole: LinuxRetainedNativeSupervisorTopologyObserverRole,
+): LinuxRetainedNativeSupervisorTopologyObservationRequest {
+  return {
+    schemaVersion: 1,
+    purpose: 'RETAINED_NATIVE_SUPERVISOR_TOPOLOGY_OBSERVATION',
+    observerRole,
+    workspaceId: 'workspace-native-service',
+    supervisorInstanceId: 'supervisor-native-service',
+    provisioningAttemptId: 'attempt-native-service',
+    provisioningPlanHash: 'e'.repeat(64),
+    platform: 'LINUX',
+    architecture: 'X64',
+    runtimeRootParent: '/var/lib/ventureos/runtime/workspace-native-service',
+    runtimeRootParentIdentityReference: 'linux:dev-28:ino-1f40',
+    runtimeRootParentOwnerUid: parentIdentity.ownerUid,
+    runtimeRootParentOwnerGid: parentIdentity.ownerGid,
+    runtimeRootParentMode: 0o700,
+    sourceModulePath:
+      observerRole === 'API_LISTENER'
+        ? '/usr/lib/ventureos/native/linux-retained-native-listener.node'
+        : '/usr/lib/ventureos/native/linux-retained-native-client.node',
+    sourceModuleSha256: 'f'.repeat(64),
+    sourceModuleIdentityReference: 'linux:dev-29:ino-2329',
+    sourceModuleOwnerUid: 0,
+    sourceModuleOwnerGid: 0,
+    sourceModuleMode: 0o444,
+    sourceModuleSizeBytes: 4096,
+    runtimeConnection: 'NOT_CONFIGURED',
+  };
+}
+
+function topologyObservation(request: LinuxRetainedNativeSupervisorTopologyObservationRequest) {
+  return {
+    ...request,
+    observationId: `observation-${request.observerRole.toLowerCase()}`,
+    requestHash: linuxRetainedNativeSupervisorTopologyObservationRequestHash(request),
+    evidenceAuthority: 'LINUX_RETAINED_DESCRIPTORS',
+    principalAuthority: 'LINUX_EFFECTIVE_IDENTITY',
+    observerUid: request.runtimeRootParentOwnerUid,
+    observerGid: request.runtimeRootParentOwnerGid,
+    observedAt: new Date(now).toISOString(),
+    validUntil: new Date(now + 4_000).toISOString(),
+    topologyState: 'VISIBLE_NOT_PROVISIONED',
+  };
+}
+
+function topologyFrame(
+  direction: 'COORDINATOR_TO_OBSERVER' | 'OBSERVER_TO_COORDINATOR',
+  request: LinuxRetainedNativeSupervisorTopologyObservationRequest,
+  message: unknown,
+): Buffer {
+  return Buffer.from(
+    `${canonicalJson({
+      schemaVersion: 1,
+      protocol: 'VENTUREOS_RETAINED_NATIVE_TOPOLOGY_OBSERVATION_IPC',
+      direction,
+      observerRole: request.observerRole,
+      requestHash: linuxRetainedNativeSupervisorTopologyObservationRequestHash(request),
+      message,
+      runtimeConnection: 'NOT_CONFIGURED',
     })}\n`,
   );
 }
@@ -341,6 +413,135 @@ describe('bounded retained-native supervisor service owner', () => {
       runtimeConnection: 'NOT_CONFIGURED',
     });
     expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['API_LISTENER', 'TOPOLOGY_OBSERVATION_API_LISTENER'],
+    ['WORKER_CLIENT', 'TOPOLOGY_OBSERVATION_WORKER_CLIENT'],
+  ] as const)(
+    'binds an authorized %s observation to one protected listener lifecycle',
+    async (observerRole, serviceKind) => {
+      const serviceRequest = request({
+        serviceKind,
+        socketPath: `/run/ventureos/supervisor/topology-${observerRole.toLowerCase()}.sock`,
+      });
+      const { authority, binding, owner } = fixture(serviceRequest);
+      const observationRequest = topologyRequest(observerRole);
+      const observer: LinuxRetainedNativeSupervisorTopologyObservationPort = {
+        observe: vi.fn(async () => topologyObservation(observationRequest)),
+      };
+      binding.listener.accepted.readToEof.mockResolvedValue(
+        topologyFrame('COORDINATOR_TO_OBSERVER', observationRequest, observationRequest),
+      );
+      binding.listener.accepted.writeAndShutdown.mockImplementation(async (candidate) => {
+        expect(Buffer.from(candidate)).toEqual(
+          topologyFrame(
+            'OBSERVER_TO_COORDINATOR',
+            observationRequest,
+            topologyObservation(observationRequest),
+          ),
+        );
+      });
+
+      await expect(
+        owner.runTopologyObservationOne(
+          serviceRequest,
+          observer,
+          observerRole,
+          new AbortController().signal,
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(authority.authorize).toHaveBeenCalledOnce();
+      expect(observer.observe).toHaveBeenCalledWith(observationRequest, expect.any(AbortSignal));
+      expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('rejects topology role switching and absent observation before authority or listener access', async () => {
+    const serviceRequest = request({ serviceKind: 'TOPOLOGY_OBSERVATION_API_LISTENER' });
+    const first = fixture(serviceRequest);
+    await expect(
+      first.owner.runTopologyObservationOne(
+        serviceRequest,
+        { observe: vi.fn() },
+        'WORKER_CLIENT',
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('INVALID_AUTHORIZATION'));
+    expect(first.authority.authorize).not.toHaveBeenCalled();
+    expect(first.binding.createOwnedListener).not.toHaveBeenCalled();
+
+    const second = fixture(serviceRequest);
+    await expect(
+      second.owner.runTopologyObservationOne(
+        serviceRequest,
+        new DenyLinuxRetainedNativeSupervisorTopologyObservationPort(),
+        'API_LISTENER',
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('NOT_CONFIGURED'));
+    expect(second.authority.authorize).not.toHaveBeenCalled();
+    expect(second.binding.createOwnedListener).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['workspace', { workspaceId: 'workspace-other' }],
+    ['supervisor', { supervisorInstanceId: 'supervisor-other' }],
+  ])('denies topology %s drift before reaching the retained observer', async (_label, drift) => {
+    const serviceRequest = request({ serviceKind: 'TOPOLOGY_OBSERVATION_API_LISTENER' });
+    const { binding, owner } = fixture(serviceRequest);
+    const observationRequest = { ...topologyRequest('API_LISTENER'), ...drift };
+    const observe = vi.fn(async () => topologyObservation(topologyRequest('API_LISTENER')));
+    binding.listener.accepted.readToEof.mockResolvedValue(
+      topologyFrame(
+        'COORDINATOR_TO_OBSERVER',
+        observationRequest as LinuxRetainedNativeSupervisorTopologyObservationRequest,
+        observationRequest,
+      ),
+    );
+
+    await expect(
+      owner.runTopologyObservationOne(
+        serviceRequest,
+        { observe },
+        'API_LISTENER',
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('INVALID_AUTHORIZATION'));
+    expect(observe).not.toHaveBeenCalled();
+    expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
+  });
+
+  it('captures the topology observer method before awaiting authority', async () => {
+    const serviceRequest = request({ serviceKind: 'TOPOLOGY_OBSERVATION_API_LISTENER' });
+    const binding = new FixtureBinding();
+    const observationRequest = topologyRequest('API_LISTENER');
+    binding.listener.accepted.readToEof.mockResolvedValue(
+      topologyFrame('COORDINATOR_TO_OBSERVER', observationRequest, observationRequest),
+    );
+    const original = vi.fn(async () => topologyObservation(observationRequest));
+    const observer: LinuxRetainedNativeSupervisorTopologyObservationPort = { observe: original };
+    const authority = new FixtureAuthority((candidate) => {
+      observer.observe = vi.fn(async () => ({ substituted: true }));
+      return grant(candidate);
+    });
+    const owner = new BoundedLinuxRetainedNativeSupervisorServiceOwner(
+      binding,
+      authority,
+      () => now,
+    );
+
+    await expect(
+      owner.runTopologyObservationOne(
+        serviceRequest,
+        observer,
+        'API_LISTENER',
+        new AbortController().signal,
+      ),
+    ).resolves.toBeUndefined();
+    expect(original).toHaveBeenCalledOnce();
+    expect(observer.observe).not.toHaveBeenCalled();
   });
 
   it('aborts a pending accepted session at its bounded deadline and still cleans the listener', async () => {

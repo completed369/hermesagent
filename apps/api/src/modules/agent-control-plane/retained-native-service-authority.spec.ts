@@ -189,7 +189,7 @@ describe('BoundedLevel3RetainedNativeSupervisorServiceAuthority', () => {
     },
   );
 
-  it('emits distinct evidence for recovery and signing purposes', async () => {
+  it('emits distinct evidence for every listener service purpose', async () => {
     const recoveryRequest = request();
     const signingRequest = request({
       serviceKind: 'MODULE_AUTHORIZATION_SIGNING',
@@ -207,8 +207,29 @@ describe('BoundedLevel3RetainedNativeSupervisorServiceAuthority', () => {
       signingRequest,
       () => NOW,
     ).authorize(signingRequest)) as Record<string, unknown>;
-    expect(recovery.requestHash).not.toBe(signing.requestHash);
-    expect(recovery.approvalEvidenceHash).not.toBe(signing.approvalEvidenceHash);
-    expect(recovery.serviceRunId).not.toBe(signing.serviceRunId);
+    const apiObservationRequest = request({
+      serviceKind: 'TOPOLOGY_OBSERVATION_API_LISTENER',
+      socketPath: '/run/ventureos/supervisor/topology-api.sock',
+    });
+    const workerObservationRequest = request({
+      serviceKind: 'TOPOLOGY_OBSERVATION_WORKER_CLIENT',
+      socketPath: '/run/ventureos/supervisor/topology-worker.sock',
+    });
+    const apiObservation = (await new BoundedLevel3RetainedNativeSupervisorServiceAuthority(
+      capability(),
+      context,
+      apiObservationRequest,
+      () => NOW,
+    ).authorize(apiObservationRequest)) as Record<string, unknown>;
+    const workerObservation = (await new BoundedLevel3RetainedNativeSupervisorServiceAuthority(
+      capability(),
+      context,
+      workerObservationRequest,
+      () => NOW,
+    ).authorize(workerObservationRequest)) as Record<string, unknown>;
+    const results = [recovery, signing, apiObservation, workerObservation];
+    expect(new Set(results.map((result) => result.requestHash))).toHaveLength(4);
+    expect(new Set(results.map((result) => result.approvalEvidenceHash))).toHaveLength(4);
+    expect(new Set(results.map((result) => result.serviceRunId))).toHaveLength(4);
   });
 });

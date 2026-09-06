@@ -2782,6 +2782,44 @@ test('role-local topology observation IPC is kernel-authenticated, bounded, and 
   );
 });
 
+test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
+  const lifecycle = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',
+    'utf8',
+  );
+  const owner = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-service-owner.ts',
+    'utf8',
+  );
+  const authority = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-service-authority.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(lifecycle, /runTopologyObservationOne/u);
+  assert.match(
+    lifecycle,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler/u,
+  );
+  assert.match(owner, /TOPOLOGY_OBSERVATION_API_LISTENER/u);
+  assert.match(owner, /TOPOLOGY_OBSERVATION_WORKER_CLIENT/u);
+  assert.match(owner, /maximumSessionDurationMs/u);
+  assert.match(authority, /authorityLevelFor\(boundContext\) !== 3/u);
+  assert.match(authority, /actorKind === 'RUNTIME'/u);
+  assert.doesNotMatch(
+    apiComposition,
+    /BoundedLinuxRetainedNativeSupervisorServiceOwner|BoundedLevel3RetainedNativeSupervisorServiceAuthority/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedLinuxRetainedNativeSupervisorServiceOwner|BoundedLevel3RetainedNativeSupervisorServiceAuthority/u,
+  );
+});
+
 test('retained-native module authorization trust is signed, revocable, and uncomposed', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-module-authorization-trust-source.ts',
