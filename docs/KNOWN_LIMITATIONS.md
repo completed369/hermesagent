@@ -388,9 +388,11 @@
 > existing no-replacement listener lifecycle hosts one ADR-0122 exchange and removes its exact owned
 > socket (ADR-0123). A separate worker-only carrier protocol now authenticates and exact-binds one
 > cross-container request/response to the workspace, supervisor, plan, distinct service principals,
-> and a maximum five-second grant (ADR-0124). It remains absent from application composition and has
-> no concrete channel implementation, orchestration loop, writable shared mount, activation, or
-> runtime connection.
+> and a maximum five-second grant (ADR-0124). A separate Ed25519 adapter can authenticate both exact
+> deliveries over an untrusted injected carrier with keyless signing ports and binding-scoped public
+> roots (ADR-0125). Both layers remain absent from application composition and have no provisioned
+> root, signing key, concrete channel implementation, orchestration loop, writable shared mount,
+> activation, or runtime connection.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that

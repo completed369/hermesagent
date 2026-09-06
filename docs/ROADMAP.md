@@ -430,7 +430,11 @@ published and current `main` has not been deployed to private staging.
    response to an exact five-second workspace/supervisor/plan authorization plus independently
    authenticated API and worker delivery evidence (ADR-0124). Both terminals are one-use, abort on
    cancellation or expiry, and observation freshness cannot outlive carrier authority. The protocol
-   remains uncomposed and supplies no concrete channel, orchestration loop, or shared mount.
+   remains uncomposed and supplies no concrete channel, orchestration loop, or shared mount. An
+   application-layer Ed25519 adapter now signs the complete request and response deliveries through
+   keyless signer ports and verifies exact role/principal/binding-scoped public roots before either
+   side trusts carrier metadata (ADR-0125). The underlying carrier remains injected and untrusted;
+   no roots, keys, channel, Temporal configuration, or application composition are supplied.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
