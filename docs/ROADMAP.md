@@ -421,7 +421,11 @@ published and current `main` has not been deployed to private staging.
    signer and one domain-separated request, bounds request/response bytes plus exchange and close
    deadlines, and closes its injected channel before returning (ADR-0101). It contains no key,
    concrete transport, root provisioning, or composition; the independent publisher still verifies
-   every signature.
+   every signature. A separate uncomposed PostgreSQL registry now persists public-only Ed25519 root
+   versions with exact workspace/supervisor scope and immutable Level-3 evidence (ADR-0102). It
+   serializes tenant ownership, permits only adjacent monotonic versions and irreversible
+   revocation, denies unaudited mutation, and returns at most eight current roots. It provisions no
+   private key and is not yet composed with the signer or publisher.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
