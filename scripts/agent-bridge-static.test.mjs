@@ -3118,3 +3118,49 @@ test('native-module public roots are tenant-scoped, Level-3 audited, immutable, 
   assert.match(integration, /runtimeConnection: 'NOT_CONFIGURED'/u);
   assert.doesNotMatch(module, /PostgresRetainedNativeModuleAuthorizationRootRegistry/u);
 });
+
+test('native-module issuance composition binds roots, approval, signing, and audit without activation', () => {
+  const source = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-module-authorization-issuance-composition.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const worker = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  const rootBindingMigration = readFileSync(
+    'packages/database/prisma/migrations/20260906190000_bind_native_module_snapshot_to_current_root/migration.sql',
+    'utf8',
+  );
+
+  assert.match(source, /#attempted = false/u);
+  assert.match(
+    source,
+    /validateRetainedNativeSupervisorModuleAuthorizationSnapshotIssueRequest\(input\)/u,
+  );
+  assert.match(source, /new BoundedLevel3RetainedNativeModuleAuthorizationIssuanceAuthority/u);
+  assert.match(
+    source,
+    /this\.#roots\.read\(request\.workspaceId, request\.supervisorInstanceId\)/u,
+  );
+  assert.match(source, /root\.signerKeyId === request\.signerKeyId/u);
+  assert.match(source, /new BoundedRetainedNativeSupervisorModuleAuthorizationAuditedPublisher/u);
+  assert.match(source, /new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(
+    source,
+    /\bcreatePrivateKey\b|\bgenerateKeyPair|\bprivateKey\b|process\.env|\bfetch\s*\(|from 'node:(?:child_process|fs|net|tls)'|\bCONNECTED\b/u,
+  );
+  assert.doesNotMatch(module, /PostgresRetainedNativeModuleAuthorizationIssuanceComposition/u);
+  assert.doesNotMatch(worker, /PostgresRetainedNativeModuleAuthorizationIssuanceComposition/u);
+  assert.match(rootBindingMigration, /pg_advisory_xact_lock/u);
+  assert.match(rootBindingMigration, /90503/u);
+  assert.match(rootBindingMigration, /SELECT DISTINCT ON \(roots\."rootRecordId"\)/u);
+  assert.match(rootBindingMigration, /current_roots\."signerKeyId" = NEW\."signerKeyId"/u);
+  assert.match(
+    rootBindingMigration,
+    /current_roots\."minimumSnapshotVersion" <= NEW\."snapshotVersion"/u,
+  );
+  assert.match(rootBindingMigration, /current public-root binding denied/u);
+});

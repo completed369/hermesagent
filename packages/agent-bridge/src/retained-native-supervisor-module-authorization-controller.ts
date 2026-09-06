@@ -473,6 +473,13 @@ function issueRequest(
   });
 }
 
+/** Validates and freezes an issuance request before a composition root selects authority. */
+export function validateRetainedNativeSupervisorModuleAuthorizationSnapshotIssueRequest(
+  input: unknown,
+): Readonly<RetainedNativeSupervisorModuleAuthorizationSnapshotIssueRequest> {
+  return issueRequest(input);
+}
+
 export function retainedNativeSupervisorModuleAuthorizationSnapshotIssueRequestHash(
   request: Readonly<RetainedNativeSupervisorModuleAuthorizationSnapshotIssueRequest>,
 ): string {

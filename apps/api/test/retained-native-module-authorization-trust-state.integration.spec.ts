@@ -1,5 +1,6 @@
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 
+import { OperationalEventCapability } from '@ventureos/agent-control-plane';
 import { Prisma, prisma } from '@ventureos/database';
 import {
   BoundedRetainedNativeSupervisorModuleAuthorizationAuditedPublisher,
@@ -22,6 +23,7 @@ import {
   PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore,
   PostgresRetainedNativeModuleAuthorizationSnapshotReader,
 } from '../src/modules/agent-control-plane/retained-native-module-authorization-trust-state';
+import { PostgresRetainedNativeModuleAuthorizationRootRegistry } from '../src/modules/agent-control-plane/retained-native-module-authorization-root-registry';
 
 describe('durable retained-native module authorization trust state (PostgreSQL integration)', () => {
   const suffix = randomUUID();
@@ -349,6 +351,29 @@ describe('durable retained-native module authorization trust state (PostgreSQL i
       revokedAt: null,
       testOnly: false as const,
     };
+    const rootContext = Object.freeze({
+      workspaceId,
+      principalId: `control-plane-owner-${suffix}`,
+    });
+    const rootCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
+      { ...rootContext, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]);
+    const rootRegistry = new PostgresRetainedNativeModuleAuthorizationRootRegistry(prisma);
+    await expect(
+      rootRegistry.provision(
+        {
+          schemaVersion: 1,
+          purpose: 'RETAINED_NATIVE_MODULE_AUTHORIZATION_PUBLIC_ROOT_PROVISIONING',
+          workspaceId,
+          supervisorInstanceId: publicationInstanceId,
+          root,
+          runtimeConnection: 'NOT_CONFIGURED',
+        },
+        rootCapability,
+        rootContext,
+        () => now,
+      ),
+    ).resolves.toBe('APPENDED');
     const authority = {
       async authorize(
         request: Readonly<RetainedNativeSupervisorModuleAuthorizationSnapshotIssuanceAuthorityRequest>,
@@ -495,5 +520,41 @@ describe('durable retained-native module authorization trust state (PostgreSQL i
         WHERE "supervisorInstanceId" = ${publicationInstanceId}
       `),
     ).rejects.toThrow();
+    await expect(
+      rootRegistry.provision(
+        {
+          schemaVersion: 1,
+          purpose: 'RETAINED_NATIVE_MODULE_AUTHORIZATION_PUBLIC_ROOT_PROVISIONING',
+          workspaceId,
+          supervisorInstanceId: publicationInstanceId,
+          root: {
+            ...root,
+            rootRecordVersion: 2,
+            revokedAt: new Date(now - 1).toISOString(),
+          },
+          runtimeConnection: 'NOT_CONFIGURED',
+        },
+        rootCapability,
+        rootContext,
+        () => now + 1,
+      ),
+    ).resolves.toBe('APPENDED');
+    const secondInput = {
+      ...input,
+      snapshotId: `audited-published-snapshot-${suffix}-2`,
+      snapshotVersion: 2,
+      previousSnapshotHash: evidence[0]!.snapshotHash,
+    };
+    await expect(controller().issue(secondInput, new AbortController().signal)).rejects.toThrow(
+      /NOT_CONFIGURED/u,
+    );
+    await expect(
+      prisma.$queryRaw(Prisma.sql`
+        SELECT 1
+        FROM "acp_retained_native_module_authorization_snapshots"
+        WHERE "supervisorInstanceId" = ${publicationInstanceId}
+          AND "snapshotVersion" = 2
+      `),
+    ).resolves.toEqual([]);
   });
 });
