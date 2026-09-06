@@ -30,7 +30,7 @@ RUN pnpm build
 
 FROM builder AS native-module-builder
 RUN set -eu; \
-    mkdir -p /runtime/native; \
+    install -d -m 0755 /runtime/api-native /runtime/worker-native; \
     compile_native_module() { \
       source=$1; module_name=$2; output=$3; \
       cc -std=c11 -O2 -Wall -Wextra -Werror -D_FORTIFY_SOURCE=2 \
@@ -40,8 +40,8 @@ RUN set -eu; \
       chmod 0444 "$output"; \
       test "$(stat -c '%u:%g:%a' "$output")" = '0:0:444'; \
     }; \
-    compile_native_module /workspace/packages/agent-bridge/native/linux-retained-native-listener.c linux_retained_native_listener /runtime/native/linux-retained-native-listener.node; \
-    compile_native_module /workspace/packages/agent-bridge/native/linux-retained-native-client.c linux_retained_native_client /runtime/native/linux-retained-native-client.node
+    compile_native_module /workspace/packages/agent-bridge/native/linux-retained-native-listener.c linux_retained_native_listener /runtime/api-native/linux-retained-native-listener.node; \
+    compile_native_module /workspace/packages/agent-bridge/native/linux-retained-native-client.c linux_retained_native_client /runtime/worker-native/linux-retained-native-client.node
 
 FROM builder AS test-tools
 ENV NODE_ENV=test
@@ -148,7 +148,7 @@ FROM runtime AS api
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=deployer --chown=65532:65532 /runtime/api/ ./
-COPY --from=native-module-builder --chown=0:0 --chmod=0444 /runtime/native/linux-retained-native-listener.node /usr/lib/ventureos/native/linux-retained-native-listener.node
+COPY --from=native-module-builder --chown=0:0 /runtime/api-native/ /usr/lib/ventureos/native/
 COPY --chown=65532:65532 scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
 USER 65532:65532
 EXPOSE 3001
@@ -160,7 +160,7 @@ FROM runtime AS worker
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=deployer --chown=65532:65532 /runtime/worker/ ./
-COPY --from=native-module-builder --chown=0:0 --chmod=0444 /runtime/native/linux-retained-native-client.node /usr/lib/ventureos/native/linux-retained-native-client.node
+COPY --from=native-module-builder --chown=0:0 /runtime/worker-native/ /usr/lib/ventureos/native/
 COPY --chown=65532:65532 scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
 USER 65532:65532
 EXPOSE 3002

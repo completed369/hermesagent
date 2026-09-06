@@ -57,14 +57,15 @@ test('staging image and topology contracts are fail-closed', () => {
   assert.match(nativeBuilder, /-Wall -Wextra -Werror -D_FORTIFY_SOURCE=2/);
   assert.match(nativeBuilder, /-fstack-protector-strong/);
   assert.match(nativeBuilder, /-Wl,-z,relro,-z,now -Wl,--build-id=none/);
+  assert.match(nativeBuilder, /install -d -m 0755 \/runtime\/api-native \/runtime\/worker-native/);
   assert.match(nativeBuilder, /stat -c '%u:%g:%a'/);
   assert.match(nativeBuilder, /linux-retained-native-listener\.c/);
   assert.match(nativeBuilder, /linux-retained-native-client\.c/);
   const api = dockerStage(dockerfile, 'api');
   const worker = dockerStage(dockerfile, 'worker');
-  assert.match(api, /--chown=0:0 --chmod=0444 .*linux-retained-native-listener\.node/);
+  assert.match(api, /--chown=0:0 \/runtime\/api-native\/ \/usr\/lib\/ventureos\/native\//);
   assert.doesNotMatch(api, /linux-retained-native-client\.node/);
-  assert.match(worker, /--chown=0:0 --chmod=0444 .*linux-retained-native-client\.node/);
+  assert.match(worker, /--chown=0:0 \/runtime\/worker-native\/ \/usr\/lib\/ventureos\/native\//);
   assert.doesNotMatch(worker, /linux-retained-native-listener\.node/);
   assert.match(
     read('.github/workflows/runtime-substrate-remediation.yml'),
