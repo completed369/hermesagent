@@ -3210,3 +3210,25 @@ test('native-module trust composition requires audited current roots and remains
   assert.doesNotMatch(worker, /PostgresRetainedNativeModuleAuthorizationTrustComposition/u);
   assert.match(integration, /new PostgresRetainedNativeModuleAuthorizationTrustComposition/u);
 });
+
+test('audited native-module trust supplies the retained-descriptor loader composition and remains unactivated', () => {
+  const source = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-module-loader-composition.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const worker = readFileSync('apps/worker/src/worker.ts', 'utf8');
+
+  assert.match(source, /PostgresRetainedNativeModuleAuthorizationTrustComposition/u);
+  assert.match(source, /createRetainedDescriptorLinuxNativeSupervisorModuleLoader/u);
+  assert.doesNotMatch(source, /\.load\s*\(|\.node['"`]|\.sock['"`]/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bfetch\s*\(|from 'node:(?:child_process|fs|net|tls)'|\bCONNECTED\b/u,
+  );
+  assert.doesNotMatch(module, /createPostgresRetainedDescriptorLinuxNativeSupervisorModuleLoader/u);
+  assert.doesNotMatch(worker, /createPostgresRetainedDescriptorLinuxNativeSupervisorModuleLoader/u);
+});
