@@ -2000,6 +2000,89 @@ model AcpRetainedNativeModuleAuthorizationRootEvidence {
   @@map("acp_retained_native_module_authorization_root_evidence")
 }
 
+/// Immutable tenant-bound metadata for one exact, five-second topology carrier
+/// authorization. This stores no transport configuration or private key material.
+model AcpTopologyCarrierSignatureRootScope {
+  carrierId                     String   @id
+  workspaceId                   String   @db.Uuid
+  supervisorInstanceId          String
+  bindingHash                   String
+  coordinatorPrincipalReference String
+  workerPrincipalReference      String
+  provisioningAttemptId         String
+  provisioningPlanHash          String
+  issuedAt                      DateTime @db.Timestamptz(3)
+  expiresAt                     DateTime @db.Timestamptz(3)
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+
+  roots AcpTopologyCarrierSignatureRoot[]
+
+  @@unique([carrierId, workspaceId, supervisorInstanceId, bindingHash], map: "acp_topology_carrier_root_scopes_binding_key")
+  @@index([workspaceId, supervisorInstanceId, createdAt(sort: Desc)], map: "acp_topology_carrier_root_scopes_scope_idx")
+  @@map("acp_topology_carrier_signature_root_scopes")
+}
+
+/// Public-only Ed25519 verification grant for exactly one carrier role and
+/// binding. A binding may contain at most its coordinator and worker grants.
+model AcpTopologyCarrierSignatureRoot {
+  workspaceId          String    @db.Uuid
+  supervisorInstanceId String
+  carrierId            String
+  bindingHash          String
+  rootRecordId         String
+  rootRecordVersion    Int
+  signerKeyId          String
+  algorithm            String
+  purpose              String
+  principalRole        String
+  principalReference   String
+  publicKeySpkiBase64  String
+  publicKeySpkiSha256  String
+  validFrom            DateTime  @db.Timestamptz(3)
+  validUntil           DateTime  @db.Timestamptz(3)
+  revokedAt            DateTime? @db.Timestamptz(3)
+  testOnly             Boolean
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+
+  provisioningEvidence AcpTopologyCarrierSignatureRootEvidence?
+  scope                AcpTopologyCarrierSignatureRootScope     @relation(fields: [carrierId, workspaceId, supervisorInstanceId, bindingHash], references: [carrierId, workspaceId, supervisorInstanceId, bindingHash], onDelete: Restrict, onUpdate: Restrict, map: "acp_topology_carrier_roots_scope_fkey")
+
+  @@id([workspaceId, supervisorInstanceId, carrierId, principalRole])
+  @@unique([workspaceId, supervisorInstanceId, rootRecordId, rootRecordVersion], map: "acp_topology_carrier_roots_record_key")
+  @@index([workspaceId, supervisorInstanceId, bindingHash], map: "acp_topology_carrier_roots_binding_idx")
+  @@map("acp_topology_carrier_signature_roots")
+}
+
+/// Immutable Level-3 authorization evidence recorded atomically with each
+/// exact-binding public verification grant.
+model AcpTopologyCarrierSignatureRootEvidence {
+  workspaceId                 String   @db.Uuid
+  supervisorInstanceId        String
+  carrierId                   String
+  bindingHash                 String
+  principalRole               String
+  rootRecordId                String
+  rootRecordVersion           Int
+  signerKeyId                 String
+  publicKeySpkiSha256         String
+  provisioningRequestHash     String   @unique(map: "acp_topology_carrier_root_evidence_request_hash_key")
+  provisioningAuthorizationId String
+  approvalId                  String
+  approvalEvidenceHash        String
+  authorizedByReference       String
+  authorityLevel              Int
+  authorizedFrom              DateTime @db.Timestamptz(3)
+  authorizedUntil             DateTime @db.Timestamptz(3)
+  createdAt                   DateTime @default(now()) @db.Timestamptz(3)
+
+  root AcpTopologyCarrierSignatureRoot @relation(fields: [workspaceId, supervisorInstanceId, carrierId, principalRole], references: [workspaceId, supervisorInstanceId, carrierId, principalRole], onDelete: Restrict, onUpdate: Restrict, map: "acp_topology_carrier_root_evidence_root_fkey")
+
+  @@id([workspaceId, supervisorInstanceId, carrierId, principalRole])
+  @@unique([workspaceId, provisioningAuthorizationId], map: "acp_topology_carrier_root_evidence_workspace_auth_key")
+  @@index([workspaceId, supervisorInstanceId, createdAt(sort: Desc)], map: "acp_topology_carrier_root_evidence_scope_idx")
+  @@map("acp_topology_carrier_signature_root_evidence")
+}
+
 // ---------------------------------------------------------------------------
 // Product and Listing Studio (Phase 4, master spec sections 21/22/25/30)
 // ---------------------------------------------------------------------------

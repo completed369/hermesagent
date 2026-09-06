@@ -392,7 +392,9 @@
 > deliveries over an untrusted injected carrier with keyless signing ports and binding-scoped public
 > roots (ADR-0125). Both layers remain absent from application composition and have no provisioned
 > root, signing key, concrete channel implementation, orchestration loop, writable shared mount,
-> activation, or runtime connection.
+> activation, or runtime connection. A separate durable registry now constrains any future public
+> root admission to one live five-second binding, exact tenant/supervisor/role/principal scope, and
+> immutable Level-3 evidence (ADR-0126), but it is also uncomposed and contains no seeded root.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that

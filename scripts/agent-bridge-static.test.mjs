@@ -2849,6 +2849,39 @@ test('topology carrier delivery is signed through keyless ports and remains unco
   assert.doesNotMatch(workerComposition, /TopologyObservationCarrierSignature/u);
 });
 
+test('topology carrier public roots require exact live binding and Level-3 durable evidence', () => {
+  const registry = readFileSync(
+    'apps/api/src/modules/agent-control-plane/topology-carrier-signature-root-registry.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260906210000_topology_carrier_signature_root_registry/migration.sql',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(registry, /validateRetainedNativeSupervisorTopologyObservationCarrierBinding/u);
+  assert.match(registry, /retainedNativeSupervisorTopologyObservationCarrierBindingHash/u);
+  assert.match(registry, /authorityLevelFor\(boundContext\) !== 3/u);
+  assert.match(registry, /actorKind === 'RUNTIME'/u);
+  assert.match(registry, /root\.rootRecordVersion !== 1/u);
+  assert.match(registry, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(migration, /INTERVAL '5 seconds'/u);
+  assert.match(migration, /binding is not currently authorized/u);
+  assert.match(migration, /root role bound exceeded/u);
+  assert.match(migration, /Level-3 evidence is required/u);
+  assert.match(migration, /public-root state is immutable/u);
+  assert.doesNotMatch(
+    registry,
+    /process\.env|\bCONNECTED\b|\bcreatePrivateKey\b|\bgenerateKeyPair\b|\bprivateKey\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(apiComposition, /PostgresTopologyCarrierSignatureRootRegistry/u);
+  assert.doesNotMatch(workerComposition, /PostgresTopologyCarrierSignatureRootRegistry/u);
+});
+
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',
