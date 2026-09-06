@@ -229,6 +229,9 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationS
   readonly #sign: (payload: Readonly<Uint8Array>, signal: AbortSignal) => Promise<unknown>;
   readonly #close: () => Promise<void>;
   #attempted = false;
+  #closed = false;
+  #activeController: AbortController | undefined;
+  #closePromise: Promise<void> | undefined;
 
   constructor(
     signerKeyId: string,
@@ -251,14 +254,14 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationS
   }
 
   async handle(inboundInput: unknown, signal: AbortSignal): Promise<Readonly<Uint8Array>> {
-    if (this.#attempted) deny('CONCURRENT_EXCHANGE');
+    if (this.#attempted || this.#closed) deny('CONCURRENT_EXCHANGE');
     this.#attempted = true;
     const controller = new AbortController();
+    this.#activeController = controller;
     const abort = () => controller.abort();
     const validSignal = signal instanceof AbortSignal;
     if (validSignal) signal.addEventListener('abort', abort, { once: true });
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    let closeTimeout: ReturnType<typeof setTimeout> | undefined;
     let request: AuthenticatedSigningRequest | undefined;
     let signature: Uint8Array | undefined;
     let failure: unknown;
@@ -300,20 +303,11 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationS
       if (timeout !== undefined) clearTimeout(timeout);
       controller.abort();
       try {
-        await Promise.race([
-          this.#close(),
-          new Promise<never>((_resolve, reject) => {
-            closeTimeout = setTimeout(
-              () => reject(new Error('Signing custody close timed out')),
-              this.#timeoutMs,
-            );
-            closeTimeout.unref?.();
-          }),
-        ]);
+        await this.close();
       } catch {
         closeFailed = true;
       } finally {
-        if (closeTimeout !== undefined) clearTimeout(closeTimeout);
+        if (this.#activeController === controller) this.#activeController = undefined;
         if (validSignal) signal.removeEventListener('abort', abort);
         request?.payloadBytes.fill(0);
       }
@@ -338,5 +332,33 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationS
     if (response.byteLength > MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES)
       deny('LIMIT_EXCEEDED');
     return response;
+  }
+
+  /** Closes an unattempted or active custody session and shares one bounded close result. */
+  async close(): Promise<void> {
+    this.#closed = true;
+    this.#activeController?.abort();
+    this.#closePromise ??= this.closeBounded();
+    return this.#closePromise;
+  }
+
+  private async closeBounded(): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.#close(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('Signing custody close timed out')),
+            this.#timeoutMs,
+          );
+          timeout.unref?.();
+        }),
+      ]);
+    } catch {
+      deny();
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
   }
 }

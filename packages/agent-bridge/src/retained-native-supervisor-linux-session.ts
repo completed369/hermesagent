@@ -5,6 +5,11 @@ import {
   type RetainedNativeSupervisorLocalIpcEndpointIdentity,
   type RetainedNativeSupervisorLocalIpcPeerCredentials,
 } from './retained-native-supervisor-local-ipc';
+import { AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler } from './retained-native-supervisor-module-authorization-signing-handler';
+
+export type AuthenticatedLinuxLocalRetainedNativeSupervisorInboundHandler =
+  | AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler
+  | AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler;
 
 export interface LinuxRetainedNativeSupervisorListenerSocketStat {
   readonly fileType: 'SOCKET';
@@ -183,11 +188,11 @@ function validSocketPath(value: unknown): value is string {
  * It cannot create, bind, discover, retry, loop, unlink, or expose that listener.
  */
 export class BoundedLinuxRetainedNativeSupervisorSession {
-  #inFlight = false;
+  #state: 'READY' | 'IN_FLIGHT' | 'ATTEMPTED' = 'READY';
 
   constructor(
     private readonly binding: LinuxRetainedNativeSupervisorSessionBinding,
-    private readonly handler: AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler,
+    private readonly handler: AuthenticatedLinuxLocalRetainedNativeSupervisorInboundHandler,
   ) {
     if (
       binding instanceof DenyLinuxRetainedNativeSupervisorSessionBinding ||
@@ -195,16 +200,19 @@ export class BoundedLinuxRetainedNativeSupervisorSession {
       binding.platform !== 'LINUX' ||
       typeof binding.lstatUnixSocket !== 'function' ||
       typeof binding.acceptAuthorizedUnixSocket !== 'function' ||
-      !(handler instanceof AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler)
+      !(
+        handler instanceof AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler ||
+        handler instanceof
+          AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler
+      )
     )
       deny('NOT_CONFIGURED');
   }
 
   async handleOne(socketPath: string, signal: AbortSignal): Promise<void> {
-    if (!(signal instanceof AbortSignal) || signal.aborted || !validSocketPath(socketPath))
-      deny('EXCHANGE_DENIED');
-    if (this.#inFlight) deny('CONCURRENT_EXCHANGE');
-    this.#inFlight = true;
+    if (this.#state === 'IN_FLIGHT') deny('CONCURRENT_EXCHANGE');
+    if (this.#state !== 'READY') deny('EXCHANGE_DENIED');
+    this.#state = 'IN_FLIGHT';
     let opened: LinuxRetainedNativeSupervisorAcceptedSession | undefined;
     let nativeRequestFrame: Uint8Array | undefined;
     let requestFrame: Buffer | undefined;
@@ -212,6 +220,8 @@ export class BoundedLinuxRetainedNativeSupervisorSession {
     let responseFrame: Buffer | undefined;
     let closeFailed = false;
     try {
+      if (!(signal instanceof AbortSignal) || signal.aborted || !validSocketPath(socketPath))
+        deny('EXCHANGE_DENIED');
       const beforeAccept = parseStat(await this.binding.lstatUnixSocket(socketPath, signal));
       if (signal.aborted) deny('EXCHANGE_DENIED');
       opened = acceptedSession(await this.binding.acceptAuthorizedUnixSocket(socketPath, signal));
@@ -262,6 +272,16 @@ export class BoundedLinuxRetainedNativeSupervisorSession {
       requestFrame?.fill(0);
       handlerResponseFrame?.fill(0);
       responseFrame?.fill(0);
+      if (
+        this.handler instanceof
+        AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler
+      ) {
+        try {
+          await this.handler.close();
+        } catch {
+          closeFailed = true;
+        }
+      }
       if (opened) {
         try {
           await opened.close();
@@ -269,7 +289,7 @@ export class BoundedLinuxRetainedNativeSupervisorSession {
           closeFailed = true;
         }
       }
-      this.#inFlight = false;
+      this.#state = 'ATTEMPTED';
       if (closeFailed) deny('EXCHANGE_DENIED');
     }
   }
