@@ -17,6 +17,11 @@ import { dirname, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  createRetainedDescriptorLinuxNativeSupervisorParentDirectoryProvisioner,
+  linuxRetainedNativeSupervisorParentDirectoryProvisionRequestHash,
+  type LinuxRetainedNativeSupervisorParentDirectoryProvisionRequest,
+} from './retained-native-supervisor-linux-parent-directory-provisioner';
+import {
   createRetainedDescriptorLinuxNativeSupervisorPathProvisioner,
   type LinuxRetainedNativeSupervisorPathProvisionGrant,
   type LinuxRetainedNativeSupervisorPathProvisionRequest,
@@ -96,6 +101,9 @@ describeLinux('retained-descriptor Linux native path provisioner evidence', () =
     const socketDirectoryParentStat = lstatSync(socketDirectoryParent);
     const modulePath = join(moduleDirectory, 'client.node');
     const socketDirectory = join(socketDirectoryParent, 'supervisor');
+    mkdirSync(socketDirectory, { mode: 0o700 });
+    chmodSync(socketDirectory, 0o700);
+    const socketDirectoryStat = lstatSync(socketDirectory);
     const socketPath = join(socketDirectory, 'recovery.sock');
     return {
       request: {
@@ -122,6 +130,7 @@ describeLinux('retained-descriptor Linux native path provisioner evidence', () =
         socketDirectoryParent,
         socketDirectoryParentIdentityReference: identity(socketDirectoryParentStat),
         socketDirectory,
+        socketDirectoryIdentityReference: identity(socketDirectoryStat),
         socketPath,
         ownerUid: owner.uid,
         ownerGid: owner.gid,
@@ -157,7 +166,7 @@ describeLinux('retained-descriptor Linux native path provisioner evidence', () =
     }).provision(request, new AbortController().signal);
   }
 
-  it('copies retained source bytes into a new exact owner-only module and socket directory', async () => {
+  it('copies retained source bytes into a new exact owner-only module and reuses the attested socket directory', async () => {
     const { request, modulePath, socketDirectory, socketPath } = fixture('success');
 
     const result = await provision(request);
@@ -187,16 +196,16 @@ describeLinux('retained-descriptor Linux native path provisioner evidence', () =
 
     await expect(provision(request)).rejects.toMatchObject({ code: 'INVALID_ATTESTATION' });
     expect(existsSync(modulePath)).toBe(false);
-    expect(existsSync(socketDirectory)).toBe(false);
+    expect(existsSync(socketDirectory)).toBe(true);
   });
 
-  it('denies a non-owner-only retained parent before creating either target', async () => {
+  it('denies a non-owner-only retained parent before creating the module target', async () => {
     const { request, modulePath, socketDirectory } = fixture('unsafe-parent');
     chmodSync(request.moduleDirectory, 0o750);
 
     await expect(provision(request)).rejects.toMatchObject({ code: 'INVALID_ATTESTATION' });
     expect(existsSync(modulePath)).toBe(false);
-    expect(existsSync(socketDirectory)).toBe(false);
+    expect(existsSync(socketDirectory)).toBe(true);
   });
 
   it('refuses an existing module without replacing its bytes', async () => {
@@ -206,15 +215,90 @@ describeLinux('retained-descriptor Linux native path provisioner evidence', () =
 
     await expect(provision(request)).rejects.toMatchObject({ code: 'INVALID_ATTESTATION' });
     expect(readFileSync(modulePath, 'utf8')).toBe('existing');
-    expect(existsSync(socketDirectory)).toBe(false);
+    expect(existsSync(socketDirectory)).toBe(true);
   });
 
-  it('removes its new module when the socket directory target already exists', async () => {
-    const { request, modulePath, socketDirectory } = fixture('existing-socket-directory');
-    mkdirSync(socketDirectory, { mode: 0o700 });
+  it('provisions client and listener modules against the same retained socket directory', async () => {
+    const root = join(ownedRoot, 'parent-composed-shared-socket');
+    mkdirSync(root, { mode: 0o700 });
+    chmodSync(root, 0o700);
+    const owner = lstatSync(root);
+    const parentRequest: LinuxRetainedNativeSupervisorParentDirectoryProvisionRequest = {
+      schemaVersion: 1,
+      purpose: 'RETAINED_NATIVE_SUPERVISOR_PARENT_DIRECTORIES_PROVISION',
+      workspaceId: 'workspace-linux-evidence',
+      supervisorInstanceId: 'native-supervisor-linux-evidence',
+      platform: 'LINUX',
+      architecture: 'X64',
+      runtimeRoot: root,
+      runtimeRootIdentityReference: identity(owner),
+      runtimeRootOwnerUid: owner.uid,
+      runtimeRootOwnerGid: owner.gid,
+      runtimeRootMode: 0o700,
+      moduleDirectory: join(root, 'native'),
+      socketDirectoryParent: join(root, 'run'),
+      socketDirectory: join(root, 'run', 'supervisor'),
+      ownerUid: owner.uid,
+      ownerGid: owner.gid,
+      runtimeConnection: 'NOT_CONFIGURED',
+    };
+    const now = Date.now();
+    const parents = await createRetainedDescriptorLinuxNativeSupervisorParentDirectoryProvisioner({
+      authorize: async () => ({
+        ...parentRequest,
+        provisioningId: 'parent-provision-composed-linux-evidence',
+        requestHash:
+          linuxRetainedNativeSupervisorParentDirectoryProvisionRequestHash(parentRequest),
+        approvalId: 'level3-control-plane:parent-composed-linux-evidence',
+        approvalEvidenceHash: 'd'.repeat(64),
+        authorizedByReference: 'linux-evidence-authority',
+        authorityLevel: 3,
+        validFrom: new Date(now - 1_000).toISOString(),
+        validUntil: new Date(now + 60_000).toISOString(),
+      }),
+    }).provision(parentRequest, new AbortController().signal);
+    const sourceStat = lstatSync(sourcePath);
+    const clientRequest: LinuxRetainedNativeSupervisorPathProvisionRequest = {
+      schemaVersion: 1,
+      purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION',
+      workspaceId: parentRequest.workspaceId,
+      supervisorInstanceId: parentRequest.supervisorInstanceId,
+      platform: 'LINUX',
+      architecture: 'X64',
+      moduleKind: 'CLIENT',
+      sourceModulePath: sourcePath,
+      sourceModuleSha256: createHash('sha256').update(readFileSync(sourcePath)).digest('hex'),
+      sourceModuleIdentityReference: identity(sourceStat),
+      sourceModuleOwnerUid: sourceStat.uid,
+      sourceModuleOwnerGid: sourceStat.gid,
+      sourceModuleMode: sourceStat.mode & 0o777,
+      sourceModuleSizeBytes: sourceStat.size,
+      parentDirectoryProvisioningId: parents.provisioningId,
+      parentDirectoryProvisionRequestHash: parents.requestHash,
+      parentDirectoryApprovalEvidenceHash: parents.approvalEvidenceHash,
+      moduleDirectory: parents.moduleDirectory,
+      moduleDirectoryIdentityReference: parents.moduleDirectoryIdentityReference,
+      canonicalModulePath: join(parents.moduleDirectory, 'client.node'),
+      socketDirectoryParent: parents.socketDirectoryParent,
+      socketDirectoryParentIdentityReference: parents.socketDirectoryParentIdentityReference,
+      socketDirectory: parents.socketDirectory,
+      socketDirectoryIdentityReference: parents.socketDirectoryIdentityReference,
+      socketPath: join(parents.socketDirectory, 'recovery.sock'),
+      ownerUid: parents.ownerUid,
+      ownerGid: parents.ownerGid,
+      runtimeConnection: 'NOT_CONFIGURED',
+    };
+    const client = await provision(clientRequest);
+    const listenerRequest = {
+      ...clientRequest,
+      moduleKind: 'LISTENER' as const,
+      canonicalModulePath: join(clientRequest.moduleDirectory, 'listener.node'),
+    };
+    const listener = await provision(listenerRequest);
 
-    await expect(provision(request)).rejects.toMatchObject({ code: 'INVALID_ATTESTATION' });
-    expect(existsSync(modulePath)).toBe(false);
-    expect(lstatSync(socketDirectory).isDirectory()).toBe(true);
+    expect(client.socketDirectoryIdentityReference).toBe(listener.socketDirectoryIdentityReference);
+    expect(client.socketDirectoryIdentityReference).toBe(parents.socketDirectoryIdentityReference);
+    expect(lstatSync(parents.socketDirectory).isDirectory()).toBe(true);
+    expect(lstatSync(listenerRequest.canonicalModulePath).isFile()).toBe(true);
   });
 });

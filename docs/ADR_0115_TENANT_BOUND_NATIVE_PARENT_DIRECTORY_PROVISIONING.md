@@ -14,14 +14,15 @@ provisioning and would leave a critical runtime prerequisite ambient.
 Add an exported but uncomposed Linux-x64 parent-directory provisioner that:
 
 1. accepts one exact tenant and supervisor request binding a retained owner-only runtime root, its
-   Linux device/inode identity, owner, and two fixed absent children named `native` and `run`;
+   Linux device/inode identity, owner, fixed absent children named `native` and `run`, and the fixed
+   absent `run/supervisor` socket directory;
 2. defaults authority and host access to denial, consumes one attempt, and accepts only an exact
    request-hash-bound Level-3 grant lasting at most five minutes;
 3. opens the root with `O_NOFOLLOW` and close-on-exec, verifies its retained identity, effective
    process ownership, and exact `0700` mode, and creates no recursive or caller-selected hierarchy;
-4. creates the two children with exact `0700` mode, retains descriptors, rechecks canonical path
-   identity, never replaces an existing path, and limits failure cleanup to its own retained empty
-   child; and
+4. creates the three-directory hierarchy with exact `0700` mode, retains descriptors, rechecks
+   canonical path identity, never replaces an existing path, and limits failure cleanup to its own
+   retained empty child; and
 5. returns frozen tenant-, supervisor-, request-, approval-, owner-, and identity-bound evidence.
 
 Add a one-use API authority adapter that accepts only an exact trusted non-runtime `CONTROL_PLANE`
@@ -29,8 +30,10 @@ Level-3 capability. It rejects Level 4, AI-COO authority, cross-workspace scope,
 malformed input, invalid clocks, and replay, and emits only domain-separated digest evidence.
 
 Strengthen ADR-0096 so its request, grant, result, and downstream snapshot issuance carry the parent
-provisioning identifier, request and approval hashes, and both exact parent identities. The retained
-path host now rejects either identity if it differs before creating a module or socket directory.
+provisioning identifier, request and approval hashes, both exact parent identities, and the socket
+directory identity. The retained path host now rejects any identity drift before creating a module.
+ADR-0116 records the follow-up correction that makes this shared directory mandatory for both module
+kinds.
 
 ## Security and runtime-truth boundary
 

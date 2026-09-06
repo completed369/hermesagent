@@ -40,6 +40,7 @@ export interface LinuxRetainedNativeSupervisorParentDirectoryProvisionRequest {
   readonly runtimeRootMode: 448;
   readonly moduleDirectory: string;
   readonly socketDirectoryParent: string;
+  readonly socketDirectory: string;
   readonly ownerUid: number;
   readonly ownerGid: number;
   readonly runtimeConnection: 'NOT_CONFIGURED';
@@ -75,6 +76,8 @@ export interface ProvisionedLinuxRetainedNativeSupervisorParentDirectories {
   readonly moduleDirectoryIdentityReference: string;
   readonly socketDirectoryParent: string;
   readonly socketDirectoryParentIdentityReference: string;
+  readonly socketDirectory: string;
+  readonly socketDirectoryIdentityReference: string;
   readonly ownerUid: number;
   readonly ownerGid: number;
   readonly directoryMode: 448;
@@ -127,6 +130,7 @@ const REQUEST_KEYS = [
   'runtimeRootOwnerUid',
   'schemaVersion',
   'socketDirectoryParent',
+  'socketDirectory',
   'supervisorInstanceId',
   'workspaceId',
 ] as const;
@@ -162,6 +166,8 @@ const RESULT_KEYS = [
   'schemaVersion',
   'socketDirectoryParent',
   'socketDirectoryParentIdentityReference',
+  'socketDirectory',
+  'socketDirectoryIdentityReference',
   'supervisorInstanceId',
   'workspaceId',
 ] as const;
@@ -263,9 +269,11 @@ export function validateLinuxRetainedNativeSupervisorParentDirectoryProvisionReq
   const runtimeRoot = directoryPath(value.runtimeRoot);
   const moduleDirectory = directoryPath(value.moduleDirectory);
   const socketDirectoryParent = directoryPath(value.socketDirectoryParent);
+  const socketDirectory = directoryPath(value.socketDirectory);
   if (
     moduleDirectory !== posix.join(runtimeRoot, 'native') ||
     socketDirectoryParent !== posix.join(runtimeRoot, 'run') ||
+    socketDirectory !== posix.join(socketDirectoryParent, 'supervisor') ||
     value.runtimeRootOwnerUid !== value.ownerUid ||
     value.runtimeRootOwnerGid !== value.ownerGid
   )
@@ -284,6 +292,7 @@ export function validateLinuxRetainedNativeSupervisorParentDirectoryProvisionReq
     runtimeRootMode: OWNER_ONLY_DIRECTORY_MODE,
     moduleDirectory,
     socketDirectoryParent,
+    socketDirectory,
     ownerUid: nonnegative(value.ownerUid),
     ownerGid: nonnegative(value.ownerGid),
     runtimeConnection: 'NOT_CONFIGURED',
@@ -350,12 +359,14 @@ function validateResult(
     value.authorizedUntil !== grant.validUntil ||
     value.moduleDirectory !== grant.moduleDirectory ||
     value.socketDirectoryParent !== grant.socketDirectoryParent ||
+    value.socketDirectory !== grant.socketDirectory ||
     value.ownerUid !== grant.ownerUid ||
     value.ownerGid !== grant.ownerGid ||
     value.directoryMode !== OWNER_ONLY_DIRECTORY_MODE ||
     value.runtimeConnection !== 'NOT_CONFIGURED' ||
     !positiveIdentityReference(value.moduleDirectoryIdentityReference) ||
-    !positiveIdentityReference(value.socketDirectoryParentIdentityReference)
+    !positiveIdentityReference(value.socketDirectoryParentIdentityReference) ||
+    !positiveIdentityReference(value.socketDirectoryIdentityReference)
   )
     deny('INVALID_ATTESTATION');
   return Object.freeze(
@@ -430,8 +441,10 @@ class RetainedDescriptorLinuxParentDirectoryProvisionHost implements LinuxRetain
     let rootDescriptor: number | undefined;
     let moduleDescriptor: number | undefined;
     let socketParentDescriptor: number | undefined;
+    let socketDirectoryDescriptor: number | undefined;
     let createdModule = false;
     let createdSocketParent = false;
+    let createdSocketDirectory = false;
     try {
       if (
         typeof geteuid !== 'function' ||
@@ -471,13 +484,28 @@ class RetainedDescriptorLinuxParentDirectoryProvisionHost implements LinuxRetain
         grant.ownerGid,
       );
 
+      const socketDirectoryAtParent = `/proc/self/fd/${socketParentDescriptor}/supervisor`;
+      mkdirSync(socketDirectoryAtParent, { mode: OWNER_ONLY_DIRECTORY_MODE });
+      createdSocketDirectory = true;
+      socketDirectoryDescriptor = openSync(
+        socketDirectoryAtParent,
+        fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW | LINUX_O_CLOEXEC,
+      );
+      const socketDirectoryStat = verifyOwnedDirectory(
+        socketDirectoryDescriptor,
+        grant.ownerUid,
+        grant.ownerGid,
+      );
+
       const reopenedRoot = lstatSync(grant.runtimeRoot, { bigint: true });
       const reopenedModule = lstatSync(grant.moduleDirectory, { bigint: true });
       const reopenedSocketParent = lstatSync(grant.socketDirectoryParent, { bigint: true });
+      const reopenedSocketDirectory = lstatSync(grant.socketDirectory, { bigint: true });
       if (
         !sameIdentity(rootStat, reopenedRoot) ||
         !sameIdentity(moduleStat, reopenedModule) ||
-        !sameIdentity(socketParentStat, reopenedSocketParent)
+        !sameIdentity(socketParentStat, reopenedSocketParent) ||
+        !sameIdentity(socketDirectoryStat, reopenedSocketDirectory)
       )
         deny('INVALID_ATTESTATION');
       return Object.freeze({
@@ -499,12 +527,20 @@ class RetainedDescriptorLinuxParentDirectoryProvisionHost implements LinuxRetain
         moduleDirectoryIdentityReference: identity(moduleStat),
         socketDirectoryParent: grant.socketDirectoryParent,
         socketDirectoryParentIdentityReference: identity(socketParentStat),
+        socketDirectory: grant.socketDirectory,
+        socketDirectoryIdentityReference: identity(socketDirectoryStat),
         ownerUid: grant.ownerUid,
         ownerGid: grant.ownerGid,
         directoryMode: OWNER_ONLY_DIRECTORY_MODE,
         runtimeConnection: 'NOT_CONFIGURED',
       });
     } catch (error) {
+      if (createdSocketDirectory && socketParentDescriptor !== undefined)
+        removeCreatedDirectoryIfRetained(
+          socketParentDescriptor,
+          'supervisor',
+          socketDirectoryDescriptor,
+        );
       if (createdSocketParent && rootDescriptor !== undefined)
         removeCreatedDirectoryIfRetained(rootDescriptor, 'run', socketParentDescriptor);
       if (createdModule && rootDescriptor !== undefined)
@@ -512,6 +548,7 @@ class RetainedDescriptorLinuxParentDirectoryProvisionHost implements LinuxRetain
       if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
       return deny('INVALID_ATTESTATION');
     } finally {
+      safeClose(socketDirectoryDescriptor);
       safeClose(socketParentDescriptor);
       safeClose(moduleDescriptor);
       safeClose(rootDescriptor);
@@ -530,7 +567,7 @@ export function createRetainedDescriptorLinuxNativeSupervisorParentDirectoryProv
   );
 }
 
-/** Creates only the two absent fixed-name directories under one retained owner-only root. */
+/** Creates only the fixed native/run/supervisor hierarchy under one retained owner-only root. */
 export class BoundedLinuxRetainedNativeSupervisorParentDirectoryProvisioner {
   #attempted = false;
 

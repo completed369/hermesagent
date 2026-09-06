@@ -6,10 +6,8 @@ import {
   fstatSync,
   fsyncSync,
   lstatSync,
-  mkdirSync,
   openSync,
   readFileSync,
-  rmdirSync,
   unlinkSync,
   writeFileSync,
   type BigIntStats,
@@ -61,6 +59,7 @@ export interface LinuxRetainedNativeSupervisorPathProvisionRequest {
   readonly socketDirectoryParent: string;
   readonly socketDirectoryParentIdentityReference: string;
   readonly socketDirectory: string;
+  readonly socketDirectoryIdentityReference: string;
   readonly socketPath: string;
   readonly ownerUid: number;
   readonly ownerGid: number;
@@ -158,6 +157,7 @@ const REQUEST_KEYS = [
   'runtimeConnection',
   'schemaVersion',
   'socketDirectory',
+  'socketDirectoryIdentityReference',
   'socketDirectoryParent',
   'socketDirectoryParentIdentityReference',
   'socketPath',
@@ -365,6 +365,7 @@ export function validateLinuxRetainedNativeSupervisorPathProvisionRequest(
       value.socketDirectoryParentIdentityReference,
     ),
     socketDirectory,
+    socketDirectoryIdentityReference: identityReference(value.socketDirectoryIdentityReference),
     socketPath,
     ownerUid: safeInteger(value.ownerUid),
     ownerGid: safeInteger(value.ownerGid),
@@ -456,11 +457,10 @@ function safeClose(descriptor: number | undefined): void {
   }
 }
 
-function removeCreatedPathIfRetained(
+function removeCreatedModuleIfRetained(
   parentDescriptor: number,
   name: string,
   createdDescriptor: number | undefined,
-  kind: 'DIRECTORY' | 'MODULE',
 ): void {
   if (createdDescriptor === undefined) return;
   try {
@@ -468,8 +468,7 @@ function removeCreatedPathIfRetained(
     const path = `/proc/self/fd/${parentDescriptor}/${name}`;
     const observed = lstatSync(path, { bigint: true });
     if (!sameIdentity(created, observed)) return;
-    if (kind === 'DIRECTORY') rmdirSync(path);
-    else unlinkSync(path);
+    unlinkSync(path);
   } catch {
     // Leave an inert owner-only path rather than broaden cleanup authority.
   }
@@ -494,7 +493,6 @@ class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost implements LinuxR
     let socketDirectoryDescriptor: number | undefined;
     let bytes: Buffer | undefined;
     let createdModule = false;
-    let createdSocketDirectory = false;
     try {
       if (
         typeof geteuid !== 'function' ||
@@ -578,8 +576,6 @@ class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost implements LinuxR
         deny('INVALID_ATTESTATION');
 
       const socketDirectoryAtParent = `/proc/self/fd/${socketParentDescriptor}/${posix.basename(grant.socketDirectory)}`;
-      mkdirSync(socketDirectoryAtParent, { mode: OWNER_ONLY_DIRECTORY_MODE });
-      createdSocketDirectory = true;
       socketDirectoryDescriptor = openSync(
         socketDirectoryAtParent,
         fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW | LINUX_O_CLOEXEC,
@@ -589,6 +585,8 @@ class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost implements LinuxR
         grant.ownerUid,
         grant.ownerGid,
       );
+      if (identity(socketDirectoryStat) !== grant.socketDirectoryIdentityReference)
+        deny('INVALID_ATTESTATION');
 
       const reopenedModuleParent = lstatSync(grant.moduleDirectory, { bigint: true });
       const reopenedSocketParent = lstatSync(grant.socketDirectoryParent, { bigint: true });
@@ -651,20 +649,11 @@ class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost implements LinuxR
         runtimeConnection: 'NOT_CONFIGURED',
       });
     } catch (error) {
-      if (createdSocketDirectory && socketParentDescriptor !== undefined) {
-        removeCreatedPathIfRetained(
-          socketParentDescriptor,
-          posix.basename(grant.socketDirectory),
-          socketDirectoryDescriptor,
-          'DIRECTORY',
-        );
-      }
       if (createdModule && moduleParentDescriptor !== undefined) {
-        removeCreatedPathIfRetained(
+        removeCreatedModuleIfRetained(
           moduleParentDescriptor,
           posix.basename(grant.canonicalModulePath),
           moduleDescriptor,
-          'MODULE',
         );
       }
       if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
@@ -711,6 +700,7 @@ function validateResult(
     value.moduleMode !== OWNER_ONLY_MODULE_MODE ||
     value.moduleSizeBytes !== grant.sourceModuleSizeBytes ||
     value.socketDirectory !== grant.socketDirectory ||
+    value.socketDirectoryIdentityReference !== grant.socketDirectoryIdentityReference ||
     value.socketDirectoryOwnerUid !== grant.ownerUid ||
     value.socketDirectoryOwnerGid !== grant.ownerGid ||
     value.socketDirectoryMode !== OWNER_ONLY_DIRECTORY_MODE ||

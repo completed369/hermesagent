@@ -282,7 +282,7 @@
 > preserve immutable grant-bound state and append-only audit evidence across restarts, but no root or
 > signing-key provisioner or API/worker composition exists. An uncomposed
 > Linux-x64 path provisioner can now copy one explicitly attested source module into an absent
-> owner-only `0500` path and create one absent owner-only `0700` socket directory through retained
+> owner-only `0500` path and reuse one exact retained owner-only `0700` socket directory through
 > parent descriptors. It denies by default, does not package or load a binary, leaves the socket
 > absent, and returns only identities for later signing. An uncomposed publisher can now append only
 > snapshots admitted by that same Ed25519 verifier, and PostgreSQL serializes each supervisor chain
@@ -358,8 +358,10 @@
 > digest evidence, and remains absent from every composition root; no service is activated.
 > A one-attempt retained-descriptor Linux parent-directory provisioner and exact Level-3 API
 > authority now bind a tenant and supervisor to one owner-only runtime root and only its absent
-> fixed-name `native` and `run` children (ADR-0115). Path provisioning rejects parent identity or
-> approval-provenance drift, and snapshot issuance preserves that chain. No actual writable runtime
+> fixed-name `native`, `run`, and `run/supervisor` hierarchy (ADR-0115/0116). Path provisioning
+> rejects parent or shared socket-directory identity and approval-provenance drift, and snapshot
+> issuance preserves that chain. Both CLIENT and LISTENER modules can now bind the same retained
+> socket-directory identity without replacing it. No actual writable runtime
 > root or shared mount is configured, and the boundary remains absent from routes, workers, image
 > commands, service composition, and deployment.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
