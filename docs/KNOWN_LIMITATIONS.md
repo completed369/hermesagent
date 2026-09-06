@@ -311,6 +311,10 @@
 > rollback, revocation reversal, unaudited inserts, mutation, and more than eight current roots.
 > No private key, actual root, route, worker, signer transport, or service composition is supplied,
 > so this closes durable public-root state only and does not prove runtime connectivity.
+> An uncomposed Linux signing transport now adapts the bounded keyless signer to the existing
+> one-exchange local IPC client with exact before/after socket identity and `SO_PEERCRED` checks
+> (ADR-0103). It still supplies no native module, signer service, key, actual socket, root-to-verifier
+> composition, route, worker, or runtime-status promotion and therefore proves no live connection.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an

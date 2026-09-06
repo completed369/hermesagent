@@ -258,6 +258,57 @@ describe('bounded Linux retained-native supervisor local IPC client', () => {
     expect(binding.connection.close).toHaveBeenCalledOnce();
   });
 
+  it('actively closes a pending native exchange and permanently denies reuse', async () => {
+    const binding = new FixtureBinding();
+    let rejectRead: ((error: Error) => void) | undefined;
+    let markReadStarted: (() => void) | undefined;
+    const readStarted = new Promise<void>((resolve) => {
+      markReadStarted = resolve;
+    });
+    binding.connection.readToEof.mockImplementation(async () => {
+      markReadStarted?.();
+      return new Promise<never>((_resolve, reject) => {
+        rejectRead = reject;
+      });
+    });
+    binding.connection.close.mockImplementation(async () => {
+      rejectRead?.(new Error('closed'));
+    });
+    const client = new BoundedLinuxRetainedNativeSupervisorLocalIpcClient(binding);
+    const pending = client.exchange(socketPath, requestFrame, new AbortController().signal);
+    await readStarted;
+
+    await expect(client.close()).resolves.toBeUndefined();
+    await expect(pending).rejects.toEqual(expectCode('EXCHANGE_DENIED'));
+    expect(binding.connection.close).toHaveBeenCalledOnce();
+    await expect(
+      client.exchange(socketPath, requestFrame, new AbortController().signal),
+    ).rejects.toEqual(expectCode('EXCHANGE_DENIED'));
+  });
+
+  it('does not connect when explicit close wins a pending lstat race', async () => {
+    const binding = new FixtureBinding();
+    let resolveStat: ((value: unknown) => void) | undefined;
+    let markStatStarted: (() => void) | undefined;
+    const statStarted = new Promise<void>((resolve) => {
+      markStatStarted = resolve;
+    });
+    binding.lstatUnixSocket.mockImplementation(async () => {
+      markStatStarted?.();
+      return new Promise<unknown>((resolve) => {
+        resolveStat = resolve;
+      });
+    });
+    const client = new BoundedLinuxRetainedNativeSupervisorLocalIpcClient(binding);
+    const pending = client.exchange(socketPath, requestFrame, new AbortController().signal);
+    await statStarted;
+
+    await expect(client.close()).resolves.toBeUndefined();
+    resolveStat?.(stat);
+    await expect(pending).rejects.toEqual(expectCode('EXCHANGE_DENIED'));
+    expect(binding.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
   it('treats close failure as exchange failure', async () => {
     const binding = new FixtureBinding();
     binding.connection.close.mockRejectedValue(new Error('private close detail'));
