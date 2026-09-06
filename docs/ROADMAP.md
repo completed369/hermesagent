@@ -472,6 +472,11 @@ published and current `main` has not been deployed to private staging.
    API-side authority can derive their one-minute digest-only grant from an exact non-runtime
    `CONTROL_PLANE` Level-3 capability, and snapshot issuance rejects cross-scope attestations before
    authority or signing (ADR-0112). The adapter remains uncomposed and does not provision a path.
+   A separate one-attempt service owner now requires a fresh exact Level-3 grant binding that path
+   evidence to one tenant, supervisor, recovery-or-signing purpose, socket identity, worker
+   principal, and 100–5,000 ms deadline before constructing the existing no-replacement listener
+   lifecycle (ADR-0113). Its authority denies by default; it adds no retry or daemon loop and remains
+   absent from every composition root, so no listener, signer, loader, worker, or runtime is active.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
