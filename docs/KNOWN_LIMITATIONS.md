@@ -383,9 +383,11 @@
 > existing provisioning controller can run and withholds partial composition results (ADR-0121), but
 > it is also uncomposed and supplies no mount. The observation port now has an uncomposed canonical
 > local IPC transport/handler pair that authenticates the retained socket and both peers through
-> kernel evidence (ADR-0122), but no protected listener lifecycle, authorization issuance,
-> cross-container carrier, orchestration, or shared mount exists. This is not activation or a
-> runtime connection.
+> kernel evidence (ADR-0122). Protected listener lifecycle and authorization issuance are now closed
+> in code: separate role-specific service purposes consume exact one-use Level-3 grants before the
+> existing no-replacement listener lifecycle hosts one ADR-0122 exchange and removes its exact owned
+> socket (ADR-0123). This remains absent from application composition; no cross-container carrier,
+> orchestration, writable shared mount, activation, or runtime connection exists.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that

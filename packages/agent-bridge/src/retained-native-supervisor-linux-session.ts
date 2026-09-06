@@ -6,10 +6,12 @@ import {
   type RetainedNativeSupervisorLocalIpcPeerCredentials,
 } from './retained-native-supervisor-local-ipc';
 import { AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler } from './retained-native-supervisor-module-authorization-signing-handler';
+import { AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler } from './retained-native-supervisor-topology-observation-local-ipc';
 
 export type AuthenticatedLinuxLocalRetainedNativeSupervisorInboundHandler =
   | AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler
-  | AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler;
+  | AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler
+  | AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler;
 
 export interface LinuxRetainedNativeSupervisorListenerSocketStat {
   readonly fileType: 'SOCKET';
@@ -203,7 +205,8 @@ export class BoundedLinuxRetainedNativeSupervisorSession {
       !(
         handler instanceof AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler ||
         handler instanceof
-          AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler
+          AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler ||
+        handler instanceof AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler
       )
     )
       deny('NOT_CONFIGURED');
