@@ -399,6 +399,10 @@
 > or observation and bounded carrier close after every coordinator outcome (ADR-0127). They remain
 > absent from application composition and provide no registry adapter, keyless signer, concrete
 > carrier, authenticated route, writable shared mount, activation, or runtime connection.
+> A one-use byte-channel adapter now bounds canonical request/response frames, cancellation,
+> exchange, and close around an injected transport and signed worker handler (ADR-0128). The byte
+> channel itself remains unconfigured and uncomposed; no network protocol, transport identity,
+> route, provider, root adapter, signer, mount, activation, or runtime connection is supplied.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that

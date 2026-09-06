@@ -19,6 +19,11 @@ import {
   type RetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource,
 } from './retained-native-supervisor-topology-observation-carrier-composition';
 import {
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierChannel,
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+  type RetainedNativeSupervisorTopologyObservationCarrierByteChannel,
+} from './retained-native-supervisor-topology-observation-carrier-channel';
+import {
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   linuxRetainedNativeSupervisorTopologyObservationRequestHash,
   type LinuxRetainedNativeSupervisorTopologyObservationPort,
@@ -141,6 +146,14 @@ class LoopbackCarrier implements ClosableRetainedNativeSupervisorTopologyObserva
   );
 }
 
+class ByteLoopbackChannel implements RetainedNativeSupervisorTopologyObservationCarrierByteChannel {
+  endpoint!: BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint;
+  readonly close = vi.fn(async () => undefined);
+  readonly exchange = vi.fn((input: Uint8Array, signal: AbortSignal) =>
+    this.endpoint.handle(input, signal),
+  );
+}
+
 function subject(overrides: { apiRoot?: unknown; workerRoot?: unknown } = {}) {
   const api = keyFixture('API_COORDINATOR', binding.coordinatorPrincipalReference);
   const worker = keyFixture('WORKER_CLIENT', binding.workerPrincipalReference);
@@ -186,6 +199,44 @@ describe('root-resolved topology carrier role composition', () => {
     expect(observer.observe).toHaveBeenCalledOnce();
     expect(raw.exchange).toHaveBeenCalledOnce();
     expect(raw.close).toHaveBeenCalledOnce();
+  });
+
+  it('composes through the bounded canonical byte channel without activating a transport', async () => {
+    const api = keyFixture('API_COORDINATOR', binding.coordinatorPrincipalReference);
+    const worker = keyFixture('WORKER_CLIENT', binding.workerPrincipalReference);
+    const roots = new RootSource(api.root, worker.root);
+    const observer = new Observer();
+    const workerRole = new RootResolvedRetainedNativeSupervisorTopologyObservationWorker(
+      roots,
+      observer,
+      worker.signer,
+      binding,
+      () => now,
+    );
+    const byteChannel = new ByteLoopbackChannel();
+    byteChannel.endpoint =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(workerRole);
+    const carrier = new BoundedRetainedNativeSupervisorTopologyObservationCarrierChannel(
+      byteChannel,
+    );
+    const coordinator = new RootResolvedRetainedNativeSupervisorTopologyObservationCoordinator(
+      roots,
+      carrier,
+      api.signer,
+      binding,
+      'carrier-attempt-framed-composition',
+      () => now,
+    );
+
+    await expect(coordinator.observe(request, new AbortController().signal)).resolves.toMatchObject(
+      {
+        topologyState: 'VISIBLE_NOT_PROVISIONED',
+        runtimeConnection: 'NOT_CONFIGURED',
+      },
+    );
+    expect(byteChannel.exchange).toHaveBeenCalledOnce();
+    expect(byteChannel.close).toHaveBeenCalledOnce();
+    expect(observer.observe).toHaveBeenCalledOnce();
   });
 
   it('denies substituted or missing roots before outbound exchange or worker observation', async () => {
