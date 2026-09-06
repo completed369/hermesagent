@@ -26,6 +26,7 @@ const request: LinuxRetainedNativeSupervisorParentDirectoryProvisionRequest = Ob
   runtimeRootMode: 0o700,
   moduleDirectory: '/var/lib/ventureos/runtime-one/native',
   socketDirectoryParent: '/var/lib/ventureos/runtime-one/run',
+  socketDirectory: '/var/lib/ventureos/runtime-one/run/supervisor',
   ownerUid: 65532,
   ownerGid: 65532,
   runtimeConnection: 'NOT_CONFIGURED',
@@ -72,6 +73,8 @@ function host(): LinuxRetainedNativeSupervisorParentDirectoryProvisionHost {
         moduleDirectoryIdentityReference: 'linux:dev-a:ino-c',
         socketDirectoryParent: authorized.socketDirectoryParent,
         socketDirectoryParentIdentityReference: 'linux:dev-a:ino-d',
+        socketDirectory: authorized.socketDirectory,
+        socketDirectoryIdentityReference: 'linux:dev-a:ino-e',
         ownerUid: authorized.ownerUid,
         ownerGid: authorized.ownerGid,
         directoryMode: 0o700 as const,
@@ -106,6 +109,7 @@ describe('bounded Linux retained-native parent-directory provisioner', () => {
       supervisorInstanceId: request.supervisorInstanceId,
       moduleDirectoryIdentityReference: 'linux:dev-a:ino-c',
       socketDirectoryParentIdentityReference: 'linux:dev-a:ino-d',
+      socketDirectoryIdentityReference: 'linux:dev-a:ino-e',
       authorityLevel: 3,
       runtimeConnection: 'NOT_CONFIGURED',
     });
@@ -120,6 +124,7 @@ describe('bounded Linux retained-native parent-directory provisioner', () => {
     ['root identity drift', { runtimeRootIdentityReference: 'linux:dev-a:ino-c' }],
     ['module target drift', { moduleDirectory: '/var/lib/ventureos/runtime-one/elsewhere' }],
     ['socket target drift', { socketDirectoryParent: '/var/lib/ventureos/runtime-one/other' }],
+    ['socket directory drift', { socketDirectory: '/var/lib/ventureos/runtime-one/run/other' }],
   ])('denies %s before the host', async (_label, override) => {
     const configuredHost = host();
     const provisioner = new BoundedLinuxRetainedNativeSupervisorParentDirectoryProvisioner(
@@ -172,7 +177,13 @@ describe('bounded Linux retained-native parent-directory provisioner', () => {
     expect(authorize).toHaveBeenCalledOnce();
   });
 
-  it('rejects host attestation drift after authority', async () => {
+  it.each([
+    ['workspace', { workspaceId: 'workspace-two' }],
+    [
+      'malformed socket directory identity',
+      { socketDirectoryIdentityReference: 'linux:dev-a:ino-0' },
+    ],
+  ])('rejects host %s attestation drift after authority', async (_label, override) => {
     const validHost = host();
     const configuredHost: LinuxRetainedNativeSupervisorParentDirectoryProvisionHost = {
       platform: 'LINUX',
@@ -181,7 +192,7 @@ describe('bounded Linux retained-native parent-directory provisioner', () => {
         (authorized) =>
           ({
             ...validHost.provision(authorized),
-            workspaceId: 'workspace-two',
+            ...override,
           }) as ProvisionedLinuxRetainedNativeSupervisorParentDirectories,
       ),
     };

@@ -15,7 +15,7 @@ path-substitution and executable-authority gaps.
 Add an exported but uncomposed Linux-x64 path provisioner that:
 
 1. accepts one exact request naming an already-built source `.node` file, new canonical client or
-   listener path, new socket directory, future `.sock` path, explicit owner UID/GID, and
+   listener path, an existing identity-bound socket directory, future `.sock` path, explicit owner UID/GID, and
    `runtimeConnection: 'NOT_CONFIGURED'`;
 2. defaults its authority and filesystem host to denial, consumes one attempt, and requires an exact
    request-hash-bound grant lasting at most five minutes;
@@ -23,8 +23,8 @@ Add an exported but uncomposed Linux-x64 path provisioner that:
    source digest, size, owner, non-writable mode, and retained identity, and requires both parents to
    be owned by the effective process principal with exact mode `0700`;
 4. creates only an absent fixed-kind module basename with `O_EXCL`, writes retained source bytes,
-   syncs them, fixes mode to owner-only `0500`, and creates only an absent immediate socket directory
-   with mode `0700` through the retained parent descriptors;
+   syncs them, fixes mode to owner-only `0500`, and reuses only the exact retained owner-only socket
+   directory created by ADR-0115/0116;
 5. requires the future socket path to remain absent, reopens every canonical path to prove it still
    resolves to the retained parent/module/directory identities, and returns only frozen attestation
    fields suitable for a later authorization snapshot; and
@@ -33,7 +33,7 @@ Add an exported but uncomposed Linux-x64 path provisioner that:
 
 Linux-x64 evidence compiles a disposable production client module outside package output and proves
 successful owner-only provisioning, source-symlink denial, unsafe-parent denial, no-replace behavior,
-and bounded cleanup when the final directory already exists.
+and two distinct module provisions sharing one retained socket-directory identity.
 
 ## Security and runtime-truth boundary
 

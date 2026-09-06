@@ -55,6 +55,7 @@ describeLinux('retained-descriptor Linux parent-directory provisioner evidence',
         runtimeRootMode: 0o700,
         moduleDirectory: join(runtimeRoot, 'native'),
         socketDirectoryParent: join(runtimeRoot, 'run'),
+        socketDirectory: join(runtimeRoot, 'run', 'supervisor'),
         ownerUid: stat.uid,
         ownerGid: stat.gid,
         runtimeConnection: 'NOT_CONFIGURED',
@@ -79,7 +80,7 @@ describeLinux('retained-descriptor Linux parent-directory provisioner evidence',
     };
   }
 
-  it('creates exactly two absent owner-only children and returns retained identities', async () => {
+  it('creates the exact owner-only native/run/supervisor hierarchy and returns retained identities', async () => {
     const { request } = fixture('success');
     const result = await createRetainedDescriptorLinuxNativeSupervisorParentDirectoryProvisioner({
       authorize: async () => grant(request),
@@ -87,14 +88,17 @@ describeLinux('retained-descriptor Linux parent-directory provisioner evidence',
 
     const moduleStat = lstatSync(request.moduleDirectory);
     const socketStat = lstatSync(request.socketDirectoryParent);
+    const endpointStat = lstatSync(request.socketDirectory);
     expect(result).toMatchObject({
       moduleDirectoryIdentityReference: `linux:dev-${moduleStat.dev.toString(16)}:ino-${moduleStat.ino.toString(16)}`,
       socketDirectoryParentIdentityReference: `linux:dev-${socketStat.dev.toString(16)}:ino-${socketStat.ino.toString(16)}`,
+      socketDirectoryIdentityReference: `linux:dev-${endpointStat.dev.toString(16)}:ino-${endpointStat.ino.toString(16)}`,
       directoryMode: 0o700,
       runtimeConnection: 'NOT_CONFIGURED',
     });
     expect(moduleStat.mode & 0o777).toBe(0o700);
     expect(socketStat.mode & 0o777).toBe(0o700);
+    expect(endpointStat.mode & 0o777).toBe(0o700);
   });
 
   it('denies a symlinked retained root without creating through it', async () => {
@@ -106,6 +110,7 @@ describeLinux('retained-descriptor Linux parent-directory provisioner evidence',
       runtimeRoot: link,
       moduleDirectory: join(link, 'native'),
       socketDirectoryParent: join(link, 'run'),
+      socketDirectory: join(link, 'run', 'supervisor'),
     };
     await expect(
       createRetainedDescriptorLinuxNativeSupervisorParentDirectoryProvisioner({
@@ -114,6 +119,7 @@ describeLinux('retained-descriptor Linux parent-directory provisioner evidence',
     ).rejects.toMatchObject({ code: 'INVALID_ATTESTATION' });
     expect(existsSync(request.moduleDirectory)).toBe(false);
     expect(existsSync(request.socketDirectoryParent)).toBe(false);
+    expect(existsSync(request.socketDirectory)).toBe(false);
   });
 
   it('denies a non-owner-only root before creating either child', async () => {
@@ -126,6 +132,7 @@ describeLinux('retained-descriptor Linux parent-directory provisioner evidence',
     ).rejects.toMatchObject({ code: 'INVALID_ATTESTATION' });
     expect(existsSync(request.moduleDirectory)).toBe(false);
     expect(existsSync(request.socketDirectoryParent)).toBe(false);
+    expect(existsSync(request.socketDirectory)).toBe(false);
   });
 
   it('never replaces an existing child and cleans only its retained empty sibling', async () => {

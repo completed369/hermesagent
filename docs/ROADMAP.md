@@ -398,7 +398,8 @@ published and current `main` has not been deployed to private staging.
    snapshots, exact grant-bound CAS state, and append-only transition evidence (ADR-0095), but remain
    uncomposed. An identity-preserving Linux-x64 path provisioner now copies one explicitly attested
    retained source into an absent owner-only `0500` module path and creates one absent owner-only
-   `0700` socket directory through retained parents (ADR-0096). It denies by default, never replaces
+   module through retained parents and reuse one exact identity-bound `0700` socket directory
+   (ADR-0096/0116). It denies by default, never replaces
    an existing target, keeps the socket absent, and returns only exact identities for later signing.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
@@ -480,11 +481,14 @@ published and current `main` has not been deployed to private staging.
    A one-use API-side adapter can now derive that exact service grant from only a trusted non-runtime
    `CONTROL_PLANE` Level-3 capability, with domain-separated digest-only evidence and no Level-4 or
    AI-COO path (ADR-0114). The adapter remains uncomposed and performs no service or runtime action.
-   A retained-descriptor Linux-x64 parent-directory provisioner can now create only absent fixed
-   `native` and `run` children beneath one exact owner-only runtime root, with a one-use tenant-bound
+   A retained-descriptor Linux-x64 parent-directory provisioner can now create only the absent fixed
+   `native`, `run`, and `run/supervisor` hierarchy beneath one exact owner-only runtime root, with a one-use tenant-bound
    Level-3 control-plane authority (ADR-0115). Its identities and approval provenance are mandatory
    inputs to path provisioning and survive into snapshot issuance. Both pieces remain uncomposed;
    no writable mount, runtime path, module load, socket, service, signer, worker, or runtime is active.
+   The path host now reuses that single retained socket-directory identity for both CLIENT and
+   LISTENER module attestations instead of attempting an impossible second exclusive directory
+   creation (ADR-0116).
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
