@@ -16,6 +16,9 @@ const NOW = Date.parse('2026-09-05T20:00:00.000Z');
 function request(): LinuxRetainedNativeSupervisorPathProvisionRequest {
   return {
     schemaVersion: 1,
+    purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION',
+    workspaceId: 'workspace-1',
+    supervisorInstanceId: 'native-supervisor-1',
     platform: 'LINUX',
     architecture: 'X64',
     moduleKind: 'CLIENT',
@@ -45,6 +48,10 @@ function grant(
     ...provisionRequest,
     provisioningId: 'native-paths-1',
     requestHash: linuxRetainedNativeSupervisorPathProvisionRequestHash(provisionRequest),
+    approvalId: 'level3-control-plane:path-provision-1',
+    approvalEvidenceHash: 'c'.repeat(64),
+    authorizedByReference: 'control-plane-owner-1',
+    authorityLevel: 3,
     validFrom: new Date(NOW - 1_000).toISOString(),
     validUntil: new Date(NOW + 60_000).toISOString(),
     ...override,
@@ -57,11 +64,20 @@ function result(
 ): ProvisionedLinuxRetainedNativeSupervisorPaths {
   return {
     schemaVersion: 1,
+    purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION',
+    workspaceId: provisionGrant.workspaceId,
+    supervisorInstanceId: provisionGrant.supervisorInstanceId,
     platform: 'LINUX',
     architecture: 'X64',
     moduleKind: provisionGrant.moduleKind,
     provisioningId: provisionGrant.provisioningId,
     requestHash: provisionGrant.requestHash,
+    approvalId: provisionGrant.approvalId,
+    approvalEvidenceHash: provisionGrant.approvalEvidenceHash,
+    authorizedByReference: provisionGrant.authorizedByReference,
+    authorityLevel: 3,
+    authorizedFrom: provisionGrant.validFrom,
+    authorizedUntil: provisionGrant.validUntil,
     canonicalModulePath: provisionGrant.canonicalModulePath,
     moduleSha256: provisionGrant.sourceModuleSha256,
     moduleIdentityReference: 'linux:dev-3:ino-4',
@@ -138,6 +154,8 @@ describe('bounded Linux retained-native path provisioner', () => {
 
   it.each([
     { unexpected: true },
+    { purpose: 'OTHER' },
+    { workspaceId: 'credential-workspace' },
     { runtimeConnection: 'CONNECTED' },
     { platform: 'WINDOWS' },
     { sourceModulePath: '/build/ventureos/../client.node' },
@@ -164,6 +182,9 @@ describe('bounded Linux retained-native path provisioner', () => {
   });
 
   it.each([
+    { workspaceId: 'workspace-2' },
+    { supervisorInstanceId: 'native-supervisor-2' },
+    { authorityLevel: 4 as 3 },
     { requestHash: 'b'.repeat(64) },
     { ownerUid: 1001 },
     { sourceModuleSha256: 'b'.repeat(64) },
@@ -188,6 +209,10 @@ describe('bounded Linux retained-native path provisioner', () => {
   });
 
   it.each([
+    { workspaceId: 'workspace-2' },
+    { supervisorInstanceId: 'native-supervisor-2' },
+    { approvalEvidenceHash: 'd'.repeat(64) },
+    { authorityLevel: 4 as 3 },
     { runtimeConnection: 'CONNECTED' },
     { moduleMode: 0o555 },
     { socketDirectoryMode: 0o755 },

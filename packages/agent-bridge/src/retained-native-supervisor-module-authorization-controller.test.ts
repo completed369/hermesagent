@@ -150,11 +150,20 @@ function provisioned(
 ): ProvisionedLinuxRetainedNativeSupervisorPaths {
   return {
     schemaVersion: 1,
+    purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION',
+    workspaceId: WORKSPACE,
+    supervisorInstanceId: INSTANCE,
     platform: 'LINUX',
     architecture: 'X64',
     moduleKind: kind,
     provisioningId: `provisioning-${kind.toLowerCase()}-1`,
     requestHash: kind === 'CLIENT' ? 'a'.repeat(64) : 'b'.repeat(64),
+    approvalId: `level3-control-plane:provisioning-${kind.toLowerCase()}-1`,
+    approvalEvidenceHash: kind === 'CLIENT' ? 'e'.repeat(64) : 'f'.repeat(64),
+    authorizedByReference: 'control-plane-owner-1',
+    authorityLevel: 3,
+    authorizedFrom: '2030-01-01T11:59:57.000Z',
+    authorizedUntil: '2030-01-01T11:59:58.000Z',
     canonicalModulePath: `/opt/ventureos/native/${kind.toLowerCase()}.node`,
     moduleSha256: kind === 'CLIENT' ? 'c'.repeat(64) : 'd'.repeat(64),
     moduleIdentityReference: kind === 'CLIENT' ? 'linux:dev-1:ino-2' : 'linux:dev-1:ino-3',
@@ -451,6 +460,51 @@ describe('BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController',
     );
     expect(authority.calls).toBe(0);
   });
+
+  it.each([
+    ['workspace', { workspaceId: 'workspace-2' }],
+    ['supervisor', { supervisorInstanceId: 'native-supervisor-2' }],
+  ])('rejects cross-%s path attestations before requesting approval', async (_name, drift) => {
+    const { authority, controller } = fixture();
+    const crossScope = issueRequest([
+      {
+        ...issueRequest().authorizations[0]!,
+        provisionedPaths: provisioned('CLIENT', drift),
+      },
+    ]);
+    await expectCode(
+      controller.issue(crossScope, new AbortController().signal),
+      'INVALID_AUTHORIZATION',
+    );
+    expect(authority.calls).toBe(0);
+  });
+
+  it.each([
+    [
+      'reversed',
+      { authorizedFrom: '2030-01-01T12:00:00.000Z', authorizedUntil: '2030-01-01T11:59:59.000Z' },
+    ],
+    [
+      'overlong',
+      { authorizedFrom: '2030-01-01T11:50:00.000Z', authorizedUntil: '2030-01-01T12:00:00.000Z' },
+    ],
+  ])(
+    'rejects %s path-provision approval windows before requesting approval',
+    async (_name, drift) => {
+      const { authority, controller } = fixture();
+      const invalidWindow = issueRequest([
+        {
+          ...issueRequest().authorizations[0]!,
+          provisionedPaths: provisioned('CLIENT', drift),
+        },
+      ]);
+      await expectCode(
+        controller.issue(invalidWindow, new AbortController().signal),
+        'INVALID_ATTESTATION',
+      );
+      expect(authority.calls).toBe(0);
+    },
+  );
 
   it('rejects duplicate grant identities before requesting approval', async () => {
     const { authority, controller } = fixture();

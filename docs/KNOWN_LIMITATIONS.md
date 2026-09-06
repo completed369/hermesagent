@@ -345,6 +345,10 @@
 > runtime round trip. Immutable root-owned listener/API and client/worker image artifacts are now
 > built and locally security-scanned (ADR-0111), but no image command references them and their mere
 > presence is not authorization, activation, or connectivity evidence.
+> Path-provision requests and attestations now carry exact workspace/supervisor scope and bounded
+> Level-3 approval evidence, and snapshot issuance denies cross-scope reuse before authority or
+> signing (ADR-0112). The positive adapter remains outside every composition root; no runtime path,
+> parent directory, module load, socket, or service is activated.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that

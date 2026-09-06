@@ -39,6 +39,9 @@ const OWNER_ONLY_MODULE_MODE = 0o500;
 
 export interface LinuxRetainedNativeSupervisorPathProvisionRequest {
   readonly schemaVersion: 1;
+  readonly purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION';
+  readonly workspaceId: string;
+  readonly supervisorInstanceId: string;
   readonly platform: 'LINUX';
   readonly architecture: 'X64';
   readonly moduleKind: LinuxRetainedNativeSupervisorModuleKind;
@@ -62,17 +65,30 @@ export interface LinuxRetainedNativeSupervisorPathProvisionRequest {
 export interface LinuxRetainedNativeSupervisorPathProvisionGrant extends LinuxRetainedNativeSupervisorPathProvisionRequest {
   readonly provisioningId: string;
   readonly requestHash: string;
+  readonly approvalId: string;
+  readonly approvalEvidenceHash: string;
+  readonly authorizedByReference: string;
+  readonly authorityLevel: 3;
   readonly validFrom: string;
   readonly validUntil: string;
 }
 
 export interface ProvisionedLinuxRetainedNativeSupervisorPaths {
   readonly schemaVersion: 1;
+  readonly purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION';
+  readonly workspaceId: string;
+  readonly supervisorInstanceId: string;
   readonly platform: 'LINUX';
   readonly architecture: 'X64';
   readonly moduleKind: LinuxRetainedNativeSupervisorModuleKind;
   readonly provisioningId: string;
   readonly requestHash: string;
+  readonly approvalId: string;
+  readonly approvalEvidenceHash: string;
+  readonly authorizedByReference: string;
+  readonly authorityLevel: 3;
+  readonly authorizedFrom: string;
+  readonly authorizedUntil: string;
   readonly canonicalModulePath: string;
   readonly moduleSha256: string;
   readonly moduleIdentityReference: string;
@@ -126,6 +142,7 @@ const REQUEST_KEYS = [
   'ownerGid',
   'ownerUid',
   'platform',
+  'purpose',
   'runtimeConnection',
   'schemaVersion',
   'socketDirectory',
@@ -138,10 +155,28 @@ const REQUEST_KEYS = [
   'sourceModulePath',
   'sourceModuleSha256',
   'sourceModuleSizeBytes',
+  'supervisorInstanceId',
+  'workspaceId',
 ] as const;
-const GRANT_KEYS = [...REQUEST_KEYS, 'provisioningId', 'requestHash', 'validFrom', 'validUntil'];
+const GRANT_KEYS = [
+  ...REQUEST_KEYS,
+  'approvalEvidenceHash',
+  'approvalId',
+  'authorityLevel',
+  'authorizedByReference',
+  'provisioningId',
+  'requestHash',
+  'validFrom',
+  'validUntil',
+];
 const RESULT_KEYS = [
+  'approvalEvidenceHash',
+  'approvalId',
   'architecture',
+  'authorityLevel',
+  'authorizedByReference',
+  'authorizedFrom',
+  'authorizedUntil',
   'canonicalModulePath',
   'moduleIdentityReference',
   'moduleKind',
@@ -152,6 +187,7 @@ const RESULT_KEYS = [
   'moduleSizeBytes',
   'platform',
   'provisioningId',
+  'purpose',
   'requestHash',
   'runtimeConnection',
   'schemaVersion',
@@ -161,6 +197,8 @@ const RESULT_KEYS = [
   'socketDirectoryOwnerGid',
   'socketDirectoryOwnerUid',
   'socketPath',
+  'supervisorInstanceId',
+  'workspaceId',
 ] as const;
 
 function deny(code: 'NOT_CONFIGURED' | 'INVALID_AUTHORIZATION' | 'INVALID_ATTESTATION'): never {
@@ -238,6 +276,11 @@ function reference(value: unknown): string {
   return value;
 }
 
+function digest(value: unknown): string {
+  if (typeof value !== 'string' || !SHA256.test(value)) deny('INVALID_AUTHORIZATION');
+  return value;
+}
+
 function validSourceMode(value: unknown): number {
   const mode = safeInteger(value, false, 0o777);
   if ((mode & 0o222) !== 0 || (mode & 0o400) !== 0o400) deny('INVALID_AUTHORIZATION');
@@ -250,6 +293,7 @@ export function validateLinuxRetainedNativeSupervisorPathProvisionRequest(
   const value = plainRecord(input, REQUEST_KEYS, 'INVALID_AUTHORIZATION');
   if (
     value.schemaVersion !== 1 ||
+    value.purpose !== 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION' ||
     value.platform !== 'LINUX' ||
     value.architecture !== 'X64' ||
     (value.moduleKind !== 'CLIENT' && value.moduleKind !== 'LISTENER') ||
@@ -276,6 +320,9 @@ export function validateLinuxRetainedNativeSupervisorPathProvisionRequest(
     deny('INVALID_AUTHORIZATION');
   return Object.freeze({
     schemaVersion: 1,
+    purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION',
+    workspaceId: reference(value.workspaceId),
+    supervisorInstanceId: reference(value.supervisorInstanceId),
     platform: 'LINUX',
     architecture: 'X64',
     moduleKind: value.moduleKind,
@@ -311,10 +358,11 @@ function validateGrant(input: unknown): Readonly<LinuxRetainedNativeSupervisorPa
   return Object.freeze({
     ...request,
     provisioningId: reference(value.provisioningId),
-    requestHash:
-      typeof value.requestHash === 'string' && SHA256.test(value.requestHash)
-        ? value.requestHash
-        : deny('INVALID_AUTHORIZATION'),
+    requestHash: digest(value.requestHash),
+    approvalId: reference(value.approvalId),
+    approvalEvidenceHash: digest(value.approvalEvidenceHash),
+    authorizedByReference: reference(value.authorizedByReference),
+    authorityLevel: value.authorityLevel === 3 ? 3 : deny('INVALID_AUTHORIZATION'),
     validFrom: timestamp(value.validFrom),
     validUntil: timestamp(value.validUntil),
   });
@@ -538,11 +586,20 @@ class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost implements LinuxR
       if (moduleSha256 !== grant.sourceModuleSha256) deny('INVALID_ATTESTATION');
       return Object.freeze({
         schemaVersion: 1,
+        purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION',
+        workspaceId: grant.workspaceId,
+        supervisorInstanceId: grant.supervisorInstanceId,
         platform: 'LINUX',
         architecture: 'X64',
         moduleKind: grant.moduleKind,
         provisioningId: grant.provisioningId,
         requestHash: grant.requestHash,
+        approvalId: grant.approvalId,
+        approvalEvidenceHash: grant.approvalEvidenceHash,
+        authorizedByReference: grant.authorizedByReference,
+        authorityLevel: 3,
+        authorizedFrom: grant.validFrom,
+        authorizedUntil: grant.validUntil,
         canonicalModulePath: grant.canonicalModulePath,
         moduleSha256,
         moduleIdentityReference: identity(moduleStat),
@@ -595,11 +652,20 @@ function validateResult(
   const value = plainRecord(input, RESULT_KEYS, 'INVALID_ATTESTATION');
   if (
     value.schemaVersion !== 1 ||
+    value.purpose !== grant.purpose ||
+    value.workspaceId !== grant.workspaceId ||
+    value.supervisorInstanceId !== grant.supervisorInstanceId ||
     value.platform !== 'LINUX' ||
     value.architecture !== 'X64' ||
     value.moduleKind !== grant.moduleKind ||
     value.provisioningId !== grant.provisioningId ||
     value.requestHash !== grant.requestHash ||
+    value.approvalId !== grant.approvalId ||
+    value.approvalEvidenceHash !== grant.approvalEvidenceHash ||
+    value.authorizedByReference !== grant.authorizedByReference ||
+    value.authorityLevel !== 3 ||
+    value.authorizedFrom !== grant.validFrom ||
+    value.authorizedUntil !== grant.validUntil ||
     value.canonicalModulePath !== grant.canonicalModulePath ||
     value.moduleSha256 !== grant.sourceModuleSha256 ||
     value.moduleOwnerUid !== grant.ownerUid ||

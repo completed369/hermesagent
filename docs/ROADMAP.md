@@ -468,6 +468,10 @@ published and current `main` has not been deployed to private staging.
    inputs in only the API and worker images respectively, with exact local-only image allowlist and
    security scanning (ADR-0111). No image command references them and no loader, provisioner,
    service, socket, key/root, signer, publication, or deployment is activated.
+   Native path requests and attestations now exact-bind workspace and supervisor scope; a one-use
+   API-side authority can derive their one-minute digest-only grant from an exact non-runtime
+   `CONTROL_PLANE` Level-3 capability, and snapshot issuance rejects cross-scope attestations before
+   authority or signing (ADR-0112). The adapter remains uncomposed and does not provision a path.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
