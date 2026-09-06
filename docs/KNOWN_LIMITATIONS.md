@@ -403,6 +403,10 @@
 > exchange, and close around an injected transport and signed worker handler (ADR-0128). The byte
 > channel itself remains unconfigured and uncomposed; no network protocol, transport identity,
 > route, provider, root adapter, signer, mount, activation, or runtime connection is supplied.
+> A one-use keyless delivery signer now exact-binds canonical carrier payloads to one role,
+> principal, signer reference, binding, and deadline, propagates cancellation, and closes its
+> injected byte transport before returning a proof (ADR-0129). It supplies no key custody, signer
+> service identity, socket, provider, root wiring, route, mount, activation, or runtime connection.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
