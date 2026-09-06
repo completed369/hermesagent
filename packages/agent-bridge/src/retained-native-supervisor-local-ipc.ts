@@ -216,7 +216,7 @@ function deepFreeze<T>(value: T): Readonly<T> {
   return Object.freeze(value);
 }
 
-function parseAuthorization(
+export function authenticateRetainedNativeSupervisorLocalIpcAuthorization(
   input: unknown,
 ): Readonly<RetainedNativeSupervisorLocalIpcAuthorization> {
   const value = plainRecord(input, AUTHORIZATION_KEYS, 'INVALID_AUTHORIZATION');
@@ -240,6 +240,22 @@ function parseAuthorization(
     expectedPeerGid: nonnegativeInteger(value.expectedPeerGid, 'INVALID_AUTHORIZATION'),
     runtimeConnection: 'NOT_CONFIGURED',
   });
+}
+
+/**
+ * Authenticates the exact listener endpoint and SO_PEERCRED principal for one already-accepted
+ * inbound exchange. The returned frame remains untrusted protocol input for the caller to parse.
+ */
+export function authenticateRetainedNativeSupervisorLocalIpcInboundExchange(
+  inboundInput: unknown,
+  authorizationInput: unknown,
+): unknown {
+  const authorization =
+    authenticateRetainedNativeSupervisorLocalIpcAuthorization(authorizationInput);
+  const inbound = plainRecord(inboundInput, INBOUND_KEYS, 'INVALID_ATTESTATION');
+  assertEndpoint(inbound.endpointIdentity, authorization);
+  assertPeer(inbound.peerCredentials, authorization);
+  return inbound.requestFrame;
 }
 
 function assertEndpoint(
@@ -347,7 +363,7 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryTransport im
       typeof client.exchange !== 'function'
     )
       deny('NOT_CONFIGURED');
-    this.#authorization = parseAuthorization(authorization);
+    this.#authorization = authenticateRetainedNativeSupervisorLocalIpcAuthorization(authorization);
   }
 
   async exchange(
@@ -394,16 +410,16 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler {
       typeof peer.exchange !== 'function'
     )
       deny('NOT_CONFIGURED');
-    this.#authorization = parseAuthorization(authorization);
+    this.#authorization = authenticateRetainedNativeSupervisorLocalIpcAuthorization(authorization);
   }
 
   async handle(inboundInput: unknown, signal: AbortSignal): Promise<Readonly<Uint8Array>> {
     if (!(signal instanceof AbortSignal) || signal.aborted) deny('EXCHANGE_DENIED');
-    const inbound = plainRecord(inboundInput, INBOUND_KEYS, 'INVALID_ATTESTATION');
-    assertEndpoint(inbound.endpointIdentity, this.#authorization);
-    assertPeer(inbound.peerCredentials, this.#authorization);
     const request = decode(
-      inbound.requestFrame,
+      authenticateRetainedNativeSupervisorLocalIpcInboundExchange(
+        inboundInput,
+        this.#authorization,
+      ),
       'WORKER_TO_SUPERVISOR',
     ) as Readonly<RetainedNativeSupervisorRecoveryRequest>;
     try {

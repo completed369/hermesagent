@@ -315,6 +315,11 @@
 > one-exchange local IPC client with exact before/after socket identity and `SO_PEERCRED` checks
 > (ADR-0103). It still supplies no native module, signer service, key, actual socket, root-to-verifier
 > composition, route, worker, or runtime-status promotion and therefore proves no live connection.
+> A matching uncomposed supervisor signing handler now authenticates the accepted endpoint and
+> `SO_PEERCRED` principal, validates the canonical request and both hashes, and closes an injected
+> one-use custody session before returning its bounded signature (ADR-0104). The custody port has no
+> implementation, private key, native listener/service, root composition, or lifecycle owner, so
+> the test-only round trip is not runtime-connectivity evidence.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an
