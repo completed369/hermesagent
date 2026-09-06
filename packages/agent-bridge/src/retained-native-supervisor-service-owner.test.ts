@@ -276,6 +276,7 @@ describe('bounded retained-native supervisor service owner', () => {
     ['unsafe directory mode', { socketDirectoryMode: 0o750 }],
     ['socket outside directory', { socketPath: '/run/ventureos/other/recovery.sock' }],
     ['invalid directory identity', { socketDirectoryIdentityReference: 'caller:asserted' }],
+    ['sensitive reference', { provisioningId: 'secret-reference' }],
     ['invalid worker PID', { expectedWorkerPid: 0 }],
   ])('denies malformed service requests: %s', async (_label, drift) => {
     const { authority, binding, owner, peer } = fixture();

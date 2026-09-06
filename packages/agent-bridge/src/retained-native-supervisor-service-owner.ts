@@ -17,6 +17,8 @@ import {
 import { authenticateRetainedNativeSupervisorModuleAuthorizationSignerKeyId } from './retained-native-supervisor-module-authorization-signing-handler';
 
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
+const PRIVATE_TEXT =
+  /(?:chain[-_. ]?of[-_. ]?thought|private[-_. ]?reasoning|password|credential|api[-_. ]?key|access[-_. ]?token|auth(?:orization)?[-_. ]?token|session[-_. ]?token|secret|transcript|prompt)/iu;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SAFE_SOCKET_PATH = /^\/[A-Za-z0-9._/-]+\.sock$/u;
 const SAFE_DIRECTORY_PATH = /^\/[A-Za-z0-9._/-]+$/u;
@@ -137,7 +139,8 @@ function plainRecord(
 }
 
 function reference(value: unknown): string {
-  if (typeof value !== 'string' || !SAFE_REFERENCE.test(value)) deny('INVALID_AUTHORIZATION');
+  if (typeof value !== 'string' || !SAFE_REFERENCE.test(value) || PRIVATE_TEXT.test(value))
+    deny('INVALID_AUTHORIZATION');
   return value;
 }
 

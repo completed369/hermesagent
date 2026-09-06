@@ -477,6 +477,9 @@ published and current `main` has not been deployed to private staging.
    principal, and 100–5,000 ms deadline before constructing the existing no-replacement listener
    lifecycle (ADR-0113). Its authority denies by default; it adds no retry or daemon loop and remains
    absent from every composition root, so no listener, signer, loader, worker, or runtime is active.
+   A one-use API-side adapter can now derive that exact service grant from only a trusted non-runtime
+   `CONTROL_PLANE` Level-3 capability, with domain-separated digest-only evidence and no Level-4 or
+   AI-COO path (ADR-0114). The adapter remains uncomposed and performs no service or runtime action.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

@@ -353,6 +353,9 @@
 > Level-3 grant, exact recovery-or-signing purpose, endpoint identity, worker credentials, and a
 > 100–5,000 ms session deadline (ADR-0113). Its authority denies by default and it is not composed;
 > no listener, loop, signer, key/root, loader, worker, or runtime connection exists.
+> A one-use API-side adapter can mint that exact grant from only a trusted non-runtime
+> `CONTROL_PLANE` Level-3 capability (ADR-0114). It rejects Level 4 and AI-COO authority, carries only
+> digest evidence, and remains absent from every composition root; no service is activated.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
