@@ -201,7 +201,13 @@ export interface RetainedNativeSupervisorModuleAuthorizationSnapshotIssuanceRece
 }
 
 const PATH_KEYS = [
+  'approvalEvidenceHash',
+  'approvalId',
   'architecture',
+  'authorityLevel',
+  'authorizedByReference',
+  'authorizedFrom',
+  'authorizedUntil',
   'canonicalModulePath',
   'moduleIdentityReference',
   'moduleKind',
@@ -212,6 +218,7 @@ const PATH_KEYS = [
   'moduleSizeBytes',
   'platform',
   'provisioningId',
+  'purpose',
   'requestHash',
   'runtimeConnection',
   'schemaVersion',
@@ -221,6 +228,8 @@ const PATH_KEYS = [
   'socketDirectoryOwnerGid',
   'socketDirectoryOwnerUid',
   'socketPath',
+  'supervisorInstanceId',
+  'workspaceId',
 ] as const;
 const ENTRY_KEYS = [
   'authorizationId',
@@ -375,27 +384,43 @@ function path(value: unknown, pattern: RegExp, maximumBytes = MAX_PATH_BYTES): s
 
 function paths(input: unknown): Readonly<ProvisionedLinuxRetainedNativeSupervisorPaths> {
   const value = plainRecord(input, PATH_KEYS, 'INVALID_ATTESTATION');
+  const authorizedFrom = timestamp(value.authorizedFrom);
+  const authorizedUntil = timestamp(value.authorizedUntil);
+  const authorizationLifetimeMs = Date.parse(authorizedUntil) - Date.parse(authorizedFrom);
   if (
     value.schemaVersion !== 1 ||
+    value.purpose !== 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION' ||
     value.platform !== 'LINUX' ||
     value.architecture !== 'X64' ||
     (value.moduleKind !== 'CLIENT' && value.moduleKind !== 'LISTENER') ||
     value.moduleMode !== 0o500 ||
     value.socketDirectoryMode !== 0o700 ||
+    value.authorityLevel !== 3 ||
     value.runtimeConnection !== 'NOT_CONFIGURED' ||
     typeof value.moduleIdentityReference !== 'string' ||
     !LINUX_IDENTITY.test(value.moduleIdentityReference) ||
     typeof value.socketDirectoryIdentityReference !== 'string' ||
-    !LINUX_IDENTITY.test(value.socketDirectoryIdentityReference)
+    !LINUX_IDENTITY.test(value.socketDirectoryIdentityReference) ||
+    authorizationLifetimeMs <= 0 ||
+    authorizationLifetimeMs > MAX_LIFETIME_MS
   )
     deny('INVALID_ATTESTATION');
   return Object.freeze({
     schemaVersion: 1,
+    purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION',
+    workspaceId: reference(value.workspaceId),
+    supervisorInstanceId: reference(value.supervisorInstanceId),
     platform: 'LINUX',
     architecture: 'X64',
     moduleKind: value.moduleKind,
     provisioningId: reference(value.provisioningId),
     requestHash: digest(value.requestHash),
+    approvalId: reference(value.approvalId),
+    approvalEvidenceHash: digest(value.approvalEvidenceHash),
+    authorizedByReference: reference(value.authorizedByReference),
+    authorityLevel: 3,
+    authorizedFrom,
+    authorizedUntil,
     canonicalModulePath: path(value.canonicalModulePath, SAFE_NATIVE_PATH),
     moduleSha256: digest(value.moduleSha256),
     moduleIdentityReference: value.moduleIdentityReference,
@@ -425,6 +450,8 @@ function issueRequest(
       (typeof value.previousSnapshotHash !== 'string' || !SHA256.test(value.previousSnapshotHash)))
   )
     deny('INVALID_AUTHORIZATION');
+  const workspaceId = reference(value.workspaceId);
+  const supervisorInstanceId = reference(value.supervisorInstanceId);
   const entries = plainArray(value.authorizations, 2).map((raw) => {
     const entry = plainRecord(raw, ENTRY_KEYS);
     return Object.freeze({
@@ -439,6 +466,11 @@ function issueRequest(
   if (
     new Set(kinds).size !== kinds.length ||
     new Set(entries.map((entry) => entry.authorizationId)).size !== entries.length ||
+    entries.some(
+      (entry) =>
+        entry.provisionedPaths.workspaceId !== workspaceId ||
+        entry.provisionedPaths.supervisorInstanceId !== supervisorInstanceId,
+    ) ||
     (kinds.length === 2 && (kinds[0] !== 'CLIENT' || kinds[1] !== 'LISTENER'))
   )
     deny('INVALID_AUTHORIZATION');
@@ -460,8 +492,8 @@ function issueRequest(
   return Object.freeze({
     schemaVersion: 1,
     purpose: 'RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION_SNAPSHOT_ISSUANCE',
-    workspaceId: reference(value.workspaceId),
-    supervisorInstanceId: reference(value.supervisorInstanceId),
+    workspaceId,
+    supervisorInstanceId,
     snapshotId: reference(value.snapshotId),
     snapshotVersion: positiveInteger(value.snapshotVersion),
     signerKeyId: reference(value.signerKeyId),

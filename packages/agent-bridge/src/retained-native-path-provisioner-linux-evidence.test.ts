@@ -98,6 +98,9 @@ describeLinux('retained-descriptor Linux native path provisioner evidence', () =
     return {
       request: {
         schemaVersion: 1,
+        purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION',
+        workspaceId: 'workspace-linux-evidence',
+        supervisorInstanceId: 'native-supervisor-linux-evidence',
         platform: 'LINUX',
         architecture: 'X64',
         moduleKind: 'CLIENT',
@@ -131,6 +134,10 @@ describeLinux('retained-descriptor Linux native path provisioner evidence', () =
       ...request,
       provisioningId: `provision-${request.moduleKind.toLowerCase()}`,
       requestHash: linuxRetainedNativeSupervisorPathProvisionRequestHash(request),
+      approvalId: 'level3-control-plane:linux-evidence',
+      approvalEvidenceHash: 'a'.repeat(64),
+      authorizedByReference: 'linux-evidence-authority',
+      authorityLevel: 3,
       validFrom: new Date(now - 1_000).toISOString(),
       validUntil: new Date(now + 60_000).toISOString(),
     };
