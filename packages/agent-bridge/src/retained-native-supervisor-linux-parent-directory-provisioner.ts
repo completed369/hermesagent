@@ -35,6 +35,9 @@ export interface LinuxRetainedNativeSupervisorParentDirectoryProvisionRequest {
   readonly architecture: 'X64';
   readonly runtimeRoot: string;
   readonly runtimeRootIdentityReference: string;
+  readonly runtimeRootProvisioningId: string;
+  readonly runtimeRootProvisionRequestHash: string;
+  readonly runtimeRootApprovalEvidenceHash: string;
   readonly runtimeRootOwnerUid: number;
   readonly runtimeRootOwnerGid: number;
   readonly runtimeRootMode: 448;
@@ -124,7 +127,10 @@ const REQUEST_KEYS = [
   'purpose',
   'runtimeConnection',
   'runtimeRoot',
+  'runtimeRootApprovalEvidenceHash',
   'runtimeRootIdentityReference',
+  'runtimeRootProvisioningId',
+  'runtimeRootProvisionRequestHash',
   'runtimeRootMode',
   'runtimeRootOwnerGid',
   'runtimeRootOwnerUid',
@@ -287,6 +293,9 @@ export function validateLinuxRetainedNativeSupervisorParentDirectoryProvisionReq
     architecture: 'X64',
     runtimeRoot,
     runtimeRootIdentityReference: identityReference(value.runtimeRootIdentityReference),
+    runtimeRootProvisioningId: reference(value.runtimeRootProvisioningId),
+    runtimeRootProvisionRequestHash: digest(value.runtimeRootProvisionRequestHash),
+    runtimeRootApprovalEvidenceHash: digest(value.runtimeRootApprovalEvidenceHash),
     runtimeRootOwnerUid: nonnegative(value.runtimeRootOwnerUid),
     runtimeRootOwnerGid: nonnegative(value.runtimeRootOwnerGid),
     runtimeRootMode: OWNER_ONLY_DIRECTORY_MODE,

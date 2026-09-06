@@ -42,6 +42,7 @@ export * from './retained-native-supervisor-linux-native-client-binding';
 export * from './retained-native-supervisor-linux-module-loader';
 export * from './retained-native-supervisor-linux-path-provisioner';
 export * from './retained-native-supervisor-linux-parent-directory-provisioner';
+export * from './retained-native-supervisor-linux-runtime-root-provisioner';
 export * from './retained-native-supervisor-module-authorization-trust-source';
 export * from './retained-native-supervisor-module-authorization-controller';
 export * from './retained-native-supervisor-module-authorization-audited-publisher';

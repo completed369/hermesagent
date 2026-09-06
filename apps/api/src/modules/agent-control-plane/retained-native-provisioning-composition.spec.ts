@@ -2,27 +2,33 @@ import { OperationalEventCapability } from '@ventureos/agent-control-plane';
 import type {
   BoundedLinuxRetainedNativeSupervisorParentDirectoryProvisioner,
   BoundedLinuxRetainedNativeSupervisorPathProvisioner,
+  BoundedLinuxRetainedNativeSupervisorRuntimeRootProvisioner,
   LinuxRetainedNativeSupervisorParentDirectoryProvisionRequest,
   LinuxRetainedNativeSupervisorPathProvisionRequest,
+  LinuxRetainedNativeSupervisorRuntimeRootProvisionRequest,
 } from '@ventureos/agent-bridge';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BoundedLevel3RetainedNativeParentDirectoryAuthority } from './retained-native-parent-directory-authority';
 import { BoundedLevel3RetainedNativePathProvisionAuthority } from './retained-native-path-provision-authority';
+import { BoundedLevel3RetainedNativeRuntimeRootAuthority } from './retained-native-runtime-root-authority';
 import {
   createLevel3RetainedDescriptorLinuxNativeSupervisorParentDirectoryProvisioner,
   createLevel3RetainedDescriptorLinuxNativeSupervisorPathProvisioner,
+  createLevel3RetainedDescriptorLinuxNativeSupervisorRuntimeRootProvisioner,
 } from './retained-native-provisioning-composition';
 
 const mocks = vi.hoisted(() => ({
   createParent: vi.fn(),
   createPath: vi.fn(),
+  createRoot: vi.fn(),
 }));
 
 vi.mock('@ventureos/agent-bridge', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@ventureos/agent-bridge')>()),
   createRetainedDescriptorLinuxNativeSupervisorParentDirectoryProvisioner: mocks.createParent,
   createRetainedDescriptorLinuxNativeSupervisorPathProvisioner: mocks.createPath,
+  createRetainedDescriptorLinuxNativeSupervisorRuntimeRootProvisioner: mocks.createRoot,
 }));
 
 const clock = () => Date.parse('2030-01-01T12:00:00.000Z');
@@ -46,12 +52,34 @@ const parentRequest: LinuxRetainedNativeSupervisorParentDirectoryProvisionReques
   architecture: 'X64',
   runtimeRoot: '/var/lib/ventureos/runtime/workspace-one/native-supervisor-1',
   runtimeRootIdentityReference: 'linux:dev-1:ino-64',
+  runtimeRootProvisioningId: 'native-runtime-root:root-evidence',
+  runtimeRootProvisionRequestHash: 'd'.repeat(64),
+  runtimeRootApprovalEvidenceHash: 'e'.repeat(64),
   runtimeRootOwnerUid: 10001,
   runtimeRootOwnerGid: 10001,
   runtimeRootMode: 448,
   moduleDirectory: '/var/lib/ventureos/runtime/workspace-one/native-supervisor-1/native',
   socketDirectoryParent: '/var/lib/ventureos/runtime/workspace-one/native-supervisor-1/run',
   socketDirectory: '/var/lib/ventureos/runtime/workspace-one/native-supervisor-1/run/supervisor',
+  ownerUid: 10001,
+  ownerGid: 10001,
+  runtimeConnection: 'NOT_CONFIGURED',
+});
+
+const runtimeRootRequest: LinuxRetainedNativeSupervisorRuntimeRootProvisionRequest = Object.freeze({
+  schemaVersion: 1,
+  purpose: 'RETAINED_NATIVE_SUPERVISOR_RUNTIME_ROOT_PROVISION',
+  workspaceId: context.workspaceId,
+  supervisorInstanceId: 'native-supervisor-1',
+  provisioningAttemptId: 'attempt-0001',
+  platform: 'LINUX',
+  architecture: 'X64',
+  runtimeRootParent: '/var/lib/ventureos/runtime/workspace-one/native-supervisor-1',
+  runtimeRootParentIdentityReference: 'linux:dev-1:ino-63',
+  runtimeRootParentOwnerUid: 10001,
+  runtimeRootParentOwnerGid: 10001,
+  runtimeRootParentMode: 448,
+  runtimeRoot: '/var/lib/ventureos/runtime/workspace-one/native-supervisor-1/attempt-0001',
   ownerUid: 10001,
   ownerGid: 10001,
   runtimeConnection: 'NOT_CONFIGURED',
@@ -92,6 +120,26 @@ describe('retained-native Level-3 provisioning composition', () => {
   beforeEach(() => {
     mocks.createParent.mockReset();
     mocks.createPath.mockReset();
+    mocks.createRoot.mockReset();
+  });
+
+  it('binds the real attempt-root host factory only to exact Level-3 authority and one clock', () => {
+    const provisioner = Object.freeze(
+      {},
+    ) as BoundedLinuxRetainedNativeSupervisorRuntimeRootProvisioner;
+    mocks.createRoot.mockReturnValueOnce(provisioner);
+    expect(
+      createLevel3RetainedDescriptorLinuxNativeSupervisorRuntimeRootProvisioner(
+        capability(),
+        context,
+        runtimeRootRequest,
+        clock,
+      ),
+    ).toBe(provisioner);
+    expect(mocks.createRoot).toHaveBeenCalledWith(
+      expect.any(BoundedLevel3RetainedNativeRuntimeRootAuthority),
+      clock,
+    );
   });
 
   it('binds the real parent host factory only to exact Level-3 authority and one clock', () => {

@@ -405,6 +405,11 @@ published and current `main` has not been deployed to private staging.
    shared clock to the real retained-descriptor Linux hosts (ADR-0117). Construction is inert, the
    returned provisioners remain one-attempt, and the functions remain absent from every application
    composition root.
+   A separate retained-descriptor Linux-x64 boundary can now create one absent owner-only attempt
+   root beneath an exact already-attested parent, with a one-use Level-3 API authority and inert real-
+   host construction (ADR-0118). Parent-directory authorization commits to the root provisioning ID,
+   request hash, and approval-evidence hash. Fresh attempt IDs provide bounded retry isolation without
+   recursive cleanup, but no writable parent/shared mount or cross-image controller is configured.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
