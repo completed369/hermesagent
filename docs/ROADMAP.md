@@ -445,6 +445,13 @@ published and current `main` has not been deployed to private staging.
    conflict without leaking a database error and admits only exact later-statement replay
    authentication; eight-way integration contention requires one append and seven replays
    (ADR-0106). No actual root is provisioned by this contract.
+   A separate one-attempt PostgreSQL issuance composition now binds the exact workspace/supervisor
+   public-root read, one-minute Level-3 authority, injected signer, independent signature
+   authentication, and audited snapshot/evidence append as one fail-closed chain (ADR-0108). It is
+   serialized against public-root rotation/revocation and rechecks the latest signer root at the
+   database clock before append. It remains absent from routes and service composition and supplies
+   no signer implementation, key/root
+   provisioning, listener, module load, or runtime-status promotion.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

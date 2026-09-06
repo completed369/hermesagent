@@ -327,6 +327,12 @@
 > the session plus listener cleanup as one consumed attempt (ADR-0107). The factory has no concrete
 > implementation or key and remains uncomposed, so this adds no service loop, root, or runtime-status
 > evidence.
+> A one-attempt PostgreSQL issuance composition now joins exact scoped public-root lookup, Level-3
+> authority, an injected signer, independent signature authentication, and atomic audited
+> publication (ADR-0108). PostgreSQL rechecks and transaction-locks the current root at its own
+> clock so expiry, rotation, or revocation cannot race the append. It remains absent from routes
+> and the Nest service graph and provides no
+> signer implementation, actual key/root, listener, native-module load, or runtime-status evidence.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
