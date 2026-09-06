@@ -398,9 +398,13 @@ published and current `main` has not been deployed to private staging.
    snapshots, exact grant-bound CAS state, and append-only transition evidence (ADR-0095), but remain
    uncomposed. An identity-preserving Linux-x64 path provisioner now copies one explicitly attested
    retained source into an absent owner-only `0500` module path and creates one absent owner-only
-   module through retained parents and reuse one exact identity-bound `0700` socket directory
+   module through retained parents while reusing one exact identity-bound `0700` socket directory
    (ADR-0096/0116). It denies by default, never replaces
    an existing target, keeps the socket absent, and returns only exact identities for later signing.
+   API-side construction functions now join only the exact Level-3 parent/path authorities and one
+   shared clock to the real retained-descriptor Linux hosts (ADR-0117). Construction is inert, the
+   returned provisioners remain one-attempt, and the functions remain absent from every application
+   composition root.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

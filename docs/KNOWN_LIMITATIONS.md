@@ -364,6 +364,10 @@
 > socket-directory identity without replacing it. No actual writable runtime
 > root or shared mount is configured, and the boundary remains absent from routes, workers, image
 > commands, service composition, and deployment.
+> API-side factories now provide the single reviewed production-shaped join from exact Level-3
+> authority to each real retained-descriptor parent/path host (ADR-0117). Construction is inert and
+> uncomposed; no bounded operation yet derives and sequences the parent, CLIENT, and LISTENER
+> requests, and no provisioning has been performed in a deployed runtime.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
