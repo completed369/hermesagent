@@ -459,6 +459,11 @@ published and current `main` has not been deployed to private staging.
    snapshot plus active root at the database clock. It remains absent from routes, workers, the Nest
    graph, and the native loader and supplies no key/root, signer, binary, service owner, or runtime
    truth promotion.
+   The audited durable source is now the only positive authorization input accepted by one explicit
+   retained-descriptor Linux-x64 loader construction (ADR-0110). Construction performs no trust read,
+   path selection, filesystem access, native load, socket operation, or service action and remains
+   absent from routes, workers, the Nest graph, images, and deployment. No native module is packaged,
+   no key/root or signer is supplied, and runtime truth remains `NOT_CONFIGURED`.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
