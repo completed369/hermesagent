@@ -2882,6 +2882,37 @@ test('topology carrier public roots require exact live binding and Level-3 durab
   assert.doesNotMatch(workerComposition, /PostgresTopologyCarrierSignatureRootRegistry/u);
 });
 
+test('role-local topology carrier composition resolves opposite roots and remains uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier-composition.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(
+    source,
+    /class DenyRetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource/u,
+  );
+  assert.match(source, /class RootResolvedRetainedNativeSupervisorTopologyObservationCoordinator/u);
+  assert.match(source, /class RootResolvedRetainedNativeSupervisorTopologyObservationWorker/u);
+  assert.match(source, /'WORKER_CLIENT'/u);
+  assert.match(source, /'API_COORDINATOR'/u);
+  assert.match(source, /#attempted/u);
+  assert.match(source, /await this\.#carrier\.close\(\)/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|\bcreatePrivateKey\b|\bgenerateKeyPair\b|\bprivateKey\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(apiComposition, /RootResolvedRetainedNativeSupervisorTopologyObservation/u);
+  assert.doesNotMatch(
+    workerComposition,
+    /RootResolvedRetainedNativeSupervisorTopologyObservation/u,
+  );
+});
+
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',

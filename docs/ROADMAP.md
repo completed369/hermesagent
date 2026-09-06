@@ -438,6 +438,11 @@ published and current `main` has not been deployed to private staging.
    uncomposed PostgreSQL registry can now admit only a live binding's two exact role-specific public
    roots under workspace-bound Level-3 authority and immutable atomic evidence (ADR-0126). Exact
    replay converges, conflicting carrier scope or identity denies, and no root is seeded or wired.
+   One-use role-local assemblies now enforce the safe sequence around those boundaries: the
+   coordinator resolves the exact worker root before sending, the worker resolves the exact
+   coordinator root before authenticating or observing, and the coordinator closes its injected
+   carrier after every outcome (ADR-0127). Root sources, signers, carrier, and observer remain
+   injected; no concrete channel, root wiring, key, mount, or runtime connection is supplied.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

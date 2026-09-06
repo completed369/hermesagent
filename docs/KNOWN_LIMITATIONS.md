@@ -395,6 +395,10 @@
 > activation, or runtime connection. A separate durable registry now constrains any future public
 > root admission to one live five-second binding, exact tenant/supervisor/role/principal scope, and
 > immutable Level-3 evidence (ADR-0126), but it is also uncomposed and contains no seeded root.
+> One-use coordinator and worker assemblies now enforce opposite-role root resolution before send
+> or observation and bounded carrier close after every coordinator outcome (ADR-0127). They remain
+> absent from application composition and provide no registry adapter, keyless signer, concrete
+> carrier, authenticated route, writable shared mount, activation, or runtime connection.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
