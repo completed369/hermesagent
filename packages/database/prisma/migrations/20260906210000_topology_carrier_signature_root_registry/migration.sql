@@ -192,11 +192,11 @@ BEGIN
      NEW."bindingHash" IS DISTINCT FROM carrier_scope."bindingHash" OR
      NEW."validFrom" > carrier_scope."issuedAt" OR
      NEW."validUntil" < carrier_scope."expiresAt" OR
-     NEW."principalReference" IS DISTINCT FROM CASE NEW."principalRole"
+     NEW."principalReference" IS DISTINCT FROM (CASE NEW."principalRole"
        WHEN 'API_COORDINATOR' THEN carrier_scope."coordinatorPrincipalReference"
        WHEN 'WORKER_CLIENT' THEN carrier_scope."workerPrincipalReference"
        ELSE NULL
-     END THEN
+     END) THEN
     RAISE EXCEPTION 'Topology carrier public root exact binding denied';
   END IF;
 
