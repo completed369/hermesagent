@@ -29,7 +29,7 @@ function capability(
   authorityLevel: 0 | 1 | 2 | 3 | 4 = 3,
   actorKind: 'HUMAN' | 'AGENT' | 'RUNTIME' | 'SYSTEM' = 'SYSTEM',
   source: 'CONTROL_PLANE' | 'AI_COO' = 'CONTROL_PLANE',
-  boundContext = context,
+  boundContext: Readonly<{ workspaceId: string; principalId: string }> = context,
 ): OperationalEventCapability {
   return OperationalEventCapability.issue(source, [{ ...boundContext, actorKind, authorityLevel }]);
 }
