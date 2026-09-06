@@ -2298,6 +2298,7 @@ test('Linux retained-native listener lifecycle is ownership-safe, bounded, and u
     'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
     'utf8',
   );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
   assert.match(source, /class DenyLinuxRetainedNativeSupervisorListenerLifecycleBinding/u);
   assert.match(source, /class BoundedLinuxRetainedNativeSupervisorListenerLifecycle/u);
   assert.match(source, /createOwnedListener/u);
@@ -2309,11 +2310,24 @@ test('Linux retained-native listener lifecycle is ownership-safe, bounded, and u
   assert.match(source, /expectedWorkerPid: positive/u);
   assert.match(source, /expectedPeerPid: this\.#authorization\.expectedWorkerPid/u);
   assert.match(source, /new AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler/u);
+  assert.match(
+    source,
+    /class DenyLinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyFactory/u,
+  );
+  assert.match(source, /async runSigningOne/u);
+  assert.match(
+    source,
+    /purpose: 'RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION_SIGNING_CUSTODY'/u,
+  );
+  assert.match(source, /authenticateRetainedNativeSupervisorModuleAuthorizationSignerKeyId/u);
+  assert.match(
+    source,
+    /new AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler/u,
+  );
+  assert.match(source, /await Promise\.race/u);
   assert.ok(
     source.indexOf('identity = assertAuthorizedCreation(') <
-      source.indexOf(
-        'const handler = new AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler',
-      ),
+      source.indexOf('const handler = await createHandler(identity)'),
   );
   assert.match(source, /assertCleanup\(listener\.closeAndUnlinkOwned\(\), identity\)/u);
   assert.match(source, /evidence\.disposition !== 'OWNED_SOCKET_REMOVED'/u);
@@ -2323,7 +2337,12 @@ test('Linux retained-native listener lifecycle is ownership-safe, bounded, and u
     /from\s+['"]node:(?:child_process|cluster|fs|os|net|http|https|tls|dgram|worker_threads)['"]/u,
   );
   assert.doesNotMatch(source, /runtimeConnection:\s*'CONNECTED'/u);
+  assert.doesNotMatch(
+    source,
+    /createPrivateKey|createSecretKey|generateKeyPair|privateKey|from\s+['"]node:(?:crypto|fs|net|tls)['"]/u,
+  );
   assert.doesNotMatch(apiComposition, /retained-native-supervisor-listener-lifecycle/u);
+  assert.doesNotMatch(workerComposition, /retained-native-supervisor-listener-lifecycle/u);
 });
 
 test('retained-native listener lifecycle kernel evidence is Linux-test-only and ownership-safe', () => {

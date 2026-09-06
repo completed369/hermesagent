@@ -131,6 +131,13 @@ function reference(value: unknown): string {
   return value;
 }
 
+/** Validates a public signer identifier before it is passed to a custody boundary. */
+export function authenticateRetainedNativeSupervisorModuleAuthorizationSignerKeyId(
+  value: unknown,
+): string {
+  return reference(value);
+}
+
 function digest(value: unknown): string {
   if (typeof value !== 'string' || !SHA256.test(value)) deny('INVALID_FRAME');
   return value;
@@ -239,7 +246,8 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationS
     authorization: unknown,
     timeoutMs = 2_000,
   ) {
-    this.#signerKeyId = reference(signerKeyId);
+    this.#signerKeyId =
+      authenticateRetainedNativeSupervisorModuleAuthorizationSignerKeyId(signerKeyId);
     this.#authorization = authenticateRetainedNativeSupervisorLocalIpcAuthorization(authorization);
     if (
       !Number.isSafeInteger(timeoutMs) ||
