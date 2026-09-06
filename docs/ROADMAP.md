@@ -416,7 +416,10 @@ published and current `main` has not been deployed to private staging.
    retained-descriptor observers plus a bounded reconciler can now prove that API/LISTENER and
    worker/CLIENT see the same exact owner-only runtime parent and their expected immutable source
    artifacts (ADR-0120). The observation ports remain untransported and uncomposed, and the current
-   deployment still has no shared runtime mount.
+   deployment still has no shared runtime mount. A one-use composition boundary now makes all four
+   provisioning steps unreachable until that exact two-role topology is fresh and bound to the same
+   plan, and requires provisioning to complete before the topology expires (ADR-0121). It remains
+   uncomposed and supplies neither the missing mount nor authenticated transports.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

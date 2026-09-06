@@ -45,6 +45,7 @@ export * from './retained-native-supervisor-linux-parent-directory-provisioner';
 export * from './retained-native-supervisor-linux-runtime-root-provisioner';
 export * from './retained-native-supervisor-provisioning-controller';
 export * from './retained-native-supervisor-shared-runtime-topology';
+export * from './retained-native-supervisor-topology-gated-provisioning';
 export * from './retained-native-supervisor-module-authorization-trust-source';
 export * from './retained-native-supervisor-module-authorization-controller';
 export * from './retained-native-supervisor-module-authorization-audited-publisher';

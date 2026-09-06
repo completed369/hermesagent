@@ -2715,6 +2715,40 @@ test('shared retained-runtime topology requires two retained role-local views an
   );
 });
 
+test('retained-runtime provisioning is gated by exact fresh shared topology and remains uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-gated-provisioning.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(
+    source,
+    /class BoundedLinuxRetainedNativeSupervisorTopologyGatedProvisioningController/u,
+  );
+  assert.ok(source.indexOf('this.#attest(plan') < source.indexOf('this.#provision(plan'));
+  assert.match(source, /remainingFreshnessMs/u);
+  assert.match(source, /TOPOLOGY_ATTESTED_PROVISIONED_NOT_ACTIVATED/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(index, /retained-native-supervisor-topology-gated-provisioning/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process)'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /BoundedLinuxRetainedNativeSupervisorTopologyGatedProvisioningController/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedLinuxRetainedNativeSupervisorTopologyGatedProvisioningController/u,
+  );
+});
+
 test('retained-native module authorization trust is signed, revocable, and uncomposed', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-module-authorization-trust-source.ts',

@@ -379,7 +379,10 @@
 > shared owner-only runtime parent and immutable API/LISTENER plus worker/CLIENT source visibility
 > within a five-second window (ADR-0120), but their ports have no authenticated transport and remain
 > uncomposed. The current deployment cannot produce this evidence because it still has no shared
-> runtime mount, so this is not provisioning, activation, or a runtime connection.
+> runtime mount. A separate one-use gate now requires that exact fresh two-role evidence before the
+> existing provisioning controller can run and withholds partial composition results (ADR-0121), but
+> it is also uncomposed and supplies no mount or transport. This is not activation or a runtime
+> connection.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
