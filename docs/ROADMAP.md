@@ -417,6 +417,11 @@ published and current `main` has not been deployed to private staging.
    trusted `CONTROL_PLANE` Level-3 capability into one domain-separated, one-minute issuance grant
    without touching the Founder-only Level-4 workflow (ADR-0100). It rejects Level 4, runtime
    principals, request drift, and replay, and remains absent from every composition root.
+   A separate one-use keyless signer client now binds the exact canonical snapshot payload to one
+   signer and one domain-separated request, bounds request/response bytes plus exchange and close
+   deadlines, and closes its injected channel before returning (ADR-0101). It contains no key,
+   concrete transport, root provisioning, or composition; the independent publisher still verifies
+   every signature.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

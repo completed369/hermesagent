@@ -300,6 +300,11 @@
 > control-plane capability; it rejects Level 4 and does not invoke the Founder approval workflow.
 > It has no signer, key, publisher, loader, or service composition. These boundaries therefore do
 > not prove runtime connectivity.
+> A separate uncomposed keyless signer client can now exchange only that controller's canonical,
+> hash-bound snapshot-signing request over an injected bounded channel and closes the channel before
+> returning. It has no private key, concrete transport, public-root provisioning, or service owner;
+> its response remains subject to independent publisher verification and proves no runtime
+> connectivity.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an

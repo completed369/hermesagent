@@ -25,6 +25,10 @@ import {
   type RetainedNativeSupervisorModuleAuthorizationSnapshot,
   type RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore,
 } from './retained-native-supervisor-module-authorization-trust-source';
+import {
+  BoundedKeylessRetainedNativeSupervisorModuleAuthorizationSnapshotSigner,
+  type RetainedNativeSupervisorModuleAuthorizationKeylessSigningTransport,
+} from './retained-native-supervisor-module-authorization-keyless-signer';
 
 const NOW = Date.parse('2030-01-01T12:00:00.000Z');
 const WORKSPACE = 'workspace-1';
@@ -75,6 +79,35 @@ class Ed25519Signer implements RetainedNativeSupervisorModuleAuthorizationSnapsh
         this.privateKey,
       ).toString('base64'),
     });
+  }
+}
+
+class KeylessEd25519SigningTransport implements RetainedNativeSupervisorModuleAuthorizationKeylessSigningTransport {
+  closes = 0;
+
+  constructor(private readonly privateKey: KeyObject) {}
+
+  async exchange(request: Uint8Array, _signal: AbortSignal): Promise<unknown> {
+    const envelope = JSON.parse(new TextDecoder().decode(request)) as Record<string, unknown>;
+    return new TextEncoder().encode(
+      canonicalJson({
+        protocolVersion: 1,
+        purpose: 'RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION_SNAPSHOT_SIGNING_RESPONSE',
+        runtimeConnection: 'NOT_CONFIGURED',
+        signature: sign(
+          null,
+          Buffer.from(canonicalJson(envelope.payload)),
+          this.privateKey,
+        ).toString('base64'),
+        signerKeyId: envelope.signerKeyId,
+        signingRequestHash: envelope.signingRequestHash,
+        snapshotPayloadHash: envelope.snapshotPayloadHash,
+      }),
+    );
+  }
+
+  async close(): Promise<void> {
+    this.closes += 1;
   }
 }
 
@@ -248,6 +281,38 @@ describe('BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController',
       socketDirectoryMode: 0o700,
       runtimeConnection: 'NOT_CONFIGURED',
     });
+  });
+
+  it('composes the keyless signer through independent signature authentication and publication', async () => {
+    const base = fixture();
+    const transport = new KeylessEd25519SigningTransport(base.privateKey);
+    const signer = new BoundedKeylessRetainedNativeSupervisorModuleAuthorizationSnapshotSigner(
+      SIGNER,
+      transport,
+    );
+    const publisher = new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotPublisher(
+      INSTANCE,
+      [base.root],
+      base.store,
+      () => NOW,
+    );
+    const controller = new BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotController(
+      WORKSPACE,
+      INSTANCE,
+      new ApprovalAuthority(),
+      signer,
+      publisher,
+      () => NOW,
+    );
+
+    await expect(
+      controller.issue(issueRequest([]), new AbortController().signal),
+    ).resolves.toMatchObject({
+      publication: 'APPENDED',
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    expect(transport.closes).toBe(1);
+    expect(base.store.calls).toBe(1);
   });
 
   it('publishes an explicitly approved empty snapshot for revocation', async () => {
