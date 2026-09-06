@@ -2636,6 +2636,47 @@ test('Linux retained-native path provisioning is owner-only, identity-bound, and
   assert.doesNotMatch(workerComposition, /RetainedNativeSupervisorPathProvision/u);
 });
 
+test('bounded retained-native provisioning controller is attestation-chained and transport-free', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-provisioning-controller.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  const operationIndex = source.indexOf('async provision(\n    input: unknown');
+  const rootIndex = source.indexOf('this.#runtimeRootProvision', operationIndex);
+  const parentIndex = source.indexOf('this.#parentDirectoryProvision', rootIndex + 1);
+  const clientIndex = source.indexOf('this.#clientProvision', parentIndex + 1);
+  const listenerIndex = source.indexOf('this.#listenerProvision', clientIndex + 1);
+  assert.match(source, /class DenyLinuxRetainedNativeSupervisorProvisioningPort/u);
+  assert.match(source, /class BoundedLinuxRetainedNativeSupervisorProvisioningController/u);
+  assert.match(source, /#attempted = false/u);
+  assert.match(source, /#lastObservedNow = -1/u);
+  assert.ok(rootIndex >= 0 && parentIndex > rootIndex && clientIndex > parentIndex);
+  assert.ok(listenerIndex > clientIndex);
+  assert.match(source, /PROVISIONED_NOT_ACTIVATED/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(source, /assertFreshWindow\(evidence\.authorizedFrom/u);
+  assert.match(source, /client\.socketDirectoryIdentityReference !==/u);
+  assert.match(index, /retained-native-supervisor-provisioning-controller/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:fs|net|tls|child_process)'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /BoundedLinuxRetainedNativeSupervisorProvisioningController/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedLinuxRetainedNativeSupervisorProvisioningController/u,
+  );
+});
+
 test('retained-native module authorization trust is signed, revocable, and uncomposed', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-module-authorization-trust-source.ts',

@@ -409,7 +409,10 @@ published and current `main` has not been deployed to private staging.
    root beneath an exact already-attested parent, with a one-use Level-3 API authority and inert real-
    host construction (ADR-0118). Parent-directory authorization commits to the root provisioning ID,
    request hash, and approval-evidence hash. Fresh attempt IDs provide bounded retry isolation without
-   recursive cleanup, but no writable parent/shared mount or cross-image controller is configured.
+   recursive cleanup. A topology-neutral one-attempt controller now sequences runtime-root, parent,
+   worker CLIENT, and API LISTENER provisioning through four separately injected ports, derives each
+   request only from prior attestation, and returns no partial bundle (ADR-0119). It supplies no
+   transport, writable parent/shared mount, service activation, or runtime truth.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
