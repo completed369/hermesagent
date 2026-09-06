@@ -426,6 +426,11 @@ published and current `main` has not been deployed to private staging.
    API/LISTENER and worker/CLIENT observation purposes, create each ADR-0122 handler only after exact
    no-replacement listener attestation, and guarantee bounded session close plus exact owned-socket
    cleanup (ADR-0123). The boundary remains uncomposed and supplies no carrier or shared mount.
+   A worker-only cross-container carrier protocol now binds one canonical observation request and
+   response to an exact five-second workspace/supervisor/plan authorization plus independently
+   authenticated API and worker delivery evidence (ADR-0124). Both terminals are one-use, abort on
+   cancellation or expiry, and observation freshness cannot outlive carrier authority. The protocol
+   remains uncomposed and supplies no concrete channel, orchestration loop, or shared mount.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

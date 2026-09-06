@@ -2782,6 +2782,38 @@ test('role-local topology observation IPC is kernel-authenticated, bounded, and 
   );
 });
 
+test('cross-container topology observation carrier is mutually authenticated, bounded, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /MUTUALLY_AUTHENTICATED_CROSS_CONTAINER_CHANNEL/u);
+  assert.match(source, /COORDINATOR_TO_WORKER/u);
+  assert.match(source, /WORKER_TO_COORDINATOR/u);
+  assert.match(source, /workerPrincipalReference/u);
+  assert.match(source, /coordinatorPrincipalReference/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(index, /retained-native-supervisor-topology-observation-carrier/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /AuthenticatedCrossContainerRetainedNativeSupervisorTopologyObservation/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /AuthenticatedCrossContainerRetainedNativeSupervisorTopologyObservation/u,
+  );
+});
+
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',

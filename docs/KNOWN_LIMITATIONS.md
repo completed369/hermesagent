@@ -386,8 +386,11 @@
 > kernel evidence (ADR-0122). Protected listener lifecycle and authorization issuance are now closed
 > in code: separate role-specific service purposes consume exact one-use Level-3 grants before the
 > existing no-replacement listener lifecycle hosts one ADR-0122 exchange and removes its exact owned
-> socket (ADR-0123). This remains absent from application composition; no cross-container carrier,
-> orchestration, writable shared mount, activation, or runtime connection exists.
+> socket (ADR-0123). A separate worker-only carrier protocol now authenticates and exact-binds one
+> cross-container request/response to the workspace, supervisor, plan, distinct service principals,
+> and a maximum five-second grant (ADR-0124). It remains absent from application composition and has
+> no concrete channel implementation, orchestration loop, writable shared mount, activation, or
+> runtime connection.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
