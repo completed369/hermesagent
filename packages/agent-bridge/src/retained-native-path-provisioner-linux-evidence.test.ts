@@ -92,6 +92,8 @@ describeLinux('retained-descriptor Linux native path provisioner evidence', () =
     chmodSync(socketDirectoryParent, 0o700);
     const sourceStat = lstatSync(sourcePath);
     const owner = lstatSync(root);
+    const moduleDirectoryStat = lstatSync(moduleDirectory);
+    const socketDirectoryParentStat = lstatSync(socketDirectoryParent);
     const modulePath = join(moduleDirectory, 'client.node');
     const socketDirectory = join(socketDirectoryParent, 'supervisor');
     const socketPath = join(socketDirectory, 'recovery.sock');
@@ -111,9 +113,14 @@ describeLinux('retained-descriptor Linux native path provisioner evidence', () =
         sourceModuleOwnerGid: sourceStat.gid,
         sourceModuleMode: sourceStat.mode & 0o777,
         sourceModuleSizeBytes: sourceStat.size,
+        parentDirectoryProvisioningId: 'parent-directories-linux-evidence',
+        parentDirectoryProvisionRequestHash: 'b'.repeat(64),
+        parentDirectoryApprovalEvidenceHash: 'c'.repeat(64),
         moduleDirectory,
+        moduleDirectoryIdentityReference: identity(moduleDirectoryStat),
         canonicalModulePath: modulePath,
         socketDirectoryParent,
+        socketDirectoryParentIdentityReference: identity(socketDirectoryParentStat),
         socketDirectory,
         socketPath,
         ownerUid: owner.uid,

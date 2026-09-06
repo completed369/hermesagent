@@ -480,6 +480,11 @@ published and current `main` has not been deployed to private staging.
    A one-use API-side adapter can now derive that exact service grant from only a trusted non-runtime
    `CONTROL_PLANE` Level-3 capability, with domain-separated digest-only evidence and no Level-4 or
    AI-COO path (ADR-0114). The adapter remains uncomposed and performs no service or runtime action.
+   A retained-descriptor Linux-x64 parent-directory provisioner can now create only absent fixed
+   `native` and `run` children beneath one exact owner-only runtime root, with a one-use tenant-bound
+   Level-3 control-plane authority (ADR-0115). Its identities and approval provenance are mandatory
+   inputs to path provisioning and survive into snapshot issuance. Both pieces remain uncomposed;
+   no writable mount, runtime path, module load, socket, service, signer, worker, or runtime is active.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
