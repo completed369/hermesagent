@@ -335,7 +335,7 @@ export function validateLinuxRetainedNativeSupervisorTopologyObservationRequest(
   });
 }
 
-function validateObservation(
+export function validateLinuxRetainedNativeSupervisorTopologyObservation(
   input: unknown,
   request: Readonly<LinuxRetainedNativeSupervisorTopologyObservationRequest>,
   now: number,
@@ -605,8 +605,16 @@ export class BoundedLinuxRetainedNativeSupervisorSharedRuntimeTopologyReconciler
       ]);
       const [apiInput, workerInput] = await Promise.race([observations, timeout]);
       const now = this.now(signal);
-      const apiListener = validateObservation(apiInput, apiRequest, now);
-      const workerClient = validateObservation(workerInput, workerRequest, now);
+      const apiListener = validateLinuxRetainedNativeSupervisorTopologyObservation(
+        apiInput,
+        apiRequest,
+        now,
+      );
+      const workerClient = validateLinuxRetainedNativeSupervisorTopologyObservation(
+        workerInput,
+        workerRequest,
+        now,
+      );
       if (
         apiListener.runtimeRootParentIdentityReference !==
           workerClient.runtimeRootParentIdentityReference ||

@@ -2749,6 +2749,39 @@ test('retained-runtime provisioning is gated by exact fresh shared topology and 
   );
 });
 
+test('role-local topology observation IPC is kernel-authenticated, bounded, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-observation-local-ipc.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /authenticateRetainedNativeSupervisorLocalIpcClientExchange/u);
+  assert.match(source, /authenticateRetainedNativeSupervisorLocalIpcInboundExchange/u);
+  assert.match(source, /VENTUREOS_RETAINED_NATIVE_TOPOLOGY_OBSERVATION_IPC/u);
+  assert.match(source, /COORDINATOR_TO_OBSERVER/u);
+  assert.match(source, /OBSERVER_TO_COORDINATOR/u);
+  assert.match(source, /requestHash/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(index, /retained-native-supervisor-topology-observation-local-ipc/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservation/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservation/u,
+  );
+});
+
 test('retained-native module authorization trust is signed, revocable, and uncomposed', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-module-authorization-trust-source.ts',
