@@ -2882,6 +2882,10 @@ test('native-module issuance Level-3 authority is exact, one-shot, and uncompose
     'utf8',
   );
   const worker = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  const integration = readFileSync(
+    'apps/api/test/retained-native-module-authorization-trust-state.integration.spec.ts',
+    'utf8',
+  );
   assert.match(source, /class BoundedLevel3RetainedNativeModuleAuthorizationIssuanceAuthority/u);
   assert.match(source, /capability\.assertSource\('CONTROL_PLANE'\)/u);
   assert.match(source, /capability\.authorityLevelFor\(boundContext\) !== 3/u);
@@ -3163,4 +3167,46 @@ test('native-module issuance composition binds roots, approval, signing, and aud
     /current_roots\."minimumSnapshotVersion" <= NEW\."snapshotVersion"/u,
   );
   assert.match(rootBindingMigration, /current public-root binding denied/u);
+});
+
+test('native-module trust composition requires audited current roots and remains unactivated', () => {
+  const source = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-module-authorization-trust-composition.ts',
+    'utf8',
+  );
+  const state = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-module-authorization-trust-state.ts',
+    'utf8',
+  );
+  const registry = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-module-authorization-root-registry.ts',
+    'utf8',
+  );
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const worker = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  const integration = readFileSync(
+    'apps/api/test/retained-native-module-authorization-trust-state.integration.spec.ts',
+    'utf8',
+  );
+
+  assert.match(source, /#attempted = false/u);
+  assert.match(source, /BoundedRetainedNativeSupervisorModuleAuthorizationSnapshotAuthenticator/u);
+  assert.match(source, /BoundedRetainedNativeSupervisorModuleAuthorizationTrustSource/u);
+  assert.match(source, /\$transaction/u);
+  assert.match(source, /isolationLevel: 'Serializable'/u);
+  assert.ok(source.indexOf('90497') < source.indexOf('90503'));
+  assert.match(state, /issuance_evidence/u);
+  assert.match(registry, /clock_timestamp\(\)/u);
+  assert.match(state, /class PostgresRetainedNativeModuleAuthorizationAuditedSnapshotReader/u);
+  assert.match(state, /JOIN "acp_retained_native_module_authorization_issuance_evidence"/u);
+  assert.doesNotMatch(
+    source,
+    /\bcreatePrivateKey\b|\bgenerateKeyPair|\bprivateKey\b|process\.env|\bfetch\s*\(|from 'node:(?:child_process|fs|net|tls)'|\bCONNECTED\b/u,
+  );
+  assert.doesNotMatch(module, /PostgresRetainedNativeModuleAuthorizationTrustComposition/u);
+  assert.doesNotMatch(worker, /PostgresRetainedNativeModuleAuthorizationTrustComposition/u);
+  assert.match(integration, /new PostgresRetainedNativeModuleAuthorizationTrustComposition/u);
 });

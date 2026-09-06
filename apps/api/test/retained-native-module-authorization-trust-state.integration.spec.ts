@@ -24,6 +24,7 @@ import {
   PostgresRetainedNativeModuleAuthorizationSnapshotReader,
 } from '../src/modules/agent-control-plane/retained-native-module-authorization-trust-state';
 import { PostgresRetainedNativeModuleAuthorizationRootRegistry } from '../src/modules/agent-control-plane/retained-native-module-authorization-root-registry';
+import { PostgresRetainedNativeModuleAuthorizationTrustComposition } from '../src/modules/agent-control-plane/retained-native-module-authorization-trust-composition';
 
 describe('durable retained-native module authorization trust state (PostgreSQL integration)', () => {
   const suffix = randomUUID();
@@ -430,7 +431,41 @@ describe('durable retained-native module authorization trust state (PostgreSQL i
       previousSnapshotHash: null,
       issuedAt: nowIso,
       validUntil: authorizedUntil,
-      authorizations: [],
+      authorizations: [
+        {
+          schemaVersion: 1 as const,
+          platform: 'LINUX' as const,
+          architecture: 'X64' as const,
+          moduleKind: 'CLIENT' as const,
+          canonicalModulePath: '/opt/ventureos/native/audited-client.node',
+          socketPath: '/run/ventureos/supervisor/audited-recovery.sock',
+          runtimeConnection: 'NOT_CONFIGURED' as const,
+          authorizationId: `audited-client-grant-${suffix}`,
+          authorizationVersion: 1,
+          requestHash: linuxRetainedNativeSupervisorModuleLoadRequestHash({
+            schemaVersion: 1,
+            platform: 'LINUX',
+            architecture: 'X64',
+            moduleKind: 'CLIENT',
+            canonicalModulePath: '/opt/ventureos/native/audited-client.node',
+            socketPath: '/run/ventureos/supervisor/audited-recovery.sock',
+            runtimeConnection: 'NOT_CONFIGURED',
+          }),
+          validFrom: nowIso,
+          validUntil: authorizedUntil,
+          moduleSha256: 'c'.repeat(64),
+          moduleIdentityReference: 'linux:dev-a:ino-b',
+          moduleOwnerUid: 1000,
+          moduleOwnerGid: 1000,
+          moduleMode: 0o500,
+          moduleSizeBytes: 64_000,
+          socketDirectory: '/run/ventureos/supervisor',
+          socketDirectoryIdentityReference: 'linux:dev-c:ino-d',
+          socketDirectoryOwnerUid: 1000,
+          socketDirectoryOwnerGid: 1000,
+          socketDirectoryMode: 0o700 as const,
+        },
+      ],
       runtimeConnection: 'NOT_CONFIGURED' as const,
     };
     const controller = () =>
@@ -475,6 +510,23 @@ describe('durable retained-native module authorization trust state (PostgreSQL i
         authorityLevel: 3,
       },
     ]);
+    const loadRequest = {
+      schemaVersion: 1 as const,
+      platform: 'LINUX' as const,
+      architecture: 'X64' as const,
+      moduleKind: 'CLIENT' as const,
+      canonicalModulePath: '/opt/ventureos/native/audited-client.node',
+      socketPath: '/run/ventureos/supervisor/audited-recovery.sock',
+      runtimeConnection: 'NOT_CONFIGURED' as const,
+    };
+    await expect(
+      new PostgresRetainedNativeModuleAuthorizationTrustComposition(
+        prisma,
+        workspaceId,
+        publicationInstanceId,
+        () => now,
+      ).read(loadRequest),
+    ).resolves.toEqual(input.authorizations[0]);
     await expect(
       prisma.$executeRaw(Prisma.sql`
         INSERT INTO "acp_retained_native_module_authorization_issuance_evidence" (

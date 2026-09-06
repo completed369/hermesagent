@@ -333,6 +333,12 @@
 > clock so expiry, rotation, or revocation cannot race the append. It remains absent from routes
 > and the Nest service graph and provides no
 > signer implementation, actual key/root, listener, native-module load, or runtime-status evidence.
+> A separate one-attempt PostgreSQL trust composition now admits only the latest workspace-scoped
+> snapshot carrying immutable issuance evidence, independently authenticates it, advances its
+> durable anti-rollback checkpoint, and rechecks the same latest snapshot and active root under the
+> ordered publication/root locks before exposing an exact request-bound grant (ADR-0109). It remains
+> absent from the Nest graph and supplies no loader, native module, signer, key/root, service owner,
+> or runtime-status evidence.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
