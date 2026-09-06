@@ -356,6 +356,12 @@
 > A one-use API-side adapter can mint that exact grant from only a trusted non-runtime
 > `CONTROL_PLANE` Level-3 capability (ADR-0114). It rejects Level 4 and AI-COO authority, carries only
 > digest evidence, and remains absent from every composition root; no service is activated.
+> A one-attempt retained-descriptor Linux parent-directory provisioner and exact Level-3 API
+> authority now bind a tenant and supervisor to one owner-only runtime root and only its absent
+> fixed-name `native` and `run` children (ADR-0115). Path provisioning rejects parent identity or
+> approval-provenance drift, and snapshot issuance preserves that chain. No actual writable runtime
+> root or shared mount is configured, and the boundary remains absent from routes, workers, image
+> commands, service composition, and deployment.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that

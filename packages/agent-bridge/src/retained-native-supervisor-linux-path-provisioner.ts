@@ -52,9 +52,14 @@ export interface LinuxRetainedNativeSupervisorPathProvisionRequest {
   readonly sourceModuleOwnerGid: number;
   readonly sourceModuleMode: number;
   readonly sourceModuleSizeBytes: number;
+  readonly parentDirectoryProvisioningId: string;
+  readonly parentDirectoryProvisionRequestHash: string;
+  readonly parentDirectoryApprovalEvidenceHash: string;
   readonly moduleDirectory: string;
+  readonly moduleDirectoryIdentityReference: string;
   readonly canonicalModulePath: string;
   readonly socketDirectoryParent: string;
+  readonly socketDirectoryParentIdentityReference: string;
   readonly socketDirectory: string;
   readonly socketPath: string;
   readonly ownerUid: number;
@@ -89,6 +94,9 @@ export interface ProvisionedLinuxRetainedNativeSupervisorPaths {
   readonly authorityLevel: 3;
   readonly authorizedFrom: string;
   readonly authorizedUntil: string;
+  readonly parentDirectoryProvisioningId: string;
+  readonly parentDirectoryProvisionRequestHash: string;
+  readonly parentDirectoryApprovalEvidenceHash: string;
   readonly canonicalModulePath: string;
   readonly moduleSha256: string;
   readonly moduleIdentityReference: string;
@@ -138,15 +146,20 @@ const REQUEST_KEYS = [
   'architecture',
   'canonicalModulePath',
   'moduleDirectory',
+  'moduleDirectoryIdentityReference',
   'moduleKind',
   'ownerGid',
   'ownerUid',
+  'parentDirectoryApprovalEvidenceHash',
+  'parentDirectoryProvisioningId',
+  'parentDirectoryProvisionRequestHash',
   'platform',
   'purpose',
   'runtimeConnection',
   'schemaVersion',
   'socketDirectory',
   'socketDirectoryParent',
+  'socketDirectoryParentIdentityReference',
   'socketPath',
   'sourceModuleIdentityReference',
   'sourceModuleMode',
@@ -185,6 +198,9 @@ const RESULT_KEYS = [
   'moduleOwnerUid',
   'moduleSha256',
   'moduleSizeBytes',
+  'parentDirectoryApprovalEvidenceHash',
+  'parentDirectoryProvisioningId',
+  'parentDirectoryProvisionRequestHash',
   'platform',
   'provisioningId',
   'purpose',
@@ -259,6 +275,11 @@ function canonicalPath(value: unknown, pattern: RegExp, maximum = MAX_PATH_BYTES
 
 function identityReference(value: unknown): string {
   if (typeof value !== 'string' || !LINUX_IDENTITY.test(value)) deny('INVALID_AUTHORIZATION');
+  const match = /^linux:dev-([a-f0-9]+):ino-([a-f0-9]+)$/u.exec(value)!;
+  const device = Number.parseInt(match[1]!, 16);
+  const inode = Number.parseInt(match[2]!, 16);
+  if (!Number.isSafeInteger(device) || device < 1 || !Number.isSafeInteger(inode) || inode < 1)
+    deny('INVALID_AUTHORIZATION');
   return value;
 }
 
@@ -333,9 +354,16 @@ export function validateLinuxRetainedNativeSupervisorPathProvisionRequest(
     sourceModuleOwnerGid: safeInteger(value.sourceModuleOwnerGid),
     sourceModuleMode: validSourceMode(value.sourceModuleMode),
     sourceModuleSizeBytes: safeInteger(value.sourceModuleSizeBytes, true, MAX_MODULE_BYTES),
+    parentDirectoryProvisioningId: reference(value.parentDirectoryProvisioningId),
+    parentDirectoryProvisionRequestHash: digest(value.parentDirectoryProvisionRequestHash),
+    parentDirectoryApprovalEvidenceHash: digest(value.parentDirectoryApprovalEvidenceHash),
     moduleDirectory,
+    moduleDirectoryIdentityReference: identityReference(value.moduleDirectoryIdentityReference),
     canonicalModulePath,
     socketDirectoryParent,
+    socketDirectoryParentIdentityReference: identityReference(
+      value.socketDirectoryParentIdentityReference,
+    ),
     socketDirectory,
     socketPath,
     ownerUid: safeInteger(value.ownerUid),
@@ -511,6 +539,8 @@ class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost implements LinuxR
         grant.ownerUid,
         grant.ownerGid,
       );
+      if (identity(moduleParentStat) !== grant.moduleDirectoryIdentityReference)
+        deny('INVALID_ATTESTATION');
       socketParentDescriptor = openSync(
         grant.socketDirectoryParent,
         fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW | LINUX_O_CLOEXEC,
@@ -520,6 +550,8 @@ class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost implements LinuxR
         grant.ownerUid,
         grant.ownerGid,
       );
+      if (identity(socketParentStat) !== grant.socketDirectoryParentIdentityReference)
+        deny('INVALID_ATTESTATION');
 
       const moduleAtParent = `/proc/self/fd/${moduleParentDescriptor}/${posix.basename(grant.canonicalModulePath)}`;
       moduleDescriptor = openSync(
@@ -600,6 +632,9 @@ class RetainedDescriptorLinuxNativeSupervisorPathProvisionHost implements LinuxR
         authorityLevel: 3,
         authorizedFrom: grant.validFrom,
         authorizedUntil: grant.validUntil,
+        parentDirectoryProvisioningId: grant.parentDirectoryProvisioningId,
+        parentDirectoryProvisionRequestHash: grant.parentDirectoryProvisionRequestHash,
+        parentDirectoryApprovalEvidenceHash: grant.parentDirectoryApprovalEvidenceHash,
         canonicalModulePath: grant.canonicalModulePath,
         moduleSha256,
         moduleIdentityReference: identity(moduleStat),
@@ -666,6 +701,9 @@ function validateResult(
     value.authorityLevel !== 3 ||
     value.authorizedFrom !== grant.validFrom ||
     value.authorizedUntil !== grant.validUntil ||
+    value.parentDirectoryProvisioningId !== grant.parentDirectoryProvisioningId ||
+    value.parentDirectoryProvisionRequestHash !== grant.parentDirectoryProvisionRequestHash ||
+    value.parentDirectoryApprovalEvidenceHash !== grant.parentDirectoryApprovalEvidenceHash ||
     value.canonicalModulePath !== grant.canonicalModulePath ||
     value.moduleSha256 !== grant.sourceModuleSha256 ||
     value.moduleOwnerUid !== grant.ownerUid ||
