@@ -419,7 +419,11 @@ published and current `main` has not been deployed to private staging.
    deployment still has no shared runtime mount. A one-use composition boundary now makes all four
    provisioning steps unreachable until that exact two-role topology is fresh and bound to the same
    plan, and requires provisioning to complete before the topology expires (ADR-0121). It remains
-   uncomposed and supplies neither the missing mount nor authenticated transports.
+   uncomposed and supplies neither the missing mount nor authenticated transports. A one-use local
+   IPC transport and matching role-local handler can now carry each observation through the existing
+   retained endpoint plus `SO_PEERCRED` authentication with canonical role/request binding
+   (ADR-0122). They remain uncomposed and supply no listener lifecycle, cross-container carrier, or
+   shared mount.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

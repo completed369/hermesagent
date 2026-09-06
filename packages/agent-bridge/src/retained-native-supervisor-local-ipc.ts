@@ -258,6 +258,23 @@ export function authenticateRetainedNativeSupervisorLocalIpcInboundExchange(
   return inbound.requestFrame;
 }
 
+/**
+ * Authenticates both retained endpoint observations and the connected SO_PEERCRED principal for one
+ * client exchange. The returned frame remains untrusted protocol input for the caller to parse.
+ */
+export function authenticateRetainedNativeSupervisorLocalIpcClientExchange(
+  input: unknown,
+  authorizationInput: unknown,
+): unknown {
+  const authorization =
+    authenticateRetainedNativeSupervisorLocalIpcAuthorization(authorizationInput);
+  const result = plainRecord(input, RESULT_KEYS, 'INVALID_ATTESTATION');
+  assertEndpoint(result.endpointBefore, authorization);
+  assertPeer(result.peerCredentials, authorization);
+  assertEndpoint(result.endpointAfter, authorization);
+  return result.responseFrame;
+}
+
 function assertEndpoint(
   input: unknown,
   authorization: Readonly<RetainedNativeSupervisorLocalIpcAuthorization>,
@@ -381,11 +398,10 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryTransport im
         signal,
       );
       if (signal.aborted) deny('EXCHANGE_DENIED');
-      const result = plainRecord(candidate, RESULT_KEYS, 'INVALID_ATTESTATION');
-      assertEndpoint(result.endpointBefore, this.#authorization);
-      assertPeer(result.peerCredentials, this.#authorization);
-      assertEndpoint(result.endpointAfter, this.#authorization);
-      return decode(result.responseFrame, 'SUPERVISOR_TO_WORKER');
+      return decode(
+        authenticateRetainedNativeSupervisorLocalIpcClientExchange(candidate, this.#authorization),
+        'SUPERVISOR_TO_WORKER',
+      );
     } catch (error) {
       if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
       deny('EXCHANGE_DENIED');
