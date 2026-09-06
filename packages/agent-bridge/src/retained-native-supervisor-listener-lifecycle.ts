@@ -8,8 +8,15 @@ import {
 } from './retained-native-supervisor-recovery';
 import {
   BoundedLinuxRetainedNativeSupervisorSession,
+  type AuthenticatedLinuxLocalRetainedNativeSupervisorInboundHandler,
   type LinuxRetainedNativeSupervisorSessionBinding,
 } from './retained-native-supervisor-linux-session';
+import {
+  AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler,
+  DenyRetainedNativeSupervisorModuleAuthorizationSigningCustodySession,
+  authenticateRetainedNativeSupervisorModuleAuthorizationSignerKeyId,
+  type RetainedNativeSupervisorModuleAuthorizationSigningCustodySession,
+} from './retained-native-supervisor-module-authorization-signing-handler';
 
 export interface LinuxRetainedNativeSupervisorListenerAuthorization {
   readonly schemaVersion: 1;
@@ -60,6 +67,62 @@ export class DenyLinuxRetainedNativeSupervisorListenerLifecycleBinding implement
     _request: Readonly<LinuxRetainedNativeSupervisorListenerCreationRequest>,
     _signal: AbortSignal,
   ): Promise<never> {
+    return deny('NOT_CONFIGURED');
+  }
+}
+
+export interface LinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyRequest {
+  readonly schemaVersion: 1;
+  readonly purpose: 'RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION_SIGNING_CUSTODY';
+  readonly platform: 'LINUX';
+  readonly signerKeyId: string;
+  readonly socketPath: string;
+  readonly socketDevice: number;
+  readonly socketInode: number;
+  readonly socketOwnerUid: number;
+  readonly socketOwnerGid: number;
+  readonly socketMode: number;
+  readonly expectedWorkerPid: number;
+  readonly expectedWorkerUid: number;
+  readonly expectedWorkerGid: number;
+  readonly runtimeConnection: 'NOT_CONFIGURED';
+}
+
+/** Creates one custody session after the listener's exact kernel identity is attested. */
+export interface LinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyFactory {
+  readonly platform: 'LINUX';
+  createOne(
+    request: Readonly<LinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyRequest>,
+  ): unknown;
+}
+
+export class DenyLinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyFactory implements LinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyFactory {
+  readonly platform = 'LINUX' as const;
+
+  createOne(
+    _request: Readonly<LinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyRequest>,
+  ): never {
+    return deny('NOT_CONFIGURED');
+  }
+}
+
+function bindSigningCustodyFactory(
+  factory: LinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyFactory,
+): (
+  request: Readonly<LinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyRequest>,
+) => unknown {
+  try {
+    if (
+      factory instanceof
+        DenyLinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyFactory ||
+      !factory ||
+      factory.platform !== 'LINUX' ||
+      typeof factory.createOne !== 'function'
+    )
+      deny('NOT_CONFIGURED');
+    return factory.createOne.bind(factory);
+  } catch (error) {
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
     return deny('NOT_CONFIGURED');
   }
 }
@@ -313,6 +376,136 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
       typeof peer.exchange !== 'function'
     )
       deny('NOT_CONFIGURED');
+    return this.runWithHandler(
+      (identity) =>
+        new AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler(peer, {
+          schemaVersion: 1,
+          platform: 'LINUX',
+          socketPath: this.#authorization.socketPath,
+          socketDevice: identity.device as number,
+          socketInode: identity.inode as number,
+          socketOwnerUid: identity.ownerUid as number,
+          socketOwnerGid: identity.ownerGid as number,
+          socketMode: identity.mode as number,
+          expectedPeerPid: this.#authorization.expectedWorkerPid,
+          expectedPeerUid: this.#authorization.expectedWorkerUid,
+          expectedPeerGid: this.#authorization.expectedWorkerGid,
+          runtimeConnection: 'NOT_CONFIGURED',
+        }),
+      signal,
+    );
+  }
+
+  /**
+   * Creates one signing listener and one identity-bound custody session. The factory is called only
+   * after the created socket has been attested and is never given snapshot payload bytes.
+   */
+  async runSigningOne(
+    signerKeyIdInput: unknown,
+    custodyFactory: LinuxRetainedNativeSupervisorModuleAuthorizationSigningCustodyFactory,
+    signal: AbortSignal,
+    timeoutMs = 2_000,
+  ): Promise<void> {
+    let signerKeyId: string;
+    try {
+      signerKeyId =
+        authenticateRetainedNativeSupervisorModuleAuthorizationSignerKeyId(signerKeyIdInput);
+    } catch {
+      return deny('NOT_CONFIGURED');
+    }
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 5_000)
+      deny('NOT_CONFIGURED');
+    const createOne = bindSigningCustodyFactory(custodyFactory);
+    return this.runWithHandler(async (identity) => {
+      let candidate: unknown;
+      try {
+        candidate = createOne(
+          Object.freeze({
+            schemaVersion: 1,
+            purpose: 'RETAINED_NATIVE_SUPERVISOR_MODULE_AUTHORIZATION_SIGNING_CUSTODY',
+            platform: 'LINUX',
+            signerKeyId,
+            socketPath: this.#authorization.socketPath,
+            socketDevice: identity.device as number,
+            socketInode: identity.inode as number,
+            socketOwnerUid: identity.ownerUid as number,
+            socketOwnerGid: identity.ownerGid as number,
+            socketMode: identity.mode as number,
+            expectedWorkerPid: this.#authorization.expectedWorkerPid,
+            expectedWorkerUid: this.#authorization.expectedWorkerUid,
+            expectedWorkerGid: this.#authorization.expectedWorkerGid,
+            runtimeConnection: 'NOT_CONFIGURED',
+          }),
+        );
+      } catch {
+        return deny('EXCHANGE_DENIED');
+      }
+      if (
+        !candidate ||
+        typeof candidate !== 'object' ||
+        candidate instanceof DenyRetainedNativeSupervisorModuleAuthorizationSigningCustodySession
+      )
+        deny('NOT_CONFIGURED');
+      let closeCandidate: (() => Promise<void>) | undefined;
+      try {
+        const session =
+          candidate as RetainedNativeSupervisorModuleAuthorizationSigningCustodySession;
+        if (typeof session.close === 'function') closeCandidate = session.close.bind(session);
+        if (typeof session.sign !== 'function' || closeCandidate === undefined)
+          deny('NOT_CONFIGURED');
+        return new AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler(
+          signerKeyId,
+          session,
+          {
+            schemaVersion: 1,
+            platform: 'LINUX',
+            socketPath: this.#authorization.socketPath,
+            socketDevice: identity.device,
+            socketInode: identity.inode,
+            socketOwnerUid: identity.ownerUid,
+            socketOwnerGid: identity.ownerGid,
+            socketMode: identity.mode,
+            expectedPeerPid: this.#authorization.expectedWorkerPid,
+            expectedPeerUid: this.#authorization.expectedWorkerUid,
+            expectedPeerGid: this.#authorization.expectedWorkerGid,
+            runtimeConnection: 'NOT_CONFIGURED',
+          },
+          timeoutMs,
+        );
+      } catch (error) {
+        if (closeCandidate !== undefined) {
+          let closeTimeout: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              closeCandidate(),
+              new Promise<never>((_resolve, reject) => {
+                closeTimeout = setTimeout(
+                  () => reject(new Error('Custody close timed out')),
+                  timeoutMs,
+                );
+                closeTimeout.unref?.();
+              }),
+            ]);
+          } catch {
+            return deny('EXCHANGE_DENIED');
+          } finally {
+            if (closeTimeout !== undefined) clearTimeout(closeTimeout);
+          }
+        }
+        if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+        return deny('NOT_CONFIGURED');
+      }
+    }, signal);
+  }
+
+  private async runWithHandler(
+    createHandler: (
+      identity: Readonly<Record<string, unknown>>,
+    ) =>
+      | AuthenticatedLinuxLocalRetainedNativeSupervisorInboundHandler
+      | Promise<AuthenticatedLinuxLocalRetainedNativeSupervisorInboundHandler>,
+    signal: AbortSignal,
+  ): Promise<void> {
     if (this.#consumed || !(signal instanceof AbortSignal) || signal.aborted)
       deny('EXCHANGE_DENIED');
     this.#consumed = true;
@@ -340,20 +533,7 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
         'SOCKET',
       );
       if (signal.aborted || !sameIdentity(identity, current)) deny('INVALID_ATTESTATION');
-      const handler = new AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler(peer, {
-        schemaVersion: 1,
-        platform: 'LINUX',
-        socketPath: this.#authorization.socketPath,
-        socketDevice: identity.device,
-        socketInode: identity.inode,
-        socketOwnerUid: identity.ownerUid,
-        socketOwnerGid: identity.ownerGid,
-        socketMode: identity.mode,
-        expectedPeerPid: this.#authorization.expectedWorkerPid,
-        expectedPeerUid: this.#authorization.expectedWorkerUid,
-        expectedPeerGid: this.#authorization.expectedWorkerGid,
-        runtimeConnection: 'NOT_CONFIGURED',
-      });
+      const handler = await createHandler(identity);
       await new BoundedLinuxRetainedNativeSupervisorSession(listener, handler).handleOne(
         this.#authorization.socketPath,
         signal,

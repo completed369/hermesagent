@@ -436,7 +436,11 @@ published and current `main` has not been deployed to private staging.
    service, listener, actual root, or composition. The existing accepted-session owner now admits
    that concrete handler, authenticates and bounds one native request/response, closes custody even
    when pre-handler socket work fails, and denies both concurrent and sequential reuse (ADR-0105).
-   Signing-specific listener creation and custody creation remain absent.
+   The same one-use listener lifecycle now exposes a signing-specific entry point that authenticates
+   the no-replacement socket identity before issuing a frozen public-only request to a synchronous
+   custody factory, then owns custody, the authenticated session, and exact listener cleanup as one
+   consumed attempt (ADR-0107). The factory port has no implementation or key, and the lifecycle
+   remains uncomposed; actual custody, service composition, and key/root provisioning remain absent.
    The public-root registry's concurrent first-scope bootstrap now handles either unique-index
    conflict without leaking a database error and admits only exact later-statement replay
    authentication; eight-way integration contention requires one append and seven replays

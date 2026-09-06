@@ -322,8 +322,11 @@
 > the test-only round trip is not runtime-connectivity evidence.
 > The one-accept Linux session owner can now carry that concrete signing handler and guarantees
 > custody close across socket-attestation/read failures while denying sequential reuse (ADR-0105).
-> It still cannot create a signing listener or custody session and adds no service loop, key, root,
-> composition, or runtime-status evidence.
+> A signing-specific lifecycle can now create the no-replacement listener, authenticate its exact
+> identity, synchronously obtain one custody session through a public-only factory request, and own
+> the session plus listener cleanup as one consumed attempt (ADR-0107). The factory has no concrete
+> implementation or key and remains uncomposed, so this adds no service loop, root, or runtime-status
+> evidence.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
