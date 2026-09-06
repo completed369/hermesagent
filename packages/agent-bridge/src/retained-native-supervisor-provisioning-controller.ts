@@ -325,7 +325,9 @@ function source(
   });
 }
 
-function plan(input: unknown): Readonly<LinuxRetainedNativeSupervisorProvisioningPlan> {
+export function validateLinuxRetainedNativeSupervisorProvisioningPlan(
+  input: unknown,
+): Readonly<LinuxRetainedNativeSupervisorProvisioningPlan> {
   const value = plainRecord(input, PLAN_KEYS, 'INVALID_AUTHORIZATION');
   if (
     value.schemaVersion !== 1 ||
@@ -617,7 +619,7 @@ export class BoundedLinuxRetainedNativeSupervisorProvisioningController {
     if (this.#attempted) deny('INVALID_AUTHORIZATION');
     this.#attempted = true;
     if (!(signal instanceof AbortSignal) || signal.aborted) deny('INVALID_AUTHORIZATION');
-    const request = plan(input);
+    const request = validateLinuxRetainedNativeSupervisorProvisioningPlan(input);
     const root = runtimeRootEvidence(
       await this.call(this.#runtimeRootProvision, request.runtimeRootRequest, signal),
       request.runtimeRootRequest,
@@ -694,6 +696,6 @@ export class BoundedLinuxRetainedNativeSupervisorProvisioningController {
 
 export function linuxRetainedNativeSupervisorProvisioningPlanHash(input: unknown): string {
   return createHash('sha256')
-    .update(canonicalJson(plan(input)))
+    .update(canonicalJson(validateLinuxRetainedNativeSupervisorProvisioningPlan(input)))
     .digest('hex');
 }

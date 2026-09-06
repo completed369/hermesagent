@@ -375,8 +375,11 @@
 > LISTENER provisioning through four separately injected ports while deriving every request from
 > prior attestation and withholding partial bundles (ADR-0119). Those ports have no concrete
 > transport, no writable parent/shared mount is configured, and the controller is absent from
-> application composition roots, so this remains uncomposed provisioning evidence rather than a
-> runtime connection.
+> application composition roots. Role-local retained-descriptor observers can now reconcile an exact
+> shared owner-only runtime parent and immutable API/LISTENER plus worker/CLIENT source visibility
+> within a five-second window (ADR-0120), but their ports have no authenticated transport and remain
+> uncomposed. The current deployment cannot produce this evidence because it still has no shared
+> runtime mount, so this is not provisioning, activation, or a runtime connection.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that

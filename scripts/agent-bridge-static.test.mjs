@@ -2677,6 +2677,44 @@ test('bounded retained-native provisioning controller is attestation-chained and
   );
 });
 
+test('shared retained-runtime topology requires two retained role-local views and remains uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-shared-runtime-topology.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /class DenyLinuxRetainedNativeSupervisorTopologyObservationPort/u);
+  assert.match(source, /class RetainedDescriptorLinuxNativeSupervisorTopologyObserver/u);
+  assert.match(
+    source,
+    /class BoundedLinuxRetainedNativeSupervisorSharedRuntimeTopologyReconciler/u,
+  );
+  assert.match(source, /fsConstants\.O_NOFOLLOW/u);
+  assert.match(source, /LINUX_RETAINED_DESCRIPTORS/u);
+  assert.match(source, /LINUX_EFFECTIVE_IDENTITY/u);
+  assert.match(source, /Promise\.all\(\[/u);
+  assert.match(source, /SHARED_RUNTIME_VISIBLE_NOT_PROVISIONED/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(index, /retained-native-supervisor-shared-runtime-topology/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process)'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /BoundedLinuxRetainedNativeSupervisorSharedRuntimeTopologyReconciler/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedLinuxRetainedNativeSupervisorSharedRuntimeTopologyReconciler/u,
+  );
+});
+
 test('retained-native module authorization trust is signed, revocable, and uncomposed', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-module-authorization-trust-source.ts',
