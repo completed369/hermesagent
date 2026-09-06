@@ -368,6 +368,12 @@
 > authority to each real retained-descriptor parent/path host (ADR-0117). Construction is inert and
 > uncomposed; no bounded operation yet derives and sequences the parent, CLIENT, and LISTENER
 > requests, and no provisioning has been performed in a deployed runtime.
+> An additional one-attempt retained-descriptor host and Level-3 API authority can create one exact
+> absent owner-only runtime root beneath an already-attested parent (ADR-0118). Each retry must use a
+> fresh authorized attempt ID, and the parent-directory grant commits to that root's provisioning
+> provenance. No writable parent/shared mount is configured, and no distributed controller yet
+> coordinates the API listener artifact with the worker client artifact, so this remains uncomposed
+> provisioning evidence rather than a runtime connection.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
