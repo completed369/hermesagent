@@ -452,6 +452,13 @@ published and current `main` has not been deployed to private staging.
    database clock before append. It remains absent from routes and service composition and supplies
    no signer implementation, key/root
    provisioning, listener, module load, or runtime-status promotion.
+   A separate one-attempt PostgreSQL trust composition now joins current workspace-scoped roots,
+   only the latest snapshot carrying immutable issuance evidence, independent authentication, and
+   the durable anti-rollback checkpoint (ADR-0109). Before exposing an exact request-bound grant it
+   takes the existing publication and root locks in order and rechecks the same latest audited
+   snapshot plus active root at the database clock. It remains absent from routes, workers, the Nest
+   graph, and the native loader and supplies no key/root, signer, binary, service owner, or runtime
+   truth promotion.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

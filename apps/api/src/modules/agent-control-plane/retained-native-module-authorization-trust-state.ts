@@ -171,6 +171,42 @@ export class PostgresRetainedNativeModuleAuthorizationSnapshotReader implements 
   }
 }
 
+/** Reads only the latest snapshot carrying immutable issuance evidence for the exact workspace. */
+export class PostgresRetainedNativeModuleAuthorizationAuditedSnapshotReader implements RetainedNativeSupervisorModuleAuthorizationSnapshotReader {
+  readonly #workspaceId: string;
+  readonly #supervisorInstanceId: string;
+
+  constructor(
+    private readonly database: RetainedNativeModuleAuthorizationTrustSqlClient,
+    workspaceId: string,
+    supervisorInstanceId: string,
+  ) {
+    this.#workspaceId = reference(workspaceId);
+    this.#supervisorInstanceId = reference(supervisorInstanceId);
+    Object.freeze(this);
+  }
+
+  async read(): Promise<unknown> {
+    const rows = await this.database.$queryRaw<readonly SnapshotRow[]>(Prisma.sql`
+      SELECT s."snapshot"
+      FROM "acp_retained_native_module_authorization_snapshots" s
+      JOIN "acp_retained_native_module_authorization_issuance_evidence" e
+        ON e."supervisorInstanceId" = s."supervisorInstanceId"
+       AND e."snapshotVersion" = s."snapshotVersion"
+       AND e."snapshotId" = s."snapshotId"
+       AND e."snapshotHash" = s."snapshotHash"
+       AND e."signerKeyId" = s."signerKeyId"
+      WHERE e."workspaceId" = CAST(${this.#workspaceId} AS UUID)
+        AND s."supervisorInstanceId" = ${this.#supervisorInstanceId}
+      ORDER BY s."snapshotVersion" DESC
+      LIMIT 1
+    `);
+    if (!Array.isArray(rows) || rows.length !== 1 || !Object.hasOwn(rows[0] ?? {}, 'snapshot'))
+      deny();
+    return structuredClone(rows[0]!.snapshot);
+  }
+}
+
 export class PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore implements RetainedNativeSupervisorModuleAuthorizationSnapshotPublicationStore {
   constructor(private readonly database: RetainedNativeModuleAuthorizationTrustSqlClient) {
     Object.freeze(this);

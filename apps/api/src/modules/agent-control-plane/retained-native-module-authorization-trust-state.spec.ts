@@ -8,6 +8,7 @@ import {
 
 import {
   PostgresRetainedNativeModuleAuthorizationCheckpointStore,
+  PostgresRetainedNativeModuleAuthorizationAuditedSnapshotReader,
   PostgresRetainedNativeModuleAuthorizationAuditedPublicationStore,
   PostgresRetainedNativeModuleAuthorizationSnapshotPublicationStore,
   PostgresRetainedNativeModuleAuthorizationSnapshotReader,
@@ -95,6 +96,22 @@ describe('durable retained-native module authorization trust adapters', () => {
     expect(sqlText(database.queries[0]!)).toContain(
       'WHERE "supervisorInstanceId" = ? ORDER BY "snapshotVersion" DESC LIMIT 1',
     );
+    expect(Object.isFrozen(reader)).toBe(true);
+  });
+
+  it('reads only an exact workspace-bound snapshot carrying immutable issuance evidence', async () => {
+    const snapshot = { schemaVersion: 1, supervisorInstanceId: 'native-supervisor-1' };
+    const database = new ScriptedSqlClient([[{ snapshot }]]);
+    const reader = new PostgresRetainedNativeModuleAuthorizationAuditedSnapshotReader(
+      database,
+      'workspace-1',
+      'native-supervisor-1',
+    );
+    await expect(reader.read()).resolves.toEqual(snapshot);
+    const query = sqlText(database.queries[0]!);
+    expect(query).toContain('JOIN "acp_retained_native_module_authorization_issuance_evidence" e');
+    expect(query).toContain('WHERE e."workspaceId" = CAST(? AS UUID)');
+    expect(database.queries[0]?.values).toEqual(['workspace-1', 'native-supervisor-1']);
     expect(Object.isFrozen(reader)).toBe(true);
   });
 
