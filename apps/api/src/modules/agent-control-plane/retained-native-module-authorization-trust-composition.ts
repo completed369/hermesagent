@@ -110,14 +110,14 @@ export class PostgresRetainedNativeModuleAuthorizationTrustComposition implement
       const current = await this.#database.$transaction(
         async (transaction) => {
           const publicationLock = await transaction.$queryRaw<readonly unknown[]>(Prisma.sql`
-            SELECT pg_advisory_xact_lock(
-              hashtextextended(${this.#supervisorInstanceId}, 90497)
+            SELECT CAST(
+              pg_advisory_xact_lock(hashtextextended(${this.#supervisorInstanceId}, 90497)) AS TEXT
             ) AS "locked"
           `);
           if (!Array.isArray(publicationLock) || publicationLock.length !== 1) deny();
           const rootLock = await transaction.$queryRaw<readonly unknown[]>(Prisma.sql`
-            SELECT pg_advisory_xact_lock(
-              hashtextextended(${this.#supervisorInstanceId}, 90503)
+            SELECT CAST(
+              pg_advisory_xact_lock(hashtextextended(${this.#supervisorInstanceId}, 90503)) AS TEXT
             ) AS "locked"
           `);
           if (!Array.isArray(rootLock) || rootLock.length !== 1) deny();
