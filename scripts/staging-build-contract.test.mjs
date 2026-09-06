@@ -67,10 +67,8 @@ test('staging image and topology contracts are fail-closed', () => {
   assert.doesNotMatch(api, /linux-retained-native-client\.node/);
   assert.match(worker, /--chown=0:0 \/runtime\/worker-native\/ \/usr\/lib\/ventureos\/native\//);
   assert.doesNotMatch(worker, /linux-retained-native-listener\.node/);
-  assert.match(
-    read('.github/workflows/runtime-substrate-remediation.yml'),
-    /regular file:0:0:444/,
-  );
+  assert.match(read('.github/workflows/runtime-substrate-remediation.yml'), /regular file:444/);
+  assert.match(read('.github/workflows/runtime-substrate-remediation.yml'), /tar --numeric-owner/);
   assert.match(
     read('.github/workflows/runtime-substrate-remediation.yml'),
     /Machine:\[\[:space:\]\]\+Advanced Micro Devices X86-64/,
