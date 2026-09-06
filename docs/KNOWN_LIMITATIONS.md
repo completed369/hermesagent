@@ -371,9 +371,12 @@
 > An additional one-attempt retained-descriptor host and Level-3 API authority can create one exact
 > absent owner-only runtime root beneath an already-attested parent (ADR-0118). Each retry must use a
 > fresh authorized attempt ID, and the parent-directory grant commits to that root's provisioning
-> provenance. No writable parent/shared mount is configured, and no distributed controller yet
-> coordinates the API listener artifact with the worker client artifact, so this remains uncomposed
-> provisioning evidence rather than a runtime connection.
+> provenance. A one-attempt controller can now coordinate root, parent, worker CLIENT, and API
+> LISTENER provisioning through four separately injected ports while deriving every request from
+> prior attestation and withholding partial bundles (ADR-0119). Those ports have no concrete
+> transport, no writable parent/shared mount is configured, and the controller is absent from
+> application composition roots, so this remains uncomposed provisioning evidence rather than a
+> runtime connection.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
