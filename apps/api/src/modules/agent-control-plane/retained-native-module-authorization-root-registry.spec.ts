@@ -79,6 +79,8 @@ describe('retained-native module authorization public-root registry', () => {
     const sql = sqlText(database.queries[0]!);
     expect(sql).toContain('acp_retained_native_module_authorization_roots');
     expect(sql).toContain('acp_retained_native_module_authorization_root_evidence');
+    expect(sql).toContain('ON CONFLICT DO NOTHING RETURNING 1 ), bound_scope AS');
+    expect(sql).toContain('SELECT 1 FROM inserted_scope UNION ALL SELECT 1 FROM');
     expect(request.runtimeConnection).toBe('NOT_CONFIGURED');
     expect(sql).not.toContain('acp_runtime');
     expect(database.queries[0]!.values.join(' ')).not.toMatch(/private|secret|credential/iu);

@@ -3069,7 +3069,10 @@ test('native-module public roots are tenant-scoped, Level-3 audited, immutable, 
   assert.match(registry, /authorityLevelFor\(boundContext\) !== 3/u);
   assert.match(registry, /runtimeConnection: 'NOT_CONFIGURED'/u);
   assert.match(registry, /inserted_root AS/u);
+  assert.match(registry, /inserted_scope AS/u);
   assert.match(registry, /bound_scope AS/u);
+  assert.match(registry, /ON CONFLICT DO NOTHING/u);
+  assert.match(registry, /SELECT 1 FROM inserted_scope[\s\S]*UNION ALL/u);
   assert.match(registry, /inserted_evidence AS/u);
   assert.match(registry, /rows\.length > 8/u);
   assert.match(registry, /\) current_roots[\s\S]*"revokedAt" IS NULL/u);

@@ -324,6 +324,10 @@
 > custody close across socket-attestation/read failures while denying sequential reuse (ADR-0105).
 > It still cannot create a signing listener or custody session and adds no service loop, key, root,
 > composition, or runtime-status evidence.
+> Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
+> conflict handling now converges identical races through exact replay authentication while
+> retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that
+> any actual root has been provisioned.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an

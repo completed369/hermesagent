@@ -437,6 +437,10 @@ published and current `main` has not been deployed to private staging.
    that concrete handler, authenticates and bounds one native request/response, closes custody even
    when pre-handler socket work fails, and denies both concurrent and sequential reuse (ADR-0105).
    Signing-specific listener creation and custody creation remain absent.
+   The public-root registry's concurrent first-scope bootstrap now handles either unique-index
+   conflict without leaking a database error and admits only exact later-statement replay
+   authentication; eight-way integration contention requires one append and seven replays
+   (ADR-0106). No actual root is provisioned by this contract.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
