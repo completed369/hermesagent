@@ -48,11 +48,12 @@ describe('durable retained-native module authorization public-root registry (Pos
     const registry = new PostgresRetainedNativeModuleAuthorizationRootRegistry(prisma);
 
     await expect(
-      Promise.all([
-        registry.provision(request, capability, context, () => now),
-        registry.provision(request, capability, context, () => now),
-      ]).then((outcomes) => outcomes.sort()),
-    ).resolves.toEqual(['APPENDED', 'REPLAYED']);
+      Promise.all(
+        Array.from({ length: 8 }, () =>
+          registry.provision(request, capability, context, () => now),
+        ),
+      ).then((outcomes) => outcomes.sort()),
+    ).resolves.toEqual(['APPENDED', ...Array.from({ length: 7 }, () => 'REPLAYED')]);
     await expect(registry.provision(request, capability, context, () => now + 1)).resolves.toBe(
       'REPLAYED',
     );

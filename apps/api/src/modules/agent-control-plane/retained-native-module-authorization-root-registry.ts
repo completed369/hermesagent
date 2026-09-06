@@ -198,15 +198,22 @@ export class PostgresRetainedNativeModuleAuthorizationRootRegistry {
     const inserted = await this.database.$queryRaw<
       readonly { readonly applied: number }[]
     >(Prisma.sql`
-      WITH bound_scope AS (
+      WITH inserted_scope AS (
         INSERT INTO "acp_retained_native_module_authorization_root_scopes" (
           "supervisorInstanceId", "workspaceId"
         ) VALUES (${request.supervisorInstanceId}, CAST(${request.workspaceId} AS UUID))
-        ON CONFLICT ("supervisorInstanceId") DO UPDATE
-          SET "workspaceId" = EXCLUDED."workspaceId"
-          WHERE "acp_retained_native_module_authorization_root_scopes"."workspaceId"
-            = EXCLUDED."workspaceId"
+        -- Untargeted conflict handling is required because both the primary key and the
+        -- composite foreign-key target can observe the same concurrent bootstrap.
+        ON CONFLICT DO NOTHING
         RETURNING 1
+      ), bound_scope AS (
+        SELECT 1 FROM inserted_scope
+        UNION ALL
+        SELECT 1
+        FROM "acp_retained_native_module_authorization_root_scopes"
+        WHERE "supervisorInstanceId" = ${request.supervisorInstanceId}
+          AND "workspaceId" = CAST(${request.workspaceId} AS UUID)
+        LIMIT 1
       ), inserted_root AS (
         INSERT INTO "acp_retained_native_module_authorization_roots" (
           "workspaceId", "supervisorInstanceId", "rootRecordId", "rootRecordVersion",
