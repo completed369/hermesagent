@@ -8,7 +8,7 @@ ENV PRISMA_CLI_BINARY_TARGETS=linux-static-x64
 WORKDIR /workspace
 
 RUN apt-get update \
- && apt-get install --yes --no-install-recommends ca-certificates openssl \
+ && apt-get install --yes --no-install-recommends ca-certificates gcc libc6-dev openssl \
  && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p "$COREPACK_HOME" \
  && chmod 0755 "$COREPACK_HOME" \
@@ -27,6 +27,21 @@ ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV VENTUREOS_STANDALONE_BUILD=true
 RUN pnpm build
+
+FROM builder AS native-module-builder
+RUN set -eu; \
+    mkdir -p /runtime/native; \
+    compile_native_module() { \
+      source=$1; module_name=$2; output=$3; \
+      cc -std=c11 -O2 -Wall -Wextra -Werror -D_FORTIFY_SOURCE=2 \
+        -DNODE_GYP_MODULE_NAME="$module_name" -fstack-protector-strong \
+        -fno-record-gcc-switches -fPIC -shared -I/usr/local/include/node \
+        "$source" -o "$output" -Wl,-z,relro,-z,now -Wl,--build-id=none; \
+      chmod 0444 "$output"; \
+      test "$(stat -c '%u:%g:%a' "$output")" = '0:0:444'; \
+    }; \
+    compile_native_module /workspace/packages/agent-bridge/native/linux-retained-native-listener.c linux_retained_native_listener /runtime/native/linux-retained-native-listener.node; \
+    compile_native_module /workspace/packages/agent-bridge/native/linux-retained-native-client.c linux_retained_native_client /runtime/native/linux-retained-native-client.node
 
 FROM builder AS test-tools
 ENV NODE_ENV=test
@@ -133,6 +148,7 @@ FROM runtime AS api
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=deployer --chown=65532:65532 /runtime/api/ ./
+COPY --from=native-module-builder --chown=0:0 --chmod=0444 /runtime/native/linux-retained-native-listener.node /usr/lib/ventureos/native/linux-retained-native-listener.node
 COPY --chown=65532:65532 scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
 USER 65532:65532
 EXPOSE 3001
@@ -144,6 +160,7 @@ FROM runtime AS worker
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=deployer --chown=65532:65532 /runtime/worker/ ./
+COPY --from=native-module-builder --chown=0:0 --chmod=0444 /runtime/native/linux-retained-native-client.node /usr/lib/ventureos/native/linux-retained-native-client.node
 COPY --chown=65532:65532 scripts/runtime-secret-entrypoint.mjs /usr/local/bin/runtime-secret-entrypoint.mjs
 USER 65532:65532
 EXPOSE 3002

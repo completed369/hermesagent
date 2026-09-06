@@ -158,6 +158,31 @@ jobs:
           trap cleanup EXIT
           docker export "$cid" | tar -xf - -C "$rootfs"
           find "$rootfs" -mindepth 1 -printf '%y\0%P\0%l\0' | node scripts/verify-agent-bridge-runtime-root.mjs
+          native_root="$rootfs/usr/lib/ventureos/native"
+          case "$IMAGE_NAME" in
+            api)
+              expected_native=linux-retained-native-listener.node
+              denied_native=linux-retained-native-client.node
+              ;;
+            worker)
+              expected_native=linux-retained-native-client.node
+              denied_native=linux-retained-native-listener.node
+              ;;
+            *)
+              test ! -e "$native_root"
+              expected_native=
+              denied_native=
+              ;;
+          esac
+          if test -n "$expected_native"; then
+            test "$(stat -c '%F:%u:%g:%a' "$native_root")" = 'directory:0:0:755'
+            test "$(stat -c '%F:%u:%g:%a' "$native_root/$expected_native")" = 'regular file:0:0:444'
+            test "$(od -An -tx1 -N4 "$native_root/$expected_native" | tr -d ' \n')" = '7f454c46'
+            readelf -h "$native_root/$expected_native" | grep -Eq 'Class:[[:space:]]+ELF64'
+            readelf -h "$native_root/$expected_native" | grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64'
+            test ! -e "$native_root/$denied_native"
+            test "$(find "$native_root" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1
+          fi
           find "$rootfs" -type f -print0 > "$runtime_file_manifest"
           while IFS= read -r -d '' runtime_file; do
             if grep -aEq 'NATIVE_SUPERVISOR_DENIED:|AUTHENTICATED_TRANSCRIPT|authenticated-lifecycle-addon' "$runtime_file"; then

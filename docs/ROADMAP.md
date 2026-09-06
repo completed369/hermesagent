@@ -462,8 +462,12 @@ published and current `main` has not been deployed to private staging.
    The audited durable source is now the only positive authorization input accepted by one explicit
    retained-descriptor Linux-x64 loader construction (ADR-0110). Construction performs no trust read,
    path selection, filesystem access, native load, socket operation, or service action and remains
-   absent from routes, workers, the Nest graph, images, and deployment. No native module is packaged,
-   no key/root or signer is supplied, and runtime truth remains `NOT_CONFIGURED`.
+   absent from routes, workers, the Nest graph, and deployment. The composition itself supplies no
+   module artifact, key/root, or signer, and runtime truth remains `NOT_CONFIGURED`.
+   The reviewed listener and client sources are now compiled as immutable, root-owned, non-writable
+   inputs in only the API and worker images respectively, with exact local-only image allowlist and
+   security scanning (ADR-0111). No image command references them and no loader, provisioner,
+   service, socket, key/root, signer, publication, or deployment is activated.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
