@@ -412,7 +412,11 @@ published and current `main` has not been deployed to private staging.
    recursive cleanup. A topology-neutral one-attempt controller now sequences runtime-root, parent,
    worker CLIENT, and API LISTENER provisioning through four separately injected ports, derives each
    request only from prior attestation, and returns no partial bundle (ADR-0119). It supplies no
-   transport, writable parent/shared mount, service activation, or runtime truth.
+   transport, writable parent/shared mount, service activation, or runtime truth. Two role-local
+   retained-descriptor observers plus a bounded reconciler can now prove that API/LISTENER and
+   worker/CLIENT see the same exact owner-only runtime parent and their expected immutable source
+   artifacts (ADR-0120). The observation ports remain untransported and uncomposed, and the current
+   deployment still has no shared runtime mount.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
