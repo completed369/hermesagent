@@ -45,3 +45,4 @@ export * from './retained-native-supervisor-module-authorization-controller';
 export * from './retained-native-supervisor-module-authorization-audited-publisher';
 export * from './retained-native-supervisor-module-authorization-keyless-signer';
 export * from './retained-native-supervisor-module-authorization-linux-signing-transport';
+export * from './retained-native-supervisor-module-authorization-signing-handler';

@@ -429,7 +429,11 @@ published and current `main` has not been deployed to private staging.
    signing transport now carries one bounded keyless request over the existing local IPC client and
    authenticates the exact before/after Unix-socket identity plus `SO_PEERCRED` principal
    (ADR-0103). It discovers no path, owns no key, starts no signer service, and is absent from every
-   composition root.
+   composition root. A matching uncomposed supervisor-side handler now authenticates the accepted
+   listener endpoint and peer, verifies the canonical payload and whole-request hashes, delegates
+   only public snapshot bytes to an injected one-use abortable custody session, and closes custody
+   before returning an exact 64-byte Ed25519 response (ADR-0104). It supplies no key, native
+   service, listener, actual root, or composition.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.

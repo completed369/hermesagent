@@ -2802,6 +2802,48 @@ test('native-module signing transport is Linux-authenticated, one-use, and uncom
   );
 });
 
+test('native-module supervisor signing handler is authenticated, bounded, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-module-authorization-signing-handler.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(
+    source,
+    /class DenyRetainedNativeSupervisorModuleAuthorizationSigningCustodySession/u,
+  );
+  assert.match(
+    source,
+    /class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler/u,
+  );
+  assert.match(source, /authenticateRetainedNativeSupervisorLocalIpcInboundExchange/u);
+  assert.match(source, /#attempted = false/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES/u);
+  assert.match(source, /signingRequestHash/u);
+  assert.match(source, /snapshotPayloadHash/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(source, /this\.#close\(\)/u);
+  assert.match(index, /retained-native-supervisor-module-authorization-signing-handler/u);
+  assert.doesNotMatch(
+    source,
+    /from 'node:(?:child_process|fs|net|tls)'|process\.(?:env|cwd|platform)|\bCONNECTED\b|createPrivateKey|createSecretKey|generateKeyPair|privateKey/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler/u,
+  );
+});
+
 test('native-module issuance Level-3 authority is exact, one-shot, and uncomposed', () => {
   const source = readFileSync(
     'apps/api/src/modules/agent-control-plane/retained-native-module-authorization-issuance-authority.ts',
