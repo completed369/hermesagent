@@ -320,4 +320,33 @@ describe('authenticated supervisor native-module signing handler', () => {
         ),
     ).toThrow(expectCode('NOT_CONFIGURED'));
   });
+
+  it('shares explicit close and aborts active custody without permitting later use', async () => {
+    const unopenedCustody = new FixtureCustody();
+    const unopened =
+      new AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler(
+        'native-module-signer-v1',
+        unopenedCustody,
+        authorization,
+      );
+    await Promise.all([unopened.close(), unopened.close()]);
+    expect(unopenedCustody.close).toHaveBeenCalledOnce();
+    await expect(unopened.handle(inbound(), new AbortController().signal)).rejects.toEqual(
+      expectCode('CONCURRENT_EXCHANGE'),
+    );
+
+    const activeCustody = new FixtureCustody();
+    activeCustody.sign.mockImplementation(async () => new Promise<never>(() => undefined));
+    const active =
+      new AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler(
+        'native-module-signer-v1',
+        activeCustody,
+        authorization,
+      );
+    const exchange = active.handle(inbound(), new AbortController().signal);
+    await active.close();
+    await expect(exchange).rejects.toEqual(expectCode('EXCHANGE_DENIED'));
+    expect(activeCustody.sign.mock.calls[0]?.[1].aborted).toBe(true);
+    expect(activeCustody.close).toHaveBeenCalledOnce();
+  });
 });

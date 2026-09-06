@@ -320,6 +320,10 @@
 > one-use custody session before returning its bounded signature (ADR-0104). The custody port has no
 > implementation, private key, native listener/service, root composition, or lifecycle owner, so
 > the test-only round trip is not runtime-connectivity evidence.
+> The one-accept Linux session owner can now carry that concrete signing handler and guarantees
+> custody close across socket-attestation/read failures while denying sequential reuse (ADR-0105).
+> It still cannot create a signing listener or custody session and adds no service loop, key, root,
+> composition, or runtime-status evidence.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an

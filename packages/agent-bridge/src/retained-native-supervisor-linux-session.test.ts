@@ -330,6 +330,9 @@ describe('bounded Linux retained-native supervisor session', () => {
     );
     release();
     await expect(first).resolves.toBeUndefined();
+    await expect(session.handleOne(socketPath, new AbortController().signal)).rejects.toEqual(
+      expectCode('EXCHANGE_DENIED'),
+    );
     expect(binding.acceptAuthorizedUnixSocket).toHaveBeenCalledOnce();
   });
 });

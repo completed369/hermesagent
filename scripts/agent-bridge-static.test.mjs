@@ -2265,12 +2265,18 @@ test('Linux retained-native supervisor session is bounded, deny-default, and unc
   );
   assert.match(source, /class DenyLinuxRetainedNativeSupervisorSessionBinding/u);
   assert.match(source, /class BoundedLinuxRetainedNativeSupervisorSession/u);
+  assert.match(
+    source,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler/u,
+  );
+  assert.match(source, /#state: 'READY' \| 'IN_FLIGHT' \| 'ATTEMPTED'/u);
   assert.match(source, /acceptAuthorizedUnixSocket/u);
   assert.match(source, /peerCredentials/u);
   assert.match(source, /readToEof/u);
   assert.match(source, /handler\.handle/u);
   assert.match(source, /writeAndShutdown/u);
   assert.match(source, /await opened\.close\(\)/u);
+  assert.match(source, /await this\.handler\.close\(\)/u);
   assert.match(source, /MAX_RETAINED_NATIVE_SUPERVISOR_IPC_FRAME_BYTES/u);
   assert.match(source, /authority: 'LINUX_LSTAT_UNIX_SOCKET'/u);
   assert.match(source, /authority: 'LINUX_SO_PEERCRED'/u);
@@ -2829,6 +2835,9 @@ test('native-module supervisor signing handler is authenticated, bounded, and un
   assert.match(source, /snapshotPayloadHash/u);
   assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
   assert.match(source, /this\.#close\(\)/u);
+  assert.match(source, /#activeController/u);
+  assert.match(source, /#closePromise/u);
+  assert.match(source, /async close\(\): Promise<void>/u);
   assert.match(index, /retained-native-supervisor-module-authorization-signing-handler/u);
   assert.doesNotMatch(
     source,

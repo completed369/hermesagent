@@ -433,7 +433,10 @@ published and current `main` has not been deployed to private staging.
    listener endpoint and peer, verifies the canonical payload and whole-request hashes, delegates
    only public snapshot bytes to an injected one-use abortable custody session, and closes custody
    before returning an exact 64-byte Ed25519 response (ADR-0104). It supplies no key, native
-   service, listener, actual root, or composition.
+   service, listener, actual root, or composition. The existing accepted-session owner now admits
+   that concrete handler, authenticates and bounds one native request/response, closes custody even
+   when pre-handler socket work fails, and denies both concurrent and sequential reuse (ADR-0105).
+   Signing-specific listener creation and custody creation remain absent.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
