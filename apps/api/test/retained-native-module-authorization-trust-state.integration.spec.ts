@@ -441,7 +441,7 @@ describe('durable retained-native module authorization trust state (PostgreSQL i
             schemaVersion: 1,
             purpose: 'RETAINED_NATIVE_SUPERVISOR_PATH_PROVISION',
             workspaceId,
-            supervisorInstanceId,
+            supervisorInstanceId: publicationInstanceId,
             platform: 'LINUX',
             architecture: 'X64',
             moduleKind: 'CLIENT',
