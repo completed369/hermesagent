@@ -23,6 +23,7 @@ import {
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   type RetainedNativeSupervisorTopologyObservationCarrierByteChannel,
 } from './retained-native-supervisor-topology-observation-carrier-channel';
+import { BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner } from './retained-native-supervisor-topology-observation-carrier-keyless-signer';
 import {
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   linuxRetainedNativeSupervisorTopologyObservationRequestHash,
@@ -104,7 +105,7 @@ function keyFixture(role: 'API_COORDINATOR' | 'WORKER_CLIENT', principalReferenc
       signature: sign(null, Buffer.from(canonicalJson(payload)), privateKey).toString('base64'),
     })),
   };
-  return { root, signer };
+  return { privateKey, root, signer };
 }
 
 class RootSource implements RetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource {
@@ -152,6 +153,35 @@ class ByteLoopbackChannel implements RetainedNativeSupervisorTopologyObservation
   readonly exchange = vi.fn((input: Uint8Array, signal: AbortSignal) =>
     this.endpoint.handle(input, signal),
   );
+}
+
+class KeylessSigningLoopback {
+  readonly close = vi.fn(async () => undefined);
+  readonly exchange = vi.fn(async (input: Uint8Array) => {
+    const request = JSON.parse(new TextDecoder().decode(input)) as Record<string, unknown>;
+    return new TextEncoder().encode(
+      canonicalJson({
+        protocolVersion: 1,
+        purpose:
+          'RETAINED_NATIVE_SUPERVISOR_TOPOLOGY_OBSERVATION_CARRIER_DELIVERY_SIGNING_RESPONSE',
+        principalRole: request.principalRole,
+        principalReference: request.principalReference,
+        signerKeyId: request.signerKeyId,
+        carrierId: request.carrierId,
+        bindingHash: request.bindingHash,
+        payloadHash: request.payloadHash,
+        signingRequestHash: request.signingRequestHash,
+        signature: sign(
+          null,
+          Buffer.from(canonicalJson(request.payload)),
+          this.privateKey,
+        ).toString('base64'),
+        runtimeConnection: 'NOT_CONFIGURED',
+      }),
+    );
+  });
+
+  constructor(private readonly privateKey: ReturnType<typeof generateKeyPairSync>['privateKey']) {}
 }
 
 function subject(overrides: { apiRoot?: unknown; workerRoot?: unknown } = {}) {
@@ -204,12 +234,30 @@ describe('root-resolved topology carrier role composition', () => {
   it('composes through the bounded canonical byte channel without activating a transport', async () => {
     const api = keyFixture('API_COORDINATOR', binding.coordinatorPrincipalReference);
     const worker = keyFixture('WORKER_CLIENT', binding.workerPrincipalReference);
+    const apiSigningTransport = new KeylessSigningLoopback(api.privateKey);
+    const workerSigningTransport = new KeylessSigningLoopback(worker.privateKey);
+    const apiSigner =
+      new BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner(
+        binding,
+        'API_COORDINATOR',
+        api.root.signerKeyId,
+        apiSigningTransport,
+        () => now,
+      );
+    const workerSigner =
+      new BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner(
+        binding,
+        'WORKER_CLIENT',
+        worker.root.signerKeyId,
+        workerSigningTransport,
+        () => now,
+      );
     const roots = new RootSource(api.root, worker.root);
     const observer = new Observer();
     const workerRole = new RootResolvedRetainedNativeSupervisorTopologyObservationWorker(
       roots,
       observer,
-      worker.signer,
+      workerSigner,
       binding,
       () => now,
     );
@@ -222,7 +270,7 @@ describe('root-resolved topology carrier role composition', () => {
     const coordinator = new RootResolvedRetainedNativeSupervisorTopologyObservationCoordinator(
       roots,
       carrier,
-      api.signer,
+      apiSigner,
       binding,
       'carrier-attempt-framed-composition',
       () => now,
@@ -236,6 +284,10 @@ describe('root-resolved topology carrier role composition', () => {
     );
     expect(byteChannel.exchange).toHaveBeenCalledOnce();
     expect(byteChannel.close).toHaveBeenCalledOnce();
+    expect(apiSigningTransport.exchange).toHaveBeenCalledOnce();
+    expect(apiSigningTransport.close).toHaveBeenCalledOnce();
+    expect(workerSigningTransport.exchange).toHaveBeenCalledOnce();
+    expect(workerSigningTransport.close).toHaveBeenCalledOnce();
     expect(observer.observe).toHaveBeenCalledOnce();
   });
 

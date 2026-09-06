@@ -2942,6 +2942,45 @@ test('topology carrier byte framing is one-use, bounded, canonical, and uncompos
   assert.doesNotMatch(workerComposition, /TopologyObservationCarrierChannel/u);
 });
 
+test('topology carrier delivery signing is role-bound, keyless, bounded, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier-keyless-signer.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(
+    source,
+    /class DenyRetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport/u,
+  );
+  assert.match(
+    source,
+    /class BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner/u,
+  );
+  assert.match(source, /MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_REQUEST_BYTES = 72 \* 1_024/u);
+  assert.match(source, /principalRole: this\.#role/u);
+  assert.match(source, /principalReference: this\.#principalReference/u);
+  assert.match(source, /signingRequestHash: hash\(requestBinding\)/u);
+  assert.match(source, /Promise\.resolve\(\)\.then\(\(\) => this\.#exchange/u);
+  assert.match(source, /Promise\.resolve\(\)\.then\(\(\) => this\.#close\(\)\)/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|\bcreatePrivateKey\b|\bgenerateKeyPair\b|\bprivateKey\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner/u,
+  );
+});
+
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',

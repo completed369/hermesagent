@@ -448,6 +448,11 @@ published and current `main` has not been deployed to private staging.
    deadlines, and close-before-return; its worker endpoint applies the same one-use framing around
    the injected signed handler (ADR-0128). It chooses and activates no channel, identity, route,
    provider, root adapter, signer, mount, or runtime connection.
+   A one-use keyless carrier-delivery signer now binds one canonical signing request to the exact
+   live carrier, role, principal, signer reference, payload hash, delivery direction, and deadline;
+   it propagates cancellation and closes its injected byte transport before releasing a bounded
+   Ed25519 proof (ADR-0129). Key custody, signer identity transport, public-root wiring, carrier
+   routing, mounts, and runtime connection remain unconfigured.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
