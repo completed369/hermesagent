@@ -1,7 +1,7 @@
 import {
   MAX_RETAINED_NATIVE_SUPERVISOR_IPC_FRAME_BYTES,
   RetainedNativeSupervisorLocalIpcError,
-  type RetainedNativeSupervisorLocalIpcClient,
+  type ClosableRetainedNativeSupervisorLocalIpcClient,
   type RetainedNativeSupervisorLocalIpcEndpointIdentity,
   type RetainedNativeSupervisorLocalIpcPeerCredentials,
 } from './retained-native-supervisor-local-ipc';
@@ -169,8 +169,11 @@ function connection(input: unknown): LinuxRetainedNativeSupervisorConnection {
  * Owns one already-authorized Linux client connection from lstat through EOF and close.
  * It cannot create a listener, discover a path, retry, or promote runtime truth.
  */
-export class BoundedLinuxRetainedNativeSupervisorLocalIpcClient implements RetainedNativeSupervisorLocalIpcClient {
+export class BoundedLinuxRetainedNativeSupervisorLocalIpcClient implements ClosableRetainedNativeSupervisorLocalIpcClient {
   #inFlight = false;
+  #closed = false;
+  #activeConnection?: LinuxRetainedNativeSupervisorConnection;
+  #connectionClose?: Promise<void>;
 
   constructor(private readonly binding: LinuxRetainedNativeSupervisorBinding) {
     if (
@@ -191,6 +194,7 @@ export class BoundedLinuxRetainedNativeSupervisorLocalIpcClient implements Retai
     if (
       !(signal instanceof AbortSignal) ||
       signal.aborted ||
+      this.#closed ||
       typeof socketPath !== 'string' ||
       !/^\/[A-Za-z0-9._/-]+\.sock$/u.test(socketPath) ||
       socketPath.includes('//') ||
@@ -210,19 +214,21 @@ export class BoundedLinuxRetainedNativeSupervisorLocalIpcClient implements Retai
     let closeFailed = false;
     try {
       const before = parseStat(await this.binding.lstatUnixSocket(socketPath, signal));
-      if (signal.aborted) deny('EXCHANGE_DENIED');
+      if (signal.aborted || this.#closed) deny('EXCHANGE_DENIED');
       opened = connection(await this.binding.connectUnixSocket(socketPath, signal));
-      if (signal.aborted) deny('EXCHANGE_DENIED');
+      this.#activeConnection = opened;
+      if (signal.aborted || this.#closed) deny('EXCHANGE_DENIED');
       const credentials = parseCredentials(await opened.peerCredentials(signal));
-      if (signal.aborted) deny('EXCHANGE_DENIED');
+      if (signal.aborted || this.#closed) deny('EXCHANGE_DENIED');
       await opened.writeAndShutdown(requestFrame, signal);
-      if (signal.aborted) deny('EXCHANGE_DENIED');
+      if (signal.aborted || this.#closed) deny('EXCHANGE_DENIED');
       const candidate = await opened.readToEof(
         MAX_RETAINED_NATIVE_SUPERVISOR_IPC_FRAME_BYTES,
         signal,
       );
       if (
         signal.aborted ||
+        this.#closed ||
         !(candidate instanceof Uint8Array) ||
         candidate.byteLength < 3 ||
         candidate.byteLength > MAX_RETAINED_NATIVE_SUPERVISOR_IPC_FRAME_BYTES
@@ -230,7 +236,7 @@ export class BoundedLinuxRetainedNativeSupervisorLocalIpcClient implements Retai
         deny('EXCHANGE_DENIED');
       ownedResponse = Buffer.from(candidate);
       const after = parseStat(await this.binding.lstatUnixSocket(socketPath, signal));
-      if (signal.aborted || !sameStat(before, after)) {
+      if (signal.aborted || this.#closed || !sameStat(before, after)) {
         deny('INVALID_ATTESTATION');
       }
       completed = true;
@@ -247,7 +253,7 @@ export class BoundedLinuxRetainedNativeSupervisorLocalIpcClient implements Retai
       requestFrame.fill(0);
       if (opened) {
         try {
-          await opened.close();
+          await this.closeConnection(opened);
         } catch {
           closeFailed = true;
         }
@@ -255,6 +261,35 @@ export class BoundedLinuxRetainedNativeSupervisorLocalIpcClient implements Retai
       if ((!completed || closeFailed) && ownedResponse) ownedResponse.fill(0);
       this.#inFlight = false;
       if (closeFailed) deny('EXCHANGE_DENIED');
+    }
+  }
+
+  async close(): Promise<void> {
+    this.#closed = true;
+    const active = this.#activeConnection;
+    if (active) await this.closeConnection(active);
+  }
+
+  private async closeConnection(
+    connection: LinuxRetainedNativeSupervisorConnection,
+  ): Promise<void> {
+    if (this.#activeConnection !== connection) return;
+    let pending = this.#connectionClose;
+    if (!pending) {
+      try {
+        pending = Promise.resolve(connection.close());
+        this.#connectionClose = pending;
+      } catch {
+        deny('EXCHANGE_DENIED');
+      }
+    }
+    try {
+      await pending;
+    } catch {
+      deny('EXCHANGE_DENIED');
+    } finally {
+      if (this.#activeConnection === connection) this.#activeConnection = undefined;
+      if (this.#connectionClose === pending) this.#connectionClose = undefined;
     }
   }
 }

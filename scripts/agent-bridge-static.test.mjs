@@ -2240,7 +2240,9 @@ test('Linux retained-native IPC client owns a bounded deny-default lifecycle and
   assert.match(source, /peerCredentials/u);
   assert.match(source, /writeAndShutdown/u);
   assert.match(source, /readToEof/u);
-  assert.match(source, /await opened\.close\(\)/u);
+  assert.match(source, /await this\.closeConnection\(opened\)/u);
+  assert.match(source, /async close\(\): Promise<void>/u);
+  assert.match(source, /await this\.closeConnection\(active\)/u);
   assert.match(source, /MAX_RETAINED_NATIVE_SUPERVISOR_IPC_FRAME_BYTES/u);
   assert.match(source, /authority: 'LINUX_LSTAT_UNIX_SOCKET'/u);
   assert.match(source, /authority: 'LINUX_SO_PEERCRED'/u);
@@ -2740,8 +2742,8 @@ test('retained-native module snapshot signing is bounded, keyless, and uncompose
     /class BoundedKeylessRetainedNativeSupervisorModuleAuthorizationSnapshotSigner/u,
   );
   assert.match(source, /#attempted = false/u);
-  assert.match(source, /MAX_REQUEST_BYTES = 32 \* 1_024/u);
-  assert.match(source, /MAX_RESPONSE_BYTES = 1_024/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES = 32 \* 1_024/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES = 1_024/u);
   assert.match(source, /MAX_TIMEOUT_MS = 5_000/u);
   assert.match(source, /signingRequestHash/u);
   assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
@@ -2760,6 +2762,43 @@ test('retained-native module snapshot signing is bounded, keyless, and uncompose
   assert.doesNotMatch(
     workerComposition,
     /BoundedKeylessRetainedNativeSupervisorModuleAuthorizationSnapshotSigner/u,
+  );
+});
+
+test('native-module signing transport is Linux-authenticated, one-use, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-module-authorization-linux-signing-transport.ts',
+    'utf8',
+  );
+  const index = readFileSync('packages/agent-bridge/src/index.ts', 'utf8');
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(
+    source,
+    /class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningTransport/u,
+  );
+  assert.match(source, /LINUX_LSTAT_UNIX_SOCKET/u);
+  assert.match(source, /LINUX_SO_PEERCRED/u);
+  assert.match(source, /runtimeConnection !== 'NOT_CONFIGURED'/u);
+  assert.match(source, /#state: 'READY' \| 'IN_FLIGHT' \| 'ATTEMPTED' \| 'CLOSED'/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES/u);
+  assert.match(source, /await this\.#closeClient\(\)/u);
+  assert.match(index, /retained-native-supervisor-module-authorization-linux-signing-transport/u);
+  assert.doesNotMatch(
+    source,
+    /from 'node:(?:child_process|crypto|fs|net|tls)'|process\.(?:env|cwd|platform)|\bCONNECTED\b|createPrivateKey|createSecretKey|generateKeyPair/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningTransport/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningTransport/u,
   );
 });
 

@@ -12,8 +12,8 @@ const ED25519_SIGNATURE = /^[A-Za-z0-9+/]{86}==$/u;
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
 const PRIVATE_TEXT =
   /(?:chain[-_. ]?of[-_. ]?thought|private[-_. ]?reasoning|password|credential|api[-_. ]?key|access[-_. ]?token|auth(?:orization)?[-_. ]?token|session[-_. ]?token|secret|transcript|prompt)/iu;
-const MAX_REQUEST_BYTES = 32 * 1_024;
-const MAX_RESPONSE_BYTES = 1_024;
+export const MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES = 32 * 1_024;
+export const MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES = 1_024;
 const MAX_JSON_DEPTH = 16;
 const MAX_JSON_NODES = 2_048;
 const MIN_TIMEOUT_MS = 100;
@@ -185,7 +185,8 @@ function parseRequest(
 function responseBytes(input: unknown): Uint8Array {
   if (!(input instanceof Uint8Array) || Object.getPrototypeOf(input) !== Uint8Array.prototype)
     deny();
-  if (input.byteLength < 2 || input.byteLength > MAX_RESPONSE_BYTES) deny();
+  if (input.byteLength < 2 || input.byteLength > MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES)
+    deny();
   return input;
 }
 
@@ -305,7 +306,7 @@ export class BoundedKeylessRetainedNativeSupervisorModuleAuthorizationSnapshotSi
         signingRequestHash,
       });
       const encoded = new TextEncoder().encode(canonicalJson(envelope));
-      if (encoded.byteLength > MAX_REQUEST_BYTES) deny();
+      if (encoded.byteLength > MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES) deny();
       const timeoutPromise = new Promise<never>((_resolve, reject) => {
         timeout = setTimeout(() => {
           controller.abort();

@@ -81,7 +81,12 @@ export interface RetainedNativeSupervisorLocalIpcClient {
   ): Promise<unknown>;
 }
 
-export class DenyRetainedNativeSupervisorLocalIpcClient implements RetainedNativeSupervisorLocalIpcClient {
+/** A client whose active OS connection can be closed independently of exchange completion. */
+export interface ClosableRetainedNativeSupervisorLocalIpcClient extends RetainedNativeSupervisorLocalIpcClient {
+  close(): Promise<void>;
+}
+
+export class DenyRetainedNativeSupervisorLocalIpcClient implements ClosableRetainedNativeSupervisorLocalIpcClient {
   async exchange(
     _socketPath: string,
     _requestFrame: Readonly<Uint8Array>,
@@ -89,6 +94,8 @@ export class DenyRetainedNativeSupervisorLocalIpcClient implements RetainedNativ
   ): Promise<never> {
     deny('NOT_CONFIGURED');
   }
+
+  async close(): Promise<void> {}
 }
 
 export interface AuthenticatedRetainedNativeSupervisorLocalIpcInboundExchange {

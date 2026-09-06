@@ -425,7 +425,11 @@ published and current `main` has not been deployed to private staging.
    versions with exact workspace/supervisor scope and immutable Level-3 evidence (ADR-0102). It
    serializes tenant ownership, permits only adjacent monotonic versions and irreversible
    revocation, denies unaudited mutation, and returns at most eight current roots. It provisions no
-   private key and is not yet composed with the signer or publisher.
+   private key and is not yet composed with the signer or publisher. A separate uncomposed Linux
+   signing transport now carries one bounded keyless request over the existing local IPC client and
+   authenticates the exact before/after Unix-socket identity plus `SO_PEERCRED` principal
+   (ADR-0103). It discovers no path, owns no key, starts no signer service, and is absent from every
+   composition root.
    Merged contracts are not runtime-connectivity evidence.
 3. **Mission Control continuation:** the protected Founder Mission Control is
    deployed from the operations repository and displays verified company state.
