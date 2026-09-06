@@ -340,8 +340,11 @@
 > absent from the Nest graph and supplies no native module, signer, key/root, service owner, or
 > runtime-status evidence. One explicit construction now supplies that audited source as the only
 > positive authorization input to the retained-descriptor Linux-x64 loader (ADR-0110), but performs
-> no load and remains absent from routes, workers, services, images, and deployment. There is still no
-> packaged module, key/root, signer custody, service owner, or authenticated runtime round trip.
+> no load and remains absent from routes, workers, services, image commands, and deployment. There is
+> still no runtime loader or provisioner call, key/root, signer custody, service owner, or authenticated
+> runtime round trip. Immutable root-owned listener/API and client/worker image artifacts are now
+> built and locally security-scanned (ADR-0111), but no image command references them and their mere
+> presence is not authorization, activation, or connectivity evidence.
 > Post-main staging exposed and then hardened a concurrent first-root scope bootstrap: untargeted
 > conflict handling now converges identical races through exact replay authentication while
 > retaining cross-workspace denial (ADR-0106). This is durable-state correctness, not evidence that

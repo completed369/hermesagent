@@ -158,6 +158,39 @@ jobs:
           trap cleanup EXIT
           docker export "$cid" | tar -xf - -C "$rootfs"
           find "$rootfs" -mindepth 1 -printf '%y\0%P\0%l\0' | node scripts/verify-agent-bridge-runtime-root.mjs
+          native_root="$rootfs/usr/lib/ventureos/native"
+          case "$IMAGE_NAME" in
+            api)
+              expected_native=linux-retained-native-listener.node
+              denied_native=linux-retained-native-client.node
+              ;;
+            worker)
+              expected_native=linux-retained-native-client.node
+              denied_native=linux-retained-native-listener.node
+              ;;
+            *)
+              test ! -e "$native_root"
+              expected_native=
+              denied_native=
+              ;;
+          esac
+          if test -n "$expected_native"; then
+            native_archive_listing="$(docker export "$cid" | tar --numeric-owner -tvf -)"
+            native_root_metadata="$(stat -c '%F:%a' "$native_root")"
+            native_file_metadata="$(stat -c '%F:%a' "$native_root/$expected_native")"
+            native_magic="$(od -An -tx1 -N4 "$native_root/$expected_native" | tr -d ' \n')"
+            native_header="$(readelf -h "$native_root/$expected_native")"
+            native_entries="$(find "$native_root" -mindepth 1 -maxdepth 1 | wc -l)"
+            test "$native_root_metadata" = 'directory:755' || { echo "Native artifact directory metadata denied: $native_root_metadata" >&2; exit 1; }
+            test "$native_file_metadata" = 'regular file:444' || { echo "Native artifact file metadata denied: $native_file_metadata" >&2; exit 1; }
+            grep -Eq '^drwxr-xr-x[[:space:]]+0/0[[:space:]].*[[:space:]]usr/lib/ventureos/native/$' <<<"$native_archive_listing" || { echo 'Native artifact directory image ownership denied.' >&2; exit 1; }
+            grep -Eq "^-r--r--r--[[:space:]]+0/0[[:space:]].*[[:space:]]usr/lib/ventureos/native/$expected_native$" <<<"$native_archive_listing" || { echo 'Native artifact file image ownership denied.' >&2; exit 1; }
+            test "$native_magic" = '7f454c46' || { echo 'Native artifact ELF magic denied.' >&2; exit 1; }
+            grep -Eq 'Class:[[:space:]]+ELF64' <<<"$native_header" || { echo 'Native artifact ELF class denied.' >&2; exit 1; }
+            grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64' <<<"$native_header" || { echo 'Native artifact ELF machine denied.' >&2; exit 1; }
+            test ! -e "$native_root/$denied_native" || { echo 'Opposite native endpoint entered image.' >&2; exit 1; }
+            test "$native_entries" -eq 1 || { echo "Native artifact allowlist count denied: $native_entries" >&2; exit 1; }
+          fi
           find "$rootfs" -type f -print0 > "$runtime_file_manifest"
           while IFS= read -r -d '' runtime_file; do
             if grep -aEq 'NATIVE_SUPERVISOR_DENIED:|AUTHENTICATED_TRANSCRIPT|authenticated-lifecycle-addon' "$runtime_file"; then
