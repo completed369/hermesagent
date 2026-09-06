@@ -2913,6 +2913,35 @@ test('role-local topology carrier composition resolves opposite roots and remain
   );
 });
 
+test('topology carrier byte framing is one-use, bounded, canonical, and uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier-channel.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_CHANNEL_FRAME_BYTES = 64 \* 1_024/u);
+  assert.match(source, /class DenyRetainedNativeSupervisorTopologyObservationCarrierByteChannel/u);
+  assert.match(source, /class BoundedRetainedNativeSupervisorTopologyObservationCarrierChannel/u);
+  assert.match(
+    source,
+    /class BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint/u,
+  );
+  assert.match(source, /new TextDecoder\('utf-8', \{ fatal: true \}\)/u);
+  assert.match(source, /canonicalJson\(value\) !== text/u);
+  assert.match(source, /#attempted/u);
+  assert.match(source, /await this\.close\(\)/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(apiComposition, /TopologyObservationCarrierChannel/u);
+  assert.doesNotMatch(workerComposition, /TopologyObservationCarrierChannel/u);
+});
+
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',

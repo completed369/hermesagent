@@ -443,6 +443,11 @@ published and current `main` has not been deployed to private staging.
    coordinator root before authenticating or observing, and the coordinator closes its injected
    carrier after every outcome (ADR-0127). Root sources, signers, carrier, and observer remain
    injected; no concrete channel, root wiring, key, mount, or runtime connection is supplied.
+   A transport-neutral byte-channel adapter now constrains that injected carrier to one canonical
+   request/response, 64 KiB frames, bounded inert JSON, propagated cancellation, exchange/close
+   deadlines, and close-before-return; its worker endpoint applies the same one-use framing around
+   the injected signed handler (ADR-0128). It chooses and activates no channel, identity, route,
+   provider, root adapter, signer, mount, or runtime connection.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

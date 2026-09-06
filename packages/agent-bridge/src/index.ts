@@ -50,6 +50,7 @@ export * from './retained-native-supervisor-topology-observation-local-ipc';
 export * from './retained-native-supervisor-topology-observation-carrier';
 export * from './retained-native-supervisor-topology-observation-carrier-signature';
 export * from './retained-native-supervisor-topology-observation-carrier-composition';
+export * from './retained-native-supervisor-topology-observation-carrier-channel';
 export * from './retained-native-supervisor-module-authorization-trust-source';
 export * from './retained-native-supervisor-module-authorization-controller';
 export * from './retained-native-supervisor-module-authorization-audited-publisher';
