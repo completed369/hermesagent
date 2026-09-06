@@ -2955,3 +2955,54 @@ test('durable native-module authorization state is grant-bound, audited, and unc
   assert.doesNotMatch(module, /PostgresRetainedNativeModuleAuthorization/u);
   assert.doesNotMatch(adapter, /\bCONNECTED\b|provider|deployment|publish|spend/u);
 });
+
+test('native-module public roots are tenant-scoped, Level-3 audited, immutable, and uncomposed', () => {
+  const registry = readFileSync(
+    'apps/api/src/modules/agent-control-plane/retained-native-module-authorization-root-registry.ts',
+    'utf8',
+  );
+  const migration = readFileSync(
+    'packages/database/prisma/migrations/20260906140000_native_module_public_root_registry/migration.sql',
+    'utf8',
+  );
+  const schema = readFileSync('packages/database/prisma/schema.prisma', 'utf8');
+  const module = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const integration = readFileSync(
+    'apps/api/test/retained-native-module-authorization-root-registry.integration.spec.ts',
+    'utf8',
+  );
+
+  assert.match(registry, /capability\.assertSource\('CONTROL_PLANE'\)/u);
+  assert.match(registry, /authorityLevelFor\(boundContext\) !== 3/u);
+  assert.match(registry, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.match(registry, /inserted_root AS/u);
+  assert.match(registry, /bound_scope AS/u);
+  assert.match(registry, /inserted_evidence AS/u);
+  assert.match(registry, /rows\.length > 8/u);
+  assert.match(registry, /\) current_roots[\s\S]*"revokedAt" IS NULL/u);
+  assert.doesNotMatch(
+    registry,
+    /\bcreatePrivateKey\b|\bgenerateKeyPair|\bsign\s*\(|\bfetch\s*\(|\bprocess\.(?:env|cwd|platform)\b|\$queryRawUnsafe|\$executeRawUnsafe/u,
+  );
+
+  assert.match(migration, /public-root cross-workspace supervisor binding denied/u);
+  assert.match(migration, /root_scopes_binding_key/u);
+  assert.match(migration, /public-root scope is immutable/u);
+  assert.match(migration, /public-root version transition denied/u);
+  assert.match(migration, /public-root equivocation denied/u);
+  assert.match(migration, /public-root signer identity reuse denied/u);
+  assert.match(migration, /active public-root bound exceeded/u);
+  assert.match(migration, /DEFERRABLE INITIALLY DEFERRED/u);
+  assert.match(migration, /public-root Level-3 evidence is required/u);
+  assert.match(migration, /public-root state is immutable/u);
+  assert.match(migration, /"authorityLevel" = 3/u);
+  assert.match(schema, /model AcpRetainedNativeModuleAuthorizationRoot/u);
+  assert.match(schema, /model AcpRetainedNativeModuleAuthorizationRootScope/u);
+  assert.match(schema, /model AcpRetainedNativeModuleAuthorizationRootEvidence/u);
+  assert.match(integration, /unaudited-root/u);
+  assert.match(integration, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(module, /PostgresRetainedNativeModuleAuthorizationRootRegistry/u);
+});

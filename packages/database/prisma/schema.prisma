@@ -1934,6 +1934,72 @@ model AcpRetainedNativeModuleAuthorizationCheckpointEvent {
   @@map("acp_retained_native_module_authorization_checkpoint_events")
 }
 
+/// Append-only, public-only verification roots scoped to one workspace and
+/// retained native supervisor. Successive versions may only raise the minimum
+/// snapshot version or add revocation; private signing material is never stored.
+model AcpRetainedNativeModuleAuthorizationRootScope {
+  supervisorInstanceId String   @id
+  workspaceId          String   @db.Uuid
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+
+  roots AcpRetainedNativeModuleAuthorizationRoot[]
+
+  @@unique([supervisorInstanceId, workspaceId], map: "acp_rn_module_auth_root_scopes_binding_key")
+  @@map("acp_retained_native_module_authorization_root_scopes")
+}
+
+model AcpRetainedNativeModuleAuthorizationRoot {
+  workspaceId            String    @db.Uuid
+  supervisorInstanceId   String
+  rootRecordId           String
+  rootRecordVersion      Int
+  signerKeyId            String
+  algorithm              String
+  purpose                String
+  publicKeySpkiBase64    String
+  publicKeySpkiSha256    String
+  minimumSnapshotVersion Int
+  validFrom              DateTime  @db.Timestamptz(3)
+  validUntil             DateTime  @db.Timestamptz(3)
+  revokedAt              DateTime? @db.Timestamptz(3)
+  testOnly               Boolean
+  createdAt              DateTime  @default(now()) @db.Timestamptz(3)
+
+  provisioningEvidence AcpRetainedNativeModuleAuthorizationRootEvidence?
+  scope                AcpRetainedNativeModuleAuthorizationRootScope     @relation(fields: [supervisorInstanceId, workspaceId], references: [supervisorInstanceId, workspaceId], onDelete: Restrict, onUpdate: Restrict, map: "acp_rn_module_auth_roots_scope_fkey")
+
+  @@id([workspaceId, supervisorInstanceId, rootRecordId, rootRecordVersion])
+  @@index([workspaceId, supervisorInstanceId, createdAt(sort: Desc)], map: "acp_rn_module_auth_roots_scope_idx")
+  @@map("acp_retained_native_module_authorization_roots")
+}
+
+/// Immutable Level-3 authorization evidence recorded atomically with each
+/// public verification-root version.
+model AcpRetainedNativeModuleAuthorizationRootEvidence {
+  workspaceId                 String   @db.Uuid
+  supervisorInstanceId        String
+  rootRecordId                String
+  rootRecordVersion           Int
+  signerKeyId                 String
+  publicKeySpkiSha256         String
+  provisioningRequestHash     String   @unique(map: "acp_rn_module_auth_root_evidence_request_hash_key")
+  provisioningAuthorizationId String
+  approvalId                  String
+  approvalEvidenceHash        String
+  authorizedByReference       String
+  authorityLevel              Int
+  authorizedFrom              DateTime @db.Timestamptz(3)
+  authorizedUntil             DateTime @db.Timestamptz(3)
+  createdAt                   DateTime @default(now()) @db.Timestamptz(3)
+
+  root AcpRetainedNativeModuleAuthorizationRoot @relation(fields: [workspaceId, supervisorInstanceId, rootRecordId, rootRecordVersion], references: [workspaceId, supervisorInstanceId, rootRecordId, rootRecordVersion], onDelete: Restrict, onUpdate: Restrict, map: "acp_rn_module_auth_root_evidence_root_fkey")
+
+  @@id([workspaceId, supervisorInstanceId, rootRecordId, rootRecordVersion])
+  @@unique([workspaceId, provisioningAuthorizationId], map: "acp_rn_module_auth_root_evidence_workspace_auth_key")
+  @@index([workspaceId, supervisorInstanceId, createdAt(sort: Desc)], map: "acp_rn_module_auth_root_evidence_scope_idx")
+  @@map("acp_retained_native_module_authorization_root_evidence")
+}
+
 // ---------------------------------------------------------------------------
 // Product and Listing Studio (Phase 4, master spec sections 21/22/25/30)
 // ---------------------------------------------------------------------------

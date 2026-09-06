@@ -287,6 +287,17 @@ function parseRootRecord(input: unknown): Readonly<ParsedRootRecord> {
   return Object.freeze({ record, publicKey: parsePublicKey(value) });
 }
 
+/**
+ * Parses and freezes one public verification-root record without retaining the
+ * derived crypto key. Persistence adapters use this to share the exact same
+ * fail-closed wire validation as the runtime authenticator.
+ */
+export function validateRetainedNativeSupervisorModuleAuthorizationRootRecord(
+  input: unknown,
+): Readonly<RetainedNativeSupervisorModuleAuthorizationRootRecord> {
+  return parseRootRecord(input).record;
+}
+
 export function retainedNativeSupervisorModuleAuthorizationSnapshotPayload(
   snapshot: RetainedNativeSupervisorModuleAuthorizationSnapshot,
 ): RetainedNativeSupervisorModuleAuthorizationSnapshotPayload {

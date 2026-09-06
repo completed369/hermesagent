@@ -305,6 +305,12 @@
 > returning. It has no private key, concrete transport, public-root provisioning, or service owner;
 > its response remains subject to independent publisher verification and proves no runtime
 > connectivity.
+> A separate uncomposed PostgreSQL registry now accepts validated public-only Ed25519 roots under an
+> exact tenant/supervisor-scoped Level-3 capability and atomically stores immutable provisioning
+> evidence. Database guards prevent cross-tenant supervisor races, version gaps, signer/key reuse,
+> rollback, revocation reversal, unaudited inserts, mutation, and more than eight current roots.
+> No private key, actual root, route, worker, signer transport, or service composition is supplied,
+> so this closes durable public-root state only and does not prove runtime connectivity.
 
 > A proposed deterministic Linux test now joins the composition-owned native handoff to the
 > I/O-free authenticated JSONL verifier. A synthetic 32-byte fixture secret crosses only an
