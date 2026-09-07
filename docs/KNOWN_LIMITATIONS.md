@@ -649,3 +649,13 @@ and denies binding drift, cancellation, expiry, missing or ambiguous state, and 
 is not wired into the API module. No authenticated worker-side root source, root lookup transport,
 carrier route, signing endpoint, shared runtime mount, or runtime connection exists. Codex, Hermes,
 Pi, and `runtimeConnection` therefore remain `NOT_CONFIGURED`.
+
+## Worker topology carrier root lookup is protocol-only
+
+The worker has an uncomposed one-use source that can request only the exact API-coordinator public
+root for one live carrier binding. Its injected transport contract requires independent mutual peer
+authentication, and the source enforces a fresh challenge, exact request/response scope, bounded
+canonical frames, cancellation and binding expiry, and close-before-release (ADR-0131). No API-side
+lookup handler or concrete authenticated transport exists, and the source is not wired into the
+worker. This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
+`NOT_CONFIGURED`.
