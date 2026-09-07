@@ -3191,7 +3191,7 @@ test('Linux carrier root lookup transport derives peer identity from kernel evid
   );
 });
 
-test('worker carrier root lookup composition binds an injected client without activation', () => {
+test('worker carrier root composition consumes only an exact loader and remains application-inactive', () => {
   const source = readFileSync(
     'apps/worker/src/lib/topology-carrier-root-lookup-composition.ts',
     'utf8',
@@ -3206,15 +3206,24 @@ test('worker carrier root lookup composition binds an injected client without ac
     /new BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource/u,
   );
   assert.match(source, /createLoadedLinuxNativeTopologyCarrierRootSource/u);
+  assert.match(source, /loadLinuxNativeTopologyCarrierRootSource/u);
   assert.match(source, /new BoundedLinuxRetainedNativeSupervisorNativeClientBinding/u);
   assert.match(source, /new BoundedLinuxRetainedNativeSupervisorLocalIpcClient/u);
   assert.match(source, /loadedModule\.socketPath !== localIpcAuthorization\.socketPath/u);
+  assert.match(source, /await loader\.load\(moduleLoadRequest, signal\)/u);
+  assert.equal((source.match(/\.load\s*\(/gu) ?? []).length, 1);
+  assert.match(source, /loader instanceof BoundedLinuxRetainedNativeSupervisorModuleLoader/u);
+  assert.ok(
+    source.indexOf("moduleLoadRequest.moduleKind !== 'CLIENT'") <
+      source.indexOf('await loader.load(moduleLoadRequest, signal)'),
+  );
   assert.doesNotMatch(
     source,
-    /\.load\s*\(|\.exchange\s*\(|\.read\s*\(|\.close\s*\(|runtimeConnection:\s*'CONNECTED'/u,
+    /createRetainedDescriptorLinuxNativeSupervisorModuleLoader|\.exchange\s*\(|\.read\s*\(|\.close\s*\(|\.node['"`]|\.sock['"`]|runtimeConnection:\s*'CONNECTED'/u,
   );
   assert.doesNotMatch(worker, /createLinuxLocalTopologyCarrierRootSource/u);
   assert.doesNotMatch(worker, /createLoadedLinuxNativeTopologyCarrierRootSource/u);
+  assert.doesNotMatch(worker, /loadLinuxNativeTopologyCarrierRootSource/u);
 });
 
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {

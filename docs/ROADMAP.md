@@ -498,8 +498,11 @@ published and current `main` has not been deployed to private staging.
    That factory can now also consume one exact already-loaded `CLIENT` module envelope, require its
    authorized socket path to equal the kernel-authenticated local IPC authorization, and compose the
    strict native ABI binding plus closable Linux client without invoking native code (ADR-0138).
-   The loader is still not invoked or wired, and no path, module, socket, mount, route, listener,
-   lifecycle, or runtime connection is selected or activated.
+   An additional unwired entry point can consume one explicitly injected one-use loader only after
+   the exact `CLIENT` request, abort signal, and local socket authorization agree, then revalidates
+   the loaded envelope before inert source construction (ADR-0139). No production loader, request,
+   authorization source, path, module, socket, mount, route, listener, lifecycle, or runtime
+   connection is selected, supplied, or activated.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
