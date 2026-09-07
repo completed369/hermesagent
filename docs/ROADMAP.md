@@ -470,6 +470,11 @@ published and current `main` has not been deployed to private staging.
    expiry, and binds its canonical response to the request scope, challenge, and hash (ADR-0132). The
    API-local coordinator-root adapter and concrete listener/transport remain absent, so this is still
    uncomposed protocol capability rather than runtime connectivity.
+   A separate one-use API-local source now resolves only the coordinator's own already-admitted
+   public carrier grant from the immutable PostgreSQL registry (ADR-0133). It denies the worker role,
+   binding drift, cancellation, expiry, replay, missing or ambiguous state, and under-scoped roots.
+   It remains unwired from the authenticated handler and service graph; peer authentication,
+   transport, routing, mounts, and runtime connection are still absent.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
