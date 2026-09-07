@@ -1,7 +1,10 @@
 import {
   BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
+  DenyRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   DenyRetainedNativeSupervisorLocalIpcClient,
+  RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
   type ClosableRetainedNativeSupervisorLocalIpcClient,
 } from '@ventureos/agent-bridge';
 import { describe, expect, it, vi } from 'vitest';
@@ -9,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createLinuxLocalTopologyCarrierRootSource,
   createLoadedLinuxNativeTopologyCarrierRootSource,
+  createRootResolvedLinuxNativeTopologyCarrierWorker,
   loadLinuxNativeTopologyCarrierRootSource,
 } from './topology-carrier-root-lookup-composition';
 
@@ -121,6 +125,86 @@ describe('worker Linux topology carrier root lookup composition', () => {
     );
     expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
     expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  it('joins the concrete root source to the worker endpoint without side effects', () => {
+    const client = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      client,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const observer = {
+      observe: vi.fn(async (): Promise<never> => {
+        throw new Error('construction must not observe');
+      }),
+    };
+    const signer = {
+      sign: vi.fn(async (): Promise<never> => {
+        throw new Error('construction must not sign');
+      }),
+    };
+
+    const worker = createRootResolvedLinuxNativeTopologyCarrierWorker(
+      source,
+      observer,
+      signer,
+      binding,
+      () => NOW,
+    );
+
+    expect(worker).toBeInstanceOf(RootResolvedRetainedNativeSupervisorTopologyObservationWorker);
+    expect(client.exchange).not.toHaveBeenCalled();
+    expect(client.close).not.toHaveBeenCalled();
+    expect(observer.observe).not.toHaveBeenCalled();
+    expect(signer.sign).not.toHaveBeenCalled();
+  });
+
+  it('denies substituted sources and deny-only worker dependencies without activity', () => {
+    const client = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      client,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const observer = { observe: vi.fn() };
+    const signer = { sign: vi.fn() };
+
+    expect(() =>
+      createRootResolvedLinuxNativeTopologyCarrierWorker(
+        {
+          read: vi.fn(),
+        } as unknown as BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+        observer,
+        signer,
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(() =>
+      createRootResolvedLinuxNativeTopologyCarrierWorker(
+        source,
+        new DenyLinuxRetainedNativeSupervisorTopologyObservationPort(),
+        signer,
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(() =>
+      createRootResolvedLinuxNativeTopologyCarrierWorker(
+        source,
+        observer,
+        new DenyRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner(),
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(client.exchange).not.toHaveBeenCalled();
+    expect(client.close).not.toHaveBeenCalled();
+    expect(observer.observe).not.toHaveBeenCalled();
+    expect(signer.sign).not.toHaveBeenCalled();
   });
 
   it('denies envelope drift and socket-path substitution before native activity', () => {

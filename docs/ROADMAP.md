@@ -519,6 +519,11 @@ published and current `main` has not been deployed to private staging.
    workspace/supervisor scope, build the least-authority PostgreSQL handler, and invoke one injected
    service owner for one session (ADR-0143). It remains absent from Nest, and construction of the
    owner, loader, authority, module, path, principal mapping, and lifecycle stays external.
+   An inert worker-local factory now accepts only that concrete mutually authenticated root source
+   and joins it to the root-resolved worker observation endpoint with explicitly injected observer,
+   delivery signer, live carrier binding, and clock (ADR-0144). Construction performs no lookup,
+   IPC, observation, signing, or native call; the factory remains absent from `worker.ts`, and all
+   loader, path, principal, observer, signer, carrier-listener, and lifecycle choices stay external.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

@@ -700,5 +700,11 @@ can now consume one explicitly injected one-use loader only after validating the
 request and its equality with local socket authorization, then revalidates the loaded envelope
 (ADR-0139). It remains absent from `worker.ts`, and production supplies no loader, request,
 authorization source, path, mount, route, or lifecycle.
+An additional inert worker-local factory accepts only that concrete bounded root source and can join
+it to the existing root-resolved observation endpoint with explicitly injected observer, signer,
+carrier binding, and clock (ADR-0144). Construction performs no root lookup, IPC, observation,
+signing, or native call, and the factory remains absent from `worker.ts`. Production still supplies
+no approved loader, module/socket path, principal mapping, concrete observer, keyless signer,
+carrier-listener lifecycle, or verified authenticated round trip.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
