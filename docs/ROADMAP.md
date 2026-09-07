@@ -503,6 +503,12 @@ published and current `main` has not been deployed to private staging.
    the loaded envelope before inert source construction (ADR-0139). No production loader, request,
    authorization source, path, module, socket, mount, route, listener, lifecycle, or runtime
    connection is selected, supplied, or activated.
+   A separate API-side one-session service purpose now binds the carrier-root lookup handler to the
+   existing Level-3 listener owner, exact carrier workspace/supervisor scope, created socket
+   identity, authorized worker `SO_PEERCRED`, bounded deadline, and owned cleanup (ADR-0140). It
+   remains absent from the API and worker application graphs. No approved native listener module,
+   path/principal source, service loop, shared mount, route, or runtime connection is selected or
+   activated.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

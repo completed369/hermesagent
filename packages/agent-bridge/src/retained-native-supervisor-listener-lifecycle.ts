@@ -18,6 +18,9 @@ import {
   type RetainedNativeSupervisorModuleAuthorizationSigningCustodySession,
 } from './retained-native-supervisor-module-authorization-signing-handler';
 import { AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler } from './retained-native-supervisor-topology-observation-local-ipc';
+import { BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler } from './retained-native-supervisor-topology-observation-carrier-root-lookup-handler';
+import { AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler } from './retained-native-supervisor-topology-observation-carrier-root-lookup-local-ipc';
+import type { RetainedNativeSupervisorTopologyObservationCarrierBinding } from './retained-native-supervisor-topology-observation-carrier';
 import {
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   type LinuxRetainedNativeSupervisorTopologyObservationPort,
@@ -547,6 +550,53 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
           observerRole,
           clock,
           timeoutMs,
+        ),
+      signal,
+    );
+  }
+
+  /**
+   * Creates one API-side root-lookup listener after exact service authorization. The protocol is
+   * bound to the created socket identity, the authorized worker peer, and one carrier binding.
+   */
+  async runTopologyCarrierRootLookupOne(
+    handler: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler,
+    carrierBinding: Readonly<RetainedNativeSupervisorTopologyObservationCarrierBinding>,
+    signal: AbortSignal,
+    timeoutMs = 2_000,
+    clock: () => number = Date.now,
+  ): Promise<void> {
+    if (
+      !(
+        handler instanceof
+        BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler
+      ) ||
+      typeof clock !== 'function' ||
+      !Number.isSafeInteger(timeoutMs) ||
+      timeoutMs < 100 ||
+      timeoutMs > 5_000
+    )
+      deny('NOT_CONFIGURED');
+    return this.runWithHandler(
+      (identity) =>
+        new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler(
+          handler,
+          carrierBinding,
+          {
+            schemaVersion: 1,
+            platform: 'LINUX',
+            socketPath: this.#authorization.socketPath,
+            socketDevice: identity.device,
+            socketInode: identity.inode,
+            socketOwnerUid: identity.ownerUid,
+            socketOwnerGid: identity.ownerGid,
+            socketMode: identity.mode,
+            expectedPeerPid: this.#authorization.expectedWorkerPid,
+            expectedPeerUid: this.#authorization.expectedWorkerUid,
+            expectedPeerGid: this.#authorization.expectedWorkerGid,
+            runtimeConnection: 'NOT_CONFIGURED',
+          },
+          clock,
         ),
       signal,
     );

@@ -651,11 +651,11 @@ the coordinator-root source is bound to its authenticated handler by an inert fa
 none of these components is wired into the API module. No concrete authenticated root-lookup
 application route, signing endpoint, shared runtime mount, or runtime connection exists. Exported
 Linux adapters can validate an injected native exchange using exact Unix-socket identity and
-`SO_PEERCRED` evidence (ADR-0135), but the native client/listener, approved PID/UID/GID mapping,
-socket path authorization, and service ownership are not composed. The API has only an inert factory
-joining its database source and Linux endpoint (ADR-0136); that factory is absent from Nest and
-performs no database read at construction. Codex, Hermes, Pi, and `runtimeConnection` therefore
-remain `NOT_CONFIGURED`.
+`SO_PEERCRED` evidence (ADR-0135), but no native client/listener binding or approved PID/UID/GID and
+socket-path source is supplied. The API has only an inert factory joining its database source and
+Linux endpoint (ADR-0136) plus an uncomposed Level-3 one-session listener owner (ADR-0140). Both are
+absent from Nest and perform no work at construction. Codex, Hermes, Pi, and `runtimeConnection`
+therefore remain `NOT_CONFIGURED`.
 
 ## API topology carrier root lookup handler is composed but inactive
 
@@ -667,10 +667,14 @@ coordinator-root source (ADR-0133) to that handler for one exact carrier authori
 the factory remains absent from the Nest and worker graphs. It performs no database read at
 construction and supplies no concrete listener, transport, route, socket, peer authentication,
 signing authority, or shared runtime mount. A separate unactivated Linux endpoint can derive the
-handler's sideband identity from exact injected `lstat` and `SO_PEERCRED` evidence (ADR-0135), but no
-native listener or application composition supplies it. This is not runtime connectivity evidence;
-an inert API factory now binds these internal layers (ADR-0136), but no running service supplies or
-invokes that factory. Codex, Hermes, Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.
+handler's sideband identity from exact injected `lstat` and `SO_PEERCRED` evidence (ADR-0135). A
+distinct Level-3 one-session service purpose can now own that endpoint's listener, bind it to the
+exact live carrier workspace and supervisor, and clean up only its created socket (ADR-0140). The
+service owner remains absent from Nest, and no native listener binding, approved path/principal
+source, service loop, or application composition supplies it. This is not runtime connectivity
+evidence; an inert API factory binds the internal handler layers (ADR-0136), but no running service
+supplies or invokes either boundary. Codex, Hermes, Pi, and `runtimeConnection` remain
+`NOT_CONFIGURED`.
 
 ## Worker topology carrier root lookup is protocol-only
 

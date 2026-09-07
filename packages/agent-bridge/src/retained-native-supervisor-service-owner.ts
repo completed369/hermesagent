@@ -16,6 +16,11 @@ import {
 } from './retained-native-supervisor-recovery';
 import { authenticateRetainedNativeSupervisorModuleAuthorizationSignerKeyId } from './retained-native-supervisor-module-authorization-signing-handler';
 import {
+  validateRetainedNativeSupervisorTopologyObservationCarrierBinding,
+  type RetainedNativeSupervisorTopologyObservationCarrierBinding,
+} from './retained-native-supervisor-topology-observation-carrier';
+import { BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler } from './retained-native-supervisor-topology-observation-carrier-root-lookup-handler';
+import {
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   validateLinuxRetainedNativeSupervisorTopologyObservationRequest,
   type LinuxRetainedNativeSupervisorTopologyObservationPort,
@@ -37,7 +42,8 @@ export type LinuxRetainedNativeSupervisorServiceKind =
   | 'RECOVERY'
   | 'MODULE_AUTHORIZATION_SIGNING'
   | 'TOPOLOGY_OBSERVATION_API_LISTENER'
-  | 'TOPOLOGY_OBSERVATION_WORKER_CLIENT';
+  | 'TOPOLOGY_OBSERVATION_WORKER_CLIENT'
+  | 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER';
 
 export interface LinuxRetainedNativeSupervisorServiceRequest {
   readonly schemaVersion: 1;
@@ -223,7 +229,8 @@ export function validateLinuxRetainedNativeSupervisorServiceRequest(
     (value.serviceKind !== 'RECOVERY' &&
       value.serviceKind !== 'MODULE_AUTHORIZATION_SIGNING' &&
       value.serviceKind !== 'TOPOLOGY_OBSERVATION_API_LISTENER' &&
-      value.serviceKind !== 'TOPOLOGY_OBSERVATION_WORKER_CLIENT') ||
+      value.serviceKind !== 'TOPOLOGY_OBSERVATION_WORKER_CLIENT' &&
+      value.serviceKind !== 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER') ||
     value.socketDirectoryMode !== 0o700 ||
     value.runtimeConnection !== 'NOT_CONFIGURED'
   )
@@ -404,6 +411,50 @@ export class BoundedLinuxRetainedNativeSupervisorServiceOwner {
       lifecycle.owner.runTopologyObservationOne(
         scopedObserver,
         observerRole,
+        ownedSignal,
+        lifecycle.grant.maximumSessionDurationMs,
+        this.clock,
+      ),
+    );
+  }
+
+  async runTopologyCarrierRootLookupOne(
+    input: unknown,
+    handler: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler,
+    carrierBindingInput: unknown,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (
+      !(
+        handler instanceof
+        BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler
+      )
+    )
+      deny('NOT_CONFIGURED');
+    let carrierBinding: Readonly<RetainedNativeSupervisorTopologyObservationCarrierBinding>;
+    try {
+      carrierBinding = validateRetainedNativeSupervisorTopologyObservationCarrierBinding(
+        carrierBindingInput,
+        this.validNow(),
+      );
+    } catch (error) {
+      if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+      return deny('INVALID_AUTHORIZATION');
+    }
+    const lifecycle = await this.authorizeOne(
+      input,
+      'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER',
+      signal,
+    );
+    if (
+      carrierBinding.workspaceId !== lifecycle.grant.workspaceId ||
+      carrierBinding.supervisorInstanceId !== lifecycle.grant.supervisorInstanceId
+    )
+      deny('INVALID_AUTHORIZATION');
+    return this.runBounded(lifecycle.grant, signal, (ownedSignal) =>
+      lifecycle.owner.runTopologyCarrierRootLookupOne(
+        handler,
+        carrierBinding,
         ownedSignal,
         lifecycle.grant.maximumSessionDurationMs,
         this.clock,

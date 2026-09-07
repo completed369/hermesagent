@@ -1,3 +1,5 @@
+import { createHash, generateKeyPairSync } from 'node:crypto';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { canonicalJson } from './codec';
@@ -23,6 +25,9 @@ import {
   type LinuxRetainedNativeSupervisorServiceGrant,
   type LinuxRetainedNativeSupervisorServiceRequest,
 } from './retained-native-supervisor-service-owner';
+import { retainedNativeSupervisorTopologyObservationCarrierBindingHash } from './retained-native-supervisor-topology-observation-carrier';
+import type { RetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource } from './retained-native-supervisor-topology-observation-carrier-composition';
+import { BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler } from './retained-native-supervisor-topology-observation-carrier-root-lookup-handler';
 import {
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   linuxRetainedNativeSupervisorTopologyObservationRequestHash,
@@ -68,6 +73,66 @@ const recoveryResponse = Object.freeze({
   requestHash: recoveryRequest.requestHash,
   runtimeConnection: 'NOT_CONFIGURED',
 });
+const carrierBinding = Object.freeze({
+  schemaVersion: 1 as const,
+  purpose: 'RETAINED_NATIVE_SUPERVISOR_TOPOLOGY_OBSERVATION_CARRIER' as const,
+  authority: 'MUTUALLY_AUTHENTICATED_CROSS_CONTAINER_CHANNEL' as const,
+  carrierId: 'carrier-native-service-root',
+  coordinatorPrincipalReference: 'service:api:native-service-root',
+  workerPrincipalReference: 'service:worker:native-service-root',
+  workspaceId: 'workspace-native-service',
+  supervisorInstanceId: 'supervisor-native-service',
+  provisioningAttemptId: 'attempt-native-service-root',
+  provisioningPlanHash: '9'.repeat(64),
+  issuedAt: new Date(now - 100).toISOString(),
+  expiresAt: new Date(now + 4_000).toISOString(),
+  runtimeConnection: 'NOT_CONFIGURED' as const,
+});
+const carrierBindingHash =
+  retainedNativeSupervisorTopologyObservationCarrierBindingHash(carrierBinding);
+const rootPublicSpki = generateKeyPairSync('ed25519').publicKey.export({
+  format: 'der',
+  type: 'spki',
+});
+const carrierRoot = Object.freeze({
+  schemaVersion: 1 as const,
+  rootRecordId: 'root:api:native-service-root',
+  rootRecordVersion: 1 as const,
+  signerKeyId: 'key:api:native-service-root',
+  algorithm: 'ED25519' as const,
+  purpose: 'RETAINED_NATIVE_SUPERVISOR_TOPOLOGY_OBSERVATION_CARRIER_DELIVERY' as const,
+  principalRole: 'API_COORDINATOR' as const,
+  principalReference: carrierBinding.coordinatorPrincipalReference,
+  bindingHash: carrierBindingHash,
+  publicKeySpkiBase64: rootPublicSpki.toString('base64'),
+  publicKeySpkiSha256: createHash('sha256').update(rootPublicSpki).digest('hex'),
+  validFrom: new Date(now - 1_000).toISOString(),
+  validUntil: new Date(now + 10_000).toISOString(),
+  revokedAt: null,
+  testOnly: false,
+});
+
+class CarrierRootSource implements RetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource {
+  readonly read = vi.fn(async (): Promise<unknown> => carrierRoot);
+}
+
+function carrierRootRequest(): Buffer {
+  return Buffer.from(
+    canonicalJson({
+      protocolVersion: 1,
+      purpose: 'RETAINED_NATIVE_SUPERVISOR_TOPOLOGY_OBSERVATION_CARRIER_ROOT_LOOKUP_REQUEST',
+      requesterPrincipalRole: 'WORKER_CLIENT',
+      requesterPrincipalReference: carrierBinding.workerPrincipalReference,
+      requestedPrincipalRole: 'API_COORDINATOR',
+      requestedPrincipalReference: carrierBinding.coordinatorPrincipalReference,
+      carrierId: carrierBinding.carrierId,
+      binding: carrierBinding,
+      bindingHash: carrierBindingHash,
+      challenge: Buffer.alloc(32, 7).toString('base64url'),
+      runtimeConnection: 'NOT_CONFIGURED',
+    }),
+  );
+}
 
 function request(
   drift: Partial<LinuxRetainedNativeSupervisorServiceRequest> = {},
@@ -543,6 +608,121 @@ describe('bounded retained-native supervisor service owner', () => {
     expect(original).toHaveBeenCalledOnce();
     expect(observer.observe).not.toHaveBeenCalled();
   });
+
+  it('binds one exactly authorized carrier-root lookup to the created socket and worker peer', async () => {
+    const serviceRequest = request({
+      serviceKind: 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER',
+      socketPath: '/run/ventureos/supervisor/carrier-root.sock',
+    });
+    const { authority, binding, owner } = fixture(serviceRequest);
+    const source = new CarrierRootSource();
+    const handler =
+      new BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler(
+        carrierBinding,
+        source,
+        () => now,
+      );
+    binding.listener.accepted.readToEof.mockResolvedValue(carrierRootRequest());
+    binding.listener.accepted.writeAndShutdown.mockImplementation(async (candidate) => {
+      const response = JSON.parse(Buffer.from(candidate).toString('utf8')) as Record<
+        string,
+        unknown
+      >;
+      expect(response).toMatchObject({
+        protocolVersion: 1,
+        purpose: 'RETAINED_NATIVE_SUPERVISOR_TOPOLOGY_OBSERVATION_CARRIER_ROOT_LOOKUP_RESPONSE',
+        carrierId: carrierBinding.carrierId,
+        bindingHash: carrierBindingHash,
+        root: carrierRoot,
+        runtimeConnection: 'NOT_CONFIGURED',
+      });
+    });
+
+    await expect(
+      owner.runTopologyCarrierRootLookupOne(
+        serviceRequest,
+        handler,
+        carrierBinding,
+        new AbortController().signal,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(authority.authorize).toHaveBeenCalledOnce();
+    expect(source.read).toHaveBeenCalledWith(
+      carrierBinding,
+      'API_COORDINATOR',
+      expect.any(AbortSignal),
+    );
+    expect(binding.listener.accepted.peerCredentials).toHaveBeenCalledOnce();
+    expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
+  });
+
+  it('denies spoofed carrier-root handlers and protocol switching before service authority', async () => {
+    const serviceRequest = request({
+      serviceKind: 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER',
+    });
+    const spoofed = fixture(serviceRequest);
+    await expect(
+      spoofed.owner.runTopologyCarrierRootLookupOne(
+        serviceRequest,
+        { handle: vi.fn() } as never,
+        carrierBinding,
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('NOT_CONFIGURED'));
+    expect(spoofed.authority.authorize).not.toHaveBeenCalled();
+    expect(spoofed.binding.createOwnedListener).not.toHaveBeenCalled();
+
+    const source = new CarrierRootSource();
+    const handler =
+      new BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler(
+        carrierBinding,
+        source,
+        () => now,
+      );
+    const switched = fixture(request());
+    await expect(
+      switched.owner.runTopologyCarrierRootLookupOne(
+        request(),
+        handler,
+        carrierBinding,
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('INVALID_AUTHORIZATION'));
+    expect(switched.authority.authorize).not.toHaveBeenCalled();
+    expect(switched.binding.createOwnedListener).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['workspace', { workspaceId: 'workspace-other' }],
+    ['supervisor', { supervisorInstanceId: 'supervisor-other' }],
+  ])(
+    'denies carrier binding %s drift after exact authority and before listener creation',
+    async (_label, drift) => {
+      const serviceRequest = request({
+        serviceKind: 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER',
+      });
+      const { authority, binding, owner } = fixture(serviceRequest);
+      const driftedBinding = { ...carrierBinding, ...drift };
+      const handler =
+        new BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler(
+          driftedBinding,
+          new CarrierRootSource(),
+          () => now,
+        );
+
+      await expect(
+        owner.runTopologyCarrierRootLookupOne(
+          serviceRequest,
+          handler,
+          driftedBinding,
+          new AbortController().signal,
+        ),
+      ).rejects.toEqual(expectCode('INVALID_AUTHORIZATION'));
+      expect(authority.authorize).toHaveBeenCalledOnce();
+      expect(binding.createOwnedListener).not.toHaveBeenCalled();
+    },
+  );
 
   it('aborts a pending accepted session at its bounded deadline and still cleans the listener', async () => {
     vi.useFakeTimers();

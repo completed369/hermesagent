@@ -7,11 +7,13 @@ import {
 } from './retained-native-supervisor-local-ipc';
 import { AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler } from './retained-native-supervisor-module-authorization-signing-handler';
 import { AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler } from './retained-native-supervisor-topology-observation-local-ipc';
+import { AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler } from './retained-native-supervisor-topology-observation-carrier-root-lookup-local-ipc';
 
 export type AuthenticatedLinuxLocalRetainedNativeSupervisorInboundHandler =
   | AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler
   | AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler
-  | AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler;
+  | AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler
+  | AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler;
 
 export interface LinuxRetainedNativeSupervisorListenerSocketStat {
   readonly fileType: 'SOCKET';
@@ -206,7 +208,10 @@ export class BoundedLinuxRetainedNativeSupervisorSession {
         handler instanceof AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler ||
         handler instanceof
           AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningHandler ||
-        handler instanceof AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler
+        handler instanceof
+          AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationHandler ||
+        handler instanceof
+          AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler
       )
     )
       deny('NOT_CONFIGURED');
