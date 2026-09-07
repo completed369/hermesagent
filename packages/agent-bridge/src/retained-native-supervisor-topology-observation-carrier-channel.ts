@@ -426,3 +426,55 @@ export class BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSess
     }
   }
 }
+
+/**
+ * Prebinds one already-accepted worker carrier byte session before any fallible endpoint setup.
+ * The session can be transferred exactly once to the canonical owner or closed while unclaimed.
+ */
+export class BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession {
+  readonly #session: ReturnType<typeof bindWorkerSession>;
+  readonly #timeoutMs: number;
+  #claimed = false;
+  #closePromise: Promise<void> | undefined;
+
+  constructor(
+    session: RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
+    timeoutMs = 5_000,
+  ) {
+    this.#timeoutMs = timeout(timeoutMs);
+    this.#session = bindWorkerSession(session);
+  }
+
+  attach(
+    endpoint: BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+  ): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession {
+    if (this.#claimed || this.#closePromise !== undefined) deny('EXCHANGE_DENIED');
+    const owner = new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+      endpoint,
+      this.#session,
+      this.#timeoutMs,
+    );
+    this.#claimed = true;
+    return owner;
+  }
+
+  close(): Promise<void> {
+    if (this.#claimed)
+      return Promise.reject(new RetainedNativeSupervisorLocalIpcError('EXCHANGE_DENIED'));
+    this.#closePromise ??= this.closeBounded();
+    return this.#closePromise;
+  }
+
+  private async closeBounded(): Promise<void> {
+    try {
+      await interruptible(
+        (_signal) => this.#session.close(),
+        new AbortController().signal,
+        this.#timeoutMs,
+      );
+    } catch (error) {
+      if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+      deny('EXCHANGE_DENIED');
+    }
+  }
+}

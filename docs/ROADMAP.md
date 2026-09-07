@@ -561,6 +561,10 @@ published and current `main` has not been deployed to private staging.
    one-use accepted-session owner (ADR-0153). Construction remains inert and outside `worker.ts`;
    loader consumption, listener acceptance/authentication, route, custody, service authority, and
    runtime wiring remain external.
+   The worker can now reserve the exact accepted session before consuming the signer CLIENT loader,
+   transfer it once on success, and bound cleanup on loader, cancellation, or composition failure
+   (ADR-0154). The factory remains outside `worker.ts`; listener acceptance/authentication, route,
+   approved production identities, signer custody, and service authority remain external.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

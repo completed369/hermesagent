@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { canonicalJson } from './codec';
 import {
   BoundedRetainedNativeSupervisorTopologyObservationCarrierChannel,
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession,
   DenyRetainedNativeSupervisorTopologyObservationCarrierByteChannel,
@@ -260,6 +261,70 @@ describe('bounded topology observation carrier byte channel', () => {
     await expect(session.handleOne(new AbortController().signal)).rejects.toEqual(
       code('EXCHANGE_DENIED'),
     );
+  });
+
+  it('prebinds one accepted worker session and transfers it exactly once', async () => {
+    const byteSession = new WorkerByteSession();
+    const accepted =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+        byteSession,
+      );
+    const endpoint =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+        new Handler(),
+      );
+
+    expect(byteSession.readToEof).not.toHaveBeenCalled();
+    expect(byteSession.writeAndShutdown).not.toHaveBeenCalled();
+    expect(byteSession.close).not.toHaveBeenCalled();
+
+    const session = accepted.attach(endpoint);
+    expect(session).toBeInstanceOf(
+      BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession,
+    );
+    expect(() => accepted.attach(endpoint)).toThrowError(code('EXCHANGE_DENIED'));
+    await expect(accepted.close()).rejects.toEqual(code('EXCHANGE_DENIED'));
+    await expect(session.handleOne(new AbortController().signal)).resolves.toBeUndefined();
+    expect(byteSession.close).toHaveBeenCalledOnce();
+  });
+
+  it('validates an accepted-session timeout before touching hostile accessors', () => {
+    let getterCalls = 0;
+    const hostileSession = { writeAndShutdown: vi.fn(), close: vi.fn() } as Record<string, unknown>;
+    Object.defineProperty(hostileSession, 'readToEof', {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return vi.fn();
+      },
+    });
+
+    expect(
+      () =>
+        new BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+          hostileSession as unknown as RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
+          99,
+        ),
+    ).toThrowError(code('NOT_CONFIGURED'));
+    expect(getterCalls).toBe(0);
+  });
+
+  it('closes an unclaimed accepted worker session once and denies later transfer', async () => {
+    const byteSession = new WorkerByteSession();
+    const accepted =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+        byteSession,
+      );
+    await accepted.close();
+    await accepted.close();
+    expect(byteSession.close).toHaveBeenCalledOnce();
+    expect(() =>
+      accepted.attach(
+        new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+          new Handler(),
+        ),
+      ),
+    ).toThrowError(code('EXCHANGE_DENIED'));
   });
 
   it('rejects substituted endpoints and deny sessions before ownership transfer', () => {
