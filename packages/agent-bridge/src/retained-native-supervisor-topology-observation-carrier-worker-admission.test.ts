@@ -169,6 +169,25 @@ describe('authenticated Linux topology carrier worker admission', () => {
     expect(reads).toEqual({ peerCredentials: 1, readToEof: 1, writeAndShutdown: 1, close: 1 });
   });
 
+  it('captures close first and cleans up when a later session accessor throws', async () => {
+    const { admission, binding } = fixture();
+    const close = vi.fn(async (): Promise<void> => undefined);
+    const session = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(session, 'close', { get: () => close });
+    Object.defineProperty(session, 'peerCredentials', {
+      get: () => {
+        throw new Error('private peer accessor detail');
+      },
+    });
+    binding.acceptAuthorizedUnixSocket.mockResolvedValue(session);
+
+    await expect(admission.acceptOne(new AbortController().signal)).rejects.toEqual(
+      expectCode('NOT_CONFIGURED'),
+    );
+    expect(close).toHaveBeenCalledOnce();
+    expect(binding.accepted.readToEof).not.toHaveBeenCalled();
+  });
+
   it('redacts hostile authorization accessors before native binding access', () => {
     const binding = new FixtureBinding();
     const candidate = { ...authorization() } as Record<string, unknown>;

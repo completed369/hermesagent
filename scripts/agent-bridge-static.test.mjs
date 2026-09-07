@@ -3001,7 +3001,8 @@ test('worker carrier admission is kernel-attested, one-use, and lifecycle-inacti
   assert.match(source, /acceptAuthorizedUnixSocket/u);
   assert.match(source, /peerCredentials/u);
   assert.match(source, /this\.#state = 'ATTEMPTED'/u);
-  assert.match(source, /await closeBounded\(opened\.close, this\.#timeoutMs\)/u);
+  assert.match(source, /acceptedClose = closable\.close/u);
+  assert.match(source, /await closeBounded\(acceptedClose, this\.#timeoutMs\)/u);
   assert.doesNotMatch(
     source,
     /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,

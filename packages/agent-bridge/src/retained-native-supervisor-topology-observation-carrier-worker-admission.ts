@@ -21,6 +21,7 @@ type BoundSession = Readonly<{
   writeAndShutdown: LinuxRetainedNativeSupervisorAcceptedSession['writeAndShutdown'];
   close: LinuxRetainedNativeSupervisorAcceptedSession['close'];
 }>;
+type BoundClose = BoundSession['close'];
 
 function deny(code: ConstructorParameters<typeof RetainedNativeSupervisorLocalIpcError>[0]): never {
   throw new RetainedNativeSupervisorLocalIpcError(code);
@@ -115,26 +116,44 @@ function authenticatePeer(
     deny('INVALID_ATTESTATION');
 }
 
-function bindSession(input: unknown): BoundSession {
+function bindClose(input: unknown): Readonly<{
+  session: LinuxRetainedNativeSupervisorAcceptedSession;
+  close: BoundClose;
+}> {
   try {
     if (typeof input !== 'object' || input === null) deny('NOT_CONFIGURED');
     const session = input as LinuxRetainedNativeSupervisorAcceptedSession;
+    const close = session.close;
+    if (typeof close !== 'function') deny('NOT_CONFIGURED');
+    return Object.freeze({
+      session,
+      close: close.bind(session),
+    });
+  } catch (error) {
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+    return deny('NOT_CONFIGURED');
+  }
+}
+
+function bindSession(
+  session: LinuxRetainedNativeSupervisorAcceptedSession,
+  close: BoundClose,
+): BoundSession {
+  try {
     const peerCredentials = session.peerCredentials;
     const readToEof = session.readToEof;
     const writeAndShutdown = session.writeAndShutdown;
-    const close = session.close;
     if (
       typeof peerCredentials !== 'function' ||
       typeof readToEof !== 'function' ||
-      typeof writeAndShutdown !== 'function' ||
-      typeof close !== 'function'
+      typeof writeAndShutdown !== 'function'
     )
       deny('NOT_CONFIGURED');
     return Object.freeze({
       peerCredentials: peerCredentials.bind(session),
       readToEof: readToEof.bind(session),
       writeAndShutdown: writeAndShutdown.bind(session),
-      close: close.bind(session),
+      close,
     });
   } catch (error) {
     if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
@@ -208,6 +227,7 @@ export class BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservatio
       deny('EXCHANGE_DENIED');
     this.#state = 'IN_FLIGHT';
     let opened: BoundSession | undefined;
+    let acceptedClose: BoundClose | undefined;
     let accepted:
       BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession | undefined;
     let failure: unknown;
@@ -217,9 +237,11 @@ export class BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservatio
         this.#authorization,
       );
       if (signal.aborted) deny('EXCHANGE_DENIED');
-      opened = bindSession(
+      const closable = bindClose(
         await this.#native.acceptAuthorizedUnixSocket(this.#authorization.socketPath, signal),
       );
+      acceptedClose = closable.close;
+      opened = bindSession(closable.session, acceptedClose);
       if (signal.aborted) deny('EXCHANGE_DENIED');
       authenticatePeer(await opened.peerCredentials(signal), this.#authorization);
       if (signal.aborted) deny('EXCHANGE_DENIED');
@@ -233,6 +255,7 @@ export class BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservatio
         this.#timeoutMs,
       );
       opened = undefined;
+      acceptedClose = undefined;
     } catch (error) {
       failure =
         error instanceof RetainedNativeSupervisorLocalIpcError
@@ -243,7 +266,7 @@ export class BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservatio
       if (failure !== undefined) {
         try {
           if (accepted) await accepted.close();
-          else if (opened) await closeBounded(opened.close, this.#timeoutMs);
+          else if (acceptedClose) await closeBounded(acceptedClose, this.#timeoutMs);
         } catch {
           failure = new RetainedNativeSupervisorLocalIpcError('EXCHANGE_DENIED');
         }
