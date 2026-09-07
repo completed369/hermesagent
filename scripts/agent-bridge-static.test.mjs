@@ -3243,8 +3243,16 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.match(source, /new BoundedLinuxRetainedNativeSupervisorNativeClientBinding/u);
   assert.match(source, /new BoundedLinuxRetainedNativeSupervisorLocalIpcClient/u);
   assert.match(source, /loadedModule\.socketPath !== localIpcAuthorization\.socketPath/u);
-  assert.match(source, /await loader\.load\(moduleLoadRequest, signal\)/u);
-  assert.equal((source.match(/\.load\s*\(/gu) ?? []).length, 1);
+  assert.match(
+    source,
+    /createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.match(
+    source,
+    /loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.equal((source.match(/await loader\.load\(moduleLoadRequest, signal\)/gu) ?? []).length, 2);
+  assert.equal((source.match(/\.load\s*\(/gu) ?? []).length, 2);
   assert.match(source, /loader instanceof BoundedLinuxRetainedNativeSupervisorModuleLoader/u);
   assert.ok(
     source.indexOf("moduleLoadRequest.moduleKind !== 'CLIENT'") <
@@ -3267,6 +3275,14 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.doesNotMatch(
     worker,
     /createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.doesNotMatch(
+    worker,
+    /createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.doesNotMatch(
+    worker,
+    /loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
   );
 });
 

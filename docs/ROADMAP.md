@@ -549,6 +549,10 @@ published and current `main` has not been deployed to private staging.
    bounded signing client internally (ADR-0150). It loads no code, remains outside `worker.ts`, and
    selects no approved module path, signer identity, key custody, listener, lifecycle, or runtime
    connection.
+   A further unwired async factory now exact-binds one injected CLIENT module-load request to the
+   signer authorization and an explicit abort lifecycle before delegating the authenticated loaded
+   result into that composition (ADR-0151). It discovers no loader, approved path/identity, key
+   custody, listener, lifecycle, or runtime connection and remains outside `worker.ts`.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

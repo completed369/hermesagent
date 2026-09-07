@@ -21,6 +21,7 @@ import {
   createLoadedLinuxNativeTopologyCarrierRootSource,
   createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
   createRootResolvedLinuxNativeTopologyCarrierWorker,
+  loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
   loadLinuxNativeTopologyCarrierRootSource,
 } from './topology-carrier-root-lookup-composition';
 
@@ -761,6 +762,219 @@ describe('worker Linux topology carrier root lookup composition', () => {
         () => NOW,
       ),
     ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  itLinux('loads one exact signer CLIENT request before inert endpoint construction', async () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(),
+      connectUnixSocket: vi.fn(),
+    };
+    const request = Object.freeze({
+      schemaVersion: 1,
+      platform: 'LINUX',
+      architecture: 'X64',
+      moduleKind: 'CLIENT',
+      canonicalModulePath: '/opt/ventureos/native/carrier-signer-client.node',
+      socketPath: signingAuthorization.socketPath,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const load = vi.spyOn(loader, 'load').mockResolvedValue(
+      Object.freeze({
+        schemaVersion: 1,
+        moduleKind: 'CLIENT',
+        socketPath: signingAuthorization.socketPath,
+        runtimeConnection: 'NOT_CONFIGURED',
+        nativeModule,
+      }),
+    );
+    const signal = new AbortController().signal;
+
+    const endpoint =
+      await loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        loader,
+        request,
+        signal,
+        source,
+        signingAuthorization,
+        'key:worker:loaded-carrier-signer',
+        binding,
+        () => NOW,
+      );
+
+    expect(endpoint).toBeInstanceOf(
+      BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+    );
+    expect(load).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledWith(request, signal);
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  it('denies signer loader, source, request, socket, and cancellation drift before loading', async () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const request = Object.freeze({
+      schemaVersion: 1,
+      platform: 'LINUX',
+      architecture: 'X64',
+      moduleKind: 'CLIENT',
+      canonicalModulePath: '/opt/ventureos/native/carrier-signer-client.node',
+      socketPath: signingAuthorization.socketPath,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const load = vi.spyOn(loader, 'load');
+    const signal = new AbortController().signal;
+    const args = [
+      signingAuthorization,
+      'key:worker:loaded-carrier-signer',
+      binding,
+      () => NOW,
+    ] as const;
+
+    await expect(
+      loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        { load: vi.fn() } as unknown as BoundedLinuxRetainedNativeSupervisorModuleLoader,
+        request,
+        signal,
+        source,
+        ...args,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    await expect(
+      loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        loader,
+        request,
+        signal,
+        {} as BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+        ...args,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    await expect(
+      loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        loader,
+        { ...request, moduleKind: 'LISTENER' },
+        signal,
+        source,
+        ...args,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    await expect(
+      loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        loader,
+        { ...request, socketPath: '/run/ventureos/substituted-signer.sock' },
+        signal,
+        source,
+        ...args,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        loader,
+        request,
+        controller.signal,
+        source,
+        ...args,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    expect(load).not.toHaveBeenCalled();
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+  });
+
+  it('denies signer loader output drift and post-load cancellation before native activity', async () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(),
+      connectUnixSocket: vi.fn(),
+    };
+    const request = Object.freeze({
+      schemaVersion: 1,
+      platform: 'LINUX',
+      architecture: 'X64',
+      moduleKind: 'CLIENT',
+      canonicalModulePath: '/opt/ventureos/native/carrier-signer-client.node',
+      socketPath: signingAuthorization.socketPath,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const load = vi.spyOn(loader, 'load');
+    load.mockResolvedValueOnce(
+      Object.freeze({
+        schemaVersion: 1,
+        moduleKind: 'CLIENT',
+        socketPath: '/run/ventureos/substituted-signer.sock',
+        runtimeConnection: 'NOT_CONFIGURED',
+        nativeModule,
+      }),
+    );
+    await expect(
+      loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        loader,
+        request,
+        new AbortController().signal,
+        source,
+        signingAuthorization,
+        'key:worker:loaded-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+
+    const controller = new AbortController();
+    load.mockImplementationOnce(async () => {
+      controller.abort();
+      return Object.freeze({
+        schemaVersion: 1,
+        moduleKind: 'CLIENT',
+        socketPath: signingAuthorization.socketPath,
+        runtimeConnection: 'NOT_CONFIGURED',
+        nativeModule,
+      });
+    });
+    await expect(
+      loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        loader,
+        request,
+        controller.signal,
+        source,
+        signingAuthorization,
+        'key:worker:loaded-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
     expect(rootClient.exchange).not.toHaveBeenCalled();
     expect(rootClient.close).not.toHaveBeenCalled();
     expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();

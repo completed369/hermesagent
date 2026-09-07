@@ -724,5 +724,8 @@ An additional unwired worker factory can authenticate an already-loaded CLIENT e
 its exact socket to that signer authorization through the strict native ABI and bounded client
 (ADR-0150), but it does not choose or run a loader, approve a module/socket path or identity,
 provide key custody or a listener lifecycle, or enter `worker.ts`.
+One more unwired worker factory can consume an explicitly injected bounded loader under an exact
+CLIENT request, signer-socket match, and abort lifecycle (ADR-0151), but production still supplies
+no approved loader, module/socket path or identity, key custody, listener, or service lifecycle.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
