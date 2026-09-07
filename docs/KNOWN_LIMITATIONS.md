@@ -650,6 +650,16 @@ is not wired into the API module. No authenticated worker-side root source, root
 carrier route, signing endpoint, shared runtime mount, or runtime connection exists. Codex, Hermes,
 Pi, and `runtimeConnection` therefore remain `NOT_CONFIGURED`.
 
+## API topology carrier root lookup handler is uncomposed
+
+The API side has a one-use handler for the worker root-lookup protocol. It requires exact,
+direction-specific sideband peer identity from an independently mutually authenticated transport,
+then validates the canonical request and returns only the exact non-revoked API-coordinator public
+root for the live carrier binding (ADR-0132). The handler has no concrete listener, transport,
+API-local coordinator-root source adapter, route, socket, database composition, signing authority, or
+shared runtime mount and is absent from both application graphs. It is not runtime connectivity
+evidence; Codex, Hermes, Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.
+
 ## Worker topology carrier root lookup is protocol-only
 
 The worker has an uncomposed one-use source that can request only the exact API-coordinator public
