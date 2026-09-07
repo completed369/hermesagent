@@ -3226,6 +3226,37 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.doesNotMatch(worker, /loadLinuxNativeTopologyCarrierRootSource/u);
 });
 
+test('API carrier root listener composition binds only an exact loaded module and Level-3 owner', () => {
+  const source = readFileSync(
+    'apps/api/src/modules/agent-control-plane/topology-carrier-root-lookup-composition.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  assert.match(source, /createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner/u);
+  assert.match(source, /new BoundedLinuxRetainedNativeSupervisorNativeListenerBinding/u);
+  assert.match(source, /new BoundedLinuxRetainedNativeSupervisorServiceOwner/u);
+  assert.match(
+    source,
+    /authority instanceof BoundedLevel3RetainedNativeSupervisorServiceAuthority/u,
+  );
+  assert.match(
+    source,
+    /serviceRequest\.serviceKind !== 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER'/u,
+  );
+  assert.match(source, /serviceRequest\.socketPath !== loadedModule\.socketPath/u);
+  assert.doesNotMatch(
+    source,
+    /createRetainedDescriptorLinuxNativeSupervisorModuleLoader|\.load\s*\(|\.runTopologyCarrierRootLookupOne\s*\(|\.node['"`]|\.sock['"`]|runtimeConnection:\s*'CONNECTED'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner/u,
+  );
+});
+
 test('role-local topology and carrier-root listeners require distinct Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',

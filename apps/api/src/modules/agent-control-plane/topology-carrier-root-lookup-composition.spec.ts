@@ -2,15 +2,20 @@ import { createHash, generateKeyPairSync } from 'node:crypto';
 
 import {
   canonicalJson,
+  BoundedLinuxRetainedNativeSupervisorServiceOwner,
   retainedNativeSupervisorTopologyObservationCarrierBindingHash,
+  type LinuxRetainedNativeSupervisorServiceRequest,
 } from '@ventureos/agent-bridge';
+import { OperationalEventCapability } from '@ventureos/agent-control-plane';
 import { Prisma } from '@ventureos/database';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner,
   createPostgresApiCoordinatorLinuxLocalTopologyCarrierRootLookupHandler,
   createPostgresApiCoordinatorTopologyCarrierRootLookupHandler,
 } from './topology-carrier-root-lookup-composition';
+import { BoundedLevel3RetainedNativeSupervisorServiceAuthority } from './retained-native-service-authority';
 import type { TopologyCarrierSignatureRootSqlClient } from './topology-carrier-signature-root-registry';
 
 vi.mock('@ventureos/database', () => ({
@@ -95,6 +100,64 @@ const serverAuthorization = Object.freeze({
   runtimeConnection: 'NOT_CONFIGURED',
 });
 
+const serviceContext = Object.freeze({
+  workspaceId: binding.workspaceId,
+  principalId: 'control-plane:carrier-root-listener',
+});
+
+function serviceRequest(
+  overrides: Partial<LinuxRetainedNativeSupervisorServiceRequest> = {},
+): LinuxRetainedNativeSupervisorServiceRequest {
+  return {
+    schemaVersion: 1,
+    purpose: 'RETAINED_NATIVE_SUPERVISOR_ONE_SESSION_SERVICE',
+    workspaceId: binding.workspaceId,
+    supervisorInstanceId: binding.supervisorInstanceId,
+    serviceKind: 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER',
+    provisioningId: 'path-provision:carrier-root-listener',
+    pathProvisionRequestHash: 'a'.repeat(64),
+    pathApprovalEvidenceHash: 'b'.repeat(64),
+    socketDirectory: '/run/ventureos',
+    socketDirectoryIdentityReference: 'linux:dev-2b:ino-2455',
+    socketDirectoryOwnerUid: 700,
+    socketDirectoryOwnerGid: 701,
+    socketDirectoryMode: 0o700,
+    socketPath,
+    expectedWorkerPid: workerPeer.peerPid,
+    expectedWorkerUid: workerPeer.peerUid,
+    expectedWorkerGid: workerPeer.peerGid,
+    maximumSessionDurationMs: 2_000,
+    runtimeConnection: 'NOT_CONFIGURED',
+    ...overrides,
+  };
+}
+
+function serviceAuthority(request: LinuxRetainedNativeSupervisorServiceRequest) {
+  return new BoundedLevel3RetainedNativeSupervisorServiceAuthority(
+    OperationalEventCapability.issue('CONTROL_PLANE', [
+      { ...serviceContext, actorKind: 'SYSTEM', authorityLevel: 3 },
+    ]),
+    serviceContext,
+    request,
+    () => NOW,
+  );
+}
+
+function loadedListenerModule(overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 1,
+    moduleKind: 'LISTENER',
+    socketPath,
+    runtimeConnection: 'NOT_CONFIGURED',
+    nativeModule: {
+      abiVersion: 1,
+      platform: 'LINUX',
+      createOwnedListener: vi.fn(),
+    },
+    ...overrides,
+  };
+}
+
 class ScriptedSqlClient implements TopologyCarrierSignatureRootSqlClient {
   readonly queries: Prisma.Sql[] = [];
 
@@ -139,6 +202,71 @@ function authorization() {
 }
 
 describe('PostgreSQL API coordinator carrier-root lookup composition', () => {
+  it('inertly binds one exact loaded listener to the Level-3 carrier-root service owner', () => {
+    const request = serviceRequest();
+    const loaded = loadedListenerModule();
+    const owner = createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner(
+      loaded,
+      serviceAuthority(request),
+      request,
+      () => NOW,
+    );
+
+    expect(owner).toBeInstanceOf(BoundedLinuxRetainedNativeSupervisorServiceOwner);
+    expect(loaded.nativeModule.createOwnedListener).not.toHaveBeenCalled();
+  });
+
+  it('rejects listener envelope, authority purpose, and socket drift before native use', () => {
+    const cases: readonly [unknown, LinuxRetainedNativeSupervisorServiceRequest, unknown][] = [
+      [loadedListenerModule({ moduleKind: 'CLIENT' }), serviceRequest(), undefined],
+      [loadedListenerModule({ runtimeConnection: 'CONNECTED' }), serviceRequest(), undefined],
+      [loadedListenerModule({ unexpected: true }), serviceRequest(), undefined],
+      [
+        loadedListenerModule(),
+        serviceRequest({ socketPath: '/run/ventureos/other.sock' }),
+        undefined,
+      ],
+      [loadedListenerModule(), serviceRequest({ serviceKind: 'RECOVERY' }), undefined],
+      [loadedListenerModule(), serviceRequest(), {}],
+    ];
+
+    for (const [loaded, request, authorityOverride] of cases) {
+      const native = (loaded as ReturnType<typeof loadedListenerModule>).nativeModule;
+      expect(() =>
+        createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner(
+          loaded,
+          (authorityOverride ??
+            serviceAuthority(request)) as BoundedLevel3RetainedNativeSupervisorServiceAuthority,
+          request,
+          () => NOW,
+        ),
+      ).toThrow();
+      expect(native.createOwnedListener).not.toHaveBeenCalled();
+    }
+
+    const native = loadedListenerModule().nativeModule;
+    let getterCalls = 0;
+    const accessorEnvelope = loadedListenerModule() as Record<string, unknown>;
+    Object.defineProperty(accessorEnvelope, 'nativeModule', {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return native;
+      },
+    });
+    const request = serviceRequest();
+    expect(() =>
+      createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner(
+        accessorEnvelope,
+        serviceAuthority(request),
+        request,
+        () => NOW,
+      ),
+    ).toThrow();
+    expect(getterCalls).toBe(0);
+    expect(native.createOwnedListener).not.toHaveBeenCalled();
+  });
+
   it('is inert at construction and releases only the exact coordinator root after authentication', async () => {
     const database = new ScriptedSqlClient([
       [
