@@ -676,10 +676,12 @@ carrier-root service request to the strict native ABI and concrete Level-3 one-u
 after the exact `LISTENER` request, carrier-root service request, abort signal, concrete Level-3
 authority type, and socket path agree, then revalidates the loaded envelope (ADR-0142). It remains
 absent from Nest; production supplies no loader, request, approved path/principal source, or
-application lifecycle, and neither the service authority nor service run is invoked by composition.
-This is not runtime connectivity evidence; the internal handler factory (ADR-0136) and
-listener-owner entry points remain uninvoked. Codex, Hermes, Pi, and `runtimeConnection` remain
-`NOT_CONFIGURED`.
+application lifecycle. An explicit unwired run entry point can now prevalidate carrier-root purpose
+and exact carrier workspace/supervisor scope, create the least-authority PostgreSQL handler, and
+invoke one already-constructed service owner for one session (ADR-0143). Nothing in production
+constructs or calls these entry points. This is not runtime connectivity evidence; no approved
+deployment-specific native module, shared path, principal mapping, or application lifecycle exists.
+Codex, Hermes, Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.
 
 ## Worker topology carrier root lookup is protocol-only
 

@@ -7,7 +7,9 @@ import {
   RetainedNativeSupervisorLocalIpcError,
   validateLinuxRetainedNativeSupervisorModuleLoadRequest,
   validateLinuxRetainedNativeSupervisorServiceRequest,
+  validateRetainedNativeSupervisorTopologyObservationCarrierBinding,
   type LoadedLinuxRetainedNativeSupervisorListenerModule,
+  type RetainedNativeSupervisorTopologyObservationCarrierBinding,
 } from '@ventureos/agent-bridge';
 
 import { BoundedLevel3RetainedNativeSupervisorServiceAuthority } from './retained-native-service-authority';
@@ -190,4 +192,52 @@ export async function loadLinuxNativeTopologyCarrierRootLookupServiceOwner(
     serviceRequest,
     clock,
   );
+}
+
+/**
+ * Runs one explicitly injected carrier-root service owner only after the service request and live
+ * carrier share the exact workspace, supervisor, and carrier-root purpose. This entry point neither
+ * creates nor discovers the owner, loader, authority, module, path, or application lifecycle.
+ */
+export async function runPostgresApiCoordinatorTopologyCarrierRootLookupServiceOne(
+  owner: BoundedLinuxRetainedNativeSupervisorServiceOwner,
+  database: TopologyCarrierSignatureRootSqlClient,
+  serviceRequestInput: unknown,
+  carrierBindingInput: unknown,
+  signal: AbortSignal,
+  clock: () => number = Date.now,
+  timeoutMs = 2_000,
+): Promise<void> {
+  if (
+    !(owner instanceof BoundedLinuxRetainedNativeSupervisorServiceOwner) ||
+    !(signal instanceof AbortSignal) ||
+    signal.aborted ||
+    typeof clock !== 'function'
+  ) {
+    return denyInvalidAuthorization();
+  }
+  const serviceRequest = validateLinuxRetainedNativeSupervisorServiceRequest(serviceRequestInput);
+  let carrierBinding: Readonly<RetainedNativeSupervisorTopologyObservationCarrierBinding>;
+  try {
+    carrierBinding = validateRetainedNativeSupervisorTopologyObservationCarrierBinding(
+      carrierBindingInput,
+      clock(),
+    );
+  } catch {
+    return denyInvalidAuthorization();
+  }
+  if (
+    serviceRequest.serviceKind !== 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER' ||
+    serviceRequest.workspaceId !== carrierBinding.workspaceId ||
+    serviceRequest.supervisorInstanceId !== carrierBinding.supervisorInstanceId
+  ) {
+    return denyInvalidAuthorization();
+  }
+  const handler = createPostgresApiCoordinatorTopologyCarrierRootLookupHandler(
+    database,
+    carrierBinding,
+    clock,
+    timeoutMs,
+  );
+  return owner.runTopologyCarrierRootLookupOne(serviceRequest, handler, carrierBinding, signal);
 }
