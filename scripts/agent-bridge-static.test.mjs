@@ -3129,6 +3129,10 @@ test('API carrier root lookup composition binds the coordinator source without a
     source,
     /new BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler/u,
   );
+  assert.match(
+    source,
+    /new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler/u,
+  );
   assert.doesNotMatch(source, /\.handle\s*\(|\.read\s*\(|runtimeConnection:\s*'CONNECTED'/u);
   assert.doesNotMatch(
     source,
@@ -3141,6 +3145,14 @@ test('API carrier root lookup composition binds the coordinator source without a
   assert.doesNotMatch(
     workerComposition,
     /createPostgresApiCoordinatorTopologyCarrierRootLookupHandler/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /createPostgresApiCoordinatorLinuxLocalTopologyCarrierRootLookupHandler/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /createPostgresApiCoordinatorLinuxLocalTopologyCarrierRootLookupHandler/u,
   );
 });
 

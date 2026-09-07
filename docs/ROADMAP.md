@@ -486,6 +486,11 @@ published and current `main` has not been deployed to private staging.
    exact short-lived carrier, and absent from both application graphs. The native channel, approved
    OS-principal mapping, listener ownership, shared mount, route, and runtime connection remain
    unconfigured.
+   A second inert API-local factory now joins the PostgreSQL coordinator-root source, authenticated
+   protocol handler, and Linux kernel-authenticated inbound endpoint for the same carrier binding
+   and clock (ADR-0136). Exact local IPC authorization remains an explicit input, construction reads
+   no database state, and the factory is absent from the Nest graph. No native listener, socket
+   route, shared mount, service lifecycle, or runtime connection is activated.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

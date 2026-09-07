@@ -652,8 +652,10 @@ none of these components is wired into the API module. No concrete authenticated
 application route, signing endpoint, shared runtime mount, or runtime connection exists. Exported
 Linux adapters can validate an injected native exchange using exact Unix-socket identity and
 `SO_PEERCRED` evidence (ADR-0135), but the native client/listener, approved PID/UID/GID mapping,
-socket path authorization, and service ownership are not composed. Codex, Hermes, Pi, and
-`runtimeConnection` therefore remain `NOT_CONFIGURED`.
+socket path authorization, and service ownership are not composed. The API has only an inert factory
+joining its database source and Linux endpoint (ADR-0136); that factory is absent from Nest and
+performs no database read at construction. Codex, Hermes, Pi, and `runtimeConnection` therefore
+remain `NOT_CONFIGURED`.
 
 ## API topology carrier root lookup handler is composed but inactive
 
@@ -667,7 +669,8 @@ construction and supplies no concrete listener, transport, route, socket, peer a
 signing authority, or shared runtime mount. A separate unactivated Linux endpoint can derive the
 handler's sideband identity from exact injected `lstat` and `SO_PEERCRED` evidence (ADR-0135), but no
 native listener or application composition supplies it. This is not runtime connectivity evidence;
-Codex, Hermes, Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.
+an inert API factory now binds these internal layers (ADR-0136), but no running service supplies or
+invokes that factory. Codex, Hermes, Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.
 
 ## Worker topology carrier root lookup is protocol-only
 

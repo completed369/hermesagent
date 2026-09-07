@@ -1,4 +1,7 @@
-import { BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler } from '@ventureos/agent-bridge';
+import {
+  AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler,
+  BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler,
+} from '@ventureos/agent-bridge';
 
 import { PostgresApiCoordinatorPublishedTopologyCarrierSignatureRootSource } from './topology-carrier-signature-root-source';
 import type { TopologyCarrierSignatureRootSqlClient } from './topology-carrier-signature-root-registry';
@@ -25,5 +28,31 @@ export function createPostgresApiCoordinatorTopologyCarrierRootLookupHandler(
     source,
     clock,
     timeoutMs,
+  );
+}
+
+/**
+ * Extends the inert database-to-protocol composition through one Linux kernel-authenticated inbound
+ * endpoint. The local IPC authorization is still injected, and construction opens no listener,
+ * socket, route, mount, native module, or application service.
+ */
+export function createPostgresApiCoordinatorLinuxLocalTopologyCarrierRootLookupHandler(
+  database: TopologyCarrierSignatureRootSqlClient,
+  binding: unknown,
+  localIpcAuthorization: unknown,
+  clock: () => number = Date.now,
+  timeoutMs = 2_000,
+): AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler {
+  const handler = createPostgresApiCoordinatorTopologyCarrierRootLookupHandler(
+    database,
+    binding,
+    clock,
+    timeoutMs,
+  );
+  return new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler(
+    handler,
+    binding,
+    localIpcAuthorization,
+    clock,
   );
 }
