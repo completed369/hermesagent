@@ -3534,12 +3534,18 @@ test('native-module signing transport is Linux-authenticated, one-use, and uncom
     source,
     /class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningTransport/u,
   );
+  assert.match(
+    source,
+    /class AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport/u,
+  );
   assert.match(source, /LINUX_LSTAT_UNIX_SOCKET/u);
   assert.match(source, /LINUX_SO_PEERCRED/u);
   assert.match(source, /runtimeConnection !== 'NOT_CONFIGURED'/u);
   assert.match(source, /#state: 'READY' \| 'IN_FLIGHT' \| 'ATTEMPTED' \| 'CLOSED'/u);
   assert.match(source, /MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES/u);
   assert.match(source, /MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_REQUEST_BYTES/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_RESPONSE_BYTES/u);
   assert.match(source, /await this\.#closeClient\(\)/u);
   assert.match(index, /retained-native-supervisor-module-authorization-linux-signing-transport/u);
   assert.doesNotMatch(
@@ -3553,6 +3559,14 @@ test('native-module signing transport is Linux-authenticated, one-use, and uncom
   assert.doesNotMatch(
     workerComposition,
     /AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningTransport/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport/u,
   );
 });
 

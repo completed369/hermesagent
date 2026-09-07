@@ -536,6 +536,9 @@ published and current `main` has not been deployed to private staging.
    path with its role fixed to `WORKER_CLIENT` (ADR-0147). Construction opens no path and the caller
    cannot substitute the observer implementation or role; signer transport, byte channel,
    listener, approved paths/identities, lifecycle, and runtime connection remain external.
+   A topology-carrier-specific authenticated Linux local signing adapter now reuses the exact
+   kernel-attested IPC client while fixing the carrier protocol's 72 KiB request and 2 KiB response
+   limits internally (ADR-0148). It remains uncomposed and selects no path, custody, key, or service.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
