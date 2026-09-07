@@ -510,8 +510,11 @@ published and current `main` has not been deployed to private staging.
    accept one exact already-authorized `LISTENER` envelope, require its socket path to equal the
    carrier-root service request, bind its strict native ABI to the concrete Level-3 service
    authority, and return the one-use owner without invoking native code or authority (ADR-0141).
-   No loader is invoked or supplied, and no path/principal source, service run, shared mount, route,
-   application lifecycle, or runtime connection is selected or activated.
+   A separate unwired async entry point can now consume one explicitly injected one-use loader only
+   after the exact `LISTENER` request, carrier-root service request, abort signal, Level-3 authority
+   type, and socket path agree, then revalidates the loaded envelope before returning the inert
+   owner (ADR-0142). No production loader, request, path/principal source, service run, shared mount,
+   route, application lifecycle, or runtime connection is selected or activated.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

@@ -1,9 +1,11 @@
 import {
   AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler,
+  BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedLinuxRetainedNativeSupervisorNativeListenerBinding,
   BoundedLinuxRetainedNativeSupervisorServiceOwner,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler,
   RetainedNativeSupervisorLocalIpcError,
+  validateLinuxRetainedNativeSupervisorModuleLoadRequest,
   validateLinuxRetainedNativeSupervisorServiceRequest,
   type LoadedLinuxRetainedNativeSupervisorListenerModule,
 } from '@ventureos/agent-bridge';
@@ -146,4 +148,46 @@ export function createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner(
     loadedModule.nativeModule,
   );
   return new BoundedLinuxRetainedNativeSupervisorServiceOwner(nativeBinding, authority, clock);
+}
+
+/**
+ * Consumes one explicitly injected loader only after the exact LISTENER request, root-lookup
+ * service request, socket path, abort signal, and Level-3 authority type agree. It does not
+ * discover authority or run the resulting service owner.
+ */
+export async function loadLinuxNativeTopologyCarrierRootLookupServiceOwner(
+  loader: BoundedLinuxRetainedNativeSupervisorModuleLoader,
+  moduleLoadRequestInput: unknown,
+  signal: AbortSignal,
+  authority: BoundedLevel3RetainedNativeSupervisorServiceAuthority,
+  serviceRequestInput: unknown,
+  clock: () => number = Date.now,
+): Promise<BoundedLinuxRetainedNativeSupervisorServiceOwner> {
+  if (
+    !(loader instanceof BoundedLinuxRetainedNativeSupervisorModuleLoader) ||
+    !(signal instanceof AbortSignal) ||
+    signal.aborted ||
+    !(authority instanceof BoundedLevel3RetainedNativeSupervisorServiceAuthority) ||
+    typeof clock !== 'function'
+  ) {
+    return denyInvalidAuthorization();
+  }
+  const moduleLoadRequest =
+    validateLinuxRetainedNativeSupervisorModuleLoadRequest(moduleLoadRequestInput);
+  const serviceRequest = validateLinuxRetainedNativeSupervisorServiceRequest(serviceRequestInput);
+  if (
+    moduleLoadRequest.moduleKind !== 'LISTENER' ||
+    serviceRequest.serviceKind !== 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER' ||
+    moduleLoadRequest.socketPath !== serviceRequest.socketPath
+  ) {
+    return denyInvalidAuthorization();
+  }
+  const loadedModule = await loader.load(moduleLoadRequest, signal);
+  if (signal.aborted) return denyInvalidAuthorization();
+  return createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner(
+    loadedModule,
+    authority,
+    serviceRequest,
+    clock,
+  );
 }
