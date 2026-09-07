@@ -670,10 +670,12 @@ signing authority, or shared runtime mount. A separate unactivated Linux endpoin
 handler's sideband identity from exact injected `lstat` and `SO_PEERCRED` evidence (ADR-0135). A
 distinct Level-3 one-session service purpose can now own that endpoint's listener, bind it to the
 exact live carrier workspace and supervisor, and clean up only its created socket (ADR-0140). The
-service owner remains absent from Nest, and no native listener binding, approved path/principal
-source, service loop, or application composition supplies it. This is not runtime connectivity
-evidence; an inert API factory binds the internal handler layers (ADR-0136), but no running service
-supplies or invokes either boundary. Codex, Hermes, Pi, and `runtimeConnection` remain
+API can now also inertly join one exact already-authorized `LISTENER` envelope and matching
+carrier-root service request to the strict native ABI and concrete Level-3 one-use service owner
+(ADR-0141). The factory remains absent from Nest; it invokes neither the loader, native module,
+service authority, nor service run, and no approved path/principal source or application lifecycle
+supplies it. This is not runtime connectivity evidence; the internal handler factory (ADR-0136) and
+listener-owner factory remain uninvoked. Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
 
 ## Worker topology carrier root lookup is protocol-only

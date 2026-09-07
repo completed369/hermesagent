@@ -506,9 +506,12 @@ published and current `main` has not been deployed to private staging.
    A separate API-side one-session service purpose now binds the carrier-root lookup handler to the
    existing Level-3 listener owner, exact carrier workspace/supervisor scope, created socket
    identity, authorized worker `SO_PEERCRED`, bounded deadline, and owned cleanup (ADR-0140). It
-   remains absent from the API and worker application graphs. No approved native listener module,
-   path/principal source, service loop, shared mount, route, or runtime connection is selected or
-   activated.
+   remains absent from the API and worker application graphs. An API-local inert factory can now
+   accept one exact already-authorized `LISTENER` envelope, require its socket path to equal the
+   carrier-root service request, bind its strict native ABI to the concrete Level-3 service
+   authority, and return the one-use owner without invoking native code or authority (ADR-0141).
+   No loader is invoked or supplied, and no path/principal source, service run, shared mount, route,
+   application lifecycle, or runtime connection is selected or activated.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
