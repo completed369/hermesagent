@@ -20,12 +20,13 @@ const context = Object.freeze({ workspaceId: 'workspace-1', principalId: 'contro
 function request(
   overrides: Partial<LinuxRetainedNativeSupervisorServiceRequest> = {},
 ): LinuxRetainedNativeSupervisorServiceRequest {
+  const serviceKind = overrides.serviceKind ?? 'RECOVERY';
   return {
     schemaVersion: 1,
     purpose: 'RETAINED_NATIVE_SUPERVISOR_ONE_SESSION_SERVICE',
     workspaceId: context.workspaceId,
     supervisorInstanceId: 'native-supervisor-1',
-    serviceKind: 'RECOVERY',
+    serviceKind,
     provisioningId: 'native-path-provision-1',
     pathProvisionRequestHash: 'a'.repeat(64),
     pathApprovalEvidenceHash: 'b'.repeat(64),
@@ -35,9 +36,11 @@ function request(
     socketDirectoryOwnerGid: 65_532,
     socketDirectoryMode: 0o700,
     socketPath: '/run/ventureos/supervisor/recovery.sock',
-    expectedWorkerPid: 812,
-    expectedWorkerUid: 65_532,
-    expectedWorkerGid: 65_532,
+    expectedPeerRole:
+      serviceKind === 'TOPOLOGY_OBSERVATION_WORKER_CLIENT' ? 'API_COORDINATOR' : 'WORKER_CLIENT',
+    expectedPeerPid: 812,
+    expectedPeerUid: 65_532,
+    expectedPeerGid: 65_532,
     maximumSessionDurationMs: 2_000,
     runtimeConnection: 'NOT_CONFIGURED',
     ...overrides,
@@ -126,7 +129,7 @@ describe('BoundedLevel3RetainedNativeSupervisorServiceAuthority', () => {
     ['path evidence', { pathApprovalEvidenceHash: 'c'.repeat(64) }],
     ['socket identity', { socketDirectoryIdentityReference: 'linux:dev-5:ino-7' }],
     ['socket path', { socketPath: '/run/ventureos/supervisor/other.sock' }],
-    ['worker principal', { expectedWorkerPid: 813 }],
+    ['peer principal', { expectedPeerPid: 813 }],
     ['deadline', { maximumSessionDurationMs: 1_900 }],
   ])('rejects %s request drift and consumes the authority', async (_label, drift) => {
     const expectedRequest = request();
@@ -156,6 +159,15 @@ describe('BoundedLevel3RetainedNativeSupervisorServiceAuthority', () => {
           capability(),
           context,
           request({ provisioningId: 'secret-reference' }),
+          () => NOW,
+        ),
+    ).toThrow(/invalid/u);
+    expect(
+      () =>
+        new BoundedLevel3RetainedNativeSupervisorServiceAuthority(
+          capability(),
+          context,
+          request({ expectedPeerRole: 'API_COORDINATOR' }),
           () => NOW,
         ),
     ).toThrow(/invalid/u);

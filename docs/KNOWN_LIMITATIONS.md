@@ -743,5 +743,8 @@ The resulting authenticated accepted-session reservation can now transfer direct
 signer-loaded one-use carrier owner with bounded cleanup on failed composition (ADR-0156), but no
 listener/service authority, approved production identity/path, signer custody, or worker lifecycle
 is selected or activated.
+The retained-native one-session service contract now hashes and exact-binds a purpose-derived peer
+role plus role-neutral peer credentials (ADR-0157), but it does not yet define or run the distinct
+worker carrier listener service. No API peer identity or positive listener authority is selected.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

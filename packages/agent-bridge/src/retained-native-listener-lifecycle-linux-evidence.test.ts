@@ -233,9 +233,9 @@ describeLinux('retained-native listener lifecycle Linux kernel evidence', () => 
       socketOwnerUid: process.geteuid!(),
       socketOwnerGid: process.getegid!(),
       socketMode: 0o600,
-      expectedWorkerPid: process.pid,
-      expectedWorkerUid: process.geteuid!(),
-      expectedWorkerGid: process.getegid!(),
+      expectedPeerPid: process.pid,
+      expectedPeerUid: process.geteuid!(),
+      expectedPeerGid: process.getegid!(),
       listenBacklog: 1,
       runtimeConnection: 'NOT_CONFIGURED',
       ...drift,
@@ -269,7 +269,7 @@ describeLinux('retained-native listener lifecycle Linux kernel evidence', () => 
     const trustedPeer = peer();
     const lifecycle = new BoundedLinuxRetainedNativeSupervisorListenerLifecycle(
       new NativeLifecycleBinding(addon),
-      authorization(socketPath, { expectedWorkerPid: process.pid + 1 }),
+      authorization(socketPath, { expectedPeerPid: process.pid + 1 }),
     );
 
     await expect(lifecycle.runOne(trustedPeer, new AbortController().signal)).rejects.toMatchObject(
