@@ -227,9 +227,19 @@ describe('BoundedLevel3RetainedNativeSupervisorServiceAuthority', () => {
       workerObservationRequest,
       () => NOW,
     ).authorize(workerObservationRequest)) as Record<string, unknown>;
-    const results = [recovery, signing, apiObservation, workerObservation];
-    expect(new Set(results.map((result) => result.requestHash))).toHaveLength(4);
-    expect(new Set(results.map((result) => result.approvalEvidenceHash))).toHaveLength(4);
-    expect(new Set(results.map((result) => result.serviceRunId))).toHaveLength(4);
+    const carrierRootRequest = request({
+      serviceKind: 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER',
+      socketPath: '/run/ventureos/supervisor/carrier-root.sock',
+    });
+    const carrierRoot = (await new BoundedLevel3RetainedNativeSupervisorServiceAuthority(
+      capability(),
+      context,
+      carrierRootRequest,
+      () => NOW,
+    ).authorize(carrierRootRequest)) as Record<string, unknown>;
+    const results = [recovery, signing, apiObservation, workerObservation, carrierRoot];
+    expect(new Set(results.map((result) => result.requestHash))).toHaveLength(5);
+    expect(new Set(results.map((result) => result.approvalEvidenceHash))).toHaveLength(5);
+    expect(new Set(results.map((result) => result.serviceRunId))).toHaveLength(5);
   });
 });

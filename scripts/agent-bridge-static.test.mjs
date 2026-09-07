@@ -3226,7 +3226,7 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.doesNotMatch(worker, /loadLinuxNativeTopologyCarrierRootSource/u);
 });
 
-test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
+test('role-local topology and carrier-root listeners require distinct Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',
     'utf8',
@@ -3251,6 +3251,18 @@ test('role-local topology observation listeners require exact Level-3 one-sessio
   );
   assert.match(owner, /TOPOLOGY_OBSERVATION_API_LISTENER/u);
   assert.match(owner, /TOPOLOGY_OBSERVATION_WORKER_CLIENT/u);
+  assert.match(owner, /TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER/u);
+  assert.match(owner, /runTopologyCarrierRootLookupOne/u);
+  assert.match(lifecycle, /runTopologyCarrierRootLookupOne/u);
+  assert.match(
+    lifecycle,
+    /AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler/u,
+  );
+  assert.match(owner, /carrierBinding\.workspaceId\s*!==\s*lifecycle\.grant\.workspaceId/u);
+  assert.match(
+    owner,
+    /carrierBinding\.supervisorInstanceId\s*!==\s*lifecycle\.grant\.supervisorInstanceId/u,
+  );
   assert.match(owner, /maximumSessionDurationMs/u);
   assert.match(authority, /authorityLevelFor\(boundContext\) !== 3/u);
   assert.match(authority, /actorKind === 'RUNTIME'/u);
@@ -3262,6 +3274,8 @@ test('role-local topology observation listeners require exact Level-3 one-sessio
     workerComposition,
     /BoundedLinuxRetainedNativeSupervisorServiceOwner|BoundedLevel3RetainedNativeSupervisorServiceAuthority/u,
   );
+  assert.doesNotMatch(apiComposition, /runTopologyCarrierRootLookupOne/u);
+  assert.doesNotMatch(workerComposition, /runTopologyCarrierRootLookupOne/u);
 });
 
 test('retained-native module authorization trust is signed, revocable, and uncomposed', () => {
