@@ -2327,7 +2327,7 @@ test('Linux retained-native listener lifecycle is ownership-safe, bounded, and u
   assert.match(source, /await Promise\.race/u);
   assert.ok(
     source.indexOf('identity = assertAuthorizedCreation(') <
-      source.indexOf('const handler = await createHandler(identity)'),
+      source.indexOf('await run(listener, identity)'),
   );
   assert.match(source, /assertCleanup\(listener\.closeAndUnlinkOwned\(\), identity\)/u);
   assert.match(source, /evidence\.disposition !== 'OWNED_SOCKET_REMOVED'/u);
@@ -3455,13 +3455,17 @@ test('API carrier root listener composition bounds exact loader and one-session 
   );
 });
 
-test('role-local topology and carrier-root listeners require distinct Level-3 one-session authority', () => {
+test('role-local topology and carrier listeners require distinct Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',
     'utf8',
   );
   const owner = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-service-owner.ts',
+    'utf8',
+  );
+  const carrierComposition = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier-composition.ts',
     'utf8',
   );
   const authority = readFileSync(
@@ -3491,6 +3495,35 @@ test('role-local topology and carrier-root listeners require distinct Level-3 on
     lifecycle,
     /AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler/u,
   );
+  assert.match(owner, /TOPOLOGY_CARRIER_WORKER_LISTENER/u);
+  assert.match(owner, /runTopologyCarrierWorkerOne/u);
+  assert.match(
+    owner,
+    /authenticateRootResolvedRetainedNativeSupervisorTopologyObservationWorkerBinding/u,
+  );
+  assert.match(
+    owner,
+    /RootResolvedRetainedNativeSupervisorTopologyObservationWorker\.prototype\.handle\.bind/u,
+  );
+  assert.match(carrierComposition, /ROOT_RESOLVED_WORKER_BINDINGS = new WeakMap/u);
+  assert.match(
+    carrierComposition,
+    /ROOT_RESOLVED_WORKER_BINDINGS\.get\(input\)[\s\S]*retainedNativeSupervisorTopologyObservationCarrierBindingHash\(binding\)/u,
+  );
+  assert.match(
+    owner,
+    /case 'TOPOLOGY_OBSERVATION_WORKER_CLIENT':\s*case 'TOPOLOGY_CARRIER_WORKER_LISTENER':\s*return 'API_COORDINATOR'/u,
+  );
+  assert.match(lifecycle, /runTopologyCarrierWorkerOne/u);
+  assert.match(
+    lifecycle,
+    /BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission/u,
+  );
+  assert.match(
+    lifecycle,
+    /claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession/u,
+  );
+  assert.match(lifecycle, /await session\.handleOne\(signal\)/u);
   assert.match(owner, /carrierBinding\.workspaceId\s*!==\s*lifecycle\.grant\.workspaceId/u);
   assert.match(
     owner,
@@ -3508,6 +3541,7 @@ test('role-local topology and carrier-root listeners require distinct Level-3 on
     /BoundedLinuxRetainedNativeSupervisorServiceOwner|BoundedLevel3RetainedNativeSupervisorServiceAuthority/u,
   );
   assert.doesNotMatch(apiComposition, /runTopologyCarrierRootLookupOne/u);
+  assert.doesNotMatch(workerComposition, /runTopologyCarrierWorkerOne/u);
   assert.doesNotMatch(workerComposition, /runTopologyCarrierRootLookupOne/u);
 });
 

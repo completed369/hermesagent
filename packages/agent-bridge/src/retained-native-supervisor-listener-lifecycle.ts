@@ -22,10 +22,19 @@ import { BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservation
 import { AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler } from './retained-native-supervisor-topology-observation-carrier-root-lookup-local-ipc';
 import type { RetainedNativeSupervisorTopologyObservationCarrierBinding } from './retained-native-supervisor-topology-observation-carrier';
 import {
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+  type BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+} from './retained-native-supervisor-topology-observation-carrier-channel';
+import {
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   type LinuxRetainedNativeSupervisorTopologyObservationPort,
   type LinuxRetainedNativeSupervisorTopologyObserverRole,
 } from './retained-native-supervisor-shared-runtime-topology';
+import {
+  type AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+  BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission,
+  claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+} from './retained-native-supervisor-topology-observation-carrier-worker-admission';
 
 export interface LinuxRetainedNativeSupervisorListenerAuthorization {
   readonly schemaVersion: 1;
@@ -602,12 +611,94 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
     );
   }
 
+  /**
+   * Creates one worker-side carrier listener, authenticates one API peer against the exact created
+   * socket, and transfers that accepted session into the canonical one-use worker endpoint.
+   */
+  async runTopologyCarrierWorkerOne(
+    endpoint: BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+    signal: AbortSignal,
+    timeoutMs = 5_000,
+  ): Promise<void> {
+    if (
+      !(
+        endpoint instanceof
+        BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint
+      ) ||
+      !Number.isSafeInteger(timeoutMs) ||
+      timeoutMs < 100 ||
+      timeoutMs > 5_000
+    )
+      deny('NOT_CONFIGURED');
+    return this.runWithOwnedListener(async (listener, identity) => {
+      const admission =
+        new BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission(
+          listener,
+          {
+            schemaVersion: 1,
+            platform: 'LINUX',
+            socketPath: this.#authorization.socketPath,
+            socketDevice: identity.device,
+            socketInode: identity.inode,
+            socketOwnerUid: identity.ownerUid,
+            socketOwnerGid: identity.ownerGid,
+            socketMode: identity.mode,
+            expectedPeerPid: this.#authorization.expectedPeerPid,
+            expectedPeerUid: this.#authorization.expectedPeerUid,
+            expectedPeerGid: this.#authorization.expectedPeerGid,
+            runtimeConnection: 'NOT_CONFIGURED',
+          },
+          timeoutMs,
+        );
+      let admitted:
+        | AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession
+        | undefined = await admission.acceptOne(signal);
+      let accepted:
+        BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession | undefined;
+      try {
+        accepted =
+          claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+            admitted,
+          );
+        admitted = undefined;
+        const session = accepted.attach(endpoint);
+        accepted = undefined;
+        await session.handleOne(signal);
+      } catch (error) {
+        try {
+          if (accepted) await accepted.close();
+          else if (admitted) await admitted.close();
+        } catch {
+          return deny('EXCHANGE_DENIED');
+        }
+        if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+        return deny('EXCHANGE_DENIED');
+      }
+    }, signal);
+  }
+
   private async runWithHandler(
     createHandler: (
       identity: Readonly<Record<string, unknown>>,
     ) =>
       | AuthenticatedLinuxLocalRetainedNativeSupervisorInboundHandler
       | Promise<AuthenticatedLinuxLocalRetainedNativeSupervisorInboundHandler>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    return this.runWithOwnedListener(async (listener, identity) => {
+      const handler = await createHandler(identity);
+      await new BoundedLinuxRetainedNativeSupervisorSession(listener, handler).handleOne(
+        this.#authorization.socketPath,
+        signal,
+      );
+    }, signal);
+  }
+
+  private async runWithOwnedListener(
+    run: (
+      listener: LinuxRetainedNativeSupervisorOwnedListener,
+      identity: Readonly<Record<string, unknown>>,
+    ) => Promise<void>,
     signal: AbortSignal,
   ): Promise<void> {
     if (this.#consumed || !(signal instanceof AbortSignal) || signal.aborted)
@@ -637,11 +728,7 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
         'SOCKET',
       );
       if (signal.aborted || !sameIdentity(identity, current)) deny('INVALID_ATTESTATION');
-      const handler = await createHandler(identity);
-      await new BoundedLinuxRetainedNativeSupervisorSession(listener, handler).handleOne(
-        this.#authorization.socketPath,
-        signal,
-      );
+      await run(listener, identity);
     } catch (error) {
       if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
       deny('EXCHANGE_DENIED');

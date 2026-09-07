@@ -19,6 +19,11 @@ import {
   validateRetainedNativeSupervisorTopologyObservationCarrierBinding,
   type RetainedNativeSupervisorTopologyObservationCarrierBinding,
 } from './retained-native-supervisor-topology-observation-carrier';
+import { BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint } from './retained-native-supervisor-topology-observation-carrier-channel';
+import {
+  RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
+  authenticateRootResolvedRetainedNativeSupervisorTopologyObservationWorkerBinding,
+} from './retained-native-supervisor-topology-observation-carrier-composition';
 import { BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler } from './retained-native-supervisor-topology-observation-carrier-root-lookup-handler';
 import {
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
@@ -43,6 +48,7 @@ export type LinuxRetainedNativeSupervisorServiceKind =
   | 'MODULE_AUTHORIZATION_SIGNING'
   | 'TOPOLOGY_OBSERVATION_API_LISTENER'
   | 'TOPOLOGY_OBSERVATION_WORKER_CLIENT'
+  | 'TOPOLOGY_CARRIER_WORKER_LISTENER'
   | 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER';
 
 export type LinuxRetainedNativeSupervisorServicePeerRole = 'API_COORDINATOR' | 'WORKER_CLIENT';
@@ -228,6 +234,7 @@ function expectedPeerRole(
 ): LinuxRetainedNativeSupervisorServicePeerRole {
   switch (serviceKind) {
     case 'TOPOLOGY_OBSERVATION_WORKER_CLIENT':
+    case 'TOPOLOGY_CARRIER_WORKER_LISTENER':
       return 'API_COORDINATOR';
     case 'RECOVERY':
     case 'MODULE_AUTHORIZATION_SIGNING':
@@ -252,6 +259,7 @@ export function validateLinuxRetainedNativeSupervisorServiceRequest(
       value.serviceKind !== 'MODULE_AUTHORIZATION_SIGNING' &&
       value.serviceKind !== 'TOPOLOGY_OBSERVATION_API_LISTENER' &&
       value.serviceKind !== 'TOPOLOGY_OBSERVATION_WORKER_CLIENT' &&
+      value.serviceKind !== 'TOPOLOGY_CARRIER_WORKER_LISTENER' &&
       value.serviceKind !== 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER') ||
     value.socketDirectoryMode !== 0o700 ||
     value.runtimeConnection !== 'NOT_CONFIGURED'
@@ -483,6 +491,54 @@ export class BoundedLinuxRetainedNativeSupervisorServiceOwner {
         ownedSignal,
         lifecycle.grant.maximumSessionDurationMs,
         this.clock,
+      ),
+    );
+  }
+
+  async runTopologyCarrierWorkerOne(
+    input: unknown,
+    worker: RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
+    carrierBindingInput: unknown,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (!(worker instanceof RootResolvedRetainedNativeSupervisorTopologyObservationWorker))
+      deny('NOT_CONFIGURED');
+    let carrierBinding: Readonly<RetainedNativeSupervisorTopologyObservationCarrierBinding>;
+    try {
+      carrierBinding = validateRetainedNativeSupervisorTopologyObservationCarrierBinding(
+        carrierBindingInput,
+        this.validNow(),
+      );
+    } catch (error) {
+      if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+      return deny('INVALID_AUTHORIZATION');
+    }
+    const authenticatedWorker =
+      authenticateRootResolvedRetainedNativeSupervisorTopologyObservationWorkerBinding(
+        worker,
+        carrierBinding,
+      );
+    const lifecycle = await this.authorizeOne(input, 'TOPOLOGY_CARRIER_WORKER_LISTENER', signal);
+    if (
+      carrierBinding.workspaceId !== lifecycle.grant.workspaceId ||
+      carrierBinding.supervisorInstanceId !== lifecycle.grant.supervisorInstanceId
+    )
+      deny('INVALID_AUTHORIZATION');
+    const endpoint =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+        Object.freeze({
+          handle:
+            RootResolvedRetainedNativeSupervisorTopologyObservationWorker.prototype.handle.bind(
+              authenticatedWorker,
+            ),
+        }),
+        lifecycle.grant.maximumSessionDurationMs,
+      );
+    return this.runBounded(lifecycle.grant, signal, (ownedSignal) =>
+      lifecycle.owner.runTopologyCarrierWorkerOne(
+        endpoint,
+        ownedSignal,
+        lifecycle.grant.maximumSessionDurationMs,
       ),
     );
   }

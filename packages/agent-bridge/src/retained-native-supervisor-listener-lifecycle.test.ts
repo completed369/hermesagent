@@ -18,6 +18,7 @@ import {
   RetainedNativeSupervisorRecoveryRequest,
   type RetainedNativeSupervisorRecoveryTransport,
 } from './retained-native-supervisor-recovery';
+import { BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint } from './retained-native-supervisor-topology-observation-carrier-channel';
 
 const socketPath = '/run/ventureos/retained-native-supervisor.sock';
 const parentIdentity = Object.freeze({
@@ -99,8 +100,9 @@ function authorization(
 
 class FixtureAcceptedSession implements LinuxRetainedNativeSupervisorAcceptedSession {
   readonly peerCredentials = vi.fn(async (_signal: AbortSignal) => workerCredentials);
-  readonly readToEof = vi.fn(async (_maximumBytes: number, _signal: AbortSignal) =>
-    Buffer.from(requestFrame),
+  readonly readToEof = vi.fn(
+    async (_maximumBytes: number, _signal: AbortSignal): Promise<unknown> =>
+      Buffer.from(requestFrame),
   );
   readonly writeAndShutdown = vi.fn(
     async (_frame: Readonly<Uint8Array>, _signal: AbortSignal) => undefined,
@@ -216,6 +218,65 @@ describe('bounded Linux retained-native supervisor listener lifecycle', () => {
     ]);
     expect(binding.listener.closeAndUnlinkOwned.mock.results[0]?.value).not.toBeInstanceOf(Promise);
     expect(peer.exchange).toHaveBeenCalledOnce();
+  });
+
+  it('admits one kernel-authenticated API carrier session into the exact worker endpoint', async () => {
+    const { binding, lifecycle } = fixture();
+    const message = Object.freeze({
+      direction: 'COORDINATOR_TO_WORKER',
+      runtimeConnection: 'NOT_CONFIGURED',
+      schemaVersion: 1,
+    });
+    const handler = {
+      handle: vi.fn(async () => ({
+        direction: 'WORKER_TO_COORDINATOR',
+        runtimeConnection: 'NOT_CONFIGURED',
+        schemaVersion: 1,
+      })),
+    };
+    const endpoint =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(handler);
+    binding.listener.accepted.readToEof.mockResolvedValue(
+      new TextEncoder().encode(canonicalJson(message)),
+    );
+
+    await expect(
+      lifecycle.runTopologyCarrierWorkerOne(endpoint, new AbortController().signal),
+    ).resolves.toBeUndefined();
+
+    expect(handler.handle).toHaveBeenCalledWith(message, expect.any(AbortSignal));
+    expect(binding.listener.accepted.peerCredentials).toHaveBeenCalledOnce();
+    expect(binding.listener.accepted.close).toHaveBeenCalledOnce();
+    expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
+    expect(binding.listener.calls).toEqual([
+      'creation-evidence',
+      'lstat',
+      'lstat',
+      'accept',
+      'lstat',
+      'cleanup',
+    ]);
+  });
+
+  it('closes a mismatched carrier peer and the exact owned listener without frame activity', async () => {
+    const { binding, lifecycle } = fixture();
+    const handler = { handle: vi.fn() };
+    const endpoint =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(handler);
+    binding.listener.accepted.peerCredentials.mockResolvedValue({
+      ...workerCredentials,
+      pid: workerCredentials.pid + 1,
+    });
+
+    await expect(
+      lifecycle.runTopologyCarrierWorkerOne(endpoint, new AbortController().signal),
+    ).rejects.toEqual(expectCode('INVALID_ATTESTATION'));
+
+    expect(binding.listener.accepted.readToEof).not.toHaveBeenCalled();
+    expect(binding.listener.accepted.writeAndShutdown).not.toHaveBeenCalled();
+    expect(binding.listener.accepted.close).toHaveBeenCalledOnce();
+    expect(handler.handle).not.toHaveBeenCalled();
+    expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
   });
 
   it('rejects deny and non-Linux bindings', () => {

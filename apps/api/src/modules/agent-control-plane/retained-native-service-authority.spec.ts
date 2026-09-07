@@ -37,7 +37,10 @@ function request(
     socketDirectoryMode: 0o700,
     socketPath: '/run/ventureos/supervisor/recovery.sock',
     expectedPeerRole:
-      serviceKind === 'TOPOLOGY_OBSERVATION_WORKER_CLIENT' ? 'API_COORDINATOR' : 'WORKER_CLIENT',
+      serviceKind === 'TOPOLOGY_OBSERVATION_WORKER_CLIENT' ||
+      serviceKind === 'TOPOLOGY_CARRIER_WORKER_LISTENER'
+        ? 'API_COORDINATOR'
+        : 'WORKER_CLIENT',
     expectedPeerPid: 812,
     expectedPeerUid: 65_532,
     expectedPeerGid: 65_532,
@@ -249,9 +252,26 @@ describe('BoundedLevel3RetainedNativeSupervisorServiceAuthority', () => {
       carrierRootRequest,
       () => NOW,
     ).authorize(carrierRootRequest)) as Record<string, unknown>;
-    const results = [recovery, signing, apiObservation, workerObservation, carrierRoot];
-    expect(new Set(results.map((result) => result.requestHash))).toHaveLength(5);
-    expect(new Set(results.map((result) => result.approvalEvidenceHash))).toHaveLength(5);
-    expect(new Set(results.map((result) => result.serviceRunId))).toHaveLength(5);
+    const workerCarrierRequest = request({
+      serviceKind: 'TOPOLOGY_CARRIER_WORKER_LISTENER',
+      socketPath: '/run/ventureos/supervisor/carrier-worker.sock',
+    });
+    const workerCarrier = (await new BoundedLevel3RetainedNativeSupervisorServiceAuthority(
+      capability(),
+      context,
+      workerCarrierRequest,
+      () => NOW,
+    ).authorize(workerCarrierRequest)) as Record<string, unknown>;
+    const results = [
+      recovery,
+      signing,
+      apiObservation,
+      workerObservation,
+      carrierRoot,
+      workerCarrier,
+    ];
+    expect(new Set(results.map((result) => result.requestHash))).toHaveLength(6);
+    expect(new Set(results.map((result) => result.approvalEvidenceHash))).toHaveLength(6);
+    expect(new Set(results.map((result) => result.serviceRunId))).toHaveLength(6);
   });
 });

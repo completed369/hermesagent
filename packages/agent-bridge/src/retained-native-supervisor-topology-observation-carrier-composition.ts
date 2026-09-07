@@ -3,6 +3,7 @@ import {
   AuthenticatedCrossContainerRetainedNativeSupervisorTopologyObservationHandler,
   AuthenticatedCrossContainerRetainedNativeSupervisorTopologyObservationTransport,
   DenyRetainedNativeSupervisorTopologyObservationCarrier,
+  retainedNativeSupervisorTopologyObservationCarrierBindingHash,
   validateRetainedNativeSupervisorTopologyObservationCarrierBinding,
   type ClosableRetainedNativeSupervisorTopologyObservationCarrier,
   type RetainedNativeSupervisorTopologyObservationCarrierBinding,
@@ -27,6 +28,7 @@ const MAX_TIMEOUT_MS = 5_000;
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
 const PRIVATE_TEXT =
   /(bearer|token|secret|password|private[-_ ]?key|authorization|credential|cookie|session)/iu;
+const ROOT_RESOLVED_WORKER_BINDINGS = new WeakMap<object, string>();
 
 export interface RetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource {
   read(
@@ -272,6 +274,10 @@ export class RootResolvedRetainedNativeSupervisorTopologyObservationWorker {
       binding,
       clock(),
     );
+    ROOT_RESOLVED_WORKER_BINDINGS.set(
+      this,
+      retainedNativeSupervisorTopologyObservationCarrierBindingHash(this.#binding),
+    );
     this.#read = bindRootSource(rootSource);
     if (
       observer instanceof DenyLinuxRetainedNativeSupervisorTopologyObservationPort ||
@@ -310,4 +316,18 @@ export class RootResolvedRetainedNativeSupervisorTopologyObservationWorker {
       this.clock,
     ).handle(input, signal);
   }
+}
+
+/** Proves that one nominal root-resolved worker was constructed for this exact carrier binding. */
+export function authenticateRootResolvedRetainedNativeSupervisorTopologyObservationWorkerBinding(
+  input: unknown,
+  binding: Readonly<RetainedNativeSupervisorTopologyObservationCarrierBinding>,
+): RootResolvedRetainedNativeSupervisorTopologyObservationWorker {
+  if (
+    !(input instanceof RootResolvedRetainedNativeSupervisorTopologyObservationWorker) ||
+    ROOT_RESOLVED_WORKER_BINDINGS.get(input) !==
+      retainedNativeSupervisorTopologyObservationCarrierBindingHash(binding)
+  )
+    deny('INVALID_AUTHORIZATION');
+  return input;
 }
