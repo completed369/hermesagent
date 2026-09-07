@@ -324,6 +324,56 @@ export function createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNa
 }
 
 /**
+ * Binds one already-authorized loaded CLIENT module to the carrier signing path. Construction
+ * loads no code and performs no signing, lookup, observation, frame, IPC, filesystem, or native
+ * activity.
+ */
+export function createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  loadedSigningModuleInput: unknown,
+  signingAuthorizationInput: unknown,
+  signerKeyId: string,
+  binding: unknown,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+  frameTimeoutMs = 5_000,
+): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint {
+  try {
+    if (
+      !(
+        source instanceof
+        BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource
+      )
+    ) {
+      return denyInvalidAuthorization();
+    }
+  } catch (error) {
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+    return denyInvalidAuthorization();
+  }
+  const loadedSigningModule = authenticateLoadedClientModule(loadedSigningModuleInput);
+  const signingAuthorization =
+    authenticateRetainedNativeSupervisorLocalIpcAuthorization(signingAuthorizationInput);
+  if (loadedSigningModule.socketPath !== signingAuthorization.socketPath) {
+    return denyInvalidAuthorization();
+  }
+  const nativeBinding = new BoundedLinuxRetainedNativeSupervisorNativeClientBinding(
+    loadedSigningModule.nativeModule,
+  );
+  const signingClient = new BoundedLinuxRetainedNativeSupervisorLocalIpcClient(nativeBinding);
+  return createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+    source,
+    signingClient,
+    signingAuthorization,
+    signerKeyId,
+    binding,
+    clock,
+    signingTimeoutMs,
+    frameTimeoutMs,
+  );
+}
+
+/**
  * Consumes one explicitly injected module loader only after the exact CLIENT request, abort
  * signal, and local socket authorization agree. It does not discover authority or wire the
  * resulting source into the worker lifecycle.
