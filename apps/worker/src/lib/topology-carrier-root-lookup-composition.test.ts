@@ -3,6 +3,7 @@ import {
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
+  DenyRetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport,
   DenyRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   DenyRetainedNativeSupervisorLocalIpcClient,
   RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
@@ -12,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createFramedRootResolvedLinuxNativeTopologyCarrierWorker,
+  createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker,
   createLinuxLocalTopologyCarrierRootSource,
   createLoadedLinuxNativeTopologyCarrierRootSource,
   createRootResolvedLinuxNativeTopologyCarrierWorker,
@@ -283,6 +285,114 @@ describe('worker Linux topology carrier root lookup composition', () => {
     expect(client.close).not.toHaveBeenCalled();
     expect(observer.observe).not.toHaveBeenCalled();
     expect(signer.sign).not.toHaveBeenCalled();
+  });
+
+  it('constructs the exact worker-role keyless signer inside the framed endpoint', () => {
+    const client = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      client,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const observer = {
+      observe: vi.fn(async (): Promise<never> => {
+        throw new Error('construction must not observe');
+      }),
+    };
+    const signingTransport = {
+      exchange: vi.fn(async (): Promise<never> => {
+        throw new Error('construction must not sign');
+      }),
+      close: vi.fn(async (): Promise<void> => {
+        throw new Error('construction must not close signing transport');
+      }),
+    };
+
+    const endpoint = createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+      source,
+      observer,
+      'key:worker:carrier-composition',
+      signingTransport,
+      binding,
+      () => NOW,
+      2_000,
+      2_000,
+    );
+
+    expect(endpoint).toBeInstanceOf(
+      BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+    );
+    expect(client.exchange).not.toHaveBeenCalled();
+    expect(client.close).not.toHaveBeenCalled();
+    expect(observer.observe).not.toHaveBeenCalled();
+    expect(signingTransport.exchange).not.toHaveBeenCalled();
+    expect(signingTransport.close).not.toHaveBeenCalled();
+  });
+
+  it('denies substituted worker dependencies before touching the signing transport', () => {
+    const client = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      client,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const signingTransport = {
+      exchange: vi.fn(),
+      close: vi.fn(),
+    };
+
+    expect(() =>
+      createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+        {
+          read: vi.fn(),
+        } as unknown as BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+        { observe: vi.fn() },
+        'key:worker:carrier-composition',
+        signingTransport,
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(() =>
+      createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+        source,
+        Object.defineProperty({}, 'observe', {
+          get() {
+            throw new Error('accessor must be contained');
+          },
+        }) as { observe: () => Promise<never> },
+        'key:worker:carrier-composition',
+        signingTransport,
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(() =>
+      createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+        source,
+        new DenyLinuxRetainedNativeSupervisorTopologyObservationPort(),
+        'key:worker:carrier-composition',
+        signingTransport,
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(() =>
+      createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+        source,
+        { observe: vi.fn() },
+        'key:worker:carrier-composition',
+        new DenyRetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport(),
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(signingTransport.exchange).not.toHaveBeenCalled();
+    expect(signingTransport.close).not.toHaveBeenCalled();
+    expect(client.exchange).not.toHaveBeenCalled();
+    expect(client.close).not.toHaveBeenCalled();
   });
 
   it('denies envelope drift and socket-path substitution before native activity', () => {

@@ -4,14 +4,17 @@ import {
   BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedLinuxRetainedNativeSupervisorLocalIpcClient,
   BoundedLinuxRetainedNativeSupervisorNativeClientBinding,
+  BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+  DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   RetainedNativeSupervisorLocalIpcError,
   RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
   type ClosableRetainedNativeSupervisorLocalIpcClient,
   type LinuxRetainedNativeSupervisorTopologyObservationPort,
   type LoadedLinuxRetainedNativeSupervisorClientModule,
   type RetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
+  type RetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport,
   validateLinuxRetainedNativeSupervisorModuleLoadRequest,
 } from '@ventureos/agent-bridge';
 
@@ -180,6 +183,54 @@ export function createFramedRootResolvedLinuxNativeTopologyCarrierWorker(
   );
   return new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
     worker,
+    frameTimeoutMs,
+  );
+}
+
+/**
+ * Constructs the exact worker-role bounded keyless signer and binds it to the framed root-resolved
+ * endpoint. Construction performs no signing exchange, close, lookup, observation, or native call.
+ */
+export function createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  observer: LinuxRetainedNativeSupervisorTopologyObservationPort,
+  signerKeyId: string,
+  signingTransport: RetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport,
+  binding: unknown,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+  frameTimeoutMs = 5_000,
+): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint {
+  try {
+    if (
+      !(
+        source instanceof
+        BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource
+      ) ||
+      observer instanceof DenyLinuxRetainedNativeSupervisorTopologyObservationPort ||
+      !observer ||
+      typeof observer.observe !== 'function'
+    ) {
+      return denyInvalidAuthorization();
+    }
+  } catch (error) {
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+    return denyInvalidAuthorization();
+  }
+  const signer = new BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner(
+    binding,
+    'WORKER_CLIENT',
+    signerKeyId,
+    signingTransport,
+    clock,
+    signingTimeoutMs,
+  );
+  return createFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+    source,
+    observer,
+    signer,
+    binding,
+    clock,
     frameTimeoutMs,
   );
 }

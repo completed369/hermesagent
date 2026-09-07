@@ -709,5 +709,8 @@ carrier-listener lifecycle, or verified authenticated round trip.
 That exact root-resolved worker can now also be wrapped in the bounded canonical one-use byte-frame
 endpoint with an explicit deadline (ADR-0145). The factory remains inert and outside `worker.ts`;
 production still supplies no byte channel, listener, or any of the missing approved dependencies.
+The worker can now construct the bounded keyless delivery signer inside that frame with the role
+fixed to `WORKER_CLIENT` and the same carrier binding (ADR-0146), but signer transport/custody and a
+concrete retained-descriptor observer remain uncomposed and no signing exchange can occur.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

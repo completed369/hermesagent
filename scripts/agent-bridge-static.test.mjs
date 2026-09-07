@@ -3214,6 +3214,12 @@ test('worker carrier root composition consumes only an exact loader and remains 
     source,
     /new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint/u,
   );
+  assert.match(source, /createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker/u);
+  assert.match(
+    source,
+    /new BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner/u,
+  );
+  assert.match(source, /'WORKER_CLIENT'/u);
   assert.match(source, /new BoundedLinuxRetainedNativeSupervisorNativeClientBinding/u);
   assert.match(source, /new BoundedLinuxRetainedNativeSupervisorLocalIpcClient/u);
   assert.match(source, /loadedModule\.socketPath !== localIpcAuthorization\.socketPath/u);
@@ -3233,6 +3239,7 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.doesNotMatch(worker, /loadLinuxNativeTopologyCarrierRootSource/u);
   assert.doesNotMatch(worker, /createRootResolvedLinuxNativeTopologyCarrierWorker/u);
   assert.doesNotMatch(worker, /createFramedRootResolvedLinuxNativeTopologyCarrierWorker/u);
+  assert.doesNotMatch(worker, /createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker/u);
 });
 
 test('API carrier root listener composition bounds exact loader and one-session run outside Nest', () => {
