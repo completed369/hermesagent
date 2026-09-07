@@ -2950,6 +2950,20 @@ test('topology carrier byte framing is one-use, bounded, canonical, and uncompos
     source,
     /class BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint/u,
   );
+  assert.match(
+    source,
+    /interface RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession/u,
+  );
+  assert.match(
+    source,
+    /class BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession/u,
+  );
+  assert.match(
+    source,
+    /this\.#readToEof\(\s*MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_CHANNEL_FRAME_BYTES/u,
+  );
+  assert.match(source, /this\.#endpoint\.handle\(request, signal\)/u);
+  assert.match(source, /this\.#writeAndShutdown\(response, attemptSignal\)/u);
   assert.match(source, /new TextDecoder\('utf-8', \{ fatal: true \}\)/u);
   assert.match(source, /canonicalJson\(value\) !== text/u);
   assert.match(source, /#attempted/u);
@@ -2960,6 +2974,10 @@ test('topology carrier byte framing is one-use, bounded, canonical, and uncompos
   );
   assert.doesNotMatch(apiComposition, /TopologyObservationCarrierChannel/u);
   assert.doesNotMatch(workerComposition, /TopologyObservationCarrierChannel/u);
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession/u,
+  );
 });
 
 test('topology carrier delivery signing is role-bound, keyless, bounded, and uncomposed', () => {

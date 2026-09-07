@@ -4,11 +4,14 @@ import { canonicalJson } from './codec';
 import {
   BoundedRetainedNativeSupervisorTopologyObservationCarrierChannel,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession,
   DenyRetainedNativeSupervisorTopologyObservationCarrierByteChannel,
   DenyRetainedNativeSupervisorTopologyObservationCarrierMessageHandler,
+  DenyRetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
   MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_CHANNEL_FRAME_BYTES,
   type RetainedNativeSupervisorTopologyObservationCarrierByteChannel,
   type RetainedNativeSupervisorTopologyObservationCarrierMessageHandler,
+  type RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
 } from './retained-native-supervisor-topology-observation-carrier-channel';
 
 function code(value: string) {
@@ -36,6 +39,16 @@ class LoopbackChannel implements RetainedNativeSupervisorTopologyObservationCarr
   constructor(
     readonly endpoint: BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   ) {}
+}
+
+class WorkerByteSession implements RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession {
+  readonly readToEof = vi.fn(async (_maximumBytes: number, _signal: AbortSignal) =>
+    frame({ direction: 'COORDINATOR_TO_WORKER' }),
+  );
+  readonly writeAndShutdown = vi.fn(
+    async (_responseFrame: Readonly<Uint8Array>, _signal: AbortSignal) => undefined,
+  );
+  readonly close = vi.fn(async () => undefined);
 }
 
 describe('bounded topology observation carrier byte channel', () => {
@@ -214,5 +227,168 @@ describe('bounded topology observation carrier byte channel', () => {
           new DenyRetainedNativeSupervisorTopologyObservationCarrierMessageHandler(),
         ),
     ).toThrow('NOT_CONFIGURED');
+  });
+
+  it('owns one accepted worker byte session through response and close', async () => {
+    const handler = new Handler();
+    const endpoint =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(handler);
+    const byteSession = new WorkerByteSession();
+    const session = new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+      endpoint,
+      byteSession,
+    );
+
+    await expect(session.handleOne(new AbortController().signal)).resolves.toBeUndefined();
+
+    expect(byteSession.readToEof).toHaveBeenCalledWith(
+      MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_CHANNEL_FRAME_BYTES,
+      expect.any(AbortSignal),
+    );
+    expect(handler.handle).toHaveBeenCalledOnce();
+    expect(byteSession.writeAndShutdown).toHaveBeenCalledOnce();
+    expect(
+      JSON.parse(new TextDecoder().decode(byteSession.writeAndShutdown.mock.calls[0]![0])),
+    ).toEqual({
+      request: { direction: 'COORDINATOR_TO_WORKER' },
+      runtimeConnection: 'NOT_CONFIGURED',
+      schemaVersion: 1,
+    });
+    expect(byteSession.close).toHaveBeenCalledOnce();
+    await session.close();
+    expect(byteSession.close).toHaveBeenCalledOnce();
+    await expect(session.handleOne(new AbortController().signal)).rejects.toEqual(
+      code('EXCHANGE_DENIED'),
+    );
+  });
+
+  it('rejects substituted endpoints and deny sessions before ownership transfer', () => {
+    const byteSession = new WorkerByteSession();
+    expect(
+      () =>
+        new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+          {
+            handle: vi.fn(),
+          } as unknown as BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+          byteSession,
+        ),
+    ).toThrow('NOT_CONFIGURED');
+    expect(byteSession.readToEof).not.toHaveBeenCalled();
+    expect(byteSession.writeAndShutdown).not.toHaveBeenCalled();
+    expect(byteSession.close).not.toHaveBeenCalled();
+
+    const endpoint =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+        new Handler(),
+      );
+    expect(
+      () =>
+        new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+          endpoint,
+          new DenyRetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession(),
+        ),
+    ).toThrow('NOT_CONFIGURED');
+
+    let getterCalls = 0;
+    const hostileSession = {
+      writeAndShutdown: vi.fn(),
+      close: vi.fn(),
+    } as Record<string, unknown>;
+    Object.defineProperty(hostileSession, 'readToEof', {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return vi.fn();
+      },
+    });
+    expect(
+      () =>
+        new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+          endpoint,
+          hostileSession as unknown as RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
+          99,
+        ),
+    ).toThrow('NOT_CONFIGURED');
+    expect(getterCalls).toBe(0);
+  });
+
+  it('closes malformed and failed worker sessions without writing', async () => {
+    const malformed = new WorkerByteSession();
+    malformed.readToEof.mockResolvedValue(new TextEncoder().encode('{"b":1,"a":2}'));
+    const malformedSession =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+        new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+          new Handler(),
+        ),
+        malformed,
+      );
+    await expect(malformedSession.handleOne(new AbortController().signal)).rejects.toEqual(
+      code('INVALID_AUTHORIZATION'),
+    );
+    expect(malformed.writeAndShutdown).not.toHaveBeenCalled();
+    expect(malformed.close).toHaveBeenCalledOnce();
+
+    const failed = new WorkerByteSession();
+    const failedHandler = {
+      handle: vi.fn(async (): Promise<never> => {
+        throw new Error('private handler detail');
+      }),
+    };
+    const failedSession =
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+        new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+          failedHandler,
+        ),
+        failed,
+      );
+    await expect(failedSession.handleOne(new AbortController().signal)).rejects.toEqual(
+      code('EXCHANGE_DENIED'),
+    );
+    expect(failed.writeAndShutdown).not.toHaveBeenCalled();
+    expect(failed.close).toHaveBeenCalledOnce();
+  });
+
+  it('propagates cancellation to a hung read and still closes exactly once', async () => {
+    let readSignal: AbortSignal | undefined;
+    const byteSession = new WorkerByteSession();
+    byteSession.readToEof.mockImplementation(async (_maximumBytes, signal) => {
+      readSignal = signal;
+      return await new Promise<never>(() => undefined);
+    });
+    const session = new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+        new Handler(),
+      ),
+      byteSession,
+    );
+    const controller = new AbortController();
+    const pending = session.handleOne(controller.signal);
+    await vi.waitFor(() => expect(byteSession.readToEof).toHaveBeenCalledOnce());
+    await expect(session.handleOne(new AbortController().signal)).rejects.toEqual(
+      code('CONCURRENT_EXCHANGE'),
+    );
+    controller.abort();
+    await expect(pending).rejects.toEqual(code('EXCHANGE_DENIED'));
+    expect(readSignal?.aborted).toBe(true);
+    expect(byteSession.writeAndShutdown).not.toHaveBeenCalled();
+    expect(byteSession.close).toHaveBeenCalledOnce();
+  });
+
+  it('bounds close and does not report a delivered response as successful', async () => {
+    const byteSession = new WorkerByteSession();
+    byteSession.close.mockImplementation(async () => await new Promise<never>(() => undefined));
+    const session = new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+      new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+        new Handler(),
+      ),
+      byteSession,
+      100,
+    );
+
+    await expect(session.handleOne(new AbortController().signal)).rejects.toEqual(
+      code('EXCHANGE_DENIED'),
+    );
+    expect(byteSession.writeAndShutdown).toHaveBeenCalledOnce();
+    expect(byteSession.close).toHaveBeenCalledOnce();
   });
 });

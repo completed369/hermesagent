@@ -727,5 +727,8 @@ provide key custody or a listener lifecycle, or enter `worker.ts`.
 One more unwired worker factory can consume an explicitly injected bounded loader under an exact
 CLIENT request, signer-socket match, and abort lifecycle (ADR-0151), but production still supplies
 no approved loader, module/socket path or identity, key custody, listener, or service lifecycle.
+A one-use owner can now carry an already-accepted worker byte session through bounded canonical
+read, exact frame handling, response write, and guaranteed close (ADR-0152), but it supplies no
+listener, transport authentication, route, service authority, signer custody, or runtime wiring.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
