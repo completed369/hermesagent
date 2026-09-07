@@ -279,7 +279,7 @@ describe('worker topology carrier listener composition', () => {
           new AbortController().signal,
           () => NOW,
         ),
-      ).rejects.toMatchObject({ code: 'INVALID_ATTESTATION' });
+      ).rejects.toMatchObject({ code: 'EXCHANGE_DENIED' });
 
       expect(loadSigner).toHaveBeenCalledOnce();
       expect(shadowedRun).not.toHaveBeenCalled();
