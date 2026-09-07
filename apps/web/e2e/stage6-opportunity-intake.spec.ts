@@ -213,7 +213,21 @@ test.describe('Stage 6 opportunity intake', () => {
       page.getByTestId('experiment-record-result').click(),
     ]);
     expect(resultResponse.status()).toBe(201);
-    await expect(page.getByText('REAL', { exact: true })).toBeVisible();
-    await expect(page.getByText(`CUSTOMER_SUPPORT · support-log:e2e-${unique}`)).toBeVisible();
+    const recordedResult = (await resultResponse.json()) as {
+      id: string;
+      provenance: { evidenceMode: string; sourceRef: string; sourceType: string };
+    };
+    expect(recordedResult.provenance).toMatchObject({
+      evidenceMode: 'REAL',
+      sourceType: 'CUSTOMER_SUPPORT',
+      sourceRef: `support-log:e2e-${unique}`,
+    });
+    await page.reload();
+    await expect(page.getByTestId(`experiment-result-evidence-${recordedResult.id}`)).toHaveText(
+      'REAL',
+    );
+    await expect(page.getByTestId(`experiment-result-source-${recordedResult.id}`)).toHaveText(
+      `CUSTOMER_SUPPORT · support-log:e2e-${unique}`,
+    );
   });
 });
