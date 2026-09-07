@@ -5,6 +5,7 @@ import {
   BoundedLinuxRetainedNativeSupervisorLocalIpcClient,
   BoundedLinuxRetainedNativeSupervisorNativeClientBinding,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   RetainedNativeSupervisorLocalIpcError,
   RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
   type ClosableRetainedNativeSupervisorLocalIpcClient,
@@ -155,6 +156,31 @@ export function createRootResolvedLinuxNativeTopologyCarrierWorker(
     signer,
     binding,
     clock,
+  );
+}
+
+/**
+ * Wraps the exact root-resolved worker in the canonical one-use byte-frame endpoint. Construction
+ * performs no frame handling, root lookup, observation, signing, native call, or channel activity.
+ */
+export function createFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  observer: LinuxRetainedNativeSupervisorTopologyObservationPort,
+  signer: RetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
+  binding: unknown,
+  clock: () => number = Date.now,
+  frameTimeoutMs = 5_000,
+): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint {
+  const worker = createRootResolvedLinuxNativeTopologyCarrierWorker(
+    source,
+    observer,
+    signer,
+    binding,
+    clock,
+  );
+  return new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+    worker,
+    frameTimeoutMs,
   );
 }
 

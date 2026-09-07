@@ -524,6 +524,10 @@ published and current `main` has not been deployed to private staging.
    delivery signer, live carrier binding, and clock (ADR-0144). Construction performs no lookup,
    IPC, observation, signing, or native call; the factory remains absent from `worker.ts`, and all
    loader, path, principal, observer, signer, carrier-listener, and lifecycle choices stay external.
+   A further inert worker factory wraps that exact root-resolved endpoint in the bounded canonical
+   one-use byte-frame endpoint with an explicit deadline (ADR-0145). The handler cannot be
+   substituted between root resolution and framing, but no byte channel, listener, observer,
+   signer transport, route, path, identity mapping, lifecycle, or runtime connection is activated.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
