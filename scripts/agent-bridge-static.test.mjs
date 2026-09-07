@@ -3245,6 +3245,10 @@ test('worker carrier root composition consumes only an exact loader and remains 
   );
   assert.match(source, /createLoadedLinuxNativeTopologyCarrierRootSource/u);
   assert.match(source, /loadLinuxNativeTopologyCarrierRootSource/u);
+  assert.match(
+    source,
+    /createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession/u,
+  );
   assert.match(source, /createRootResolvedLinuxNativeTopologyCarrierWorker/u);
   assert.match(source, /new RootResolvedRetainedNativeSupervisorTopologyObservationWorker/u);
   assert.match(source, /createFramedRootResolvedLinuxNativeTopologyCarrierWorker/u);
@@ -3301,6 +3305,10 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.doesNotMatch(
     worker,
     /loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.doesNotMatch(
+    worker,
+    /createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession/u,
   );
 });
 

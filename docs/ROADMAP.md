@@ -557,6 +557,10 @@ published and current `main` has not been deployed to private staging.
    canonical 64 KiB read, exact frame endpoint, response write, and guaranteed close (ADR-0152).
    It remains uncomposed and cannot discover, create, authenticate, retry, or expose a listener;
    transport identity, route, signer custody, service authority, and runtime wiring stay external.
+   The worker can now construct its authenticated loaded-signer endpoint directly inside that exact
+   one-use accepted-session owner (ADR-0153). Construction remains inert and outside `worker.ts`;
+   loader consumption, listener acceptance/authentication, route, custody, service authority, and
+   runtime wiring remain external.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

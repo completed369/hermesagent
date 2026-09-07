@@ -8,6 +8,7 @@ import {
   BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession,
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   RetainedNativeSupervisorLocalIpcError,
   RetainedDescriptorLinuxNativeSupervisorTopologyObserver,
@@ -17,6 +18,7 @@ import {
   type LoadedLinuxRetainedNativeSupervisorClientModule,
   type RetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   type RetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport,
+  type RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
   validateLinuxRetainedNativeSupervisorModuleLoadRequest,
 } from '@ventureos/agent-bridge';
 
@@ -370,6 +372,41 @@ export function createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedL
     clock,
     signingTimeoutMs,
     frameTimeoutMs,
+  );
+}
+
+/**
+ * Joins the loaded, authenticated signer worker to one already-accepted carrier byte session.
+ * Construction performs no load, read, write, close, frame, signing, IPC, filesystem, or native
+ * activity and discovers no listener or transport.
+ */
+export function createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession(
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  loadedSigningModuleInput: unknown,
+  signingAuthorizationInput: unknown,
+  signerKeyId: string,
+  binding: unknown,
+  carrierSession: RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+  frameTimeoutMs = 5_000,
+  sessionTimeoutMs = 5_000,
+): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession {
+  const endpoint =
+    createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+      source,
+      loadedSigningModuleInput,
+      signingAuthorizationInput,
+      signerKeyId,
+      binding,
+      clock,
+      signingTimeoutMs,
+      frameTimeoutMs,
+    );
+  return new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession(
+    endpoint,
+    carrierSession,
+    sessionTimeoutMs,
   );
 }
 

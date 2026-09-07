@@ -3,12 +3,14 @@ import {
   BoundedLinuxRetainedNativeSupervisorLocalIpcClient,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession,
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   DenyRetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport,
   DenyRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   DenyRetainedNativeSupervisorLocalIpcClient,
   RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
   type ClosableRetainedNativeSupervisorLocalIpcClient,
+  type RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
 } from '@ventureos/agent-bridge';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -18,6 +20,7 @@ import {
   createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker,
   createLinuxLocalTopologyCarrierRootSource,
   createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
+  createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession,
   createLoadedLinuxNativeTopologyCarrierRootSource,
   createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
   createRootResolvedLinuxNativeTopologyCarrierWorker,
@@ -84,6 +87,18 @@ function boundedUnusedClient() {
 class UnusedClient implements ClosableRetainedNativeSupervisorLocalIpcClient {
   readonly exchange = vi.fn(async (): Promise<never> => {
     throw new Error('construction must not exchange');
+  });
+  readonly close = vi.fn(async (): Promise<void> => {
+    throw new Error('construction must not close');
+  });
+}
+
+class UnusedCarrierSession implements RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession {
+  readonly readToEof = vi.fn(async (): Promise<never> => {
+    throw new Error('construction must not read');
+  });
+  readonly writeAndShutdown = vi.fn(async (): Promise<void> => {
+    throw new Error('construction must not write');
   });
   readonly close = vi.fn(async (): Promise<void> => {
     throw new Error('construction must not close');
@@ -766,6 +781,142 @@ describe('worker Linux topology carrier root lookup composition', () => {
     expect(rootClient.close).not.toHaveBeenCalled();
     expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
     expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  itLinux('joins the loaded signer worker to one accepted session without activity', () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(),
+      connectUnixSocket: vi.fn(),
+    };
+    const carrierSession = new UnusedCarrierSession();
+
+    const session =
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession(
+        source,
+        Object.freeze({
+          schemaVersion: 1,
+          moduleKind: 'CLIENT',
+          socketPath: signingAuthorization.socketPath,
+          runtimeConnection: 'NOT_CONFIGURED',
+          nativeModule,
+        }),
+        signingAuthorization,
+        'key:worker:loaded-carrier-session',
+        binding,
+        carrierSession,
+        () => NOW,
+      );
+
+    expect(session).toBeInstanceOf(
+      BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession,
+    );
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+    expect(carrierSession.readToEof).not.toHaveBeenCalled();
+    expect(carrierSession.writeAndShutdown).not.toHaveBeenCalled();
+    expect(carrierSession.close).not.toHaveBeenCalled();
+  });
+
+  itNonLinux('keeps loaded signer session composition unconfigured off Linux', () => {
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      new UnusedClient(),
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(),
+      connectUnixSocket: vi.fn(),
+    };
+    const carrierSession = new UnusedCarrierSession();
+    expect(() =>
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession(
+        source,
+        {
+          schemaVersion: 1,
+          moduleKind: 'CLIENT',
+          socketPath: signingAuthorization.socketPath,
+          runtimeConnection: 'NOT_CONFIGURED',
+          nativeModule,
+        },
+        signingAuthorization,
+        'key:worker:loaded-carrier-session',
+        binding,
+        carrierSession,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+    expect(carrierSession.readToEof).not.toHaveBeenCalled();
+    expect(carrierSession.writeAndShutdown).not.toHaveBeenCalled();
+    expect(carrierSession.close).not.toHaveBeenCalled();
+  });
+
+  itLinux('denies invalid accepted sessions and timeouts without activity', () => {
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      new UnusedClient(),
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(),
+      connectUnixSocket: vi.fn(),
+    };
+    const loadedModule = {
+      schemaVersion: 1,
+      moduleKind: 'CLIENT',
+      socketPath: signingAuthorization.socketPath,
+      runtimeConnection: 'NOT_CONFIGURED',
+      nativeModule,
+    };
+    const carrierSession = new UnusedCarrierSession();
+    expect(() =>
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession(
+        source,
+        loadedModule,
+        signingAuthorization,
+        'key:worker:loaded-carrier-session',
+        binding,
+        {} as RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(() =>
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession(
+        source,
+        loadedModule,
+        signingAuthorization,
+        'key:worker:loaded-carrier-session',
+        binding,
+        carrierSession,
+        () => NOW,
+        2_000,
+        5_000,
+        99,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+    expect(carrierSession.readToEof).not.toHaveBeenCalled();
+    expect(carrierSession.writeAndShutdown).not.toHaveBeenCalled();
+    expect(carrierSession.close).not.toHaveBeenCalled();
   });
 
   itLinux('loads one exact signer CLIENT request before inert endpoint construction', async () => {
