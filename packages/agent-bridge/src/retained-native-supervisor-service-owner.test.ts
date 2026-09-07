@@ -26,7 +26,10 @@ import {
   type LinuxRetainedNativeSupervisorServiceRequest,
 } from './retained-native-supervisor-service-owner';
 import { retainedNativeSupervisorTopologyObservationCarrierBindingHash } from './retained-native-supervisor-topology-observation-carrier';
-import type { RetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource } from './retained-native-supervisor-topology-observation-carrier-composition';
+import {
+  RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
+  type RetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource,
+} from './retained-native-supervisor-topology-observation-carrier-composition';
 import { BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler } from './retained-native-supervisor-topology-observation-carrier-root-lookup-handler';
 import {
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
@@ -116,6 +119,24 @@ class CarrierRootSource implements RetainedNativeSupervisorTopologyObservationCa
   readonly read = vi.fn(async (): Promise<unknown> => carrierRoot);
 }
 
+function carrierWorker(bindingInput: unknown = carrierBinding) {
+  const rootSource = new CarrierRootSource();
+  const observer = { observe: vi.fn() };
+  const signer = { sign: vi.fn() };
+  return {
+    observer,
+    rootSource,
+    signer,
+    worker: new RootResolvedRetainedNativeSupervisorTopologyObservationWorker(
+      rootSource,
+      observer,
+      signer,
+      bindingInput,
+      () => now,
+    ),
+  };
+}
+
 function carrierRootRequest(): Buffer {
   return Buffer.from(
     canonicalJson({
@@ -154,7 +175,10 @@ function request(
     socketDirectoryMode: 0o700,
     socketPath,
     expectedPeerRole:
-      serviceKind === 'TOPOLOGY_OBSERVATION_WORKER_CLIENT' ? 'API_COORDINATOR' : 'WORKER_CLIENT',
+      serviceKind === 'TOPOLOGY_OBSERVATION_WORKER_CLIENT' ||
+      serviceKind === 'TOPOLOGY_CARRIER_WORKER_LISTENER'
+        ? 'API_COORDINATOR'
+        : 'WORKER_CLIENT',
     expectedPeerPid: workerCredentials.pid,
     expectedPeerUid: workerCredentials.uid,
     expectedPeerGid: workerCredentials.gid,
@@ -263,7 +287,9 @@ function topologyFrame(
 
 class FixtureAcceptedSession implements LinuxRetainedNativeSupervisorAcceptedSession {
   readonly peerCredentials = vi.fn(async () => workerCredentials);
-  readonly readToEof = vi.fn(async () => frame('WORKER_TO_SUPERVISOR', recoveryRequest));
+  readonly readToEof = vi.fn(async (): Promise<unknown> =>
+    frame('WORKER_TO_SUPERVISOR', recoveryRequest),
+  );
   readonly writeAndShutdown = vi.fn(
     async (_frame: Readonly<Uint8Array>, _signal: AbortSignal) => undefined,
   );
@@ -427,6 +453,13 @@ describe('bounded retained-native supervisor service owner', () => {
         expectedPeerRole: 'WORKER_CLIENT',
       },
     ],
+    [
+      'worker-carrier peer role mismatch',
+      {
+        serviceKind: 'TOPOLOGY_CARRIER_WORKER_LISTENER',
+        expectedPeerRole: 'WORKER_CLIENT',
+      },
+    ],
   ])('denies malformed service requests: %s', async (_label, drift) => {
     const { authority, binding, owner, peer } = fixture();
     await expect(
@@ -434,6 +467,102 @@ describe('bounded retained-native supervisor service owner', () => {
     ).rejects.toEqual(expectCode('INVALID_AUTHORIZATION'));
     expect(authority.authorize).not.toHaveBeenCalled();
     expect(binding.createOwnedListener).not.toHaveBeenCalled();
+  });
+
+  it('binds one authorized worker carrier listener and rejects an unsigned API frame', async () => {
+    const serviceRequest = request({
+      serviceKind: 'TOPOLOGY_CARRIER_WORKER_LISTENER',
+      socketPath: '/run/ventureos/supervisor/topology-carrier-worker.sock',
+    });
+    const { authority, binding, owner } = fixture(serviceRequest);
+    const message = Object.freeze({
+      direction: 'COORDINATOR_TO_WORKER',
+      runtimeConnection: 'NOT_CONFIGURED',
+      schemaVersion: 1,
+    });
+    const worker = carrierWorker();
+    const shadowedHandle = vi.fn(async () => ({ runtimeConnection: 'CONNECTED' }));
+    Object.defineProperty(worker.worker, 'handle', { value: shadowedHandle });
+    binding.listener.accepted.readToEof.mockResolvedValue(
+      new TextEncoder().encode(canonicalJson(message)),
+    );
+
+    await expect(
+      owner.runTopologyCarrierWorkerOne(
+        serviceRequest,
+        worker.worker,
+        carrierBinding,
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('INVALID_ATTESTATION'));
+
+    expect(serviceRequest.expectedPeerRole).toBe('API_COORDINATOR');
+    expect(authority.authorize).toHaveBeenCalledOnce();
+    expect(worker.rootSource.read).toHaveBeenCalledOnce();
+    expect(shadowedHandle).not.toHaveBeenCalled();
+    expect(worker.observer.observe).not.toHaveBeenCalled();
+    expect(worker.signer.sign).not.toHaveBeenCalled();
+    expect(binding.listener.accepted.close).toHaveBeenCalledOnce();
+    expect(binding.listener.closeAndUnlinkOwned).toHaveBeenCalledOnce();
+  });
+
+  it('denies worker carrier scope drift and endpoint substitution before listener creation', async () => {
+    const serviceRequest = request({
+      serviceKind: 'TOPOLOGY_CARRIER_WORKER_LISTENER',
+      socketPath: '/run/ventureos/supervisor/topology-carrier-worker.sock',
+    });
+    const scoped = fixture(serviceRequest);
+    const driftedBinding = { ...carrierBinding, workspaceId: 'workspace-other' };
+    const endpoint = carrierWorker(driftedBinding);
+    await expect(
+      scoped.owner.runTopologyCarrierWorkerOne(
+        serviceRequest,
+        endpoint.worker,
+        driftedBinding,
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('INVALID_AUTHORIZATION'));
+    expect(scoped.authority.authorize).toHaveBeenCalledOnce();
+    expect(scoped.binding.createOwnedListener).not.toHaveBeenCalled();
+
+    const substituted = fixture(serviceRequest);
+    await expect(
+      substituted.owner.runTopologyCarrierWorkerOne(
+        serviceRequest,
+        { handle: vi.fn() } as never,
+        carrierBinding,
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('NOT_CONFIGURED'));
+    expect(substituted.authority.authorize).not.toHaveBeenCalled();
+    expect(substituted.binding.createOwnedListener).not.toHaveBeenCalled();
+
+    const rebound = fixture(serviceRequest);
+    const otherWorker = carrierWorker({ ...carrierBinding, carrierId: 'carrier-other' });
+    await expect(
+      rebound.owner.runTopologyCarrierWorkerOne(
+        serviceRequest,
+        otherWorker.worker,
+        carrierBinding,
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('INVALID_AUTHORIZATION'));
+    expect(rebound.authority.authorize).not.toHaveBeenCalled();
+    expect(rebound.binding.createOwnedListener).not.toHaveBeenCalled();
+
+    const forged = fixture(serviceRequest);
+    await expect(
+      forged.owner.runTopologyCarrierWorkerOne(
+        serviceRequest,
+        Object.create(
+          RootResolvedRetainedNativeSupervisorTopologyObservationWorker.prototype,
+        ) as RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
+        carrierBinding,
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('INVALID_AUTHORIZATION'));
+    expect(forged.authority.authorize).not.toHaveBeenCalled();
+    expect(forged.binding.createOwnedListener).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -580,6 +580,11 @@ published and current `main` has not been deployed to private staging.
    `API_COORDINATOR`, while existing supervisor/API listeners require a `WORKER_CLIENT`
    (ADR-0157). This remains inactive but removes the authority ambiguity that blocked a safe
    worker-side carrier-listener grant.
+   A distinct one-session worker carrier listener now requires that API-coordinator grant, verifies
+   the live carrier scope, creates and retains one no-replacement listener, reuses authenticated
+   accepted-session admission, and transfers the result into one canonical bounded worker exchange
+   before exact cleanup (ADR-0158). It remains outside `worker.ts` and selects no production
+   identity, path, authority, signer custody, or runtime route.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
