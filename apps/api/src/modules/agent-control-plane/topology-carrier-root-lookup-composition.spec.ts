@@ -7,7 +7,10 @@ import {
 import { Prisma } from '@ventureos/database';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createPostgresApiCoordinatorTopologyCarrierRootLookupHandler } from './topology-carrier-root-lookup-composition';
+import {
+  createPostgresApiCoordinatorLinuxLocalTopologyCarrierRootLookupHandler,
+  createPostgresApiCoordinatorTopologyCarrierRootLookupHandler,
+} from './topology-carrier-root-lookup-composition';
 import type { TopologyCarrierSignatureRootSqlClient } from './topology-carrier-signature-root-registry';
 
 vi.mock('@ventureos/database', () => ({
@@ -55,6 +58,41 @@ const root = Object.freeze({
   validUntil: new Date(NOW + 10_000).toISOString(),
   revokedAt: null,
   testOnly: false,
+});
+const socketPath = '/run/ventureos/carrier-root-lookup.sock';
+const endpoint = Object.freeze({
+  schemaVersion: 1,
+  platform: 'LINUX',
+  authority: 'LINUX_LSTAT_UNIX_SOCKET',
+  fileType: 'SOCKET',
+  socketPath,
+  socketDevice: 43,
+  socketInode: 9_301,
+  socketOwnerUid: 700,
+  socketOwnerGid: 701,
+  socketMode: 0o600,
+});
+const workerPeer = Object.freeze({
+  schemaVersion: 1,
+  platform: 'LINUX',
+  authority: 'LINUX_SO_PEERCRED',
+  peerPid: 830,
+  peerUid: 702,
+  peerGid: 703,
+});
+const serverAuthorization = Object.freeze({
+  schemaVersion: 1,
+  platform: 'LINUX',
+  socketPath,
+  socketDevice: endpoint.socketDevice,
+  socketInode: endpoint.socketInode,
+  socketOwnerUid: endpoint.socketOwnerUid,
+  socketOwnerGid: endpoint.socketOwnerGid,
+  socketMode: endpoint.socketMode,
+  expectedPeerPid: workerPeer.peerPid,
+  expectedPeerUid: workerPeer.peerUid,
+  expectedPeerGid: workerPeer.peerGid,
+  runtimeConnection: 'NOT_CONFIGURED',
 });
 
 class ScriptedSqlClient implements TopologyCarrierSignatureRootSqlClient {
@@ -161,5 +199,55 @@ describe('PostgreSQL API coordinator carrier-root lookup composition', () => {
       ).toThrow();
     }
     expect(database.queries).toHaveLength(0);
+  });
+
+  it('derives protocol identity from exact Linux endpoint and worker peer evidence before lookup', async () => {
+    const storedRoot = {
+      ...root,
+      validFrom: new Date(root.validFrom),
+      validUntil: new Date(root.validUntil),
+    };
+    const database = new ScriptedSqlClient([[storedRoot]]);
+    const handler = createPostgresApiCoordinatorLinuxLocalTopologyCarrierRootLookupHandler(
+      database,
+      binding,
+      serverAuthorization,
+      () => NOW,
+    );
+    expect(database.queries).toHaveLength(0);
+    const exactRequest = request();
+    const response = await handler.handle(
+      {
+        endpointIdentity: endpoint,
+        peerCredentials: workerPeer,
+        requestFrame: Buffer.from(canonicalJson(exactRequest)),
+      },
+      new AbortController().signal,
+    );
+    expect(JSON.parse(new TextDecoder().decode(response))).toMatchObject({
+      root,
+      requestHash: createHash('sha256').update(canonicalJson(exactRequest)).digest('hex'),
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    expect(database.queries).toHaveLength(1);
+
+    const deniedDatabase = new ScriptedSqlClient([[storedRoot]]);
+    const deniedHandler = createPostgresApiCoordinatorLinuxLocalTopologyCarrierRootLookupHandler(
+      deniedDatabase,
+      binding,
+      serverAuthorization,
+      () => NOW,
+    );
+    await expect(
+      deniedHandler.handle(
+        {
+          endpointIdentity: endpoint,
+          peerCredentials: { ...workerPeer, peerUid: workerPeer.peerUid + 1 },
+          requestFrame: Buffer.from(canonicalJson(exactRequest)),
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_ATTESTATION' });
+    expect(deniedDatabase.queries).toHaveLength(0);
   });
 });
