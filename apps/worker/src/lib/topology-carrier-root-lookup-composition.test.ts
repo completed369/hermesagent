@@ -1,5 +1,6 @@
 import {
   BoundedLinuxRetainedNativeSupervisorModuleLoader,
+  BoundedLinuxRetainedNativeSupervisorLocalIpcClient,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
@@ -12,6 +13,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
   createFramedRootResolvedLinuxNativeTopologyCarrierWorker,
   createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker,
   createLinuxLocalTopologyCarrierRootSource,
@@ -53,6 +55,29 @@ const localIpcAuthorization = Object.freeze({
   expectedPeerGid: 701,
   runtimeConnection: 'NOT_CONFIGURED',
 });
+const signingAuthorization = Object.freeze({
+  ...localIpcAuthorization,
+  socketPath: '/run/ventureos/carrier-delivery-signer.sock',
+  socketDevice: 47,
+  socketInode: 9_407,
+  expectedPeerPid: 847,
+});
+
+function boundedUnusedClient() {
+  const nativeBinding = {
+    platform: 'LINUX' as const,
+    lstatUnixSocket: vi.fn(async (): Promise<never> => {
+      throw new Error('construction must not stat');
+    }),
+    connectUnixSocket: vi.fn(async (): Promise<never> => {
+      throw new Error('construction must not connect');
+    }),
+  };
+  return {
+    client: new BoundedLinuxRetainedNativeSupervisorLocalIpcClient(nativeBinding),
+    nativeBinding,
+  };
+}
 
 class UnusedClient implements ClosableRetainedNativeSupervisorLocalIpcClient {
   readonly exchange = vi.fn(async (): Promise<never> => {
@@ -479,6 +504,98 @@ describe('worker Linux topology carrier root lookup composition', () => {
     expect(signingTransport.close).not.toHaveBeenCalled();
     expect(client.exchange).not.toHaveBeenCalled();
     expect(client.close).not.toHaveBeenCalled();
+  });
+
+  itLinux('constructs the exact authenticated signing transport without native activity', () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const { client: signingClient, nativeBinding } = boundedUnusedClient();
+
+    const endpoint =
+      createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        signingClient,
+        signingAuthorization,
+        'key:worker:authenticated-carrier-signer',
+        binding,
+        () => NOW,
+        2_000,
+        2_000,
+      );
+
+    expect(endpoint).toBeInstanceOf(
+      BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+    );
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+    expect(nativeBinding.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeBinding.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  itNonLinux('keeps authenticated signing composition unconfigured off Linux', () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const { client: signingClient, nativeBinding } = boundedUnusedClient();
+    expect(() =>
+      createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        signingClient,
+        signingAuthorization,
+        'key:worker:authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+    expect(nativeBinding.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeBinding.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  it('rejects substituted signing clients and invalid signing authority without activity', () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    expect(() =>
+      createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        new UnusedClient() as unknown as BoundedLinuxRetainedNativeSupervisorLocalIpcClient,
+        signingAuthorization,
+        'key:worker:authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+
+    const { client: signingClient, nativeBinding } = boundedUnusedClient();
+    expect(() =>
+      createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        signingClient,
+        { ...signingAuthorization, runtimeConnection: 'CONNECTED' },
+        'key:worker:authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+    expect(nativeBinding.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeBinding.connectUnixSocket).not.toHaveBeenCalled();
   });
 
   it('denies envelope drift and socket-path substitution before native activity', () => {

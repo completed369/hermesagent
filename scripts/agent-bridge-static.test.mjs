@@ -2911,6 +2911,14 @@ test('role-local topology carrier composition resolves opposite roots and remain
     workerRootLookupComposition,
     /new RetainedDescriptorLinuxNativeSupervisorTopologyObserver\(\s*'WORKER_CLIENT'/u,
   );
+  assert.match(
+    workerRootLookupComposition,
+    /createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.match(
+    workerRootLookupComposition,
+    /new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport/u,
+  );
   assert.match(source, /'API_COORDINATOR'/u);
   assert.match(source, /#attempted/u);
   assert.match(source, /await this\.#carrier\.close\(\)/u);
@@ -3255,6 +3263,10 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.doesNotMatch(
     worker,
     /createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.doesNotMatch(
+    worker,
+    /createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
   );
 });
 

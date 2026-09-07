@@ -538,7 +538,12 @@ published and current `main` has not been deployed to private staging.
    listener, approved paths/identities, lifecycle, and runtime connection remain external.
    A topology-carrier-specific authenticated Linux local signing adapter now reuses the exact
    kernel-attested IPC client while fixing the carrier protocol's 72 KiB request and 2 KiB response
-   limits internally (ADR-0148). It remains uncomposed and selects no path, custody, key, or service.
+   limits internally (ADR-0148). At that slice it remained uncomposed and selected no path, custody,
+   key, or service.
+   The worker can now construct that adapter internally from an exact bounded Linux local client and
+   exact injected signing authorization (ADR-0149), while remaining outside `worker.ts` and selecting
+   no native module, path, identity, key material, custody service, listener, lifecycle, or runtime
+   connection.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

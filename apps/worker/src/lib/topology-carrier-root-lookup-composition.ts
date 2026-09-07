@@ -1,5 +1,6 @@
 import {
   AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupTransport,
+  AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport,
   authenticateRetainedNativeSupervisorLocalIpcAuthorization,
   BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedLinuxRetainedNativeSupervisorLocalIpcClient,
@@ -269,6 +270,50 @@ export function createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierW
   return createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker(
     source,
     observer,
+    signerKeyId,
+    signingTransport,
+    binding,
+    clock,
+    signingTimeoutMs,
+    frameTimeoutMs,
+  );
+}
+
+/**
+ * Fixes carrier signing to the exact bounded Linux local client and authenticated transport.
+ * Construction performs no signing, lookup, observation, frame, IPC, or native activity.
+ */
+export function createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  signingClient: BoundedLinuxRetainedNativeSupervisorLocalIpcClient,
+  signingAuthorization: unknown,
+  signerKeyId: string,
+  binding: unknown,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+  frameTimeoutMs = 5_000,
+): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint {
+  try {
+    if (
+      !(
+        source instanceof
+        BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource
+      ) ||
+      !(signingClient instanceof BoundedLinuxRetainedNativeSupervisorLocalIpcClient)
+    ) {
+      return denyInvalidAuthorization();
+    }
+  } catch (error) {
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+    return denyInvalidAuthorization();
+  }
+  const signingTransport =
+    new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport(
+      signingClient,
+      signingAuthorization,
+    );
+  return createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+    source,
     signerKeyId,
     signingTransport,
     binding,
