@@ -739,5 +739,9 @@ A separate one-use Linux admission boundary can now authenticate the exact retai
 identity and accepted API peer from `lstat(2)` and `SO_PEERCRED` evidence before transferring the
 session (ADR-0155). It still cannot create or own a listener, obtain service authorization, select
 production paths/principals, establish signer custody, or enter the worker lifecycle.
+The resulting authenticated accepted-session reservation can now transfer directly into the
+signer-loaded one-use carrier owner with bounded cleanup on failed composition (ADR-0156), but no
+listener/service authority, approved production identity/path, signer custody, or worker lifecycle
+is selected or activated.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

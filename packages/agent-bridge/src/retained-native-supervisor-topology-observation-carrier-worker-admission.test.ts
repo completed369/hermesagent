@@ -8,7 +8,12 @@ import {
   type LinuxRetainedNativeSupervisorSessionBinding,
   type LinuxRetainedNativeSupervisorWorkerCredentials,
 } from './retained-native-supervisor-linux-session';
-import { BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission } from './retained-native-supervisor-topology-observation-carrier-worker-admission';
+import { BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession } from './retained-native-supervisor-topology-observation-carrier-channel';
+import {
+  AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+  BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission,
+  claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+} from './retained-native-supervisor-topology-observation-carrier-worker-admission';
 
 const socketPath = '/run/ventureos/topology-carrier-worker.sock';
 const stat: Readonly<LinuxRetainedNativeSupervisorListenerSocketStat> = Object.freeze({
@@ -90,6 +95,9 @@ describe('authenticated Linux topology carrier worker admission', () => {
 
     const accepted = await admission.acceptOne(new AbortController().signal);
 
+    expect(accepted).toBeInstanceOf(
+      AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+    );
     expect(binding.calls).toEqual(['lstat', 'accept', 'peer', 'lstat']);
     expect(binding.accepted.readToEof).not.toHaveBeenCalled();
     expect(binding.accepted.writeAndShutdown).not.toHaveBeenCalled();
@@ -99,6 +107,48 @@ describe('authenticated Linux topology carrier worker admission', () => {
     await expect(admission.acceptOne(new AbortController().signal)).rejects.toEqual(
       expectCode('EXCHANGE_DENIED'),
     );
+  });
+
+  it('mints an unforgeable one-use claim over the authenticated reservation', async () => {
+    const { admission, binding } = fixture();
+    const admitted = await admission.acceptOne(new AbortController().signal);
+
+    expect(Object.isFrozen(admitted)).toBe(true);
+    const accepted =
+      claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+        admitted,
+      );
+
+    expect(accepted).toBeInstanceOf(
+      BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+    );
+    expect(() =>
+      claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+        admitted,
+      ),
+    ).toThrowError(expectCode('EXCHANGE_DENIED'));
+    await expect(admitted.close()).rejects.toEqual(expectCode('EXCHANGE_DENIED'));
+    await accepted.close();
+    expect(binding.accepted.close).toHaveBeenCalledOnce();
+  });
+
+  it('denies construction without the admission-only authentication token', () => {
+    expect(
+      () =>
+        new AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+          undefined,
+          new BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+            new FixtureAcceptedSession(),
+          ),
+        ),
+    ).toThrowError(expectCode('NOT_CONFIGURED'));
+    expect(() =>
+      claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+        Object.create(
+          AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession.prototype,
+        ),
+      ),
+    ).toThrowError(expectCode('INVALID_AUTHORIZATION'));
   });
 
   it('validates timeout and authorization before touching hostile binding accessors', () => {

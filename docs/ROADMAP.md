@@ -570,6 +570,11 @@ published and current `main` has not been deployed to private staging.
    transfers only that accepted session with bounded denial cleanup (ADR-0155). It creates and owns
    no listener, remains outside `worker.ts`, and still has no service authority, approved production
    path/principal mapping, signer custody, or runtime lifecycle.
+   The authenticated accepted-session reservation can now transfer directly into the signer-loaded
+   one-use carrier owner, and every failed load or transfer closes that exact reservation through
+   the existing bounded cleanup path (ADR-0156). This composition remains outside `worker.ts` and
+   still selects no listener, service authority, production identity/path, signer custody, or
+   runtime lifecycle.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

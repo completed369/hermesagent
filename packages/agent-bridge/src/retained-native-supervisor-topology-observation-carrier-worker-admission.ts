@@ -12,6 +12,14 @@ import { BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorker
 
 const MIN_TIMEOUT_MS = 100;
 const MAX_TIMEOUT_MS = 5_000;
+const AUTHENTICATED_ACCEPTED_SESSION = Symbol('AUTHENTICATED_ACCEPTED_SESSION');
+const AUTHENTICATED_ACCEPTED_SESSIONS = new WeakMap<
+  object,
+  {
+    readonly accepted: BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession;
+    claimed: boolean;
+  }
+>();
 const STAT_KEYS = ['device', 'fileType', 'inode', 'mode', 'ownerGid', 'ownerUid'] as const;
 const CREDENTIAL_KEYS = ['gid', 'pid', 'uid'] as const;
 
@@ -199,6 +207,54 @@ async function closeBounded(close: () => Promise<void>, timeoutMs: number): Prom
   }
 }
 
+/** Admission-minted proof around one opaque accepted-session reservation. */
+export class AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession {
+  constructor(
+    authentication: unknown,
+    accepted: BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+  ) {
+    if (
+      authentication !== AUTHENTICATED_ACCEPTED_SESSION ||
+      !(
+        accepted instanceof
+        BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession
+      )
+    )
+      deny('NOT_CONFIGURED');
+    AUTHENTICATED_ACCEPTED_SESSIONS.set(this, { accepted, claimed: false });
+    Object.freeze(this);
+  }
+
+  close(): Promise<void> {
+    const state = authenticatedAcceptedSessionState(this);
+    if (state.claimed)
+      return Promise.reject(new RetainedNativeSupervisorLocalIpcError('EXCHANGE_DENIED'));
+    return state.accepted.close();
+  }
+}
+
+function authenticatedAcceptedSessionState(input: unknown) {
+  if (
+    !(
+      input instanceof
+      AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession
+    )
+  )
+    deny('INVALID_AUTHORIZATION');
+  const state = AUTHENTICATED_ACCEPTED_SESSIONS.get(input);
+  if (!state) deny('INVALID_AUTHORIZATION');
+  return state;
+}
+
+export function claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+  input: unknown,
+): BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession {
+  const state = authenticatedAcceptedSessionState(input);
+  if (state.claimed) deny('EXCHANGE_DENIED');
+  state.claimed = true;
+  return state.accepted;
+}
+
 /**
  * Authenticates and transfers one session accepted from an injected, already-created Linux listener.
  * It cannot create, discover, replace, retry, expose, or loop that listener.
@@ -221,7 +277,7 @@ export class BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservatio
 
   async acceptOne(
     signal: AbortSignal,
-  ): Promise<BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession> {
+  ): Promise<AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession> {
     if (this.#state === 'IN_FLIGHT') deny('CONCURRENT_EXCHANGE');
     if (this.#state !== 'READY' || !(signal instanceof AbortSignal) || signal.aborted)
       deny('EXCHANGE_DENIED');
@@ -274,6 +330,9 @@ export class BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservatio
       }
     }
     if (failure !== undefined) throw failure;
-    return accepted!;
+    return new AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+      AUTHENTICATED_ACCEPTED_SESSION,
+      accepted!,
+    );
   }
 }

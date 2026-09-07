@@ -1,4 +1,5 @@
 import {
+  AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
   AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupTransport,
   AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport,
   authenticateRetainedNativeSupervisorLocalIpcAuthorization,
@@ -10,6 +11,7 @@ import {
   BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession,
+  claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   RetainedNativeSupervisorLocalIpcError,
   RetainedDescriptorLinuxNativeSupervisorTopologyObserver,
@@ -486,6 +488,70 @@ export async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLin
       carrierSession,
       sessionTimeoutMs,
     );
+  return loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierReservedWorkerSession(
+    loader,
+    moduleLoadRequestInput,
+    signal,
+    source,
+    signingAuthorizationInput,
+    signerKeyId,
+    binding,
+    accepted,
+    clock,
+    signingTimeoutMs,
+    frameTimeoutMs,
+  );
+}
+
+/**
+ * Consumes the exact authenticated reservation returned by worker carrier admission before loading
+ * its signer CLIENT module. Any failed load or transfer closes that reservation within its bound.
+ */
+export async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierAcceptedWorkerSession(
+  loader: BoundedLinuxRetainedNativeSupervisorModuleLoader,
+  moduleLoadRequestInput: unknown,
+  signal: AbortSignal,
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  signingAuthorizationInput: unknown,
+  signerKeyId: string,
+  binding: unknown,
+  admitted: AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+  frameTimeoutMs = 5_000,
+): Promise<BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession> {
+  const accepted =
+    claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+      admitted,
+    );
+  return loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierReservedWorkerSession(
+    loader,
+    moduleLoadRequestInput,
+    signal,
+    source,
+    signingAuthorizationInput,
+    signerKeyId,
+    binding,
+    accepted,
+    clock,
+    signingTimeoutMs,
+    frameTimeoutMs,
+  );
+}
+
+async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierReservedWorkerSession(
+  loader: BoundedLinuxRetainedNativeSupervisorModuleLoader,
+  moduleLoadRequestInput: unknown,
+  signal: AbortSignal,
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  signingAuthorizationInput: unknown,
+  signerKeyId: string,
+  binding: unknown,
+  accepted: BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+  clock: () => number,
+  signingTimeoutMs: number,
+  frameTimeoutMs: number,
+): Promise<BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession> {
   try {
     const endpoint =
       await loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
