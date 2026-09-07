@@ -712,5 +712,8 @@ production still supplies no byte channel, listener, or any of the missing appro
 The worker can now construct the bounded keyless delivery signer inside that frame with the role
 fixed to `WORKER_CLIENT` and the same carrier binding (ADR-0146), but signer transport/custody and a
 concrete retained-descriptor observer remain uncomposed and no signing exchange can occur.
+The Linux/x64 worker composition can now construct that retained-descriptor observer with role fixed
+to `WORKER_CLIENT` (ADR-0147), but it remains absent from `worker.ts`, opens no path at construction,
+and still has no signer transport/custody, carrier byte channel, listener, or approved lifecycle.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

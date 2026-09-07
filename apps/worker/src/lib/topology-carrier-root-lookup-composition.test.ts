@@ -16,11 +16,14 @@ import {
   createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker,
   createLinuxLocalTopologyCarrierRootSource,
   createLoadedLinuxNativeTopologyCarrierRootSource,
+  createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
   createRootResolvedLinuxNativeTopologyCarrierWorker,
   loadLinuxNativeTopologyCarrierRootSource,
 } from './topology-carrier-root-lookup-composition';
 
 const NOW = Date.parse('2030-01-01T12:00:00.000Z');
+const itLinux = process.platform === 'linux' && process.arch === 'x64' ? it : it.skip;
+const itNonLinux = process.platform === 'linux' && process.arch === 'x64' ? it.skip : it;
 const binding = Object.freeze({
   schemaVersion: 1,
   purpose: 'RETAINED_NATIVE_SUPERVISOR_TOPOLOGY_OBSERVATION_CARRIER',
@@ -385,6 +388,89 @@ describe('worker Linux topology carrier root lookup composition', () => {
         { observe: vi.fn() },
         'key:worker:carrier-composition',
         new DenyRetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport(),
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(signingTransport.exchange).not.toHaveBeenCalled();
+    expect(signingTransport.close).not.toHaveBeenCalled();
+    expect(client.exchange).not.toHaveBeenCalled();
+    expect(client.close).not.toHaveBeenCalled();
+  });
+
+  itLinux('constructs the retained-descriptor WORKER_CLIENT observer without path activity', () => {
+    const client = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      client,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const signingTransport = {
+      exchange: vi.fn(async (): Promise<never> => {
+        throw new Error('construction must not sign');
+      }),
+      close: vi.fn(async (): Promise<void> => {
+        throw new Error('construction must not close signing transport');
+      }),
+    };
+
+    const endpoint = createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+      source,
+      'key:worker:retained-observer',
+      signingTransport,
+      binding,
+      () => NOW,
+      2_000,
+      2_000,
+    );
+
+    expect(endpoint).toBeInstanceOf(
+      BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+    );
+    expect(client.exchange).not.toHaveBeenCalled();
+    expect(client.close).not.toHaveBeenCalled();
+    expect(signingTransport.exchange).not.toHaveBeenCalled();
+    expect(signingTransport.close).not.toHaveBeenCalled();
+  });
+
+  it('denies a substituted root before observer construction or signing transport access', () => {
+    const signingTransport = {
+      exchange: vi.fn(),
+      close: vi.fn(),
+    };
+    expect(() =>
+      createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        {
+          read: vi.fn(),
+        } as unknown as BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+        'key:worker:retained-observer',
+        signingTransport,
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(signingTransport.exchange).not.toHaveBeenCalled();
+    expect(signingTransport.close).not.toHaveBeenCalled();
+  });
+
+  itNonLinux('denies retained-descriptor construction off Linux without transport activity', () => {
+    const client = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      client,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const signingTransport = {
+      exchange: vi.fn(),
+      close: vi.fn(),
+    };
+    expect(() =>
+      createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        'key:worker:retained-observer',
+        signingTransport,
         binding,
         () => NOW,
       ),

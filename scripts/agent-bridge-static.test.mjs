@@ -2892,6 +2892,10 @@ test('role-local topology carrier composition resolves opposite roots and remain
     'utf8',
   );
   const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  const workerRootLookupComposition = readFileSync(
+    'apps/worker/src/lib/topology-carrier-root-lookup-composition.ts',
+    'utf8',
+  );
   assert.match(
     source,
     /class DenyRetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource/u,
@@ -2899,6 +2903,14 @@ test('role-local topology carrier composition resolves opposite roots and remain
   assert.match(source, /class RootResolvedRetainedNativeSupervisorTopologyObservationCoordinator/u);
   assert.match(source, /class RootResolvedRetainedNativeSupervisorTopologyObservationWorker/u);
   assert.match(source, /'WORKER_CLIENT'/u);
+  assert.match(
+    workerRootLookupComposition,
+    /createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.match(
+    workerRootLookupComposition,
+    /new RetainedDescriptorLinuxNativeSupervisorTopologyObserver\(\s*'WORKER_CLIENT'/u,
+  );
   assert.match(source, /'API_COORDINATOR'/u);
   assert.match(source, /#attempted/u);
   assert.match(source, /await this\.#carrier\.close\(\)/u);
@@ -3240,6 +3252,10 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.doesNotMatch(worker, /createRootResolvedLinuxNativeTopologyCarrierWorker/u);
   assert.doesNotMatch(worker, /createFramedRootResolvedLinuxNativeTopologyCarrierWorker/u);
   assert.doesNotMatch(worker, /createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker/u);
+  assert.doesNotMatch(
+    worker,
+    /createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
+  );
 });
 
 test('API carrier root listener composition bounds exact loader and one-session run outside Nest', () => {
