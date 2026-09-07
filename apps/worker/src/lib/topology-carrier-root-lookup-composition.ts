@@ -1,12 +1,14 @@
 import {
   AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupTransport,
   authenticateRetainedNativeSupervisorLocalIpcAuthorization,
+  BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedLinuxRetainedNativeSupervisorLocalIpcClient,
   BoundedLinuxRetainedNativeSupervisorNativeClientBinding,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
   RetainedNativeSupervisorLocalIpcError,
   type ClosableRetainedNativeSupervisorLocalIpcClient,
   type LoadedLinuxRetainedNativeSupervisorClientModule,
+  validateLinuxRetainedNativeSupervisorModuleLoadRequest,
 } from '@ventureos/agent-bridge';
 
 const LOADED_CLIENT_MODULE_KEYS = [
@@ -118,6 +120,49 @@ export function createLoadedLinuxNativeTopologyCarrierRootSource(
   const client = new BoundedLinuxRetainedNativeSupervisorLocalIpcClient(nativeBinding);
   return createLinuxLocalTopologyCarrierRootSource(
     client,
+    binding,
+    localIpcAuthorization,
+    clock,
+    timeoutMs,
+  );
+}
+
+/**
+ * Consumes one explicitly injected module loader only after the exact CLIENT request, abort
+ * signal, and local socket authorization agree. It does not discover authority or wire the
+ * resulting source into the worker lifecycle.
+ */
+export async function loadLinuxNativeTopologyCarrierRootSource(
+  loader: BoundedLinuxRetainedNativeSupervisorModuleLoader,
+  moduleLoadRequestInput: unknown,
+  signal: AbortSignal,
+  binding: unknown,
+  localIpcAuthorizationInput: unknown,
+  clock: () => number = Date.now,
+  timeoutMs = 2_000,
+): Promise<BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource> {
+  if (
+    !(loader instanceof BoundedLinuxRetainedNativeSupervisorModuleLoader) ||
+    !(signal instanceof AbortSignal) ||
+    signal.aborted
+  ) {
+    return denyInvalidAuthorization();
+  }
+  const moduleLoadRequest =
+    validateLinuxRetainedNativeSupervisorModuleLoadRequest(moduleLoadRequestInput);
+  const localIpcAuthorization = authenticateRetainedNativeSupervisorLocalIpcAuthorization(
+    localIpcAuthorizationInput,
+  );
+  if (
+    moduleLoadRequest.moduleKind !== 'CLIENT' ||
+    moduleLoadRequest.socketPath !== localIpcAuthorization.socketPath
+  ) {
+    return denyInvalidAuthorization();
+  }
+  const loadedModule = await loader.load(moduleLoadRequest, signal);
+  if (signal.aborted) return denyInvalidAuthorization();
+  return createLoadedLinuxNativeTopologyCarrierRootSource(
+    loadedModule,
     binding,
     localIpcAuthorization,
     clock,

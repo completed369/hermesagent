@@ -1,4 +1,5 @@
 import {
+  BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
   DenyRetainedNativeSupervisorLocalIpcClient,
   type ClosableRetainedNativeSupervisorLocalIpcClient,
@@ -8,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createLinuxLocalTopologyCarrierRootSource,
   createLoadedLinuxNativeTopologyCarrierRootSource,
+  loadLinuxNativeTopologyCarrierRootSource,
 } from './topology-carrier-root-lookup-composition';
 
 const NOW = Date.parse('2030-01-01T12:00:00.000Z');
@@ -178,6 +180,174 @@ describe('worker Linux topology carrier root lookup composition', () => {
         () => NOW,
       ),
     ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  it('loads one exact CLIENT request before inert source construction', async () => {
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(),
+      connectUnixSocket: vi.fn(),
+    };
+    const request = Object.freeze({
+      schemaVersion: 1,
+      platform: 'LINUX',
+      architecture: 'X64',
+      moduleKind: 'CLIENT',
+      canonicalModulePath: '/opt/ventureos/native/client.node',
+      socketPath: localIpcAuthorization.socketPath,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const load = vi.spyOn(loader, 'load').mockResolvedValue(
+      Object.freeze({
+        schemaVersion: 1,
+        moduleKind: 'CLIENT',
+        socketPath: localIpcAuthorization.socketPath,
+        runtimeConnection: 'NOT_CONFIGURED',
+        nativeModule,
+      }),
+    );
+    const signal = new AbortController().signal;
+
+    const source = await loadLinuxNativeTopologyCarrierRootSource(
+      loader,
+      request,
+      signal,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+
+    expect(source).toBeInstanceOf(
+      BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+    );
+    expect(load).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledWith(request, signal);
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  it('rejects role, socket, and cancellation drift before consuming the loader', async () => {
+    const request = Object.freeze({
+      schemaVersion: 1,
+      platform: 'LINUX',
+      architecture: 'X64',
+      moduleKind: 'CLIENT',
+      canonicalModulePath: '/opt/ventureos/native/client.node',
+      socketPath: localIpcAuthorization.socketPath,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const load = vi.spyOn(loader, 'load');
+
+    await expect(
+      loadLinuxNativeTopologyCarrierRootSource(
+        { load: vi.fn() } as unknown as BoundedLinuxRetainedNativeSupervisorModuleLoader,
+        request,
+        new AbortController().signal,
+        binding,
+        localIpcAuthorization,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+
+    await expect(
+      loadLinuxNativeTopologyCarrierRootSource(
+        loader,
+        { ...request, moduleKind: 'LISTENER' },
+        new AbortController().signal,
+        binding,
+        localIpcAuthorization,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    await expect(
+      loadLinuxNativeTopologyCarrierRootSource(
+        loader,
+        { ...request, socketPath: '/run/ventureos/substituted.sock' },
+        new AbortController().signal,
+        binding,
+        localIpcAuthorization,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      loadLinuxNativeTopologyCarrierRootSource(
+        loader,
+        request,
+        controller.signal,
+        binding,
+        localIpcAuthorization,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('rejects loader output drift and post-load cancellation before native activity', async () => {
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(),
+      connectUnixSocket: vi.fn(),
+    };
+    const request = Object.freeze({
+      schemaVersion: 1,
+      platform: 'LINUX',
+      architecture: 'X64',
+      moduleKind: 'CLIENT',
+      canonicalModulePath: '/opt/ventureos/native/client.node',
+      socketPath: localIpcAuthorization.socketPath,
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const load = vi.spyOn(loader, 'load');
+    load.mockResolvedValueOnce(
+      Object.freeze({
+        schemaVersion: 1,
+        moduleKind: 'CLIENT',
+        socketPath: '/run/ventureos/substituted.sock',
+        runtimeConnection: 'NOT_CONFIGURED',
+        nativeModule,
+      }),
+    );
+    await expect(
+      loadLinuxNativeTopologyCarrierRootSource(
+        loader,
+        request,
+        new AbortController().signal,
+        binding,
+        localIpcAuthorization,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+
+    const controller = new AbortController();
+    load.mockImplementationOnce(async () => {
+      controller.abort();
+      return Object.freeze({
+        schemaVersion: 1,
+        moduleKind: 'CLIENT',
+        socketPath: localIpcAuthorization.socketPath,
+        runtimeConnection: 'NOT_CONFIGURED',
+        nativeModule,
+      });
+    });
+    await expect(
+      loadLinuxNativeTopologyCarrierRootSource(
+        loader,
+        request,
+        controller.signal,
+        binding,
+        localIpcAuthorization,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
     expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
     expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
   });

@@ -684,8 +684,10 @@ worker adapter can require exact injected Linux endpoint and API peer-credential
 (ADR-0135), and an inert worker-local factory can join an explicitly injected closable client to the
 one-use source (ADR-0137). The same factory now accepts only an exact already-loaded `CLIENT` module,
 binds it through the strict native ABI adapter, and rejects any mismatch between the module's socket
-path and the kernel-authenticated local IPC authorization (ADR-0138). It remains absent from
-`worker.ts`; no loader is invoked. Native client loading, path authorization, the shared mount,
-route, and lifecycle remain unconfigured.
+path and the kernel-authenticated local IPC authorization (ADR-0138). An unwired async entry point
+can now consume one explicitly injected one-use loader only after validating the exact `CLIENT`
+request and its equality with local socket authorization, then revalidates the loaded envelope
+(ADR-0139). It remains absent from `worker.ts`, and production supplies no loader, request,
+authorization source, path, mount, route, or lifecycle.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
