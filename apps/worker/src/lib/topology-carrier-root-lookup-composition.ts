@@ -6,8 +6,11 @@ import {
   BoundedLinuxRetainedNativeSupervisorNativeClientBinding,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
   RetainedNativeSupervisorLocalIpcError,
+  RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
   type ClosableRetainedNativeSupervisorLocalIpcClient,
+  type LinuxRetainedNativeSupervisorTopologyObservationPort,
   type LoadedLinuxRetainedNativeSupervisorClientModule,
+  type RetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   validateLinuxRetainedNativeSupervisorModuleLoadRequest,
 } from '@ventureos/agent-bridge';
 
@@ -124,6 +127,34 @@ export function createLoadedLinuxNativeTopologyCarrierRootSource(
     localIpcAuthorization,
     clock,
     timeoutMs,
+  );
+}
+
+/**
+ * Joins the exact concrete worker root source to the root-resolved worker endpoint. Construction
+ * performs no root lookup, observation, signing, native call, or application wiring.
+ */
+export function createRootResolvedLinuxNativeTopologyCarrierWorker(
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  observer: LinuxRetainedNativeSupervisorTopologyObservationPort,
+  signer: RetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
+  binding: unknown,
+  clock: () => number = Date.now,
+): RootResolvedRetainedNativeSupervisorTopologyObservationWorker {
+  if (
+    !(
+      source instanceof
+      BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource
+    )
+  ) {
+    return denyInvalidAuthorization();
+  }
+  return new RootResolvedRetainedNativeSupervisorTopologyObservationWorker(
+    source,
+    observer,
+    signer,
+    binding,
+    clock,
   );
 }
 
