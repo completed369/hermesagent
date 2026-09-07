@@ -9,6 +9,7 @@ import {
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   RetainedNativeSupervisorLocalIpcError,
+  RetainedDescriptorLinuxNativeSupervisorTopologyObserver,
   RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
   type ClosableRetainedNativeSupervisorLocalIpcClient,
   type LinuxRetainedNativeSupervisorTopologyObservationPort,
@@ -231,6 +232,48 @@ export function createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker(
     signer,
     binding,
     clock,
+    frameTimeoutMs,
+  );
+}
+
+/**
+ * Constructs the retained-descriptor WORKER_CLIENT observer inside the keyless framed worker.
+ * Construction opens or reads no path and performs no lookup, signing, IPC, or native activity.
+ */
+export function createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  signerKeyId: string,
+  signingTransport: RetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport,
+  binding: unknown,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+  frameTimeoutMs = 5_000,
+): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint {
+  try {
+    if (
+      !(
+        source instanceof
+        BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource
+      )
+    ) {
+      return denyInvalidAuthorization();
+    }
+  } catch (error) {
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+    return denyInvalidAuthorization();
+  }
+  const observer = new RetainedDescriptorLinuxNativeSupervisorTopologyObserver(
+    'WORKER_CLIENT',
+    clock,
+  );
+  return createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+    source,
+    observer,
+    signerKeyId,
+    signingTransport,
+    binding,
+    clock,
+    signingTimeoutMs,
     frameTimeoutMs,
   );
 }

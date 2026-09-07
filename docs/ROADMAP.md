@@ -532,6 +532,10 @@ published and current `main` has not been deployed to private staging.
    composition with the role fixed to `WORKER_CLIENT` and the same live carrier binding and clock
    (ADR-0146). Signer key custody and transport remain injected; construction performs no signing,
    lookup, observation, IPC, frame handling, or native activity and remains outside `worker.ts`.
+   A Linux/x64-only worker factory can now construct the retained-descriptor observer inside that
+   path with its role fixed to `WORKER_CLIENT` (ADR-0147). Construction opens no path and the caller
+   cannot substitute the observer implementation or role; signer transport, byte channel,
+   listener, approved paths/identities, lifecycle, and runtime connection remain external.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
