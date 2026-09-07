@@ -473,8 +473,13 @@ published and current `main` has not been deployed to private staging.
    A separate one-use API-local source now resolves only the coordinator's own already-admitted
    public carrier grant from the immutable PostgreSQL registry (ADR-0133). It denies the worker role,
    binding drift, cancellation, expiry, replay, missing or ambiguous state, and under-scoped roots.
-   It remains unwired from the authenticated handler and service graph; peer authentication,
-   transport, routing, mounts, and runtime connection are still absent.
+   It exposes no role selector and remains outside the service graph; peer authentication, transport,
+   routing, mounts, and runtime connection are still absent.
+   An inert API-local factory now binds that least-authority coordinator-root source to the exact
+   authenticated lookup handler for one carrier authorization, clock, and bounded timeout
+   (ADR-0134). Construction performs no database read and the factory remains outside the Nest and
+   worker graphs. No mutual-authentication mechanism, listener, transport, route, socket, key,
+   shared mount, or runtime connection is selected or activated.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

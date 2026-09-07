@@ -641,25 +641,27 @@ or a durable writer, and production secret and response transports remain
 deny-only. Because no real authenticated process round trip exists, this must
 not be presented as configured Codex or runtime connectivity.
 
-## Topology carrier root wiring is API-side and uncomposed only
+## Topology carrier root wiring is API-side and application-inactive
 
 The API coordinator has separate one-use adapters from the immutable PostgreSQL topology-carrier
 public-root registry for the exact opposite `WORKER_CLIENT` grant and its own exact
 `API_COORDINATOR` grant (ADR-0130 and ADR-0133). Neither caller receives a role selector. Both deny
-binding drift, cancellation, expiry, missing or ambiguous state, under-scoped roots, and replay. The
-adapters are not wired into the API module. No concrete authenticated root-lookup transport, carrier
-route, signing endpoint, shared runtime mount, or runtime connection exists. Codex, Hermes, Pi, and
-`runtimeConnection` therefore remain `NOT_CONFIGURED`.
+binding drift, cancellation, expiry, missing or ambiguous state, under-scoped roots, and replay. Only
+the coordinator-root source is bound to its authenticated handler by an inert factory (ADR-0134);
+none of these components is wired into the API module. No concrete authenticated root-lookup
+transport, carrier route, signing endpoint, shared runtime mount, or runtime connection exists.
+Codex, Hermes, Pi, and `runtimeConnection` therefore remain `NOT_CONFIGURED`.
 
-## API topology carrier root lookup handler is uncomposed
+## API topology carrier root lookup handler is composed but inactive
 
 The API side has a one-use handler for the worker root-lookup protocol. It requires exact,
 direction-specific sideband peer identity from an independently mutually authenticated transport,
 then validates the canonical request and returns only the exact non-revoked API-coordinator public
-root for the live carrier binding (ADR-0132). A suitable API-local coordinator-root source now exists
-separately (ADR-0133), but it is not wired into the handler or Nest module. The handler has no concrete
-listener, transport, route, socket, database composition, signing authority, or shared runtime mount
-and is absent from both application graphs. It is not runtime connectivity evidence; Codex, Hermes,
+root for the live carrier binding (ADR-0132). An inert API-local factory binds the dedicated durable
+coordinator-root source (ADR-0133) to that handler for one exact carrier authorization (ADR-0134), but
+the factory remains absent from the Nest and worker graphs. It performs no database read at
+construction and supplies no concrete listener, transport, route, socket, peer authentication,
+signing authority, or shared runtime mount. It is not runtime connectivity evidence; Codex, Hermes,
 Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.
 
 ## Worker topology carrier root lookup is protocol-only
@@ -668,6 +670,6 @@ The worker has an uncomposed one-use source that can request only the exact API-
 root for one live carrier binding. Its injected transport contract requires independent mutual peer
 authentication, and the source enforces a fresh challenge, exact request/response scope, bounded
 canonical frames, cancellation and binding expiry, and close-before-release (ADR-0131). The API-side
-handler and its API-local root source exist separately but remain uncomposed; no concrete
-authenticated transport exists, and the source is not wired into the worker. This is not runtime
+handler and its API-local root source now have only an inert factory composition; no concrete
+authenticated transport exists, and neither side is wired into an application graph. This is not runtime
 connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.

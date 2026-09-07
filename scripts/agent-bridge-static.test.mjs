@@ -3016,7 +3016,7 @@ test('API coordinator resolves only the exact durable worker carrier root and re
   );
 });
 
-test('API published root source resolves only its coordinator grant and remains uncomposed', () => {
+test('API published root source resolves only its coordinator grant and remains application-inactive', () => {
   const source = readFileSync(
     'apps/api/src/modules/agent-control-plane/topology-carrier-signature-root-source.ts',
     'utf8',
@@ -3081,7 +3081,7 @@ test('worker carrier root lookup requires independent mutual identity and remain
   );
 });
 
-test('API carrier root lookup handler trusts only sideband mutual identity and remains uncomposed', () => {
+test('API carrier root lookup handler trusts only sideband mutual identity and remains application-inactive', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier-root-lookup-handler.ts',
     'utf8',
@@ -3111,6 +3111,36 @@ test('API carrier root lookup handler trusts only sideband mutual identity and r
   assert.doesNotMatch(
     workerComposition,
     /BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler/u,
+  );
+});
+
+test('API carrier root lookup composition binds the coordinator source without activation', () => {
+  const source = readFileSync(
+    'apps/api/src/modules/agent-control-plane/topology-carrier-root-lookup-composition.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /new PostgresApiCoordinatorPublishedTopologyCarrierSignatureRootSource/u);
+  assert.match(
+    source,
+    /new BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler/u,
+  );
+  assert.doesNotMatch(source, /\.handle\s*\(|\.read\s*\(|runtimeConnection:\s*'CONNECTED'/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bfetch\s*\(|\bcreatePrivateKey\b|\bgenerateKeyPair\b|\bprivateKey\b|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /createPostgresApiCoordinatorTopologyCarrierRootLookupHandler/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /createPostgresApiCoordinatorTopologyCarrierRootLookupHandler/u,
   );
 });
 
