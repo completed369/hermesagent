@@ -77,7 +77,11 @@ test.describe('Collaborative workspace UI behavior', () => {
         value: {
           writeText: () =>
             new Promise((_, reject) => {
-              window.setTimeout(() => reject(new Error('clipboard denied')), 150);
+              (
+                window as typeof window & {
+                  rejectClipboardWrite: () => void;
+                }
+              ).rejectClipboardWrite = () => reject(new Error('clipboard denied'));
             }),
         },
       });
@@ -86,6 +90,13 @@ test.describe('Collaborative workspace UI behavior', () => {
     await page.getByRole('button', { name: 'Copy link' }).click();
     await expect(page.getByRole('button', { name: 'Copying…' })).toBeDisabled();
     await expect(teamActions.getByRole('status')).toHaveText('Copying the invitation link.');
+    await page.evaluate(() =>
+      (
+        window as typeof window & {
+          rejectClipboardWrite: () => void;
+        }
+      ).rejectClipboardWrite(),
+    );
     await expect(
       page.getByRole('alert').filter({
         hasText: 'Could not copy the invitation link. Select and copy it manually.',
