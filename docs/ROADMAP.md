@@ -575,6 +575,11 @@ published and current `main` has not been deployed to private staging.
    the existing bounded cleanup path (ADR-0156). This composition remains outside `worker.ts` and
    still selects no listener, service authority, production identity/path, signer custody, or
    runtime lifecycle.
+   Retained-native one-session service grants now bind role-neutral peer credentials plus an exact
+   peer role fixed by service purpose: worker-side topology observation requires an
+   `API_COORDINATOR`, while existing supervisor/API listeners require a `WORKER_CLIENT`
+   (ADR-0157). This remains inactive but removes the authority ambiguity that blocked a safe
+   worker-side carrier-listener grant.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

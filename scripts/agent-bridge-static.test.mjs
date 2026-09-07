@@ -2307,8 +2307,8 @@ test('Linux retained-native listener lifecycle is ownership-safe, bounded, and u
   assert.match(source, /value\.parentMode !== 0o700/u);
   assert.match(source, /value\.socketMode !== 0o600/u);
   assert.match(source, /value\.listenBacklog !== 1/u);
-  assert.match(source, /expectedWorkerPid: positive/u);
-  assert.match(source, /expectedPeerPid: this\.#authorization\.expectedWorkerPid/u);
+  assert.match(source, /expectedPeerPid: positive/u);
+  assert.match(source, /expectedPeerPid: this\.#authorization\.expectedPeerPid/u);
   assert.match(source, /new AuthenticatedLinuxLocalRetainedNativeSupervisorRecoveryHandler/u);
   assert.match(
     source,
@@ -2378,7 +2378,7 @@ test('retained-native listener lifecycle kernel evidence is Linux-test-only and 
   assert.match(fixture, /SUBSTITUTION_PRESERVED/u);
   assert.match(fixture, /if \(!listener_closed\)[\s\S]*LISTENER_CLOSE_FAILED/u);
   assert.match(evidence, /process\.platform === 'linux' && process\.arch === 'x64'/u);
-  assert.match(evidence, /expectedWorkerPid: process\.pid/u);
+  assert.match(evidence, /expectedPeerPid: process\.pid/u);
   assert.match(evidence, /runtimeConnection: 'NOT_CONFIGURED'/u);
   assert.doesNotMatch(index, /retained-native-listener-lifecycle-linux-evidence/u);
   assert.match(runtimeAssertion, /retained-native-listener-lifecycle-addon/u);
@@ -3480,6 +3480,10 @@ test('role-local topology and carrier-root listeners require distinct Level-3 on
   );
   assert.match(owner, /TOPOLOGY_OBSERVATION_API_LISTENER/u);
   assert.match(owner, /TOPOLOGY_OBSERVATION_WORKER_CLIENT/u);
+  assert.match(owner, /expectedPeerRole/u);
+  assert.match(owner, /case 'TOPOLOGY_OBSERVATION_WORKER_CLIENT':[\s\S]*return 'API_COORDINATOR'/u);
+  assert.match(owner, /const unsupported: never = serviceKind/u);
+  assert.doesNotMatch(owner, /expectedWorker(?:Pid|Uid|Gid)/u);
   assert.match(owner, /TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER/u);
   assert.match(owner, /runTopologyCarrierRootLookupOne/u);
   assert.match(lifecycle, /runTopologyCarrierRootLookupOne/u);

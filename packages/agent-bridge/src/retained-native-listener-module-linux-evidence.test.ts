@@ -123,9 +123,9 @@ describeLinux('production Linux retained-native listener module evidence', () =>
       socketOwnerUid: process.geteuid!(),
       socketOwnerGid: process.getegid!(),
       socketMode: 0o600,
-      expectedWorkerPid: process.pid,
-      expectedWorkerUid: process.geteuid!(),
-      expectedWorkerGid: process.getegid!(),
+      expectedPeerPid: process.pid,
+      expectedPeerUid: process.geteuid!(),
+      expectedPeerGid: process.getegid!(),
       listenBacklog: 1,
       runtimeConnection: 'NOT_CONFIGURED',
     };

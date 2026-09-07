@@ -45,6 +45,8 @@ export type LinuxRetainedNativeSupervisorServiceKind =
   | 'TOPOLOGY_OBSERVATION_WORKER_CLIENT'
   | 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER';
 
+export type LinuxRetainedNativeSupervisorServicePeerRole = 'API_COORDINATOR' | 'WORKER_CLIENT';
+
 export interface LinuxRetainedNativeSupervisorServiceRequest {
   readonly schemaVersion: 1;
   readonly purpose: 'RETAINED_NATIVE_SUPERVISOR_ONE_SESSION_SERVICE';
@@ -60,9 +62,10 @@ export interface LinuxRetainedNativeSupervisorServiceRequest {
   readonly socketDirectoryOwnerGid: number;
   readonly socketDirectoryMode: 448;
   readonly socketPath: string;
-  readonly expectedWorkerPid: number;
-  readonly expectedWorkerUid: number;
-  readonly expectedWorkerGid: number;
+  readonly expectedPeerRole: LinuxRetainedNativeSupervisorServicePeerRole;
+  readonly expectedPeerPid: number;
+  readonly expectedPeerUid: number;
+  readonly expectedPeerGid: number;
   readonly maximumSessionDurationMs: number;
   readonly runtimeConnection: 'NOT_CONFIGURED';
 }
@@ -89,9 +92,10 @@ export class DenyLinuxRetainedNativeSupervisorServiceAuthority implements LinuxR
 }
 
 const REQUEST_KEYS = [
-  'expectedWorkerGid',
-  'expectedWorkerPid',
-  'expectedWorkerUid',
+  'expectedPeerGid',
+  'expectedPeerPid',
+  'expectedPeerRole',
+  'expectedPeerUid',
   'maximumSessionDurationMs',
   'pathApprovalEvidenceHash',
   'pathProvisionRequestHash',
@@ -219,6 +223,24 @@ function identity(value: unknown): { readonly device: number; readonly inode: nu
   return Object.freeze({ device, inode });
 }
 
+function expectedPeerRole(
+  serviceKind: LinuxRetainedNativeSupervisorServiceKind,
+): LinuxRetainedNativeSupervisorServicePeerRole {
+  switch (serviceKind) {
+    case 'TOPOLOGY_OBSERVATION_WORKER_CLIENT':
+      return 'API_COORDINATOR';
+    case 'RECOVERY':
+    case 'MODULE_AUTHORIZATION_SIGNING':
+    case 'TOPOLOGY_OBSERVATION_API_LISTENER':
+    case 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER':
+      return 'WORKER_CLIENT';
+    default: {
+      const unsupported: never = serviceKind;
+      return unsupported;
+    }
+  }
+}
+
 export function validateLinuxRetainedNativeSupervisorServiceRequest(
   input: unknown,
 ): Readonly<LinuxRetainedNativeSupervisorServiceRequest> {
@@ -246,12 +268,14 @@ export function validateLinuxRetainedNativeSupervisorServiceRequest(
   const validatedSocketPath = socketPath(value.socketPath);
   const socketDirectory = directoryPath(value.socketDirectory);
   if (posix.dirname(validatedSocketPath) !== socketDirectory) deny('INVALID_AUTHORIZATION');
+  const serviceKind = value.serviceKind as LinuxRetainedNativeSupervisorServiceKind;
+  if (value.expectedPeerRole !== expectedPeerRole(serviceKind)) deny('INVALID_AUTHORIZATION');
   return Object.freeze({
     schemaVersion: 1,
     purpose: 'RETAINED_NATIVE_SUPERVISOR_ONE_SESSION_SERVICE',
     workspaceId: reference(value.workspaceId),
     supervisorInstanceId: reference(value.supervisorInstanceId),
-    serviceKind: value.serviceKind,
+    serviceKind,
     provisioningId: reference(value.provisioningId),
     pathProvisionRequestHash: digest(value.pathProvisionRequestHash),
     pathApprovalEvidenceHash: digest(value.pathApprovalEvidenceHash),
@@ -261,9 +285,10 @@ export function validateLinuxRetainedNativeSupervisorServiceRequest(
     socketDirectoryOwnerGid: nonnegative(value.socketDirectoryOwnerGid),
     socketDirectoryMode: 0o700,
     socketPath: validatedSocketPath,
-    expectedWorkerPid: positive(value.expectedWorkerPid),
-    expectedWorkerUid: nonnegative(value.expectedWorkerUid),
-    expectedWorkerGid: nonnegative(value.expectedWorkerGid),
+    expectedPeerRole: expectedPeerRole(serviceKind),
+    expectedPeerPid: positive(value.expectedPeerPid),
+    expectedPeerUid: nonnegative(value.expectedPeerUid),
+    expectedPeerGid: nonnegative(value.expectedPeerGid),
     maximumSessionDurationMs,
     runtimeConnection: 'NOT_CONFIGURED',
   });
@@ -511,9 +536,9 @@ export class BoundedLinuxRetainedNativeSupervisorServiceOwner {
         socketOwnerUid: grant.socketDirectoryOwnerUid,
         socketOwnerGid: grant.socketDirectoryOwnerGid,
         socketMode: 0o600,
-        expectedWorkerPid: grant.expectedWorkerPid,
-        expectedWorkerUid: grant.expectedWorkerUid,
-        expectedWorkerGid: grant.expectedWorkerGid,
+        expectedPeerPid: grant.expectedPeerPid,
+        expectedPeerUid: grant.expectedPeerUid,
+        expectedPeerGid: grant.expectedPeerGid,
         listenBacklog: 1,
         runtimeConnection: 'NOT_CONFIGURED',
       }),

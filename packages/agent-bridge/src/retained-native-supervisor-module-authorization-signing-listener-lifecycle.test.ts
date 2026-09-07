@@ -56,9 +56,9 @@ function authorization(): LinuxRetainedNativeSupervisorListenerAuthorization {
     socketOwnerUid: listenerIdentity.ownerUid,
     socketOwnerGid: listenerIdentity.ownerGid,
     socketMode: listenerIdentity.mode,
-    expectedWorkerPid: workerCredentials.pid,
-    expectedWorkerUid: workerCredentials.uid,
-    expectedWorkerGid: workerCredentials.gid,
+    expectedPeerPid: workerCredentials.pid,
+    expectedPeerUid: workerCredentials.uid,
+    expectedPeerGid: workerCredentials.gid,
     listenBacklog: 1,
     runtimeConnection: 'NOT_CONFIGURED',
   };

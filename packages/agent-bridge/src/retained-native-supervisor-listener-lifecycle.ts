@@ -39,9 +39,9 @@ export interface LinuxRetainedNativeSupervisorListenerAuthorization {
   readonly socketOwnerUid: number;
   readonly socketOwnerGid: number;
   readonly socketMode: number;
-  readonly expectedWorkerPid: number;
-  readonly expectedWorkerUid: number;
-  readonly expectedWorkerGid: number;
+  readonly expectedPeerPid: number;
+  readonly expectedPeerUid: number;
+  readonly expectedPeerGid: number;
   readonly listenBacklog: number;
   readonly runtimeConnection: 'NOT_CONFIGURED';
 }
@@ -138,9 +138,9 @@ function bindSigningCustodyFactory(
 
 const AUTHORIZATION_KEYS = [
   'listenBacklog',
-  'expectedWorkerGid',
-  'expectedWorkerPid',
-  'expectedWorkerUid',
+  'expectedPeerGid',
+  'expectedPeerPid',
+  'expectedPeerUid',
   'parentDevice',
   'parentInode',
   'parentMode',
@@ -251,9 +251,9 @@ function parseAuthorization(
     socketOwnerUid: nonnegative(value.socketOwnerUid, 'INVALID_AUTHORIZATION'),
     socketOwnerGid: nonnegative(value.socketOwnerGid, 'INVALID_AUTHORIZATION'),
     socketMode: 0o600,
-    expectedWorkerPid: positive(value.expectedWorkerPid, 'INVALID_AUTHORIZATION'),
-    expectedWorkerUid: nonnegative(value.expectedWorkerUid, 'INVALID_AUTHORIZATION'),
-    expectedWorkerGid: nonnegative(value.expectedWorkerGid, 'INVALID_AUTHORIZATION'),
+    expectedPeerPid: positive(value.expectedPeerPid, 'INVALID_AUTHORIZATION'),
+    expectedPeerUid: nonnegative(value.expectedPeerUid, 'INVALID_AUTHORIZATION'),
+    expectedPeerGid: nonnegative(value.expectedPeerGid, 'INVALID_AUTHORIZATION'),
     listenBacklog: 1,
     runtimeConnection: 'NOT_CONFIGURED',
   });
@@ -396,9 +396,9 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
           socketOwnerUid: identity.ownerUid as number,
           socketOwnerGid: identity.ownerGid as number,
           socketMode: identity.mode as number,
-          expectedPeerPid: this.#authorization.expectedWorkerPid,
-          expectedPeerUid: this.#authorization.expectedWorkerUid,
-          expectedPeerGid: this.#authorization.expectedWorkerGid,
+          expectedPeerPid: this.#authorization.expectedPeerPid,
+          expectedPeerUid: this.#authorization.expectedPeerUid,
+          expectedPeerGid: this.#authorization.expectedPeerGid,
           runtimeConnection: 'NOT_CONFIGURED',
         }),
       signal,
@@ -440,9 +440,9 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
             socketOwnerUid: identity.ownerUid as number,
             socketOwnerGid: identity.ownerGid as number,
             socketMode: identity.mode as number,
-            expectedWorkerPid: this.#authorization.expectedWorkerPid,
-            expectedWorkerUid: this.#authorization.expectedWorkerUid,
-            expectedWorkerGid: this.#authorization.expectedWorkerGid,
+            expectedWorkerPid: this.#authorization.expectedPeerPid,
+            expectedWorkerUid: this.#authorization.expectedPeerUid,
+            expectedWorkerGid: this.#authorization.expectedPeerGid,
             runtimeConnection: 'NOT_CONFIGURED',
           }),
         );
@@ -474,9 +474,9 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
             socketOwnerUid: identity.ownerUid,
             socketOwnerGid: identity.ownerGid,
             socketMode: identity.mode,
-            expectedPeerPid: this.#authorization.expectedWorkerPid,
-            expectedPeerUid: this.#authorization.expectedWorkerUid,
-            expectedPeerGid: this.#authorization.expectedWorkerGid,
+            expectedPeerPid: this.#authorization.expectedPeerPid,
+            expectedPeerUid: this.#authorization.expectedPeerUid,
+            expectedPeerGid: this.#authorization.expectedPeerGid,
             runtimeConnection: 'NOT_CONFIGURED',
           },
           timeoutMs,
@@ -542,9 +542,9 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
             socketOwnerUid: identity.ownerUid,
             socketOwnerGid: identity.ownerGid,
             socketMode: identity.mode,
-            expectedPeerPid: this.#authorization.expectedWorkerPid,
-            expectedPeerUid: this.#authorization.expectedWorkerUid,
-            expectedPeerGid: this.#authorization.expectedWorkerGid,
+            expectedPeerPid: this.#authorization.expectedPeerPid,
+            expectedPeerUid: this.#authorization.expectedPeerUid,
+            expectedPeerGid: this.#authorization.expectedPeerGid,
             runtimeConnection: 'NOT_CONFIGURED',
           },
           observerRole,
@@ -591,9 +591,9 @@ export class BoundedLinuxRetainedNativeSupervisorListenerLifecycle {
             socketOwnerUid: identity.ownerUid,
             socketOwnerGid: identity.ownerGid,
             socketMode: identity.mode,
-            expectedPeerPid: this.#authorization.expectedWorkerPid,
-            expectedPeerUid: this.#authorization.expectedWorkerUid,
-            expectedPeerGid: this.#authorization.expectedWorkerGid,
+            expectedPeerPid: this.#authorization.expectedPeerPid,
+            expectedPeerUid: this.#authorization.expectedPeerUid,
+            expectedPeerGid: this.#authorization.expectedPeerGid,
             runtimeConnection: 'NOT_CONFIGURED',
           },
           clock,

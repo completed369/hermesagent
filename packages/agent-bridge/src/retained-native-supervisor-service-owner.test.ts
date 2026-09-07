@@ -137,12 +137,13 @@ function carrierRootRequest(): Buffer {
 function request(
   drift: Partial<LinuxRetainedNativeSupervisorServiceRequest> = {},
 ): LinuxRetainedNativeSupervisorServiceRequest {
+  const serviceKind = drift.serviceKind ?? 'RECOVERY';
   return {
     schemaVersion: 1,
     purpose: 'RETAINED_NATIVE_SUPERVISOR_ONE_SESSION_SERVICE',
     workspaceId: 'workspace-native-service',
     supervisorInstanceId: 'supervisor-native-service',
-    serviceKind: 'RECOVERY',
+    serviceKind,
     provisioningId: 'provisioning-native-service',
     pathProvisionRequestHash: 'b'.repeat(64),
     pathApprovalEvidenceHash: 'c'.repeat(64),
@@ -152,9 +153,11 @@ function request(
     socketDirectoryOwnerGid: parentIdentity.ownerGid,
     socketDirectoryMode: 0o700,
     socketPath,
-    expectedWorkerPid: workerCredentials.pid,
-    expectedWorkerUid: workerCredentials.uid,
-    expectedWorkerGid: workerCredentials.gid,
+    expectedPeerRole:
+      serviceKind === 'TOPOLOGY_OBSERVATION_WORKER_CLIENT' ? 'API_COORDINATOR' : 'WORKER_CLIENT',
+    expectedPeerPid: workerCredentials.pid,
+    expectedPeerUid: workerCredentials.uid,
+    expectedPeerGid: workerCredentials.gid,
     maximumSessionDurationMs: 2_000,
     runtimeConnection: 'NOT_CONFIGURED',
     ...drift,
@@ -394,7 +397,7 @@ describe('bounded retained-native supervisor service owner', () => {
     ['cross-supervisor scope', { supervisorInstanceId: 'supervisor-other' }],
     ['socket drift', { socketPath: '/run/ventureos/supervisor/other.sock' }],
     ['socket directory drift', { socketDirectory: '/run/ventureos/other' }],
-    ['worker PID drift', { expectedWorkerPid: 812 }],
+    ['peer PID drift', { expectedPeerPid: 812 }],
     ['path evidence drift', { pathApprovalEvidenceHash: 'e'.repeat(64) }],
   ])('denies grant request drift: %s', async (_label, drift) => {
     const { binding, owner, peer, serviceRequest } = fixture(
@@ -414,7 +417,16 @@ describe('bounded retained-native supervisor service owner', () => {
     ['socket outside directory', { socketPath: '/run/ventureos/other/recovery.sock' }],
     ['invalid directory identity', { socketDirectoryIdentityReference: 'caller:asserted' }],
     ['sensitive reference', { provisioningId: 'secret-reference' }],
-    ['invalid worker PID', { expectedWorkerPid: 0 }],
+    ['invalid peer PID', { expectedPeerPid: 0 }],
+    ['peer role mismatch', { expectedPeerRole: 'API_COORDINATOR' }],
+    ['legacy worker peer field', { expectedWorkerPid: workerCredentials.pid }],
+    [
+      'worker-observer peer role mismatch',
+      {
+        serviceKind: 'TOPOLOGY_OBSERVATION_WORKER_CLIENT',
+        expectedPeerRole: 'WORKER_CLIENT',
+      },
+    ],
   ])('denies malformed service requests: %s', async (_label, drift) => {
     const { authority, binding, owner, peer } = fixture();
     await expect(
@@ -490,6 +502,9 @@ describe('bounded retained-native supervisor service owner', () => {
         serviceKind,
         socketPath: `/run/ventureos/supervisor/topology-${observerRole.toLowerCase()}.sock`,
       });
+      expect(serviceRequest.expectedPeerRole).toBe(
+        observerRole === 'WORKER_CLIENT' ? 'API_COORDINATOR' : 'WORKER_CLIENT',
+      );
       const { authority, binding, owner } = fixture(serviceRequest);
       const observationRequest = topologyRequest(observerRole);
       const observer: LinuxRetainedNativeSupervisorTopologyObservationPort = {
