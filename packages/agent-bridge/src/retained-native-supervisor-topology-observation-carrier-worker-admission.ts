@@ -241,6 +241,7 @@ export class BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservatio
         await this.#native.acceptAuthorizedUnixSocket(this.#authorization.socketPath, signal),
       );
       acceptedClose = closable.close;
+      if (signal.aborted) deny('EXCHANGE_DENIED');
       opened = bindSession(closable.session, acceptedClose);
       if (signal.aborted) deny('EXCHANGE_DENIED');
       authenticatePeer(await opened.peerCredentials(signal), this.#authorization);

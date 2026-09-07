@@ -188,6 +188,28 @@ describe('authenticated Linux topology carrier worker admission', () => {
     expect(binding.accepted.readToEof).not.toHaveBeenCalled();
   });
 
+  it('checks cancellation after accept before touching remaining session accessors', async () => {
+    const { admission, binding } = fixture();
+    const controller = new AbortController();
+    const close = vi.fn(async (): Promise<void> => undefined);
+    const peerCredentials = vi.fn(() => {
+      throw new Error('must not inspect a cancelled session');
+    });
+    const session = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(session, 'close', { get: () => close });
+    Object.defineProperty(session, 'peerCredentials', { get: peerCredentials });
+    binding.acceptAuthorizedUnixSocket.mockImplementation(async () => {
+      controller.abort();
+      return session;
+    });
+
+    await expect(admission.acceptOne(controller.signal)).rejects.toEqual(
+      expectCode('EXCHANGE_DENIED'),
+    );
+    expect(peerCredentials).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it('redacts hostile authorization accessors before native binding access', () => {
     const binding = new FixtureBinding();
     const candidate = { ...authorization() } as Record<string, unknown>;
