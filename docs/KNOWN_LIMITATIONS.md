@@ -681,6 +681,8 @@ canonical frames, cancellation and binding expiry, and close-before-release (ADR
 handler and its API-local root source now have only an inert factory composition; no concrete
 application transport exists, and neither side is wired into an application graph. An exported
 worker adapter can require exact injected Linux endpoint and API peer-credential evidence
-(ADR-0135), but the native client, path authorization, shared mount, and route remain unconfigured.
+(ADR-0135), and an inert worker-local factory can join an explicitly injected closable client to the
+one-use source (ADR-0137), but that factory is absent from `worker.ts`. Native client loading, path
+authorization, the shared mount, route, and lifecycle remain unconfigured.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

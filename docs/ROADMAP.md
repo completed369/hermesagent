@@ -491,6 +491,10 @@ published and current `main` has not been deployed to private staging.
    and clock (ADR-0136). Exact local IPC authorization remains an explicit input, construction reads
    no database state, and the factory is absent from the Nest graph. No native listener, socket
    route, shared mount, service lifecycle, or runtime connection is activated.
+   A worker-local inert factory now joins an explicitly injected closable Linux IPC client to the
+   kernel-authenticated adapter and one-use coordinator-root source for the same carrier binding and
+   clock (ADR-0137). Construction performs no exchange, the factory is absent from `worker.ts`, and
+   no native loader, socket-path source, shared mount, route, or lifecycle is supplied.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
