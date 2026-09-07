@@ -458,6 +458,12 @@ published and current `main` has not been deployed to private staging.
    results after cancellation or binding expiry (ADR-0130). It remains absent from application
    wiring; the authenticated worker-side source, carrier and signing transports, routing, mount,
    and runtime connection remain unconfigured.
+   A one-use worker public-root source now requests only the exact `API_COORDINATOR` grant over a
+   privileged transport port that must independently mutually authenticate both roles, avoiding
+   circular trust in the returned root (ADR-0131). Fresh challenge/request binding, canonical 2 KiB
+   and 4 KiB frames, binding-expiry/cancellation races, root-scope validation, and bounded
+   close-before-release are enforced. The API handler and concrete identity transport remain absent,
+   so no route, deployment, mount, or runtime connection is configured.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

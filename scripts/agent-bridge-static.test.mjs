@@ -3016,6 +3016,41 @@ test('API coordinator resolves only the exact durable worker carrier root and re
   );
 });
 
+test('worker carrier root lookup requires independent mutual identity and remains uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier-root-lookup.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /INDEPENDENT_MUTUALLY_AUTHENTICATED_CROSS_ROLE_TRANSPORT/u);
+  assert.match(source, /principalRole !== 'API_COORDINATOR'/u);
+  assert.match(source, /canonicalJson\(candidate\) !== canonicalJson\(this\.#binding\)/u);
+  assert.match(source, /requesterPrincipalRole: 'WORKER_CLIENT'/u);
+  assert.match(source, /requestedPrincipalRole: 'API_COORDINATOR'/u);
+  assert.match(source, /challenge: challenge\(\(\) => randomBytes\(32\)\)/u);
+  assert.match(source, /value\.requestHash !== hash\(request\)/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_ROOT_LOOKUP_REQUEST_BYTES/u);
+  assert.match(source, /MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_ROOT_LOOKUP_RESPONSE_BYTES/u);
+  assert.match(source, /Promise\.resolve\(\)\.then\(\(\) => this\.#close\(\)\)/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|\bcreatePrivateKey\b|\bgenerateKeyPair\b|\bprivateKey\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource/u,
+  );
+});
+
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',
