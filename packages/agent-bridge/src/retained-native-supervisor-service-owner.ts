@@ -42,6 +42,7 @@ const LINUX_IDENTITY = /^linux:dev-([a-f0-9]+):ino-([a-f0-9]+)$/u;
 const MAX_AUTHORIZATION_LIFETIME_MS = 60_000;
 const MIN_SESSION_DURATION_MS = 100;
 const MAX_SESSION_DURATION_MS = 5_000;
+const AUTHENTIC_SERVICE_OWNERS = new WeakSet<object>();
 
 export type LinuxRetainedNativeSupervisorServiceKind =
   | 'RECOVERY'
@@ -352,6 +353,7 @@ export class BoundedLinuxRetainedNativeSupervisorServiceOwner {
       typeof binding.createOwnedListener !== 'function'
     )
       deny('NOT_CONFIGURED');
+    AUTHENTIC_SERVICE_OWNERS.add(this);
   }
 
   async runRecoveryOne(
@@ -640,4 +642,16 @@ export class BoundedLinuxRetainedNativeSupervisorServiceOwner {
     if (!Number.isFinite(now)) deny('INVALID_AUTHORIZATION');
     return now;
   }
+}
+
+/** Proves that one nominal service owner completed the canonical constructor. */
+export function authenticateBoundedLinuxRetainedNativeSupervisorServiceOwner(
+  input: unknown,
+): BoundedLinuxRetainedNativeSupervisorServiceOwner {
+  if (
+    !(input instanceof BoundedLinuxRetainedNativeSupervisorServiceOwner) ||
+    !AUTHENTIC_SERVICE_OWNERS.has(input)
+  )
+    deny('INVALID_AUTHORIZATION');
+  return input;
 }

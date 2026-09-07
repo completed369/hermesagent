@@ -328,12 +328,8 @@ export function createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNa
   );
 }
 
-/**
- * Binds one already-authorized loaded CLIENT module to the carrier signing path. Construction
- * loads no code and performs no signing, lookup, observation, frame, IPC, filesystem, or native
- * activity.
- */
-export function createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+/** Binds one loaded signer module into the exact binding-authenticated root-resolved worker. */
+export function createLoadedAuthenticatedSigningRetainedDescriptorKeylessRootResolvedLinuxNativeTopologyCarrierWorker(
   source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
   loadedSigningModuleInput: unknown,
   signingAuthorizationInput: unknown,
@@ -341,8 +337,7 @@ export function createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedL
   binding: unknown,
   clock: () => number = Date.now,
   signingTimeoutMs = 2_000,
-  frameTimeoutMs = 5_000,
-): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint {
+): RootResolvedRetainedNativeSupervisorTopologyObservationWorker {
   try {
     if (
       !(
@@ -366,14 +361,59 @@ export function createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedL
     loadedSigningModule.nativeModule,
   );
   const signingClient = new BoundedLinuxRetainedNativeSupervisorLocalIpcClient(nativeBinding);
-  return createAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
-    source,
-    signingClient,
-    signingAuthorization,
-    signerKeyId,
+  const signingTransport =
+    new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport(
+      signingClient,
+      signingAuthorization,
+    );
+  const signer = new BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner(
     binding,
+    'WORKER_CLIENT',
+    signerKeyId,
+    signingTransport,
     clock,
     signingTimeoutMs,
+  );
+  const observer = new RetainedDescriptorLinuxNativeSupervisorTopologyObserver(
+    'WORKER_CLIENT',
+    clock,
+  );
+  return createRootResolvedLinuxNativeTopologyCarrierWorker(
+    source,
+    observer,
+    signer,
+    binding,
+    clock,
+  );
+}
+
+/**
+ * Binds one already-authorized loaded CLIENT module to the carrier signing path. Construction
+ * loads no code and performs no signing, lookup, observation, frame, IPC, filesystem, or native
+ * activity.
+ */
+export function createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  loadedSigningModuleInput: unknown,
+  signingAuthorizationInput: unknown,
+  signerKeyId: string,
+  binding: unknown,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+  frameTimeoutMs = 5_000,
+): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint {
+  const worker =
+    createLoadedAuthenticatedSigningRetainedDescriptorKeylessRootResolvedLinuxNativeTopologyCarrierWorker(
+      source,
+      loadedSigningModuleInput,
+      signingAuthorizationInput,
+      signerKeyId,
+      binding,
+      clock,
+      signingTimeoutMs,
+    );
+  return new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+    worker,
     frameTimeoutMs,
   );
 }
@@ -430,6 +470,36 @@ export async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLin
   signingTimeoutMs = 2_000,
   frameTimeoutMs = 5_000,
 ): Promise<BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint> {
+  const worker =
+    await loadAuthenticatedSigningRetainedDescriptorKeylessRootResolvedLinuxNativeTopologyCarrierWorker(
+      loader,
+      moduleLoadRequestInput,
+      signal,
+      source,
+      signingAuthorizationInput,
+      signerKeyId,
+      binding,
+      clock,
+      signingTimeoutMs,
+    );
+  return new BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+    worker,
+    frameTimeoutMs,
+  );
+}
+
+/** Consumes one exact signer loader request and returns the binding-authenticated worker. */
+export async function loadAuthenticatedSigningRetainedDescriptorKeylessRootResolvedLinuxNativeTopologyCarrierWorker(
+  loader: BoundedLinuxRetainedNativeSupervisorModuleLoader,
+  moduleLoadRequestInput: unknown,
+  signal: AbortSignal,
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  signingAuthorizationInput: unknown,
+  signerKeyId: string,
+  binding: unknown,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+): Promise<RootResolvedRetainedNativeSupervisorTopologyObservationWorker> {
   if (
     !(loader instanceof BoundedLinuxRetainedNativeSupervisorModuleLoader) ||
     !(signal instanceof AbortSignal) ||
@@ -453,7 +523,7 @@ export async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLin
   }
   const loadedSigningModule = await loader.load(moduleLoadRequest, signal);
   if (signal.aborted) return denyInvalidAuthorization();
-  return createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+  return createLoadedAuthenticatedSigningRetainedDescriptorKeylessRootResolvedLinuxNativeTopologyCarrierWorker(
     source,
     loadedSigningModule,
     signingAuthorization,
@@ -461,7 +531,6 @@ export async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLin
     binding,
     clock,
     signingTimeoutMs,
-    frameTimeoutMs,
   );
 }
 

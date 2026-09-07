@@ -20,6 +20,7 @@ import {
 import {
   BoundedLinuxRetainedNativeSupervisorServiceOwner,
   DenyLinuxRetainedNativeSupervisorServiceAuthority,
+  authenticateBoundedLinuxRetainedNativeSupervisorServiceOwner,
   linuxRetainedNativeSupervisorServiceRequestHash,
   type LinuxRetainedNativeSupervisorServiceAuthority,
   type LinuxRetainedNativeSupervisorServiceGrant,
@@ -362,6 +363,16 @@ function expectCode(code: string) {
 }
 
 describe('bounded retained-native supervisor service owner', () => {
+  it('authenticates only service owners that completed the canonical constructor', () => {
+    const { owner } = fixture();
+    expect(authenticateBoundedLinuxRetainedNativeSupervisorServiceOwner(owner)).toBe(owner);
+    expect(() =>
+      authenticateBoundedLinuxRetainedNativeSupervisorServiceOwner(
+        Object.create(BoundedLinuxRetainedNativeSupervisorServiceOwner.prototype),
+      ),
+    ).toThrowError(expectCode('INVALID_AUTHORIZATION'));
+  });
+
   it('binds one authorized service request to one listener lifecycle and cleanup', async () => {
     const { authority, binding, owner, peer, serviceRequest } = fixture();
     binding.listener.accepted.writeAndShutdown.mockImplementation(async (candidate) => {

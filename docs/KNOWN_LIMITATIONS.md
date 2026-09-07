@@ -747,6 +747,9 @@ The retained-native one-session service contract now hashes and exact-binds a pu
 role plus role-neutral peer credentials (ADR-0157). The distinct worker carrier listener can now
 compose an exact Level-3 grant, retained listener, kernel-authenticated API admission, and one
 bounded canonical worker exchange (ADR-0158), but it is not wired into `worker.ts` and no production
-identity, path, authority, or signer custody is chosen.
+identity, path, authority, or signer custody is chosen. An inactive worker application boundary can
+now load the exact listener and signer modules, retain the canonical root-resolved worker identity,
+and invoke that one-session owner (ADR-0159), but service-authority delivery and approved production
+launch inputs remain uncomposed.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

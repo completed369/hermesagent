@@ -3545,6 +3545,56 @@ test('role-local topology and carrier listeners require distinct Level-3 one-ses
   assert.doesNotMatch(workerComposition, /runTopologyCarrierRootLookupOne/u);
 });
 
+test('worker app composes the authorized carrier listener without activating startup', () => {
+  const source = readFileSync(
+    'apps/worker/src/lib/topology-carrier-worker-listener-composition.ts',
+    'utf8',
+  );
+  const workerRootComposition = readFileSync(
+    'apps/worker/src/lib/topology-carrier-root-lookup-composition.ts',
+    'utf8',
+  );
+  const startup = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  const owner = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-service-owner.ts',
+    'utf8',
+  );
+  assert.match(source, /loadLinuxNativeTopologyCarrierWorkerListenerServiceOwner/u);
+  assert.match(
+    source,
+    /loadAuthenticatedSigningRetainedDescriptorKeylessRootResolvedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.match(
+    source,
+    /BoundedLinuxRetainedNativeSupervisorServiceOwner\.prototype\.runTopologyCarrierWorkerOne\.call/u,
+  );
+  assert.match(owner, /AUTHENTIC_SERVICE_OWNERS = new WeakSet/u);
+  assert.match(source, /authenticateBoundedLinuxRetainedNativeSupervisorServiceOwner/u);
+  assert.ok(
+    source.indexOf('authenticateBoundedLinuxRetainedNativeSupervisorServiceOwner(owner)') <
+      source.indexOf(
+        'loadAuthenticatedSigningRetainedDescriptorKeylessRootResolvedLinuxNativeTopologyCarrierWorker(',
+      ),
+  );
+  assert.match(source, /serviceRequest\.workspaceId !== carrierBinding\.workspaceId/u);
+  assert.match(
+    source,
+    /serviceRequest\.supervisorInstanceId !== carrierBinding\.supervisorInstanceId/u,
+  );
+  assert.match(
+    workerRootComposition,
+    /createLoadedAuthenticatedSigningRetainedDescriptorKeylessRootResolvedLinuxNativeTopologyCarrierWorker/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:child_process|fs|net|tls)'/u,
+  );
+  assert.doesNotMatch(
+    startup,
+    /topology-carrier-worker-listener-composition|runTopologyCarrierWorkerOne/u,
+  );
+});
+
 test('retained-native module authorization trust is signed, revocable, and uncomposed', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-module-authorization-trust-source.ts',
