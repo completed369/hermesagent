@@ -544,6 +544,11 @@ published and current `main` has not been deployed to private staging.
    exact injected signing authorization (ADR-0149), while remaining outside `worker.ts` and selecting
    no native module, path, identity, key material, custody service, listener, lifecycle, or runtime
    connection.
+   An additional inert worker factory now authenticates an already-loaded CLIENT module, exact-binds
+   its declared socket to the signer authorization, and constructs the strict native binding and
+   bounded signing client internally (ADR-0150). It loads no code, remains outside `worker.ts`, and
+   selects no approved module path, signer identity, key custody, listener, lifecycle, or runtime
+   connection.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

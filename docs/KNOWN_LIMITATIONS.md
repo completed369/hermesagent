@@ -720,5 +720,9 @@ peer attestation and carrier-specific bounds (ADR-0148). An unwired worker facto
 transport to an exact bounded Linux local client and exact injected signing authorization
 (ADR-0149), but it does not load a native client module, approve the signer path/identity, provide
 key custody or a service lifecycle, or enter `worker.ts`.
+An additional unwired worker factory can authenticate an already-loaded CLIENT envelope and bind
+its exact socket to that signer authorization through the strict native ABI and bounded client
+(ADR-0150), but it does not choose or run a loader, approve a module/socket path or identity,
+provide key custody or a listener lifecycle, or enter `worker.ts`.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

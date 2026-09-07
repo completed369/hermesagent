@@ -17,6 +17,7 @@ import {
   createFramedRootResolvedLinuxNativeTopologyCarrierWorker,
   createKeylessFramedRootResolvedLinuxNativeTopologyCarrierWorker,
   createLinuxLocalTopologyCarrierRootSource,
+  createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
   createLoadedLinuxNativeTopologyCarrierRootSource,
   createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
   createRootResolvedLinuxNativeTopologyCarrierWorker,
@@ -596,6 +597,174 @@ describe('worker Linux topology carrier root lookup composition', () => {
     expect(rootClient.close).not.toHaveBeenCalled();
     expect(nativeBinding.lstatUnixSocket).not.toHaveBeenCalled();
     expect(nativeBinding.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  itLinux('binds an exact loaded CLIENT module to signing without native activity', () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(async (): Promise<never> => {
+        throw new Error('construction must not stat');
+      }),
+      connectUnixSocket: vi.fn(async (): Promise<never> => {
+        throw new Error('construction must not connect');
+      }),
+    };
+
+    const endpoint =
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        Object.freeze({
+          schemaVersion: 1,
+          moduleKind: 'CLIENT',
+          socketPath: signingAuthorization.socketPath,
+          runtimeConnection: 'NOT_CONFIGURED',
+          nativeModule,
+        }),
+        signingAuthorization,
+        'key:worker:loaded-authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      );
+
+    expect(endpoint).toBeInstanceOf(
+      BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+    );
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  itNonLinux('keeps loaded authenticated signing composition unconfigured off Linux', () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(),
+      connectUnixSocket: vi.fn(),
+    };
+    expect(() =>
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        {
+          schemaVersion: 1,
+          moduleKind: 'CLIENT',
+          socketPath: signingAuthorization.socketPath,
+          runtimeConnection: 'NOT_CONFIGURED',
+          nativeModule,
+        },
+        signingAuthorization,
+        'key:worker:loaded-authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
+  });
+
+  it('denies loaded signing envelope and socket substitution before native activity', () => {
+    const rootClient = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      rootClient,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const nativeModule = {
+      abiVersion: 1 as const,
+      platform: 'LINUX' as const,
+      lstatUnixSocket: vi.fn(),
+      connectUnixSocket: vi.fn(),
+    };
+    const loadedSigningModule = Object.freeze({
+      schemaVersion: 1,
+      moduleKind: 'CLIENT',
+      socketPath: signingAuthorization.socketPath,
+      runtimeConnection: 'NOT_CONFIGURED',
+      nativeModule,
+    });
+
+    expect(() =>
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        {} as BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+        loadedSigningModule,
+        signingAuthorization,
+        'key:worker:loaded-authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(() =>
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        { ...loadedSigningModule, unexpected: true },
+        signingAuthorization,
+        'key:worker:loaded-authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    let getterCalls = 0;
+    const accessorEnvelope = { ...loadedSigningModule } as Record<string, unknown>;
+    Object.defineProperty(accessorEnvelope, 'nativeModule', {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return nativeModule;
+      },
+    });
+    expect(() =>
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        accessorEnvelope,
+        signingAuthorization,
+        'key:worker:loaded-authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(getterCalls).toBe(0);
+    expect(() =>
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        { ...loadedSigningModule, socketPath: '/run/ventureos/substituted-signer.sock' },
+        signingAuthorization,
+        'key:worker:loaded-authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(() =>
+      createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        source,
+        loadedSigningModule,
+        { ...signingAuthorization, runtimeConnection: 'CONNECTED' },
+        'key:worker:loaded-authenticated-carrier-signer',
+        binding,
+        () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(rootClient.exchange).not.toHaveBeenCalled();
+    expect(rootClient.close).not.toHaveBeenCalled();
+    expect(nativeModule.lstatUnixSocket).not.toHaveBeenCalled();
+    expect(nativeModule.connectUnixSocket).not.toHaveBeenCalled();
   });
 
   it('denies envelope drift and socket-path substitution before native activity', () => {
