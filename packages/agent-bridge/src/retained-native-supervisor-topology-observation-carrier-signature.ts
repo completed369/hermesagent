@@ -541,6 +541,123 @@ export class Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationCarr
   }
 }
 
+/** Worker-initiated carrier adapter: signs its request and verifies the API response. */
+export class Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier implements ClosableRetainedNativeSupervisorTopologyObservationCarrier {
+  readonly #binding: Readonly<RetainedNativeSupervisorTopologyObservationCarrierBinding>;
+  readonly #root: ParsedRoot;
+  readonly #sign: RetainedNativeSupervisorTopologyObservationCarrierDeliverySigner['sign'];
+  readonly #exchange: ClosableRetainedNativeSupervisorTopologyObservationCarrier['exchange'];
+  readonly #close: ClosableRetainedNativeSupervisorTopologyObservationCarrier['close'];
+  #attempted = false;
+
+  constructor(
+    carrier: ClosableRetainedNativeSupervisorTopologyObservationCarrier,
+    signer: RetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
+    coordinatorRoot: unknown,
+    binding: unknown,
+    private readonly clock: () => number = Date.now,
+  ) {
+    if (typeof clock !== 'function') deny('NOT_CONFIGURED');
+    this.#binding = validateRetainedNativeSupervisorTopologyObservationCarrierBinding(
+      binding,
+      clock(),
+    );
+    this.#root = parseRoot(coordinatorRoot);
+    assertRootScope(
+      this.#root,
+      this.#binding,
+      'API_COORDINATOR',
+      this.#binding.coordinatorPrincipalReference,
+    );
+    this.#sign = bindSigner(signer);
+    const bound = bindCarrier(carrier);
+    this.#exchange = bound.exchange;
+    this.#close = bound.close;
+  }
+
+  async exchange(message: unknown, signal: AbortSignal): Promise<unknown> {
+    if (this.#attempted) deny('EXCHANGE_DENIED');
+    this.#attempted = true;
+    const outbound = await signedEnvelope(
+      message,
+      this.#binding,
+      this.#binding.workerPrincipalReference,
+      this.#sign,
+      signal,
+      this.clock(),
+    );
+    const raw = await this.#exchange(outbound, signal);
+    return verifyEnvelope(
+      raw,
+      this.#binding,
+      this.#root,
+      'API_COORDINATOR',
+      this.#binding.coordinatorPrincipalReference,
+      this.clock(),
+    );
+  }
+
+  async close(): Promise<void> {
+    await this.#close();
+  }
+}
+
+/** API endpoint for one authenticated worker-initiated carrier request and signed response. */
+export class Ed25519RetainedNativeSupervisorTopologyObservationCoordinatorEndpoint {
+  readonly #binding: Readonly<RetainedNativeSupervisorTopologyObservationCarrierBinding>;
+  readonly #root: ParsedRoot;
+  readonly #handle: (input: unknown, signal: AbortSignal) => Promise<unknown>;
+  readonly #sign: RetainedNativeSupervisorTopologyObservationCarrierDeliverySigner['sign'];
+  #attempted = false;
+
+  constructor(
+    handler: { handle(input: unknown, signal: AbortSignal): Promise<unknown> },
+    signer: RetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
+    workerRoot: unknown,
+    binding: unknown,
+    private readonly clock: () => number = Date.now,
+  ) {
+    if (typeof handler?.handle !== 'function' || typeof clock !== 'function')
+      deny('NOT_CONFIGURED');
+    this.#binding = validateRetainedNativeSupervisorTopologyObservationCarrierBinding(
+      binding,
+      clock(),
+    );
+    this.#root = parseRoot(workerRoot);
+    assertRootScope(
+      this.#root,
+      this.#binding,
+      'WORKER_CLIENT',
+      this.#binding.workerPrincipalReference,
+    );
+    this.#handle = handler.handle.bind(handler);
+    this.#sign = bindSigner(signer);
+  }
+
+  async handle(input: unknown, signal: AbortSignal): Promise<unknown> {
+    if (this.#attempted) deny('EXCHANGE_DENIED');
+    this.#attempted = true;
+    if (!(signal instanceof AbortSignal) || signal.aborted) deny('EXCHANGE_DENIED');
+    const authenticated = verifyEnvelope(
+      input,
+      this.#binding,
+      this.#root,
+      'WORKER_CLIENT',
+      this.#binding.workerPrincipalReference,
+      this.clock(),
+    );
+    const response = await this.#handle(authenticated.message, signal);
+    return signedEnvelope(
+      response,
+      this.#binding,
+      this.#binding.coordinatorPrincipalReference,
+      this.#sign,
+      signal,
+      this.clock(),
+    );
+  }
+}
+
 /** Worker endpoint: authenticates through its handler, then signs the response for the coordinator. */
 export class Ed25519RetainedNativeSupervisorTopologyObservationWorkerEndpoint {
   readonly #handle: AuthenticatedCrossContainerRetainedNativeSupervisorTopologyObservationHandler['handle'];

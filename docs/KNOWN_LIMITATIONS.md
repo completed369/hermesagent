@@ -750,6 +750,9 @@ bounded canonical worker exchange (ADR-0158), but it is not wired into `worker.t
 identity, path, authority, or signer custody is chosen. An inactive worker application boundary can
 now load the exact listener and signer modules, retain the canonical root-resolved worker identity,
 and invoke that one-session owner (ADR-0159), but service-authority delivery and approved production
-launch inputs remain uncomposed.
+launch inputs remain uncomposed. A one-use worker-initiated Ed25519 carrier can now authenticate a
+worker request to the API coordinator and its signed response against the live carrier binding
+(ADR-0160), but no service-grant protocol, authority issuance/delivery composition, route, or launch
+input is selected.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
