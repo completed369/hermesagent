@@ -7,6 +7,7 @@ import {
   BoundedLinuxRetainedNativeSupervisorNativeClientBinding,
   BoundedKeylessRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession,
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
@@ -460,6 +461,55 @@ export async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLin
     signingTimeoutMs,
     frameTimeoutMs,
   );
+}
+
+/**
+ * Claims one accepted carrier session before consuming the exact signer CLIENT loader request.
+ * A failed or cancelled load closes the claimed session within its configured bound.
+ */
+export async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession(
+  loader: BoundedLinuxRetainedNativeSupervisorModuleLoader,
+  moduleLoadRequestInput: unknown,
+  signal: AbortSignal,
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  signingAuthorizationInput: unknown,
+  signerKeyId: string,
+  binding: unknown,
+  carrierSession: RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+  frameTimeoutMs = 5_000,
+  sessionTimeoutMs = 5_000,
+): Promise<BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession> {
+  const accepted =
+    new BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession(
+      carrierSession,
+      sessionTimeoutMs,
+    );
+  try {
+    const endpoint =
+      await loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+        loader,
+        moduleLoadRequestInput,
+        signal,
+        source,
+        signingAuthorizationInput,
+        signerKeyId,
+        binding,
+        clock,
+        signingTimeoutMs,
+        frameTimeoutMs,
+      );
+    return accepted.attach(endpoint);
+  } catch (error) {
+    try {
+      await accepted.close();
+    } catch {
+      // Preserve the load or composition failure while still bounding the cleanup attempt.
+    }
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+    throw new RetainedNativeSupervisorLocalIpcError('EXCHANGE_DENIED');
+  }
 }
 
 /**

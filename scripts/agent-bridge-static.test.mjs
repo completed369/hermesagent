@@ -2960,6 +2960,12 @@ test('topology carrier byte framing is one-use, bounded, canonical, and uncompos
   );
   assert.match(
     source,
+    /class BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession/u,
+  );
+  assert.match(source, /if \(this\.#claimed \|\| this\.#closePromise !== undefined\)/u);
+  assert.match(source, /this\.#claimed = true/u);
+  assert.match(
+    source,
     /this\.#readToEof\(\s*MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_CHANNEL_FRAME_BYTES/u,
   );
   assert.match(source, /this\.#endpoint\.handle\(request, signal\)/u);
@@ -3273,6 +3279,24 @@ test('worker carrier root composition consumes only an exact loader and remains 
     source,
     /loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker/u,
   );
+  assert.match(
+    source,
+    /loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession/u,
+  );
+  assert.match(
+    source,
+    /new BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession/u,
+  );
+  assert.match(source, /await accepted\.close\(\)/u);
+  assert.equal((source.match(/\.close\s*\(/gu) ?? []).length, 1);
+  assert.ok(
+    source.indexOf(
+      'new BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession',
+    ) <
+      source.lastIndexOf(
+        'await loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker',
+      ),
+  );
   assert.equal((source.match(/await loader\.load\(moduleLoadRequest, signal\)/gu) ?? []).length, 2);
   assert.equal((source.match(/\.load\s*\(/gu) ?? []).length, 2);
   assert.match(source, /loader instanceof BoundedLinuxRetainedNativeSupervisorModuleLoader/u);
@@ -3282,7 +3306,7 @@ test('worker carrier root composition consumes only an exact loader and remains 
   );
   assert.doesNotMatch(
     source,
-    /createRetainedDescriptorLinuxNativeSupervisorModuleLoader|\.exchange\s*\(|\.read\s*\(|\.close\s*\(|\.handle\s*\(|\.observe\s*\(|\.sign\s*\(|\.node['"`]|\.sock['"`]|runtimeConnection:\s*'CONNECTED'/u,
+    /createRetainedDescriptorLinuxNativeSupervisorModuleLoader|\.exchange\s*\(|\.read\s*\(|\.handle\s*\(|\.observe\s*\(|\.sign\s*\(|\.node['"`]|\.sock['"`]|runtimeConnection:\s*'CONNECTED'/u,
   );
   assert.doesNotMatch(worker, /createLinuxLocalTopologyCarrierRootSource/u);
   assert.doesNotMatch(worker, /createLoadedLinuxNativeTopologyCarrierRootSource/u);
@@ -3309,6 +3333,10 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.doesNotMatch(
     worker,
     /createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession/u,
+  );
+  assert.doesNotMatch(
+    worker,
+    /loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession/u,
   );
 });
 
