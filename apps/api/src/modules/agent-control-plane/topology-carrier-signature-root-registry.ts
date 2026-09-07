@@ -11,7 +11,9 @@ import {
 } from '@ventureos/agent-bridge';
 import { Prisma } from '@ventureos/database';
 
-import type { RetainedNativeModuleAuthorizationTrustSqlClient } from './retained-native-module-authorization-trust-state';
+export interface TopologyCarrierSignatureRootSqlClient {
+  $queryRaw<T = unknown>(query: Prisma.Sql): Promise<T>;
+}
 
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$/u;
 const PRIVATE_TEXT =
@@ -165,7 +167,7 @@ function rootFromRow(
  * No private key, signer, transport, or runtime composition is reachable here.
  */
 export class PostgresTopologyCarrierSignatureRootRegistry {
-  constructor(private readonly database: RetainedNativeModuleAuthorizationTrustSqlClient) {
+  constructor(private readonly database: TopologyCarrierSignatureRootSqlClient) {
     Object.freeze(this);
   }
 

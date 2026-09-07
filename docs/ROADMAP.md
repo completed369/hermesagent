@@ -453,6 +453,11 @@ published and current `main` has not been deployed to private staging.
    it propagates cancellation and closes its injected byte transport before releasing a bounded
    Ed25519 proof (ADR-0129). Key custody, signer identity transport, public-root wiring, carrier
    routing, mounts, and runtime connection remain unconfigured.
+   A one-use API-coordinator public-root source now adapts the immutable PostgreSQL registry to the
+   role-local carrier port, permits only the exact opposite `WORKER_CLIENT` grant, and withholds
+   results after cancellation or binding expiry (ADR-0130). It remains absent from application
+   wiring; the authenticated worker-side source, carrier and signing transports, routing, mount,
+   and runtime connection remain unconfigured.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
