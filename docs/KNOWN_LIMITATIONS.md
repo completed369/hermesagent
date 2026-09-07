@@ -716,7 +716,9 @@ The Linux/x64 worker composition can now construct that retained-descriptor obse
 to `WORKER_CLIENT` (ADR-0147), but it remains absent from `worker.ts`, opens no path at construction,
 and still has no signer transport/custody, carrier byte channel, listener, or approved lifecycle.
 A topology-specific authenticated Linux local signing transport now exists with exact socket and
-peer attestation and carrier-specific bounds (ADR-0148), but no approved signer socket identity,
-bounded native client, custody service, or lifecycle is composed into the worker.
+peer attestation and carrier-specific bounds (ADR-0148). An unwired worker factory now fixes that
+transport to an exact bounded Linux local client and exact injected signing authorization
+(ADR-0149), but it does not load a native client module, approve the signer path/identity, provide
+key custody or a service lifecycle, or enter `worker.ts`.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
