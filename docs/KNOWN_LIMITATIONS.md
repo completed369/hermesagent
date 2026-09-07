@@ -682,7 +682,10 @@ handler and its API-local root source now have only an inert factory composition
 application transport exists, and neither side is wired into an application graph. An exported
 worker adapter can require exact injected Linux endpoint and API peer-credential evidence
 (ADR-0135), and an inert worker-local factory can join an explicitly injected closable client to the
-one-use source (ADR-0137), but that factory is absent from `worker.ts`. Native client loading, path
-authorization, the shared mount, route, and lifecycle remain unconfigured.
+one-use source (ADR-0137). The same factory now accepts only an exact already-loaded `CLIENT` module,
+binds it through the strict native ABI adapter, and rejects any mismatch between the module's socket
+path and the kernel-authenticated local IPC authorization (ADR-0138). It remains absent from
+`worker.ts`; no loader is invoked. Native client loading, path authorization, the shared mount,
+route, and lifecycle remain unconfigured.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

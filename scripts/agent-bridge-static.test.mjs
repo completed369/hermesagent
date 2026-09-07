@@ -3205,11 +3205,16 @@ test('worker carrier root lookup composition binds an injected client without ac
     source,
     /new BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource/u,
   );
+  assert.match(source, /createLoadedLinuxNativeTopologyCarrierRootSource/u);
+  assert.match(source, /new BoundedLinuxRetainedNativeSupervisorNativeClientBinding/u);
+  assert.match(source, /new BoundedLinuxRetainedNativeSupervisorLocalIpcClient/u);
+  assert.match(source, /loadedModule\.socketPath !== localIpcAuthorization\.socketPath/u);
   assert.doesNotMatch(
     source,
-    /\.exchange\s*\(|\.read\s*\(|\.close\s*\(|runtimeConnection:\s*'CONNECTED'/u,
+    /\.load\s*\(|\.exchange\s*\(|\.read\s*\(|\.close\s*\(|runtimeConnection:\s*'CONNECTED'/u,
   );
   assert.doesNotMatch(worker, /createLinuxLocalTopologyCarrierRootSource/u);
+  assert.doesNotMatch(worker, /createLoadedLinuxNativeTopologyCarrierRootSource/u);
 });
 
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {

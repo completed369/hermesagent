@@ -495,6 +495,11 @@ published and current `main` has not been deployed to private staging.
    kernel-authenticated adapter and one-use coordinator-root source for the same carrier binding and
    clock (ADR-0137). Construction performs no exchange, the factory is absent from `worker.ts`, and
    no native loader, socket-path source, shared mount, route, or lifecycle is supplied.
+   That factory can now also consume one exact already-loaded `CLIENT` module envelope, require its
+   authorized socket path to equal the kernel-authenticated local IPC authorization, and compose the
+   strict native ABI binding plus closable Linux client without invoking native code (ADR-0138).
+   The loader is still not invoked or wired, and no path, module, socket, mount, route, listener,
+   lifecycle, or runtime connection is selected or activated.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
