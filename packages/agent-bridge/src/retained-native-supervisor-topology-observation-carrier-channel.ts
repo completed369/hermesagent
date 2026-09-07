@@ -17,6 +17,13 @@ export interface RetainedNativeSupervisorTopologyObservationCarrierMessageHandle
   handle(input: unknown, signal: AbortSignal): Promise<unknown>;
 }
 
+/** One already-accepted carrier session. Listener creation and peer admission remain external. */
+export interface RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession {
+  readToEof(maximumBytes: number, signal: AbortSignal): Promise<unknown>;
+  writeAndShutdown(responseFrame: Readonly<Uint8Array>, signal: AbortSignal): Promise<void>;
+  close(): Promise<void>;
+}
+
 export class DenyRetainedNativeSupervisorTopologyObservationCarrierByteChannel implements RetainedNativeSupervisorTopologyObservationCarrierByteChannel {
   async exchange(_request: Uint8Array, _signal: AbortSignal): Promise<never> {
     return deny('NOT_CONFIGURED');
@@ -29,6 +36,19 @@ export class DenyRetainedNativeSupervisorTopologyObservationCarrierMessageHandle
   async handle(_input: unknown, _signal: AbortSignal): Promise<never> {
     return deny('NOT_CONFIGURED');
   }
+}
+
+export class DenyRetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession implements RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession {
+  async readToEof(_maximumBytes: number, _signal: AbortSignal): Promise<never> {
+    return deny('NOT_CONFIGURED');
+  }
+
+  async writeAndShutdown(
+    _responseFrame: Readonly<Uint8Array>,
+    _signal: AbortSignal,
+  ): Promise<void> {}
+
+  async close(): Promise<void> {}
 }
 
 function deny(
@@ -172,6 +192,28 @@ function bindHandler(handler: RetainedNativeSupervisorTopologyObservationCarrier
   }
 }
 
+function bindWorkerSession(
+  session: RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
+) {
+  try {
+    if (
+      session instanceof DenyRetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession ||
+      typeof session?.readToEof !== 'function' ||
+      typeof session?.writeAndShutdown !== 'function' ||
+      typeof session?.close !== 'function'
+    )
+      deny('NOT_CONFIGURED');
+    return Object.freeze({
+      readToEof: session.readToEof.bind(session),
+      writeAndShutdown: session.writeAndShutdown.bind(session),
+      close: session.close.bind(session),
+    });
+  } catch (error) {
+    if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+    return deny('NOT_CONFIGURED');
+  }
+}
+
 function interruptible<T>(
   operation: (signal: AbortSignal) => Promise<T>,
   signal: AbortSignal,
@@ -295,6 +337,92 @@ export class BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFram
     } catch (error) {
       if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
       return deny('EXCHANGE_DENIED');
+    }
+  }
+}
+
+/**
+ * Owns one already-accepted worker carrier byte session through one canonical request/response.
+ * It cannot discover, create, accept, retry, multiplex, or expose a listener.
+ */
+export class BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession {
+  readonly #endpoint: BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint;
+  readonly #readToEof: RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession['readToEof'];
+  readonly #writeAndShutdown: RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession['writeAndShutdown'];
+  readonly #close: RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession['close'];
+  readonly #timeoutMs: number;
+  #state: 'READY' | 'IN_FLIGHT' | 'ATTEMPTED' = 'READY';
+  #closePromise: Promise<void> | undefined;
+
+  constructor(
+    endpoint: BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+    session: RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
+    timeoutMs = 5_000,
+  ) {
+    if (
+      !(
+        endpoint instanceof
+        BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint
+      )
+    )
+      deny('NOT_CONFIGURED');
+    this.#timeoutMs = timeout(timeoutMs);
+    const bound = bindWorkerSession(session);
+    this.#endpoint = endpoint;
+    this.#readToEof = bound.readToEof;
+    this.#writeAndShutdown = bound.writeAndShutdown;
+    this.#close = bound.close;
+  }
+
+  async handleOne(signal: AbortSignal): Promise<void> {
+    if (this.#state === 'IN_FLIGHT') deny('CONCURRENT_EXCHANGE');
+    if (this.#state !== 'READY' || this.#closePromise !== undefined) deny('EXCHANGE_DENIED');
+    this.#state = 'IN_FLIGHT';
+    let failure: unknown;
+    try {
+      const request = await interruptible(
+        (attemptSignal) =>
+          this.#readToEof(MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_CHANNEL_FRAME_BYTES, attemptSignal),
+        signal,
+        this.#timeoutMs,
+      );
+      const response = await this.#endpoint.handle(request, signal);
+      await interruptible(
+        (attemptSignal) => this.#writeAndShutdown(response, attemptSignal),
+        signal,
+        this.#timeoutMs,
+      );
+    } catch (error) {
+      failure = error;
+    } finally {
+      this.#state = 'ATTEMPTED';
+      try {
+        await this.close();
+      } catch (error) {
+        failure ??= error;
+      }
+    }
+    if (failure !== undefined) {
+      if (failure instanceof RetainedNativeSupervisorLocalIpcError) throw failure;
+      deny('EXCHANGE_DENIED');
+    }
+  }
+
+  close(): Promise<void> {
+    this.#closePromise ??= this.closeBounded();
+    return this.#closePromise;
+  }
+
+  private async closeBounded(): Promise<void> {
+    try {
+      await interruptible(
+        (_signal) => this.#close(),
+        new AbortController().signal,
+        this.#timeoutMs,
+      );
+    } catch (error) {
+      if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+      deny('EXCHANGE_DENIED');
     }
   }
 }

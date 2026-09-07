@@ -553,6 +553,10 @@ published and current `main` has not been deployed to private staging.
    signer authorization and an explicit abort lifecycle before delegating the authenticated loaded
    result into that composition (ADR-0151). It discovers no loader, approved path/identity, key
    custody, listener, lifecycle, or runtime connection and remains outside `worker.ts`.
+   A one-use carrier byte-session owner now bounds an already-accepted worker session through the
+   canonical 64 KiB read, exact frame endpoint, response write, and guaranteed close (ADR-0152).
+   It remains uncomposed and cannot discover, create, authenticate, retry, or expose a listener;
+   transport identity, route, signer custody, service authority, and runtime wiring stay external.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
