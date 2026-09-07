@@ -374,6 +374,58 @@ export function createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedL
 }
 
 /**
+ * Consumes one explicitly injected module loader only after an exact CLIENT request, abort signal,
+ * concrete worker source, and signer socket authorization agree. It discovers no loader, module,
+ * path, identity, key, listener, or lifecycle.
+ */
+export async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+  loader: BoundedLinuxRetainedNativeSupervisorModuleLoader,
+  moduleLoadRequestInput: unknown,
+  signal: AbortSignal,
+  source: BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  signingAuthorizationInput: unknown,
+  signerKeyId: string,
+  binding: unknown,
+  clock: () => number = Date.now,
+  signingTimeoutMs = 2_000,
+  frameTimeoutMs = 5_000,
+): Promise<BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint> {
+  if (
+    !(loader instanceof BoundedLinuxRetainedNativeSupervisorModuleLoader) ||
+    !(signal instanceof AbortSignal) ||
+    signal.aborted ||
+    !(
+      source instanceof
+      BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource
+    )
+  ) {
+    return denyInvalidAuthorization();
+  }
+  const moduleLoadRequest =
+    validateLinuxRetainedNativeSupervisorModuleLoadRequest(moduleLoadRequestInput);
+  const signingAuthorization =
+    authenticateRetainedNativeSupervisorLocalIpcAuthorization(signingAuthorizationInput);
+  if (
+    moduleLoadRequest.moduleKind !== 'CLIENT' ||
+    moduleLoadRequest.socketPath !== signingAuthorization.socketPath
+  ) {
+    return denyInvalidAuthorization();
+  }
+  const loadedSigningModule = await loader.load(moduleLoadRequest, signal);
+  if (signal.aborted) return denyInvalidAuthorization();
+  return createLoadedAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker(
+    source,
+    loadedSigningModule,
+    signingAuthorization,
+    signerKeyId,
+    binding,
+    clock,
+    signingTimeoutMs,
+    frameTimeoutMs,
+  );
+}
+
+/**
  * Consumes one explicitly injected module loader only after the exact CLIENT request, abort
  * signal, and local socket authorization agree. It does not discover authority or wire the
  * resulting source into the worker lifecycle.
