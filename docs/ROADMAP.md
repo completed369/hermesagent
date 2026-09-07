@@ -528,6 +528,10 @@ published and current `main` has not been deployed to private staging.
    one-use byte-frame endpoint with an explicit deadline (ADR-0145). The handler cannot be
    substituted between root resolution and framing, but no byte channel, listener, observer,
    signer transport, route, path, identity mapping, lifecycle, or runtime connection is activated.
+   The worker can now also construct the bounded keyless delivery signer inside that frame
+   composition with the role fixed to `WORKER_CLIENT` and the same live carrier binding and clock
+   (ADR-0146). Signer key custody and transport remain injected; construction performs no signing,
+   lookup, observation, IPC, frame handling, or native activity and remains outside `worker.ts`.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
