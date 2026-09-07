@@ -464,6 +464,12 @@ published and current `main` has not been deployed to private staging.
    and 4 KiB frames, binding-expiry/cancellation races, root-scope validation, and bounded
    close-before-release are enforced. The API handler and concrete identity transport remain absent,
    so no route, deployment, mount, or runtime connection is configured.
+   A one-use API-side lookup handler now requires a direction-specific sideband identity produced by
+   an independently mutually authenticated transport before it parses the canonical worker request.
+   It resolves only the exact `API_COORDINATOR` public root, bounds lookup by cancellation and carrier
+   expiry, and binds its canonical response to the request scope, challenge, and hash (ADR-0132). The
+   API-local coordinator-root adapter and concrete listener/transport remain absent, so this is still
+   uncomposed protocol capability rather than runtime connectivity.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

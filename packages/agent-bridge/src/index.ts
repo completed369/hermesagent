@@ -53,6 +53,7 @@ export * from './retained-native-supervisor-topology-observation-carrier-composi
 export * from './retained-native-supervisor-topology-observation-carrier-channel';
 export * from './retained-native-supervisor-topology-observation-carrier-keyless-signer';
 export * from './retained-native-supervisor-topology-observation-carrier-root-lookup';
+export * from './retained-native-supervisor-topology-observation-carrier-root-lookup-handler';
 export * from './retained-native-supervisor-module-authorization-trust-source';
 export * from './retained-native-supervisor-module-authorization-controller';
 export * from './retained-native-supervisor-module-authorization-audited-publisher';

@@ -3051,6 +3051,39 @@ test('worker carrier root lookup requires independent mutual identity and remain
   );
 });
 
+test('API carrier root lookup handler trusts only sideband mutual identity and remains uncomposed', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier-root-lookup-handler.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /INDEPENDENT_MUTUALLY_AUTHENTICATED_CROSS_ROLE_TRANSPORT/u);
+  assert.match(source, /localPrincipalRole !== 'API_COORDINATOR'/u);
+  assert.match(source, /peerPrincipalRole !== 'WORKER_CLIENT'/u);
+  assert.match(source, /authenticatedAt < Date\.parse\(this\.#binding\.issuedAt\)/u);
+  assert.match(source, /canonicalJson\(suppliedBinding\) !== canonicalJson\(this\.#binding\)/u);
+  assert.match(source, /this\.#read\(this\.#binding, 'API_COORDINATOR', attempt\.signal\)/u);
+  assert.match(source, /requestHash: hash\(request\)/u);
+  assert.match(source, /#attempted = false/u);
+  assert.match(source, /runtimeConnection: 'NOT_CONFIGURED'/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|\bcreatePrivateKey\b|\bgenerateKeyPair\b|\bprivateKey\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(
+    apiComposition,
+    /BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler/u,
+  );
+});
+
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',
