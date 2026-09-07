@@ -2837,6 +2837,16 @@ test('topology carrier delivery is signed through keyless ports and remains unco
     source,
     /class Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationCarrier/u,
   );
+  assert.match(
+    source,
+    /class Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier/u,
+  );
+  assert.match(
+    source,
+    /class Ed25519RetainedNativeSupervisorTopologyObservationCoordinatorEndpoint/u,
+  );
+  assert.match(source, /'WORKER_CLIENT',\s*this\.#binding\.workerPrincipalReference/u);
+  assert.match(source, /'API_COORDINATOR',\s*this\.#binding\.coordinatorPrincipalReference/u);
   assert.match(source, /class Ed25519RetainedNativeSupervisorTopologyObservationWorkerEndpoint/u);
   assert.match(source, /verify\(null, canonicalBytes\(payload/u);
   assert.match(source, /MAX_RETAINED_NATIVE_TOPOLOGY_SIGNED_DELIVERY_BYTES = 64 \* 1_024/u);

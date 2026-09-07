@@ -588,7 +588,10 @@ published and current `main` has not been deployed to private staging.
    The worker application now has an inactive composition that loads exact listener and signer
    modules, preserves the carrier-bound root-resolved worker proof, checks tenant/supervisor scope,
    and invokes the one-session service owner without startup wiring (ADR-0159). Service-authority
-   delivery and approved production launch inputs remain outstanding.
+   delivery and approved production launch inputs remain outstanding. A symmetric one-use carrier
+   now lets the worker sign one request for API-coordinator verification and verify the signed API
+   response against the exact live binding (ADR-0160). It remains uncomposed and defines no
+   service-grant protocol, so authority issuance/delivery and launch inputs remain outstanding.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

@@ -13,6 +13,8 @@ import {
 import {
   DenyRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationCarrier,
+  Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier,
+  Ed25519RetainedNativeSupervisorTopologyObservationCoordinatorEndpoint,
   Ed25519RetainedNativeSupervisorTopologyObservationCarrierInboundAuthenticator,
   Ed25519RetainedNativeSupervisorTopologyObservationWorkerEndpoint,
   validateRetainedNativeSupervisorTopologyObservationCarrierSignatureRootRecord,
@@ -126,6 +128,19 @@ class RawLoopbackCarrier implements ClosableRetainedNativeSupervisorTopologyObse
   );
 
   constructor(readonly mutateRequest: (input: unknown) => unknown = (input) => input) {}
+}
+
+class RawWorkerInitiatedCarrier implements ClosableRetainedNativeSupervisorTopologyObservationCarrier {
+  endpoint!: Ed25519RetainedNativeSupervisorTopologyObservationCoordinatorEndpoint;
+  readonly close = vi.fn(async () => undefined);
+  exchange = vi.fn(async (input: unknown, signal: AbortSignal) =>
+    this.mutateResponse(await this.endpoint.handle(this.mutateRequest(input), signal)),
+  );
+
+  constructor(
+    readonly mutateRequest: (input: unknown) => unknown = (input) => input,
+    readonly mutateResponse: (input: unknown) => unknown = (input) => input,
+  ) {}
 }
 
 function subject(
@@ -320,6 +335,142 @@ describe('signed topology observation carrier delivery', () => {
       () =>
         new Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationCarrier(
           new RawLoopbackCarrier(),
+          new DenyRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner(),
+          worker.root,
+          binding,
+          () => now,
+        ),
+    ).toThrow(code('NOT_CONFIGURED'));
+  });
+});
+
+describe('worker-initiated signed carrier delivery', () => {
+  function workerInitiatedSubject(
+    mutateRequest: (input: unknown) => unknown = (input) => input,
+    mutateResponse: (input: unknown) => unknown = (input) => input,
+  ) {
+    const api = keyFixture('API_COORDINATOR', binding.coordinatorPrincipalReference);
+    const worker = keyFixture('WORKER_CLIENT', binding.workerPrincipalReference);
+    const handler = {
+      handle: vi.fn(async (message: unknown) => ({
+        schemaVersion: 1,
+        purpose: 'WORKER_INITIATED_TEST_RESPONSE',
+        requestHash: createHash('sha256').update(canonicalJson(message)).digest('hex'),
+        runtimeConnection: 'NOT_CONFIGURED',
+      })),
+    };
+    const endpoint = new Ed25519RetainedNativeSupervisorTopologyObservationCoordinatorEndpoint(
+      handler,
+      api.signer,
+      worker.root,
+      binding,
+      () => now,
+    );
+    const raw = new RawWorkerInitiatedCarrier(mutateRequest, mutateResponse);
+    raw.endpoint = endpoint;
+    const carrier =
+      new Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier(
+        raw,
+        worker.signer,
+        api.root,
+        binding,
+        () => now,
+      );
+    return { api, carrier, handler, raw, worker };
+  }
+
+  it('authenticates a worker request and API response over an untrusted carrier', async () => {
+    const { api, carrier, handler, raw, worker } = workerInitiatedSubject();
+    const message = Object.freeze({
+      schemaVersion: 1,
+      purpose: 'WORKER_INITIATED_TEST_REQUEST',
+      runtimeConnection: 'NOT_CONFIGURED',
+    });
+    await expect(carrier.exchange(message, new AbortController().signal)).resolves.toMatchObject({
+      delivery: {
+        authority: 'MUTUALLY_AUTHENTICATED_CROSS_CONTAINER_CHANNEL',
+        peerPrincipalReference: binding.coordinatorPrincipalReference,
+        runtimeConnection: 'NOT_CONFIGURED',
+      },
+      message: {
+        purpose: 'WORKER_INITIATED_TEST_RESPONSE',
+        requestHash: createHash('sha256').update(canonicalJson(message)).digest('hex'),
+        runtimeConnection: 'NOT_CONFIGURED',
+      },
+    });
+    await carrier.close();
+    expect(worker.signer.sign).toHaveBeenCalledOnce();
+    expect(api.signer.sign).toHaveBeenCalledOnce();
+    expect(handler.handle).toHaveBeenCalledOnce();
+    expect(raw.close).toHaveBeenCalledOnce();
+    await expect(carrier.exchange(message, new AbortController().signal)).rejects.toEqual(
+      code('EXCHANGE_DENIED'),
+    );
+  });
+
+  it('rejects a substituted worker request before API handling', async () => {
+    const { carrier, handler } = workerInitiatedSubject((input) => ({
+      ...(input as Record<string, unknown>),
+      message: { substituted: true },
+    }));
+    await expect(
+      carrier.exchange({ purpose: 'WORKER_REQUEST' }, new AbortController().signal),
+    ).rejects.toEqual(code('INVALID_ATTESTATION'));
+    expect(handler.handle).not.toHaveBeenCalled();
+  });
+
+  it('rejects a substituted API response after authenticated handling', async () => {
+    const { carrier, handler } = workerInitiatedSubject(
+      (input) => input,
+      (input) => ({
+        ...(input as Record<string, unknown>),
+        message: { substituted: true },
+      }),
+    );
+    await expect(
+      carrier.exchange({ purpose: 'WORKER_REQUEST' }, new AbortController().signal),
+    ).rejects.toEqual(code('INVALID_ATTESTATION'));
+    expect(handler.handle).toHaveBeenCalledOnce();
+  });
+
+  it('rejects role or binding drift and deny-only dependencies at construction', () => {
+    const api = keyFixture('API_COORDINATOR', binding.coordinatorPrincipalReference);
+    const worker = keyFixture('WORKER_CLIENT', binding.workerPrincipalReference);
+    const raw = new RawWorkerInitiatedCarrier();
+    expect(
+      () =>
+        new Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier(
+          raw,
+          worker.signer,
+          worker.root,
+          binding,
+          () => now,
+        ),
+    ).toThrow(code('INVALID_AUTHORIZATION'));
+    expect(
+      () =>
+        new Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier(
+          new DenyRetainedNativeSupervisorTopologyObservationCarrier(),
+          worker.signer,
+          api.root,
+          binding,
+          () => now,
+        ),
+    ).toThrow(code('NOT_CONFIGURED'));
+    expect(
+      () =>
+        new Ed25519RetainedNativeSupervisorTopologyObservationCoordinatorEndpoint(
+          { handle: vi.fn() },
+          api.signer,
+          api.root,
+          binding,
+          () => now,
+        ),
+    ).toThrow(code('INVALID_AUTHORIZATION'));
+    expect(
+      () =>
+        new Ed25519RetainedNativeSupervisorTopologyObservationCoordinatorEndpoint(
+          { handle: vi.fn() },
           new DenyRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner(),
           worker.root,
           binding,
