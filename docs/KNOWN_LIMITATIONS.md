@@ -735,5 +735,9 @@ one-use accepted-session owner (ADR-0153). A further factory now reserves that e
 consuming the async signer loader and guarantees bounded close on loader, cancellation, or
 composition failure (ADR-0154), but it still supplies no listener acceptance/authentication, route,
 approved production identity, signer custody, service authority, or runtime wiring.
+A separate one-use Linux admission boundary can now authenticate the exact retained listener
+identity and accepted API peer from `lstat(2)` and `SO_PEERCRED` evidence before transferring the
+session (ADR-0155). It still cannot create or own a listener, obtain service authorization, select
+production paths/principals, establish signer custody, or enter the worker lifecycle.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

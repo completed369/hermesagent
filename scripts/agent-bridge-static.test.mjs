@@ -2986,6 +2986,33 @@ test('topology carrier byte framing is one-use, bounded, canonical, and uncompos
   );
 });
 
+test('worker carrier admission is kernel-attested, one-use, and lifecycle-inactive', () => {
+  const source = readFileSync(
+    'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier-worker-admission.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(
+    source,
+    /class BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission/u,
+  );
+  assert.match(source, /authenticateRetainedNativeSupervisorLocalIpcAuthorization/u);
+  assert.match(source, /lstatUnixSocket/u);
+  assert.match(source, /acceptAuthorizedUnixSocket/u);
+  assert.match(source, /peerCredentials/u);
+  assert.match(source, /this\.#state = 'ATTEMPTED'/u);
+  assert.match(source, /acceptedClose = closable\.close/u);
+  assert.match(source, /await closeBounded\(acceptedClose, this\.#timeoutMs\)/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(
+    workerComposition,
+    /BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission/u,
+  );
+});
+
 test('topology carrier delivery signing is role-bound, keyless, bounded, and uncomposed', () => {
   const source = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-topology-observation-carrier-keyless-signer.ts',
