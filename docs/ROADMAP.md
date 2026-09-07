@@ -565,6 +565,11 @@ published and current `main` has not been deployed to private staging.
    transfer it once on success, and bound cleanup on loader, cancellation, or composition failure
    (ADR-0154). The factory remains outside `worker.ts`; listener acceptance/authentication, route,
    approved production identities, signer custody, and service authority remain external.
+   A separate one-use Linux carrier admission boundary now authenticates the injected retained
+   listener before and after acceptance plus the connected API principal from `SO_PEERCRED`, then
+   transfers only that accepted session with bounded denial cleanup (ADR-0155). It creates and owns
+   no listener, remains outside `worker.ts`, and still has no service authority, approved production
+   path/principal mapping, signer custody, or runtime lifecycle.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
