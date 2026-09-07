@@ -1,4 +1,6 @@
 import {
+  AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+  BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission,
   BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedLinuxRetainedNativeSupervisorLocalIpcClient,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
@@ -25,6 +27,7 @@ import {
   createRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
   createRootResolvedLinuxNativeTopologyCarrierWorker,
   loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker,
+  loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierAcceptedWorkerSession,
   loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession,
   loadLinuxNativeTopologyCarrierRootSource,
 } from './topology-carrier-root-lookup-composition';
@@ -68,6 +71,23 @@ const signingAuthorization = Object.freeze({
   socketInode: 9_407,
   expectedPeerPid: 847,
 });
+const admissionAuthorization = Object.freeze({
+  ...localIpcAuthorization,
+  socketPath: '/run/ventureos/topology-carrier-worker.sock',
+  socketDevice: 53,
+  socketInode: 9_453,
+  expectedPeerPid: 853,
+  expectedPeerUid: 710,
+  expectedPeerGid: 711,
+});
+const admissionStat = Object.freeze({
+  fileType: 'SOCKET' as const,
+  device: admissionAuthorization.socketDevice,
+  inode: admissionAuthorization.socketInode,
+  ownerUid: admissionAuthorization.socketOwnerUid,
+  ownerGid: admissionAuthorization.socketOwnerGid,
+  mode: admissionAuthorization.socketMode,
+});
 
 function boundedUnusedClient() {
   const nativeBinding = {
@@ -95,6 +115,11 @@ class UnusedClient implements ClosableRetainedNativeSupervisorLocalIpcClient {
 }
 
 class UnusedCarrierSession implements RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession {
+  readonly peerCredentials = vi.fn(async () => ({
+    pid: admissionAuthorization.expectedPeerPid,
+    uid: admissionAuthorization.expectedPeerUid,
+    gid: admissionAuthorization.expectedPeerGid,
+  }));
   readonly readToEof = vi.fn(async (): Promise<never> => {
     throw new Error('construction must not read');
   });
@@ -104,6 +129,19 @@ class UnusedCarrierSession implements RetainedNativeSupervisorTopologyObservatio
   readonly close = vi.fn(async (): Promise<void> => {
     throw new Error('construction must not close');
   });
+}
+
+async function admitCarrierSession(carrierSession: UnusedCarrierSession) {
+  const admission =
+    new BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission(
+      {
+        platform: 'LINUX',
+        lstatUnixSocket: vi.fn(async () => admissionStat),
+        acceptAuthorizedUnixSocket: vi.fn(async () => carrierSession),
+      },
+      admissionAuthorization,
+    );
+  return admission.acceptOne(new AbortController().signal);
 }
 
 describe('worker Linux topology carrier root lookup composition', () => {
@@ -1039,6 +1077,126 @@ describe('worker Linux topology carrier root lookup composition', () => {
     expect(carrierSession.readToEof).not.toHaveBeenCalled();
     expect(carrierSession.writeAndShutdown).not.toHaveBeenCalled();
     expect(carrierSession.close).not.toHaveBeenCalled();
+  });
+
+  itLinux(
+    'transfers one authenticated carrier reservation into the signer-loaded owner',
+    async () => {
+      const source = createLinuxLocalTopologyCarrierRootSource(
+        new UnusedClient(),
+        binding,
+        localIpcAuthorization,
+        () => NOW,
+      );
+      const nativeModule = {
+        abiVersion: 1 as const,
+        platform: 'LINUX' as const,
+        lstatUnixSocket: vi.fn(),
+        connectUnixSocket: vi.fn(),
+      };
+      const request = Object.freeze({
+        schemaVersion: 1,
+        platform: 'LINUX',
+        architecture: 'X64',
+        moduleKind: 'CLIENT',
+        canonicalModulePath: '/opt/ventureos/native/carrier-signer-client.node',
+        socketPath: signingAuthorization.socketPath,
+        runtimeConnection: 'NOT_CONFIGURED',
+      });
+      const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+      const load = vi.spyOn(loader, 'load').mockResolvedValue(
+        Object.freeze({
+          schemaVersion: 1,
+          moduleKind: 'CLIENT',
+          socketPath: signingAuthorization.socketPath,
+          runtimeConnection: 'NOT_CONFIGURED',
+          nativeModule,
+        }),
+      );
+      const carrierSession = new UnusedCarrierSession();
+      const accepted = await admitCarrierSession(carrierSession);
+      const signal = new AbortController().signal;
+
+      const session =
+        await loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierAcceptedWorkerSession(
+          loader,
+          request,
+          signal,
+          source,
+          signingAuthorization,
+          'key:worker:authenticated-carrier-session-owner',
+          binding,
+          accepted,
+          () => NOW,
+        );
+
+      expect(session).toBeInstanceOf(
+        BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSession,
+      );
+      expect(load).toHaveBeenCalledOnce();
+      expect(load).toHaveBeenCalledWith(request, signal);
+      expect(carrierSession.readToEof).not.toHaveBeenCalled();
+      expect(carrierSession.writeAndShutdown).not.toHaveBeenCalled();
+      expect(carrierSession.close).not.toHaveBeenCalled();
+    },
+  );
+
+  it('denies a substituted carrier reservation before consuming the signer loader', async () => {
+    const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const load = vi.spyOn(loader, 'load');
+
+    await expect(
+      loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierAcceptedWorkerSession(
+        loader,
+        {},
+        new AbortController().signal,
+        {} as BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+        {},
+        'key:worker:substituted-reservation',
+        binding,
+        {} as AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('closes the authenticated carrier reservation when signer loading fails', async () => {
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      new UnusedClient(),
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    vi.spyOn(loader, 'load').mockRejectedValue(new Error('private admitted loader detail'));
+    const carrierSession = new UnusedCarrierSession();
+    const accepted = await admitCarrierSession(carrierSession);
+
+    await expect(
+      loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierAcceptedWorkerSession(
+        loader,
+        {
+          schemaVersion: 1,
+          platform: 'LINUX',
+          architecture: 'X64',
+          moduleKind: 'CLIENT',
+          canonicalModulePath: '/opt/ventureos/native/carrier-signer-client.node',
+          socketPath: signingAuthorization.socketPath,
+          runtimeConnection: 'NOT_CONFIGURED',
+        },
+        new AbortController().signal,
+        source,
+        signingAuthorization,
+        'key:worker:authenticated-carrier-session-owner',
+        binding,
+        accepted,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'EXCHANGE_DENIED' });
+    expect(carrierSession.readToEof).not.toHaveBeenCalled();
+    expect(carrierSession.writeAndShutdown).not.toHaveBeenCalled();
+    expect(carrierSession.close).toHaveBeenCalledOnce();
   });
 
   it('denies invalid accepted sessions before consuming the signer loader', async () => {

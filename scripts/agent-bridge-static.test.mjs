@@ -2996,6 +2996,16 @@ test('worker carrier admission is kernel-attested, one-use, and lifecycle-inacti
     source,
     /class BoundedAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierWorkerAdmission/u,
   );
+  assert.match(
+    source,
+    /class AuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession/u,
+  );
+  assert.match(source, /AUTHENTICATED_ACCEPTED_SESSION/u);
+  assert.match(
+    source,
+    /claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession/u,
+  );
+  assert.match(source, /AUTHENTICATED_ACCEPTED_SESSIONS/u);
   assert.match(source, /authenticateRetainedNativeSupervisorLocalIpcAuthorization/u);
   assert.match(source, /lstatUnixSocket/u);
   assert.match(source, /acceptAuthorizedUnixSocket/u);
@@ -3312,6 +3322,10 @@ test('worker carrier root composition consumes only an exact loader and remains 
   );
   assert.match(
     source,
+    /loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierAcceptedWorkerSession/u,
+  );
+  assert.match(
+    source,
     /new BoundedRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession/u,
   );
   assert.match(source, /await accepted\.close\(\)/u);
@@ -3323,6 +3337,21 @@ test('worker carrier root composition consumes only an exact loader and remains 
       source.lastIndexOf(
         'await loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker',
       ),
+  );
+  const acceptedCompositionStart = source.indexOf(
+    'export async function loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierAcceptedWorkerSession',
+  );
+  const admittedClaim = source.indexOf(
+    'claimAuthenticatedLinuxRetainedNativeSupervisorTopologyObservationCarrierAcceptedWorkerSession',
+    acceptedCompositionStart,
+  );
+  const signerLoad = source.lastIndexOf(
+    'await loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorker',
+  );
+  assert.ok(
+    acceptedCompositionStart >= 0 &&
+      admittedClaim > acceptedCompositionStart &&
+      admittedClaim < signerLoad,
   );
   assert.equal((source.match(/await loader\.load\(moduleLoadRequest, signal\)/gu) ?? []).length, 2);
   assert.equal((source.match(/\.load\s*\(/gu) ?? []).length, 2);
@@ -3364,6 +3393,10 @@ test('worker carrier root composition consumes only an exact loader and remains 
   assert.doesNotMatch(
     worker,
     /loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierWorkerSession/u,
+  );
+  assert.doesNotMatch(
+    worker,
+    /loadAuthenticatedSigningRetainedDescriptorKeylessFramedLinuxNativeTopologyCarrierAcceptedWorkerSession/u,
   );
 });
 
