@@ -9,6 +9,11 @@ import {
   MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES,
   type RetainedNativeSupervisorModuleAuthorizationKeylessSigningTransport,
 } from './retained-native-supervisor-module-authorization-keyless-signer';
+import {
+  MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_REQUEST_BYTES,
+  MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_RESPONSE_BYTES,
+  type RetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport,
+} from './retained-native-supervisor-topology-observation-carrier-keyless-signer';
 
 const AUTHORIZATION_KEYS = [
   'expectedPeerGid',
@@ -193,7 +198,7 @@ function bindClient(client: ClosableRetainedNativeSupervisorLocalIpcClient) {
  * the exact socket identity and SO_PEERCRED principal around the exchange, owns no key material,
  * discovers no path, and does not promote runtime connection state.
  */
-export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningTransport implements RetainedNativeSupervisorModuleAuthorizationKeylessSigningTransport {
+class AuthenticatedLinuxLocalRetainedNativeSupervisorSigningTransport {
   readonly #authorization: Readonly<RetainedNativeSupervisorLocalIpcAuthorization>;
   readonly #exchangeClient: (
     socketPath: string,
@@ -201,13 +206,22 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationS
     signal: AbortSignal,
   ) => Promise<unknown>;
   readonly #closeClient: () => Promise<void>;
+  readonly #requestLimit: number;
+  readonly #responseLimit: number;
   #state: 'READY' | 'IN_FLIGHT' | 'ATTEMPTED' | 'CLOSED' = 'READY';
 
-  constructor(client: ClosableRetainedNativeSupervisorLocalIpcClient, input: unknown) {
+  constructor(
+    client: ClosableRetainedNativeSupervisorLocalIpcClient,
+    input: unknown,
+    requestLimit: number,
+    responseLimit: number,
+  ) {
     this.#authorization = authorization(input);
     const bound = bindClient(client);
     this.#exchangeClient = bound.exchange;
     this.#closeClient = bound.close;
+    this.#requestLimit = positive(requestLimit, 'INVALID_AUTHORIZATION');
+    this.#responseLimit = positive(responseLimit, 'INVALID_AUTHORIZATION');
   }
 
   async exchange(request: Uint8Array, signal: AbortSignal): Promise<unknown> {
@@ -220,7 +234,7 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationS
         !(request instanceof Uint8Array) ||
         Object.getPrototypeOf(request) !== Uint8Array.prototype ||
         request.byteLength < 2 ||
-        request.byteLength > MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES
+        request.byteLength > this.#requestLimit
       )
         deny('EXCHANGE_DENIED');
       const candidate = await this.#exchangeClient(this.#authorization.socketPath, request, signal);
@@ -232,7 +246,7 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationS
       if (
         !(result.responseFrame instanceof Uint8Array) ||
         result.responseFrame.byteLength < 2 ||
-        result.responseFrame.byteLength > MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES
+        result.responseFrame.byteLength > this.#responseLimit
       )
         deny('EXCHANGE_DENIED');
       return Uint8Array.from(result.responseFrame);
@@ -252,5 +266,35 @@ export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationS
     } catch {
       deny('EXCHANGE_DENIED');
     }
+  }
+}
+
+/** Authenticated local transport for one native-module authorization signing exchange. */
+export class AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningTransport
+  extends AuthenticatedLinuxLocalRetainedNativeSupervisorSigningTransport
+  implements RetainedNativeSupervisorModuleAuthorizationKeylessSigningTransport
+{
+  constructor(client: ClosableRetainedNativeSupervisorLocalIpcClient, input: unknown) {
+    super(
+      client,
+      input,
+      MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES,
+      MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES,
+    );
+  }
+}
+
+/** Authenticated local transport for one topology-carrier delivery signing exchange. */
+export class AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport
+  extends AuthenticatedLinuxLocalRetainedNativeSupervisorSigningTransport
+  implements RetainedNativeSupervisorTopologyObservationCarrierKeylessSigningTransport
+{
+  constructor(client: ClosableRetainedNativeSupervisorLocalIpcClient, input: unknown) {
+    super(
+      client,
+      input,
+      MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_REQUEST_BYTES,
+      MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_RESPONSE_BYTES,
+    );
   }
 }

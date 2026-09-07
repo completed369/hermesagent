@@ -9,9 +9,17 @@ import {
 } from './retained-native-supervisor-local-ipc';
 import {
   BoundedKeylessRetainedNativeSupervisorModuleAuthorizationSnapshotSigner,
+  MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES,
   MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES,
 } from './retained-native-supervisor-module-authorization-keyless-signer';
-import { AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningTransport } from './retained-native-supervisor-module-authorization-linux-signing-transport';
+import {
+  AuthenticatedLinuxLocalRetainedNativeSupervisorModuleAuthorizationSigningTransport,
+  AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport,
+} from './retained-native-supervisor-module-authorization-linux-signing-transport';
+import {
+  MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_REQUEST_BYTES,
+  MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_RESPONSE_BYTES,
+} from './retained-native-supervisor-topology-observation-carrier-keyless-signer';
 
 const socketPath = '/run/ventureos/native-module-signer.sock';
 const authorization = Object.freeze({
@@ -272,5 +280,68 @@ describe('authenticated Linux local native-module signing transport', () => {
 
     await expect(signer.sign(signingRequest())).rejects.toEqual(expectCode('NOT_CONFIGURED'));
     expect(client.close).toHaveBeenCalledOnce();
+  });
+});
+
+describe('authenticated Linux local topology-carrier signing transport', () => {
+  it('uses the carrier protocol bounds over the same exact kernel-attested client', async () => {
+    const responseFrame = new Uint8Array(
+      MAX_RETAINED_NATIVE_MODULE_SIGNING_RESPONSE_BYTES + 1,
+    ).fill(7);
+    const client = new FixtureClient();
+    client.exchange.mockResolvedValue({
+      endpointBefore: endpoint,
+      peerCredentials: peer,
+      endpointAfter: endpoint,
+      responseFrame,
+    });
+    const transport =
+      new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport(
+        client,
+        authorization,
+      );
+    const request = new Uint8Array(MAX_RETAINED_NATIVE_MODULE_SIGNING_REQUEST_BYTES + 1).fill(3);
+
+    await expect(transport.exchange(request, new AbortController().signal)).resolves.toEqual(
+      responseFrame,
+    );
+    expect(client.exchange).toHaveBeenCalledWith(socketPath, request, expect.any(AbortSignal));
+    await expect(transport.close()).resolves.toBeUndefined();
+  });
+
+  it('denies bytes outside the topology-carrier protocol bounds', async () => {
+    const oversizedRequestClient = new FixtureClient();
+    const oversizedRequest =
+      new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport(
+        oversizedRequestClient,
+        authorization,
+      );
+    await expect(
+      oversizedRequest.exchange(
+        new Uint8Array(MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_REQUEST_BYTES + 1),
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expectCode('EXCHANGE_DENIED'));
+    expect(oversizedRequestClient.exchange).not.toHaveBeenCalled();
+    await expect(oversizedRequest.close()).resolves.toBeUndefined();
+
+    const oversizedResponseClient = new FixtureClient();
+    oversizedResponseClient.exchange.mockResolvedValue({
+      endpointBefore: endpoint,
+      peerCredentials: peer,
+      endpointAfter: endpoint,
+      responseFrame: new Uint8Array(
+        MAX_RETAINED_NATIVE_TOPOLOGY_CARRIER_SIGNING_RESPONSE_BYTES + 1,
+      ),
+    });
+    const oversizedResponse =
+      new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyCarrierSigningTransport(
+        oversizedResponseClient,
+        authorization,
+      );
+    await expect(
+      oversizedResponse.exchange(new Uint8Array([1, 2]), new AbortController().signal),
+    ).rejects.toEqual(expectCode('EXCHANGE_DENIED'));
+    await expect(oversizedResponse.close()).resolves.toBeUndefined();
   });
 });
