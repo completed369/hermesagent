@@ -730,5 +730,8 @@ no approved loader, module/socket path or identity, key custody, listener, or se
 A one-use owner can now carry an already-accepted worker byte session through bounded canonical
 read, exact frame handling, response write, and guaranteed close (ADR-0152), but it supplies no
 listener, transport authentication, route, service authority, signer custody, or runtime wiring.
+An unwired worker factory now constructs the authenticated loaded-signer endpoint inside that exact
+one-use accepted-session owner (ADR-0153), but it does not consume the async loader or supply
+listener acceptance/authentication, route, signer custody, service authority, or runtime wiring.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
