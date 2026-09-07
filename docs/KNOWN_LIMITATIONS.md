@@ -640,3 +640,12 @@ receives production streams, launcher authority, credentials, provider access,
 or a durable writer, and production secret and response transports remain
 deny-only. Because no real authenticated process round trip exists, this must
 not be presented as configured Codex or runtime connectivity.
+
+## Topology carrier root wiring is API-side and uncomposed only
+
+The API coordinator has a one-use adapter from the immutable PostgreSQL topology-carrier public-root
+registry to the role-local source port. It can resolve only the exact opposite `WORKER_CLIENT` grant
+and denies binding drift, cancellation, expiry, missing or ambiguous state, and replay. The adapter
+is not wired into the API module. No authenticated worker-side root source, root lookup transport,
+carrier route, signing endpoint, shared runtime mount, or runtime connection exists. Codex, Hermes,
+Pi, and `runtimeConnection` therefore remain `NOT_CONFIGURED`.

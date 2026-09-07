@@ -9,6 +9,7 @@ import { Prisma, prisma } from '@ventureos/database';
 import { describe, expect, it } from 'vitest';
 
 import { PostgresTopologyCarrierSignatureRootRegistry } from '../src/modules/agent-control-plane/topology-carrier-signature-root-registry';
+import { PostgresApiCoordinatorTopologyCarrierSignatureRootSource } from '../src/modules/agent-control-plane/topology-carrier-signature-root-source';
 
 describe('durable topology carrier signature public-root registry (PostgreSQL integration)', () => {
   it('persists two exact role grants with Level-3 evidence and denies mutation or scope substitution', async () => {
@@ -89,6 +90,13 @@ describe('durable topology carrier signature public-root registry (PostgreSQL in
     await expect(registry.provision(requestFor(workerRoot), capability, context)).resolves.toBe(
       'APPENDED',
     );
+    await expect(
+      new PostgresApiCoordinatorTopologyCarrierSignatureRootSource(prisma, binding).read(
+        binding,
+        'WORKER_CLIENT',
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual(workerRoot);
     await expect(registry.read(binding, 'API_COORDINATOR')).resolves.toEqual(coordinatorRoot);
     await expect(registry.read(binding, 'WORKER_CLIENT')).resolves.toEqual(workerRoot);
 

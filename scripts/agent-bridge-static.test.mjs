@@ -2981,6 +2981,41 @@ test('topology carrier delivery signing is role-bound, keyless, bounded, and unc
   );
 });
 
+test('API coordinator resolves only the exact durable worker carrier root and remains uncomposed', () => {
+  const source = readFileSync(
+    'apps/api/src/modules/agent-control-plane/topology-carrier-signature-root-source.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  const workerComposition = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /class PostgresApiCoordinatorTopologyCarrierSignatureRootSource/u);
+  assert.match(
+    source,
+    /implements RetainedNativeSupervisorTopologyObservationCarrierSignatureRootSource/u,
+  );
+  assert.match(source, /principalRole !== 'WORKER_CLIENT'/u);
+  assert.match(source, /canonicalJson\(supplied\) !== canonicalJson\(this\.#binding\)/u);
+  assert.match(source, /this\.#registry\.read\(this\.#binding, 'WORKER_CLIENT', this\.clock\)/u);
+  assert.match(source, /validateRetainedNativeSupervisorTopologyObservationCarrierBinding/u);
+  assert.match(
+    source,
+    /root\.bindingHash !== retainedNativeSupervisorTopologyObservationCarrierBindingHash/u,
+  );
+  assert.match(source, /#attempted/u);
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|\bcreatePrivateKey\b|\bgenerateKeyPair\b|\bprivateKey\b|provider|deployment|publish|spend|from 'node:(?:net|tls|child_process|fs)'/u,
+  );
+  assert.doesNotMatch(apiComposition, /PostgresApiCoordinatorTopologyCarrierSignatureRootSource/u);
+  assert.doesNotMatch(
+    workerComposition,
+    /PostgresApiCoordinatorTopologyCarrierSignatureRootSource/u,
+  );
+});
+
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',
