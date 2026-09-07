@@ -237,6 +237,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@ventureos/agent-bridge':
+        specifier: workspace:*
+        version: link:../../packages/agent-bridge
       '@temporalio/activity':
         specifier: ^1.11.3
         version: 1.20.2

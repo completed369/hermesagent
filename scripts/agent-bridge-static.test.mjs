@@ -3191,6 +3191,27 @@ test('Linux carrier root lookup transport derives peer identity from kernel evid
   );
 });
 
+test('worker carrier root lookup composition binds an injected client without activation', () => {
+  const source = readFileSync(
+    'apps/worker/src/lib/topology-carrier-root-lookup-composition.ts',
+    'utf8',
+  );
+  const worker = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(
+    source,
+    /new AuthenticatedLinuxLocalRetainedNativeSupervisorTopologyObservationCarrierRootLookupTransport/u,
+  );
+  assert.match(
+    source,
+    /new BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /\.exchange\s*\(|\.read\s*\(|\.close\s*\(|runtimeConnection:\s*'CONNECTED'/u,
+  );
+  assert.doesNotMatch(worker, /createLinuxLocalTopologyCarrierRootSource/u);
+});
+
 test('role-local topology observation listeners require exact Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',

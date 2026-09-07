@@ -16,6 +16,7 @@
     "@temporalio/worker": "^1.11.3",
     "@temporalio/workflow": "^1.11.3",
     "@temporalio/activity": "^1.11.3",
+    "@ventureos/agent-bridge": "workspace:*",
     "@ventureos/config": "workspace:*",
     "@ventureos/observability": "workspace:*",
     "@ventureos/workflows": "workspace:*",
