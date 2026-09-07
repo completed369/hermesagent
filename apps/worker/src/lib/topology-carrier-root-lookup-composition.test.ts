@@ -1,6 +1,7 @@
 import {
   BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
   DenyLinuxRetainedNativeSupervisorTopologyObservationPort,
   DenyRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner,
   DenyRetainedNativeSupervisorLocalIpcClient,
@@ -10,6 +11,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createFramedRootResolvedLinuxNativeTopologyCarrierWorker,
   createLinuxLocalTopologyCarrierRootSource,
   createLoadedLinuxNativeTopologyCarrierRootSource,
   createRootResolvedLinuxNativeTopologyCarrierWorker,
@@ -199,6 +201,82 @@ describe('worker Linux topology carrier root lookup composition', () => {
         new DenyRetainedNativeSupervisorTopologyObservationCarrierDeliverySigner(),
         binding,
         () => NOW,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
+    expect(client.exchange).not.toHaveBeenCalled();
+    expect(client.close).not.toHaveBeenCalled();
+    expect(observer.observe).not.toHaveBeenCalled();
+    expect(signer.sign).not.toHaveBeenCalled();
+  });
+
+  it('wraps the exact root-resolved worker in the bounded frame endpoint without activity', () => {
+    const client = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      client,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const observer = {
+      observe: vi.fn(async (): Promise<never> => {
+        throw new Error('construction must not observe');
+      }),
+    };
+    const signer = {
+      sign: vi.fn(async (): Promise<never> => {
+        throw new Error('construction must not sign');
+      }),
+    };
+
+    const endpoint = createFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+      source,
+      observer,
+      signer,
+      binding,
+      () => NOW,
+      2_000,
+    );
+
+    expect(endpoint).toBeInstanceOf(
+      BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+    );
+    expect(client.exchange).not.toHaveBeenCalled();
+    expect(client.close).not.toHaveBeenCalled();
+    expect(observer.observe).not.toHaveBeenCalled();
+    expect(signer.sign).not.toHaveBeenCalled();
+  });
+
+  it('denies invalid frame bounds without lookup, observation, signing, or IPC', () => {
+    const client = new UnusedClient();
+    const source = createLinuxLocalTopologyCarrierRootSource(
+      client,
+      binding,
+      localIpcAuthorization,
+      () => NOW,
+    );
+    const observer = { observe: vi.fn() };
+    const signer = { sign: vi.fn() };
+
+    expect(() =>
+      createFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+        {
+          read: vi.fn(),
+        } as unknown as BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource,
+        observer,
+        signer,
+        binding,
+        () => NOW,
+        2_000,
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORIZATION' }));
+    expect(() =>
+      createFramedRootResolvedLinuxNativeTopologyCarrierWorker(
+        source,
+        observer,
+        signer,
+        binding,
+        () => NOW,
+        5_001,
       ),
     ).toThrowError(expect.objectContaining({ code: 'NOT_CONFIGURED' }));
     expect(client.exchange).not.toHaveBeenCalled();

@@ -706,5 +706,8 @@ carrier binding, and clock (ADR-0144). Construction performs no root lookup, IPC
 signing, or native call, and the factory remains absent from `worker.ts`. Production still supplies
 no approved loader, module/socket path, principal mapping, concrete observer, keyless signer,
 carrier-listener lifecycle, or verified authenticated round trip.
+That exact root-resolved worker can now also be wrapped in the bounded canonical one-use byte-frame
+endpoint with an explicit deadline (ADR-0145). The factory remains inert and outside `worker.ts`;
+production still supplies no byte channel, listener, or any of the missing approved dependencies.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
