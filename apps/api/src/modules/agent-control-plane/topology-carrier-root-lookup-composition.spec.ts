@@ -4,6 +4,7 @@ import {
   canonicalJson,
   BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedLinuxRetainedNativeSupervisorServiceOwner,
+  BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler,
   retainedNativeSupervisorTopologyObservationCarrierBindingHash,
   type LinuxRetainedNativeSupervisorModuleLoadRequest,
   type LinuxRetainedNativeSupervisorServiceRequest,
@@ -18,6 +19,7 @@ import {
   createPostgresApiCoordinatorLinuxLocalTopologyCarrierRootLookupHandler,
   createPostgresApiCoordinatorTopologyCarrierRootLookupHandler,
   loadLinuxNativeTopologyCarrierRootLookupServiceOwner,
+  runPostgresApiCoordinatorTopologyCarrierRootLookupServiceOne,
 } from './topology-carrier-root-lookup-composition';
 import { BoundedLevel3RetainedNativeSupervisorServiceAuthority } from './retained-native-service-authority';
 import type { TopologyCarrierSignatureRootSqlClient } from './topology-carrier-signature-root-registry';
@@ -417,6 +419,74 @@ describe('PostgreSQL API coordinator carrier-root lookup composition', () => {
     ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
     expect(driftedLoad).toHaveBeenCalledOnce();
     expect(loaded.nativeModule.createOwnedListener).not.toHaveBeenCalled();
+  });
+
+  it('joins one exact live carrier and durable root handler to an injected service owner', async () => {
+    const request = serviceRequest();
+    const owner = createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner(
+      loadedListenerModule(),
+      serviceAuthority(request),
+      request,
+      () => NOW,
+    );
+    const run = vi.spyOn(owner, 'runTopologyCarrierRootLookupOne').mockResolvedValue();
+    const database = new ScriptedSqlClient([]);
+    const signal = new AbortController().signal;
+
+    await runPostgresApiCoordinatorTopologyCarrierRootLookupServiceOne(
+      owner,
+      database,
+      request,
+      binding,
+      signal,
+      () => NOW,
+    );
+
+    expect(run).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledWith(
+      request,
+      expect.any(
+        BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierRootLookupHandler,
+      ),
+      binding,
+      signal,
+    );
+    expect(database.queries).toHaveLength(0);
+  });
+
+  it('denies carrier scope and cancellation before consuming the service owner', async () => {
+    const request = serviceRequest();
+    const owner = createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner(
+      loadedListenerModule(),
+      serviceAuthority(request),
+      request,
+      () => NOW,
+    );
+    const run = vi.spyOn(owner, 'runTopologyCarrierRootLookupOne');
+    const database = new ScriptedSqlClient([]);
+
+    await expect(
+      runPostgresApiCoordinatorTopologyCarrierRootLookupServiceOne(
+        owner,
+        database,
+        serviceRequest({ workspaceId: 'workspace-other' }),
+        binding,
+        new AbortController().signal,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    await expect(
+      runPostgresApiCoordinatorTopologyCarrierRootLookupServiceOne(
+        owner,
+        database,
+        request,
+        binding,
+        AbortSignal.abort(),
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    expect(run).not.toHaveBeenCalled();
+    expect(database.queries).toHaveLength(0);
   });
 
   it('is inert at construction and releases only the exact coordinator root after authentication', async () => {

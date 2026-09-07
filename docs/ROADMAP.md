@@ -514,7 +514,11 @@ published and current `main` has not been deployed to private staging.
    after the exact `LISTENER` request, carrier-root service request, abort signal, Level-3 authority
    type, and socket path agree, then revalidates the loaded envelope before returning the inert
    owner (ADR-0142). No production loader, request, path/principal source, service run, shared mount,
-   route, application lifecycle, or runtime connection is selected or activated.
+   route, application lifecycle, or runtime connection is selected or activated. A final explicit
+   API-local entry point can now prevalidate exact carrier-root purpose plus carrier
+   workspace/supervisor scope, build the least-authority PostgreSQL handler, and invoke one injected
+   service owner for one session (ADR-0143). It remains absent from Nest, and construction of the
+   owner, loader, authority, module, path, principal mapping, and lifecycle stays external.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
