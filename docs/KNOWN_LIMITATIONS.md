@@ -672,10 +672,13 @@ distinct Level-3 one-session service purpose can now own that endpoint's listene
 exact live carrier workspace and supervisor, and clean up only its created socket (ADR-0140). The
 API can now also inertly join one exact already-authorized `LISTENER` envelope and matching
 carrier-root service request to the strict native ABI and concrete Level-3 one-use service owner
-(ADR-0141). The factory remains absent from Nest; it invokes neither the loader, native module,
-service authority, nor service run, and no approved path/principal source or application lifecycle
-supplies it. This is not runtime connectivity evidence; the internal handler factory (ADR-0136) and
-listener-owner factory remain uninvoked. Codex, Hermes, Pi, and `runtimeConnection` remain
+(ADR-0141). An unwired async entry point can now consume one explicitly injected one-use loader only
+after the exact `LISTENER` request, carrier-root service request, abort signal, concrete Level-3
+authority type, and socket path agree, then revalidates the loaded envelope (ADR-0142). It remains
+absent from Nest; production supplies no loader, request, approved path/principal source, or
+application lifecycle, and neither the service authority nor service run is invoked by composition.
+This is not runtime connectivity evidence; the internal handler factory (ADR-0136) and
+listener-owner entry points remain uninvoked. Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
 
 ## Worker topology carrier root lookup is protocol-only

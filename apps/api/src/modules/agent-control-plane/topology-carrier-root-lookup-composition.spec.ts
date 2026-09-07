@@ -2,9 +2,12 @@ import { createHash, generateKeyPairSync } from 'node:crypto';
 
 import {
   canonicalJson,
+  BoundedLinuxRetainedNativeSupervisorModuleLoader,
   BoundedLinuxRetainedNativeSupervisorServiceOwner,
   retainedNativeSupervisorTopologyObservationCarrierBindingHash,
+  type LinuxRetainedNativeSupervisorModuleLoadRequest,
   type LinuxRetainedNativeSupervisorServiceRequest,
+  type LoadedLinuxRetainedNativeSupervisorListenerModule,
 } from '@ventureos/agent-bridge';
 import { OperationalEventCapability } from '@ventureos/agent-control-plane';
 import { Prisma } from '@ventureos/database';
@@ -14,6 +17,7 @@ import {
   createLoadedLinuxNativeTopologyCarrierRootLookupServiceOwner,
   createPostgresApiCoordinatorLinuxLocalTopologyCarrierRootLookupHandler,
   createPostgresApiCoordinatorTopologyCarrierRootLookupHandler,
+  loadLinuxNativeTopologyCarrierRootLookupServiceOwner,
 } from './topology-carrier-root-lookup-composition';
 import { BoundedLevel3RetainedNativeSupervisorServiceAuthority } from './retained-native-service-authority';
 import type { TopologyCarrierSignatureRootSqlClient } from './topology-carrier-signature-root-registry';
@@ -158,6 +162,21 @@ function loadedListenerModule(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function moduleLoadRequest(
+  overrides: Partial<LinuxRetainedNativeSupervisorModuleLoadRequest> = {},
+): LinuxRetainedNativeSupervisorModuleLoadRequest {
+  return {
+    schemaVersion: 1,
+    platform: 'LINUX',
+    architecture: 'X64',
+    moduleKind: 'LISTENER',
+    canonicalModulePath: '/opt/ventureos/carrier-root-listener.node',
+    socketPath,
+    runtimeConnection: 'NOT_CONFIGURED',
+    ...overrides,
+  };
+}
+
 class ScriptedSqlClient implements TopologyCarrierSignatureRootSqlClient {
   readonly queries: Prisma.Sql[] = [];
 
@@ -265,6 +284,139 @@ describe('PostgreSQL API coordinator carrier-root lookup composition', () => {
     ).toThrow();
     expect(getterCalls).toBe(0);
     expect(native.createOwnedListener).not.toHaveBeenCalled();
+  });
+
+  it('loads one exact listener request before inert service-owner construction', async () => {
+    const loaded = loadedListenerModule();
+    const loader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const load = vi
+      .spyOn(loader, 'load')
+      .mockResolvedValue(
+        loaded as unknown as Readonly<LoadedLinuxRetainedNativeSupervisorListenerModule>,
+      );
+    const request = serviceRequest();
+    const loadRequest = moduleLoadRequest();
+    const signal = new AbortController().signal;
+
+    const owner = await loadLinuxNativeTopologyCarrierRootLookupServiceOwner(
+      loader,
+      loadRequest,
+      signal,
+      serviceAuthority(request),
+      request,
+      () => NOW,
+    );
+
+    expect(owner).toBeInstanceOf(BoundedLinuxRetainedNativeSupervisorServiceOwner);
+    expect(load).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledWith(loadRequest, signal);
+    expect(loaded.nativeModule.createOwnedListener).not.toHaveBeenCalled();
+  });
+
+  it('denies loader, request, purpose, socket, and cancellation drift before loading', async () => {
+    const request = serviceRequest();
+    const cases: readonly [
+      unknown,
+      LinuxRetainedNativeSupervisorModuleLoadRequest,
+      AbortSignal,
+      unknown,
+      LinuxRetainedNativeSupervisorServiceRequest,
+    ][] = [
+      [{}, moduleLoadRequest(), new AbortController().signal, serviceAuthority(request), request],
+      [
+        new BoundedLinuxRetainedNativeSupervisorModuleLoader(),
+        moduleLoadRequest({ moduleKind: 'CLIENT' }),
+        new AbortController().signal,
+        serviceAuthority(request),
+        request,
+      ],
+      [
+        new BoundedLinuxRetainedNativeSupervisorModuleLoader(),
+        moduleLoadRequest(),
+        AbortSignal.abort(),
+        serviceAuthority(request),
+        request,
+      ],
+      [
+        new BoundedLinuxRetainedNativeSupervisorModuleLoader(),
+        moduleLoadRequest(),
+        new AbortController().signal,
+        {},
+        request,
+      ],
+      [
+        new BoundedLinuxRetainedNativeSupervisorModuleLoader(),
+        moduleLoadRequest(),
+        new AbortController().signal,
+        serviceAuthority(request),
+        serviceRequest({ serviceKind: 'RECOVERY' }),
+      ],
+      [
+        new BoundedLinuxRetainedNativeSupervisorModuleLoader(),
+        moduleLoadRequest({ socketPath: '/run/ventureos/other.sock' }),
+        new AbortController().signal,
+        serviceAuthority(request),
+        request,
+      ],
+    ];
+
+    for (const [candidateLoader, loadRequest, signal, authority, service] of cases) {
+      const load =
+        candidateLoader instanceof BoundedLinuxRetainedNativeSupervisorModuleLoader
+          ? vi.spyOn(candidateLoader, 'load')
+          : undefined;
+      await expect(
+        loadLinuxNativeTopologyCarrierRootLookupServiceOwner(
+          candidateLoader as BoundedLinuxRetainedNativeSupervisorModuleLoader,
+          loadRequest,
+          signal,
+          authority as BoundedLevel3RetainedNativeSupervisorServiceAuthority,
+          service,
+          () => NOW,
+        ),
+      ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+      if (load !== undefined) expect(load).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rechecks cancellation and the loaded envelope after loader consumption', async () => {
+    const request = serviceRequest();
+    const loaded = loadedListenerModule();
+    const controller = new AbortController();
+    const cancelledLoader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const cancelledLoad = vi.spyOn(cancelledLoader, 'load').mockImplementation(async () => {
+      controller.abort();
+      return loaded as unknown as Readonly<LoadedLinuxRetainedNativeSupervisorListenerModule>;
+    });
+    await expect(
+      loadLinuxNativeTopologyCarrierRootLookupServiceOwner(
+        cancelledLoader,
+        moduleLoadRequest(),
+        controller.signal,
+        serviceAuthority(request),
+        request,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    expect(cancelledLoad).toHaveBeenCalledOnce();
+
+    const driftedLoader = new BoundedLinuxRetainedNativeSupervisorModuleLoader();
+    const driftedLoad = vi.spyOn(driftedLoader, 'load').mockResolvedValue({
+      ...(loaded as unknown as Readonly<LoadedLinuxRetainedNativeSupervisorListenerModule>),
+      socketPath: '/run/ventureos/substituted.sock',
+    });
+    await expect(
+      loadLinuxNativeTopologyCarrierRootLookupServiceOwner(
+        driftedLoader,
+        moduleLoadRequest(),
+        new AbortController().signal,
+        serviceAuthority(request),
+        request,
+        () => NOW,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_AUTHORIZATION' });
+    expect(driftedLoad).toHaveBeenCalledOnce();
+    expect(loaded.nativeModule.createOwnedListener).not.toHaveBeenCalled();
   });
 
   it('is inert at construction and releases only the exact coordinator root after authentication', async () => {
