@@ -480,6 +480,12 @@ published and current `main` has not been deployed to private staging.
    (ADR-0134). Construction performs no database read and the factory remains outside the Nest and
    worker graphs. No mutual-authentication mechanism, listener, transport, route, socket, key,
    shared mount, or runtime connection is selected or activated.
+   Exported Linux worker/API root-lookup adapters now reuse the existing native IPC port to require
+   exact before/after Unix-socket identity and `SO_PEERCRED` PID/UID/GID evidence before deriving
+   cross-role transport identity (ADR-0135). They are one-use, cancellation-closeable, bound to the
+   exact short-lived carrier, and absent from both application graphs. The native channel, approved
+   OS-principal mapping, listener ownership, shared mount, route, and runtime connection remain
+   unconfigured.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

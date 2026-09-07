@@ -649,8 +649,11 @@ public-root registry for the exact opposite `WORKER_CLIENT` grant and its own ex
 binding drift, cancellation, expiry, missing or ambiguous state, under-scoped roots, and replay. Only
 the coordinator-root source is bound to its authenticated handler by an inert factory (ADR-0134);
 none of these components is wired into the API module. No concrete authenticated root-lookup
-transport, carrier route, signing endpoint, shared runtime mount, or runtime connection exists.
-Codex, Hermes, Pi, and `runtimeConnection` therefore remain `NOT_CONFIGURED`.
+application route, signing endpoint, shared runtime mount, or runtime connection exists. Exported
+Linux adapters can validate an injected native exchange using exact Unix-socket identity and
+`SO_PEERCRED` evidence (ADR-0135), but the native client/listener, approved PID/UID/GID mapping,
+socket path authorization, and service ownership are not composed. Codex, Hermes, Pi, and
+`runtimeConnection` therefore remain `NOT_CONFIGURED`.
 
 ## API topology carrier root lookup handler is composed but inactive
 
@@ -661,8 +664,10 @@ root for the live carrier binding (ADR-0132). An inert API-local factory binds t
 coordinator-root source (ADR-0133) to that handler for one exact carrier authorization (ADR-0134), but
 the factory remains absent from the Nest and worker graphs. It performs no database read at
 construction and supplies no concrete listener, transport, route, socket, peer authentication,
-signing authority, or shared runtime mount. It is not runtime connectivity evidence; Codex, Hermes,
-Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.
+signing authority, or shared runtime mount. A separate unactivated Linux endpoint can derive the
+handler's sideband identity from exact injected `lstat` and `SO_PEERCRED` evidence (ADR-0135), but no
+native listener or application composition supplies it. This is not runtime connectivity evidence;
+Codex, Hermes, Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.
 
 ## Worker topology carrier root lookup is protocol-only
 
@@ -671,5 +676,8 @@ root for one live carrier binding. Its injected transport contract requires inde
 authentication, and the source enforces a fresh challenge, exact request/response scope, bounded
 canonical frames, cancellation and binding expiry, and close-before-release (ADR-0131). The API-side
 handler and its API-local root source now have only an inert factory composition; no concrete
-authenticated transport exists, and neither side is wired into an application graph. This is not runtime
-connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain `NOT_CONFIGURED`.
+application transport exists, and neither side is wired into an application graph. An exported
+worker adapter can require exact injected Linux endpoint and API peer-credential evidence
+(ADR-0135), but the native client, path authorization, shared mount, and route remain unconfigured.
+This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
+`NOT_CONFIGURED`.
