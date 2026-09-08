@@ -24,6 +24,7 @@ const MAX_ROOT_LIFETIME_MS = 5 * 366 * 24 * 60 * 60 * 1_000;
 export const MAX_RETAINED_NATIVE_TOPOLOGY_SIGNED_DELIVERY_BYTES = 64 * 1_024;
 const MAX_JSON_DEPTH = 24;
 const MAX_JSON_NODES = 4_096;
+const AUTHENTIC_WORKER_CARRIERS = new WeakSet<object>();
 
 const ROOT_KEYS = [
   'algorithm',
@@ -573,6 +574,7 @@ export class Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWork
     const bound = bindCarrier(carrier);
     this.#exchange = bound.exchange;
     this.#close = bound.close;
+    AUTHENTIC_WORKER_CARRIERS.add(this);
   }
 
   async exchange(message: unknown, signal: AbortSignal): Promise<unknown> {
@@ -600,6 +602,20 @@ export class Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWork
   async close(): Promise<void> {
     await this.#close();
   }
+}
+
+/** Rejects structural/prototype substitutes for the canonical worker-initiated signed carrier. */
+export function authenticateEd25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier(
+  input: unknown,
+): Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier {
+  if (
+    !(
+      input instanceof Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier
+    ) ||
+    !AUTHENTIC_WORKER_CARRIERS.has(input)
+  )
+    deny('INVALID_AUTHORIZATION');
+  return input;
 }
 
 /** API endpoint for one authenticated worker-initiated carrier request and signed response. */

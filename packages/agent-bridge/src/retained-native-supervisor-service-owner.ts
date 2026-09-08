@@ -309,7 +309,9 @@ export function linuxRetainedNativeSupervisorServiceRequestHash(
   return createHash('sha256').update(canonicalJson(request)).digest('hex');
 }
 
-function validateGrant(input: unknown): Readonly<LinuxRetainedNativeSupervisorServiceGrant> {
+export function validateLinuxRetainedNativeSupervisorServiceGrant(
+  input: unknown,
+): Readonly<LinuxRetainedNativeSupervisorServiceGrant> {
   const value = plainRecord(input, GRANT_KEYS, 'INVALID_AUTHORIZATION');
   const request = validateLinuxRetainedNativeSupervisorServiceRequest(
     Object.fromEntries(REQUEST_KEYS.map((key) => [key, value[key]])),
@@ -560,7 +562,9 @@ export class BoundedLinuxRetainedNativeSupervisorServiceOwner {
     if (request.serviceKind !== serviceKind) deny('INVALID_AUTHORIZATION');
     let grant: Readonly<LinuxRetainedNativeSupervisorServiceGrant>;
     try {
-      grant = validateGrant(await this.authority.authorize(request));
+      grant = validateLinuxRetainedNativeSupervisorServiceGrant(
+        await this.authority.authorize(request),
+      );
     } catch (error) {
       if (error instanceof RetainedNativeSupervisorLocalIpcError && error.code === 'NOT_CONFIGURED')
         throw error;
