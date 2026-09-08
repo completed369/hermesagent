@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   usageLinkCreate: vi.fn(),
   reconciliationFindUnique: vi.fn(),
   reconciliationCreate: vi.fn(),
+  commercialEvidenceFindUnique: vi.fn(),
+  commercialEvidenceCreate: vi.fn(),
 }));
 
 const tx = {
@@ -41,6 +43,10 @@ const tx = {
     findUnique: mocks.reconciliationFindUnique,
     create: mocks.reconciliationCreate,
   },
+  revenueRunCommercialEvidence: {
+    findUnique: mocks.commercialEvidenceFindUnique,
+    create: mocks.commercialEvidenceCreate,
+  },
 };
 
 vi.mock('../capability-guard.js', () => ({
@@ -63,6 +69,7 @@ import {
   linkRevenueRunExpense,
   linkRevenueRunRevenueEntry,
   linkRevenueRunUsage,
+  recordRevenueRunCommercialEvidence,
   recordRevenueRunCostReconciliation,
 } from '../revenue-run-outcome.js';
 
@@ -79,6 +86,18 @@ const reconciliationParams = {
   basisReference: 'audit:cost-overlap-review-1',
   idempotencyKey: 'cost-reconciliation-1',
   reconciledBy: 'founder:user-1',
+};
+const commercialEvidenceParams = {
+  workspaceId: 'workspace',
+  revenueRunId: 'revenue-run',
+  revenueEntryId: 'fact',
+  kind: 'PAYMENT_SETTLEMENT' as const,
+  sourceType: 'MARKETPLACE_EXPORT' as const,
+  sourceReferenceHash: 'd'.repeat(64),
+  sourceArtifactSha256: 'e'.repeat(64),
+  observedAt: new Date('2026-09-08T01:00:00.000Z'),
+  idempotencyKey: 'commercial-evidence-1',
+  recordedBy: 'founder:user-1',
 };
 const decimal = (value: string) => ({ toString: () => value });
 const revenueEntry = {
@@ -161,11 +180,17 @@ describe('revenue-run outcome evidence', () => {
     mocks.expenseLinkFindUnique.mockResolvedValue(null);
     mocks.usageLinkFindUnique.mockResolvedValue(null);
     mocks.reconciliationFindUnique.mockResolvedValue(null);
+    mocks.commercialEvidenceFindUnique.mockResolvedValue(null);
     mocks.revenueLinkCreate.mockImplementation(async ({ data }: { data: object }) => data);
     mocks.expenseLinkCreate.mockImplementation(async ({ data }: { data: object }) => data);
     mocks.usageLinkCreate.mockImplementation(async ({ data }: { data: object }) => data);
     mocks.reconciliationCreate.mockImplementation(async ({ data }: { data: object }) => ({
       id: 'reconciliation',
+      createdAt: new Date('2026-09-08T01:06:00.000Z'),
+      ...data,
+    }));
+    mocks.commercialEvidenceCreate.mockImplementation(async ({ data }: { data: object }) => ({
+      id: 'commercial-evidence',
       createdAt: new Date('2026-09-08T01:06:00.000Z'),
       ...data,
     }));
@@ -179,6 +204,84 @@ describe('revenue-run outcome evidence', () => {
     expect(mocks.queryRaw).not.toHaveBeenCalled();
     expect(mocks.revenueRunFindFirst).not.toHaveBeenCalled();
     expect(mocks.revenueLinkCreate).not.toHaveBeenCalled();
+  });
+
+  it('denies commercial evidence before reading its revenue link', async () => {
+    mocks.enforceFinanceMutation.mockRejectedValue(new Error('Operation is not available'));
+
+    await expect(recordRevenueRunCommercialEvidence(commercialEvidenceParams)).rejects.toThrow(
+      'Operation is not available',
+    );
+
+    expect(mocks.revenueLinkFindUnique).not.toHaveBeenCalled();
+    expect(mocks.commercialEvidenceCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects future-dated commercial evidence before capability admission', async () => {
+    await expect(
+      recordRevenueRunCommercialEvidence({
+        ...commercialEvidenceParams,
+        observedAt: new Date('2999-01-01T00:00:00.000Z'),
+      }),
+    ).rejects.toThrow('observedAt must be a valid non-future timestamp');
+
+    expect(mocks.enforceFinanceMutation).not.toHaveBeenCalled();
+    expect(mocks.revenueLinkFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejects commercial evidence unless the exact tenant-scoped revenue link exists', async () => {
+    mocks.revenueLinkFindUnique.mockResolvedValue(null);
+
+    await expect(recordRevenueRunCommercialEvidence(commercialEvidenceParams)).rejects.toThrow(
+      'Exact revenue-run revenue link not found',
+    );
+
+    expect(mocks.revenueLinkFindUnique).toHaveBeenCalledWith({
+      where: {
+        workspaceId_revenueRunId_revenueEntryId: {
+          workspaceId: 'workspace',
+          revenueRunId: 'revenue-run',
+          revenueEntryId: 'fact',
+        },
+      },
+      select: { revenueEntryId: true },
+    });
+    expect(mocks.commercialEvidenceFindUnique).not.toHaveBeenCalled();
+    expect(mocks.commercialEvidenceCreate).not.toHaveBeenCalled();
+  });
+
+  it('records only an unverified, hash-bound assertion for the exact revenue link', async () => {
+    mocks.revenueLinkFindUnique.mockResolvedValue({ revenueEntryId: 'fact' });
+
+    const evidence = await recordRevenueRunCommercialEvidence(commercialEvidenceParams);
+
+    expect(mocks.commercialEvidenceCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: 'workspace',
+        revenueRunId: 'revenue-run',
+        revenueEntryId: 'fact',
+        kind: 'PAYMENT_SETTLEMENT',
+        verificationState: 'UNVERIFIED_EXTERNAL_ASSERTION',
+        evidenceHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      }),
+    });
+    expect(evidence).toEqual(
+      expect.objectContaining({ verificationState: 'UNVERIFIED_EXTERNAL_ASSERTION' }),
+    );
+  });
+
+  it('accepts only an exact commercial-evidence idempotent replay', async () => {
+    mocks.revenueLinkFindUnique.mockResolvedValue({ revenueEntryId: 'fact' });
+    const first = await recordRevenueRunCommercialEvidence(commercialEvidenceParams);
+    mocks.commercialEvidenceFindUnique.mockResolvedValue(first);
+
+    await expect(recordRevenueRunCommercialEvidence(commercialEvidenceParams)).resolves.toBe(first);
+    await expect(
+      recordRevenueRunCommercialEvidence({
+        ...commercialEvidenceParams,
+        sourceArtifactSha256: 'f'.repeat(64),
+      }),
+    ).rejects.toThrow('idempotency key already has different evidence');
   });
 
   it('hash-binds and appends an exact tenant-and-venture revenue entry', async () => {
@@ -339,7 +442,7 @@ describe('revenue-run outcome evidence', () => {
       confidenceBps: 6_500,
       timeToCashDays: 30,
       forecastEvidenceHash: 'a'.repeat(64),
-      revenueEntries: [{ ...revenueLink, revenueEntry }],
+      revenueEntries: [{ ...revenueLink, revenueEntry, commercialEvidence: [] }],
       expenses: [{ ...expenseLink, expense }],
       usages: [{ ...usageLink, usage }],
       costReconciliations: [],
@@ -355,6 +458,14 @@ describe('revenue-run outcome evidence', () => {
       grossMinorUnits: 1_234n,
       netMinorUnits: 1_109n,
       verificationState: 'UNVERIFIED_SOURCE_RECORDS',
+      commercialEvidence: {
+        evidenceCount: 0,
+        paymentSettlementCount: 0,
+        deliveryConfirmationCount: 0,
+        refundObservationCount: 0,
+        evidenceSetHash: null,
+        state: 'NO_COMMERCIAL_EVIDENCE',
+      },
     });
     expect(outcome.recordedCosts).toEqual({
       expenseEvidenceCount: 1,
@@ -395,7 +506,7 @@ describe('revenue-run outcome evidence', () => {
       confidenceBps: 6_500,
       timeToCashDays: 30,
       forecastEvidenceHash: 'a'.repeat(64),
-      revenueEntries: [{ ...revenueLink, revenueEntry }],
+      revenueEntries: [{ ...revenueLink, revenueEntry, commercialEvidence: [] }],
       expenses: [{ ...expenseLink, expense }],
       usages: [{ ...usageLink, usage }],
       costReconciliations: [reconciliation],
@@ -443,7 +554,7 @@ describe('revenue-run outcome evidence', () => {
       confidenceBps: 6_500,
       timeToCashDays: 30,
       forecastEvidenceHash: 'a'.repeat(64),
-      revenueEntries: [{ ...revenueLink, revenueEntry }],
+      revenueEntries: [{ ...revenueLink, revenueEntry, commercialEvidence: [] }],
       expenses: [{ ...expenseLink, expense }],
       usages: [{ ...usageLink, usage }],
       costReconciliations: [{ ...reconciliation, usageEvidenceSetHash: 'd'.repeat(64) }],
@@ -478,7 +589,11 @@ describe('revenue-run outcome evidence', () => {
       timeToCashDays: 30,
       forecastEvidenceHash: 'a'.repeat(64),
       revenueEntries: [
-        { ...revenueLink, revenueEntry: { ...revenueEntry, netRevenueEur: decimal('11.10') } },
+        {
+          ...revenueLink,
+          revenueEntry: { ...revenueEntry, netRevenueEur: decimal('11.10') },
+          commercialEvidence: [],
+        },
       ],
       expenses: [],
       usages: [],
@@ -487,6 +602,81 @@ describe('revenue-run outcome evidence', () => {
 
     await expect(getRevenueRunOutcomeEvidence('workspace', 'revenue-run')).rejects.toThrow(
       'Revenue-entry evidence changed after linking',
+    );
+  });
+
+  it('reports retained commercial assertions without promoting revenue truth', async () => {
+    const revenueLink = await linkRevenueRunRevenueEntry(params);
+    mocks.revenueLinkFindUnique.mockResolvedValue({ revenueEntryId: 'fact' });
+    const payment = await recordRevenueRunCommercialEvidence(commercialEvidenceParams);
+    mocks.commercialEvidenceFindUnique.mockResolvedValue(null);
+    const delivery = await recordRevenueRunCommercialEvidence({
+      ...commercialEvidenceParams,
+      kind: 'DELIVERY_CONFIRMATION',
+      sourceArtifactSha256: 'f'.repeat(64),
+      idempotencyKey: 'commercial-evidence-2',
+    });
+    mocks.revenueRunFindFirst.mockResolvedValue({
+      id: 'revenue-run',
+      workspaceId: 'workspace',
+      currency: 'EUR',
+      expectedRevenueMinorUnits: 2_000n,
+      expectedCostMinorUnits: 500n,
+      downsideMinorUnits: 500n,
+      confidenceBps: 6_500,
+      timeToCashDays: 30,
+      forecastEvidenceHash: 'a'.repeat(64),
+      revenueEntries: [{ ...revenueLink, revenueEntry, commercialEvidence: [payment, delivery] }],
+      expenses: [],
+      usages: [],
+      costReconciliations: [],
+    });
+
+    const outcome = await getRevenueRunOutcomeEvidence('workspace', 'revenue-run');
+
+    expect(outcome.recordedRevenue).toEqual(
+      expect.objectContaining({
+        verificationState: 'UNVERIFIED_SOURCE_RECORDS',
+        commercialEvidence: {
+          evidenceCount: 2,
+          paymentSettlementCount: 1,
+          deliveryConfirmationCount: 1,
+          refundObservationCount: 0,
+          evidenceSetHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+          state: 'UNVERIFIED_EXTERNAL_ASSERTIONS',
+        },
+      }),
+    );
+  });
+
+  it('fails the outcome projection when a commercial assertion drifts', async () => {
+    const revenueLink = await linkRevenueRunRevenueEntry(params);
+    mocks.revenueLinkFindUnique.mockResolvedValue({ revenueEntryId: 'fact' });
+    const evidence = await recordRevenueRunCommercialEvidence(commercialEvidenceParams);
+    mocks.revenueRunFindFirst.mockResolvedValue({
+      id: 'revenue-run',
+      workspaceId: 'workspace',
+      currency: 'EUR',
+      expectedRevenueMinorUnits: 2_000n,
+      expectedCostMinorUnits: 500n,
+      downsideMinorUnits: 500n,
+      confidenceBps: 6_500,
+      timeToCashDays: 30,
+      forecastEvidenceHash: 'a'.repeat(64),
+      revenueEntries: [
+        {
+          ...revenueLink,
+          revenueEntry,
+          commercialEvidence: [{ ...evidence, sourceArtifactSha256: '0'.repeat(64) }],
+        },
+      ],
+      expenses: [],
+      usages: [],
+      costReconciliations: [],
+    });
+
+    await expect(getRevenueRunOutcomeEvidence('workspace', 'revenue-run')).rejects.toThrow(
+      'Commercial evidence does not match its exact revenue link',
     );
   });
 });

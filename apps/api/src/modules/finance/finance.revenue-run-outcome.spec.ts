@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   linkRevenueRunRevenueEntry: vi.fn(),
   linkRevenueRunExpense: vi.fn(),
   linkRevenueRunUsage: vi.fn(),
+  recordRevenueRunCommercialEvidence: vi.fn(),
 }));
 
 vi.mock('@ventureos/database', () => ({
@@ -22,12 +23,25 @@ vi.mock('@ventureos/database', () => ({
 }));
 
 vi.mock('@ventureos/finance-engine', () => ({
+  REVENUE_RUN_COMMERCIAL_EVIDENCE_KINDS: [
+    'PAYMENT_SETTLEMENT',
+    'DELIVERY_CONFIRMATION',
+    'REFUND_OBSERVATION',
+  ],
+  REVENUE_RUN_COMMERCIAL_EVIDENCE_SOURCE_TYPES: [
+    'MARKETPLACE_EXPORT',
+    'PAYMENT_PROCESSOR_EXPORT',
+    'BANK_SETTLEMENT_EXPORT',
+    'FULFILLMENT_EXPORT',
+    'FOUNDER_OBSERVED',
+  ],
   getRevenueRunOutcomeEvidence: mocks.getRevenueRunOutcomeEvidence,
   recordRevenueRunCostReconciliation: mocks.recordRevenueRunCostReconciliation,
   createRevenueRunPlan: mocks.createRevenueRunPlan,
   linkRevenueRunRevenueEntry: mocks.linkRevenueRunRevenueEntry,
   linkRevenueRunExpense: mocks.linkRevenueRunExpense,
   linkRevenueRunUsage: mocks.linkRevenueRunUsage,
+  recordRevenueRunCommercialEvidence: mocks.recordRevenueRunCommercialEvidence,
   BudgetLimitExceededError: class extends Error {},
   BudgetNotFoundError: class extends Error {},
   ExperimentNotFoundError: class extends Error {},
@@ -66,6 +80,14 @@ const outcome = {
     grossMinorUnits: 12_345n,
     netMinorUnits: 10_000n,
     verificationState: 'UNVERIFIED_SOURCE_RECORDS' as const,
+    commercialEvidence: {
+      evidenceCount: 0,
+      paymentSettlementCount: 0,
+      deliveryConfirmationCount: 0,
+      refundObservationCount: 0,
+      evidenceSetHash: null,
+      state: 'NO_COMMERCIAL_EVIDENCE' as const,
+    },
   },
   recordedCosts: {
     expenseEvidenceCount: 1,
@@ -133,6 +155,14 @@ describe('Finance revenue-run outcome API projection', () => {
         grossMinorUnits: '12345',
         netMinorUnits: '10000',
         verificationState: 'UNVERIFIED_SOURCE_RECORDS',
+        commercialEvidence: {
+          evidenceCount: 0,
+          paymentSettlementCount: 0,
+          deliveryConfirmationCount: 0,
+          refundObservationCount: 0,
+          evidenceSetHash: null,
+          state: 'NO_COMMERCIAL_EVIDENCE',
+        },
       },
       recordedCosts: {
         expenseEvidenceCount: 1,
@@ -523,4 +553,138 @@ describe('Finance revenue-run planning and fact-link APIs', () => {
       );
     },
   );
+});
+
+describe('Finance revenue-run commercial-evidence API', () => {
+  const revenueRunId = '11111111-1111-4111-8111-111111111111';
+  const revenueEntryId = '22222222-2222-4222-8222-222222222222';
+  const input = {
+    kind: 'PAYMENT_SETTLEMENT' as const,
+    sourceType: 'MARKETPLACE_EXPORT' as const,
+    sourceReferenceHash: 'a'.repeat(64),
+    sourceArtifactSha256: 'b'.repeat(64),
+    observedAt: new Date('2026-09-08T01:00:00.000Z'),
+    idempotencyKey: 'commercial-evidence-1',
+  };
+  const evidence = {
+    id: 'commercial-evidence',
+    workspaceId: 'authenticated-workspace',
+    revenueRunId,
+    revenueEntryId,
+    ...input,
+    verificationState: 'UNVERIFIED_EXTERNAL_ASSERTION',
+    evidenceHash: 'c'.repeat(64),
+    recordedBy: 'authenticated-user',
+    createdAt: new Date('2026-09-08T01:01:00.000Z'),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.recordRevenueRunCommercialEvidence.mockResolvedValue(evidence);
+  });
+
+  it('requires session auth, permission guard, and finance:manage', () => {
+    const reflector = new Reflector();
+    const guards = reflector.get('__guards__', FinanceController) as unknown[];
+    expect(guards).toContain(SessionAuthGuard);
+    expect(guards).toContain(PermissionGuard);
+    expect(
+      reflector.get(PERMISSION_KEY, FinanceController.prototype.recordRevenueRunCommercialEvidence),
+    ).toBe('finance:manage');
+  });
+
+  it('takes tenant and actor exclusively from the session and strips truth injection', async () => {
+    const recordRevenueRunCommercialEvidence = vi.fn().mockResolvedValue({
+      id: 'commercial-evidence',
+    });
+    const controller = new FinanceController({ recordRevenueRunCommercialEvidence } as never);
+
+    await controller.recordRevenueRunCommercialEvidence(
+      revenueRunId,
+      revenueEntryId,
+      {
+        kind: 'PAYMENT_SETTLEMENT',
+        sourceType: 'MARKETPLACE_EXPORT',
+        sourceReferenceHash: 'a'.repeat(64),
+        sourceArtifactSha256: 'b'.repeat(64),
+        observedAt: '2026-09-08T01:00:00.000Z',
+        idempotencyKey: 'commercial-evidence-1',
+        workspaceId: 'attacker-workspace',
+        recordedBy: 'attacker-user',
+        verificationState: 'VERIFIED',
+      },
+      { workspaceId: 'authenticated-workspace', userId: 'authenticated-user' } as never,
+    );
+
+    expect(recordRevenueRunCommercialEvidence).toHaveBeenCalledWith(
+      'authenticated-workspace',
+      revenueRunId,
+      revenueEntryId,
+      input,
+      'authenticated-user',
+    );
+  });
+
+  it('returns and audits only the immutable unverified evidence shape', async () => {
+    const audit = { record: vi.fn() };
+    const service = new FinanceService(audit as never);
+
+    const result = await service.recordRevenueRunCommercialEvidence(
+      'authenticated-workspace',
+      revenueRunId,
+      revenueEntryId,
+      input,
+      'authenticated-user',
+    );
+
+    expect(mocks.recordRevenueRunCommercialEvidence).toHaveBeenCalledWith({
+      workspaceId: 'authenticated-workspace',
+      revenueRunId,
+      revenueEntryId,
+      ...input,
+      recordedBy: 'authenticated-user',
+    });
+    expect(result).toEqual({
+      id: 'commercial-evidence',
+      revenueRunId,
+      revenueEntryId,
+      kind: 'PAYMENT_SETTLEMENT',
+      sourceType: 'MARKETPLACE_EXPORT',
+      sourceReferenceHash: 'a'.repeat(64),
+      sourceArtifactSha256: 'b'.repeat(64),
+      observedAt: input.observedAt,
+      verificationState: 'UNVERIFIED_EXTERNAL_ASSERTION',
+      evidenceHash: 'c'.repeat(64),
+      idempotencyKey: 'commercial-evidence-1',
+      recordedBy: 'authenticated-user',
+      createdAt: evidence.createdAt,
+    });
+    expect(audit.record).toHaveBeenCalledWith('authenticated-workspace', {
+      actorId: 'authenticated-user',
+      action: 'REVENUE_RUN_COMMERCIAL_EVIDENCE_RECORDED',
+      entityType: 'RevenueRunCommercialEvidence',
+      entityId: 'commercial-evidence',
+      after: result,
+    });
+    expect(() => JSON.stringify(result)).not.toThrow();
+  });
+
+  it.each([
+    [new RevenueRunNotFoundError('Exact link not found'), NotFoundException],
+    [new RevenueRunInvalidInputError('Future observation'), BadRequestException],
+    [new RevenueRunOutcomeEvidenceDriftError('Evidence drift'), ConflictException],
+  ])('maps commercial-evidence boundary errors safely', async (error, expected) => {
+    mocks.recordRevenueRunCommercialEvidence.mockRejectedValue(error);
+    const service = new FinanceService({ record: vi.fn() } as never);
+
+    await expect(
+      service.recordRevenueRunCommercialEvidence(
+        'authenticated-workspace',
+        revenueRunId,
+        revenueEntryId,
+        input,
+        'authenticated-user',
+      ),
+    ).rejects.toBeInstanceOf(expected);
+  });
 });

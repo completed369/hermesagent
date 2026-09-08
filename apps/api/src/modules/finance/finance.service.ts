@@ -30,6 +30,7 @@ import {
   linkRevenueRunRevenueEntry,
   linkRevenueRunExpense,
   linkRevenueRunUsage,
+  recordRevenueRunCommercialEvidence,
 } from '@ventureos/finance-engine';
 import type {
   CreateExpenseInput,
@@ -40,6 +41,7 @@ import type {
   DecideExperimentInput,
   RecordRevenueRunCostReconciliationInput,
   CreateRevenueRunPlanInput,
+  RecordRevenueRunCommercialEvidenceInput,
 } from './finance.dto';
 import { AuditService } from '../audit/audit.service';
 import { enforceCapabilityAdmission } from '../../common/policy/capability-admission';
@@ -316,6 +318,7 @@ export class FinanceService {
           grossMinorUnits: outcome.recordedRevenue.grossMinorUnits.toString(),
           netMinorUnits: outcome.recordedRevenue.netMinorUnits.toString(),
           verificationState: outcome.recordedRevenue.verificationState,
+          commercialEvidence: outcome.recordedRevenue.commercialEvidence,
         },
         recordedCosts: {
           expenseEvidenceCount: outcome.recordedCosts.expenseEvidenceCount,
@@ -441,6 +444,49 @@ export class FinanceService {
 
   linkRevenueRunUsage(workspaceId: string, revenueRunId: string, factId: string, actorId: string) {
     return this.linkRevenueRunFact('USAGE', workspaceId, revenueRunId, factId, actorId);
+  }
+
+  async recordRevenueRunCommercialEvidence(
+    workspaceId: string,
+    revenueRunId: string,
+    revenueEntryId: string,
+    input: RecordRevenueRunCommercialEvidenceInput,
+    actorId: string,
+  ) {
+    try {
+      const evidence = await recordRevenueRunCommercialEvidence({
+        workspaceId,
+        revenueRunId,
+        revenueEntryId,
+        ...input,
+        recordedBy: actorId,
+      });
+      const response = {
+        id: evidence.id,
+        revenueRunId: evidence.revenueRunId,
+        revenueEntryId: evidence.revenueEntryId,
+        kind: evidence.kind,
+        sourceType: evidence.sourceType,
+        sourceReferenceHash: evidence.sourceReferenceHash,
+        sourceArtifactSha256: evidence.sourceArtifactSha256,
+        observedAt: evidence.observedAt,
+        verificationState: evidence.verificationState,
+        evidenceHash: evidence.evidenceHash,
+        idempotencyKey: evidence.idempotencyKey,
+        recordedBy: evidence.recordedBy,
+        createdAt: evidence.createdAt,
+      };
+      await this.auditService.record(workspaceId, {
+        actorId,
+        action: 'REVENUE_RUN_COMMERCIAL_EVIDENCE_RECORDED',
+        entityType: 'RevenueRunCommercialEvidence',
+        entityId: evidence.id,
+        after: response as unknown as Record<string, unknown>,
+      });
+      return response;
+    } catch (err) {
+      throw this.translateError(err);
+    }
   }
 
   /**

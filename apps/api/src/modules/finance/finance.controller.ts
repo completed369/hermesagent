@@ -14,6 +14,7 @@ import {
   revenueRunIdSchema,
   revenueRunFactIdSchema,
   createRevenueRunPlanSchema,
+  recordRevenueRunCommercialEvidenceSchema,
 } from './finance.dto';
 import { SessionAuthGuard, type AuthenticatedUser } from '../../common/guards/session-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -197,6 +198,24 @@ export class FinanceController {
       user.workspaceId,
       revenueRunIdSchema.parse(revenueRunId),
       revenueRunFactIdSchema.parse(factId),
+      user.userId,
+    );
+  }
+
+  @Post('revenue-runs/:revenueRunId/revenue-entries/:factId/commercial-evidence')
+  @RequirePermission('finance:manage')
+  recordRevenueRunCommercialEvidence(
+    @Param('revenueRunId') revenueRunId: string,
+    @Param('factId') factId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const input = recordRevenueRunCommercialEvidenceSchema.parse(body);
+    return this.financeService.recordRevenueRunCommercialEvidence(
+      user.workspaceId,
+      revenueRunIdSchema.parse(revenueRunId),
+      revenueRunFactIdSchema.parse(factId),
+      input,
       user.userId,
     );
   }
