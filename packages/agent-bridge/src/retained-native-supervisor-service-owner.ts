@@ -19,7 +19,10 @@ import {
   validateRetainedNativeSupervisorTopologyObservationCarrierBinding,
   type RetainedNativeSupervisorTopologyObservationCarrierBinding,
 } from './retained-native-supervisor-topology-observation-carrier';
-import { BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint } from './retained-native-supervisor-topology-observation-carrier-channel';
+import {
+  BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+  authenticateBoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+} from './retained-native-supervisor-topology-observation-carrier-channel';
 import {
   RootResolvedRetainedNativeSupervisorTopologyObservationWorker,
   authenticateRootResolvedRetainedNativeSupervisorTopologyObservationWorkerBinding,
@@ -50,6 +53,7 @@ export type LinuxRetainedNativeSupervisorServiceKind =
   | 'TOPOLOGY_OBSERVATION_API_LISTENER'
   | 'TOPOLOGY_OBSERVATION_WORKER_CLIENT'
   | 'TOPOLOGY_CARRIER_WORKER_LISTENER'
+  | 'TOPOLOGY_CARRIER_WORKER_SERVICE_AUTHORITY_API_LISTENER'
   | 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER';
 
 export type LinuxRetainedNativeSupervisorServicePeerRole = 'API_COORDINATOR' | 'WORKER_CLIENT';
@@ -240,6 +244,7 @@ function expectedPeerRole(
     case 'RECOVERY':
     case 'MODULE_AUTHORIZATION_SIGNING':
     case 'TOPOLOGY_OBSERVATION_API_LISTENER':
+    case 'TOPOLOGY_CARRIER_WORKER_SERVICE_AUTHORITY_API_LISTENER':
     case 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER':
       return 'WORKER_CLIENT';
     default: {
@@ -261,6 +266,7 @@ export function validateLinuxRetainedNativeSupervisorServiceRequest(
       value.serviceKind !== 'TOPOLOGY_OBSERVATION_API_LISTENER' &&
       value.serviceKind !== 'TOPOLOGY_OBSERVATION_WORKER_CLIENT' &&
       value.serviceKind !== 'TOPOLOGY_CARRIER_WORKER_LISTENER' &&
+      value.serviceKind !== 'TOPOLOGY_CARRIER_WORKER_SERVICE_AUTHORITY_API_LISTENER' &&
       value.serviceKind !== 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER') ||
     value.socketDirectoryMode !== 0o700 ||
     value.runtimeConnection !== 'NOT_CONFIGURED'
@@ -541,6 +547,45 @@ export class BoundedLinuxRetainedNativeSupervisorServiceOwner {
     return this.runBounded(lifecycle.grant, signal, (ownedSignal) =>
       lifecycle.owner.runTopologyCarrierWorkerOne(
         endpoint,
+        ownedSignal,
+        lifecycle.grant.maximumSessionDurationMs,
+      ),
+    );
+  }
+
+  async runTopologyCarrierWorkerServiceAuthorityApiOne(
+    input: unknown,
+    endpoint: BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint,
+    carrierBindingInput: unknown,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const authenticatedEndpoint =
+      authenticateBoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+        endpoint,
+      );
+    let carrierBinding: Readonly<RetainedNativeSupervisorTopologyObservationCarrierBinding>;
+    try {
+      carrierBinding = validateRetainedNativeSupervisorTopologyObservationCarrierBinding(
+        carrierBindingInput,
+        this.validNow(),
+      );
+    } catch (error) {
+      if (error instanceof RetainedNativeSupervisorLocalIpcError) throw error;
+      return deny('INVALID_AUTHORIZATION');
+    }
+    const lifecycle = await this.authorizeOne(
+      input,
+      'TOPOLOGY_CARRIER_WORKER_SERVICE_AUTHORITY_API_LISTENER',
+      signal,
+    );
+    if (
+      carrierBinding.workspaceId !== lifecycle.grant.workspaceId ||
+      carrierBinding.supervisorInstanceId !== lifecycle.grant.supervisorInstanceId
+    )
+      deny('INVALID_AUTHORIZATION');
+    return this.runBounded(lifecycle.grant, signal, (ownedSignal) =>
+      lifecycle.owner.runTopologyCarrierWorkerOne(
+        authenticatedEndpoint,
         ownedSignal,
         lifecycle.grant.maximumSessionDurationMs,
       ),
