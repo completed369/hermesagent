@@ -1,6 +1,7 @@
 import { DataSurface, EmptyState, PageHeader, StatCard } from '@/components/workspace-ui';
 import { serverApiFetch } from '@/lib/server-api';
 import { shortReference, statusTone, type WorkflowCentreSnapshot } from '@/lib/workflow-centre';
+import { WorkflowTelemetryRefresh } from './workflow-telemetry-refresh';
 import styles from './workflows.module.css';
 
 function StatusBadge({ status }: { status: string }) {
@@ -56,6 +57,8 @@ function WorkflowCentreView({ snapshot }: { snapshot: WorkflowCentreSnapshot }) 
           event/result round trip. This page cannot start, cancel, approve, or execute work.
         </p>
       </aside>
+
+      <WorkflowTelemetryRefresh />
 
       {!hasWork ? (
         <DataSurface>

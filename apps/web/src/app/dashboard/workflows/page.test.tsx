@@ -5,6 +5,7 @@ import type { WorkflowCentreSnapshot } from '@/lib/workflow-centre';
 
 const { serverApiFetchMock } = vi.hoisted(() => ({ serverApiFetchMock: vi.fn() }));
 vi.mock('@/lib/server-api', () => ({ serverApiFetch: serverApiFetchMock }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.stubGlobal('React', React);
 
 import WorkflowCentrePage from './page';
@@ -142,6 +143,8 @@ describe('Workflow Centre dashboard', () => {
 
     expect(html).toContain('Workflow Centre');
     expect(html).toContain('Codex, Hermes and Pi: NOT_CONFIGURED');
+    expect(html).toContain('Persisted event notifications:');
+    expect(html).toContain('Runtime connectivity remains NOT_CONFIGURED');
     expect(html).toContain('vos-badge vos-badge--mock">CONNECTED');
     expect(html).toContain('&lt;script&gt;globalThis.compromised=true&lt;/script&gt;');
     expect(html).toContain('&lt;img src=x onerror=globalThis.compromised=true&gt;');

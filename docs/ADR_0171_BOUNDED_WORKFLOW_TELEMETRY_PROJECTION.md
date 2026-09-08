@@ -40,6 +40,10 @@ for Codex, Hermes, Pi, or any runtime connection status.
 ## Consequences
 
 The Workflow Centre now has a provider-neutral live-update contract based on authenticated durable
-truth. A browser can refresh its bounded snapshot after receiving a projected event without
-receiving operational payload content. This closes the stored-event SSE projection deferred by
-ADR-0013, but it does not activate a runtime or satisfy authenticated runtime round-trip evidence.
+truth. Its browser client opens the credentialed stream, ignores individual initial-replay events,
+and refreshes the authoritative server snapshot once after the first transport keepalive. Later
+operational-event notifications trigger a debounced snapshot refresh; the client never parses event
+payload data or turns a notification into an action. The visible connection label refers only to
+persisted event notifications and repeats that runtime connectivity is `NOT_CONFIGURED`. This
+closes the stored-event SSE projection deferred by ADR-0013, but it does not activate a runtime or
+satisfy authenticated runtime round-trip evidence.
