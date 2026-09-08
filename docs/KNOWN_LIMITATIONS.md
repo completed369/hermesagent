@@ -437,8 +437,12 @@ spend. Production budget policy administration remains a later governed path.
 > returns only allowlisted legacy workflow and Agent Control Plane status
 > metadata. It intentionally excludes command authority, approval targets,
 > evidence and policy hashes, secrets, principal references, artifacts,
-> transcripts, and cost. It is not streaming telemetry, a runtime connection,
-> the protected Founder Mission Control, publication, or deployment evidence.
+> transcripts, and cost. A separate bounded SSE route now projects only
+> allowlisted metadata from already-persisted operational audit events; its
+> keepalives are transport-only and every connection is time-, replay-, batch-,
+> and event-limited. The page still uses the snapshot as authoritative state.
+> Neither surface is a runtime connection, the protected Founder Mission
+> Control, publication, or deployment evidence.
 >
 > A dated, non-authoritative operations snapshot verified on 2026-08-25 records
 > operations PR #24 as deployed to the Access-protected Founder Mission Control,

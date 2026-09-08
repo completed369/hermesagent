@@ -756,8 +756,10 @@ published, deployed, verified, pilot, customer, invoice, or cash states.
    real agent telemetry, approvals, incidents, releases, infrastructure,
    security, customers, commercial evidence, finance, costs, board decisions,
    and risks. The bounded product Workflow Centre is the first authenticated
-   read-only task/workforce view; streaming telemetry and operator controls remain
-   separate future work. Do not fake live events or publish arbitrary percentages.
+   read-only task/workforce view. Its bounded authenticated SSE projection can
+   notify clients about allowlisted persisted operational-event metadata, while
+   richer telemetry and operator controls remain separate future work. Do not
+   fake live events or publish arbitrary percentages.
 5. **Voice — IN PROGRESS:** the governed provider-neutral Voice Gateway
    foundation is MERGED. Push-to-talk, activated STT/TTS adapters, end-to-end
    voice interaction, history, and live-evidence briefings are not yet verified.

@@ -398,6 +398,22 @@ describe('read-only Workflow Centre snapshot (PostgreSQL integration)', () => {
     expect(
       (await request(server).get('/api/workflow-centre').set('Cookie', deniedCookie)).status,
     ).toBe(403);
+    expect((await request(server).get('/api/workflow-centre/telemetry')).status).toBe(401);
+    expect(
+      (await request(server).get('/api/workflow-centre/telemetry').set('Cookie', deniedCookie))
+        .status,
+    ).toBe(403);
+  });
+
+  it('rejects malformed telemetry reconnect cursors after session authorization', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/workflow-centre/telemetry')
+      .set('Cookie', allowedCookie)
+      .set('Last-Event-ID', 'unbounded-history-selector');
+
+    expect(response.status).toBe(400);
+    expect(response.headers['content-type']).toContain('application/json');
+    expect(JSON.stringify(response.body)).not.toContain('unbounded-history-selector');
   });
 
   it('durably rejects non-Level-4 approval rows before they can pollute the summary', async () => {
