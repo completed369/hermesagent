@@ -768,3 +768,12 @@ paths, native artifacts, signer/key custody, route, and lifecycle activation rem
 Founder-gated.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
+
+## Revenue-run correlation is planning-only
+
+ADR-0165 adds an immutable `PLANNED` revenue-run forecast and append-only schema links to existing
+revenue, expense, and ACP usage facts. There is no API route, worker composition, activation
+transition, outcome-link writer, derived actual/profit report, customer, payment path, or live
+commercial evidence. Optional approval linkage is correlation evidence and grants no execution,
+publication, spend, or customer-contact authority. No revenue or profit has been verified by this
+change.

@@ -17,3 +17,7 @@ export class BudgetLimitExceededError extends Error {
 
 export class ExperimentNotFoundError extends Error {}
 export class ExperimentInvalidStateError extends Error {}
+
+export class RevenueRunNotFoundError extends Error {}
+export class RevenueRunInvalidInputError extends Error {}
+export class RevenueRunConflictError extends Error {}

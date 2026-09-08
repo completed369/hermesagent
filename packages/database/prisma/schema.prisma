@@ -112,6 +112,7 @@ model Workspace {
   financialForecasts       FinancialForecast[]
   expenses                 Expense[]
   revenueEntries           RevenueEntry[]
+  revenueRuns              RevenueRun[]
   budgets                  Budget[]
   costLedgerEntries        CostLedgerEntry[]
   modelUsages              ModelUsage[]
@@ -623,6 +624,7 @@ model Opportunity {
   evidenceClaims   EvidenceClaim[]
   proposal         VentureProposal?
   proposalVersions VentureProposalVersion[]
+  revenueRuns      RevenueRun[]
 
   @@unique([workspaceId, title])
   @@index([workspaceId, status])
@@ -646,6 +648,7 @@ model VentureProposal {
   versions             VentureProposalVersion[]
   product              Product?
   financialAssumptions FinancialAssumption[]
+  revenueRuns          RevenueRun[]
 
   @@map("venture_proposals")
 }
@@ -866,6 +869,7 @@ model ApprovalRequest {
   decisions              ApprovalDecision[]
   revisionRequests       RevisionRequest[]
   experimentDecisions    ExperimentDecision[]
+  revenueRuns            RevenueRun[]
 
   @@index([workspaceId, ventureProposalId])
   @@map("approval_requests")
@@ -989,6 +993,7 @@ model AcpTask {
   brokerReservations AcpBrokerReservation[]
   costBudgetPolicies AcpCostBudgetPolicy[]
   costLedgerEntries  AcpCostLedgerEntry[]
+  revenueRuns        RevenueRun[]
 
   @@id([workspaceId, id])
   @@index([workspaceId, objectiveId, status])
@@ -1047,6 +1052,7 @@ model AcpRun {
   usages             AcpRunUsage[]
   brokerReservations AcpBrokerReservation[]
   costLedgerEntries  AcpCostLedgerEntry[]
+  revenueRuns        RevenueRun[]
 
   @@id([workspaceId, id])
   @@unique([workspaceId, idempotencyKey])
@@ -1409,11 +1415,12 @@ model AcpRunUsage {
   evidenceHash             String
   recordedAt               DateTime @default(now()) @db.Timestamptz(3)
 
-  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  dispatch        AcpBridgeDispatch   @relation(fields: [workspaceId, dispatchId, runId, sessionId], references: [workspaceId, id, runId, sessionId], onDelete: Cascade)
-  run             AcpRun              @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
-  receipt         AcpBridgeReceipt    @relation(fields: [workspaceId, receiptId, sessionId, dispatchId, runId, sequence], references: [workspaceId, id, sessionId, dispatchId, runId, sequence], onDelete: Cascade)
-  costLedgerEntry AcpCostLedgerEntry?
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dispatch              AcpBridgeDispatch   @relation(fields: [workspaceId, dispatchId, runId, sessionId], references: [workspaceId, id, runId, sessionId], onDelete: Cascade)
+  run                   AcpRun              @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  receipt               AcpBridgeReceipt    @relation(fields: [workspaceId, receiptId, sessionId, dispatchId, runId, sequence], references: [workspaceId, id, sessionId, dispatchId, runId, sequence], onDelete: Cascade)
+  costLedgerEntry       AcpCostLedgerEntry?
+  revenueRunCorrelation RevenueRunUsage?
 
   @@id([workspaceId, id])
   @@unique([workspaceId, receiptId])
@@ -2690,7 +2697,8 @@ model Expense {
   incurredAt  DateTime
   createdAt   DateTime @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace              Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  revenueRunCorrelations RevenueRunExpense[]
 
   @@index([workspaceId, ventureProposalId])
   @@map("expenses")
@@ -2719,9 +2727,10 @@ model RevenueEntry {
   recordedBy String?
   createdAt  DateTime @default(now())
 
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  fees      MarketplaceFee[]
-  refunds   RefundRequest[]
+  workspace              Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  revenueRunCorrelations RevenueRunRevenueEntry[]
+  fees                   MarketplaceFee[]
+  refunds                RefundRequest[]
 
   @@index([workspaceId, ventureProposalId])
   @@map("revenue_entries")
@@ -2900,9 +2909,110 @@ model Experiment {
   metrics          ExperimentMetric[]
   decisions        ExperimentDecision[]
   approvalRequests ApprovalRequest[]
+  revenueRuns      RevenueRun[]
 
   @@index([workspaceId, ventureProposalId])
   @@map("experiments")
+}
+
+/// Planning-only correlation spine for one prospective revenue loop. Forecast
+/// values are immutable; realized revenue, expenses, and runtime usage remain
+/// authoritative in their existing tables and only reference this row.
+/// The initial migration permits only PLANNED rows and rejects every update,
+/// so this model grants no runtime, publication, spend, or commercial authority.
+model RevenueRun {
+  id                String  @id @default(uuid()) @db.Uuid
+  workspaceId       String  @db.Uuid
+  opportunityId     String  @db.Uuid
+  ventureProposalId String  @db.Uuid
+  approvalRequestId String? @db.Uuid
+  experimentId      String? @db.Uuid
+  taskId            String?
+  runId             String?
+
+  status                    String   @default("PLANNED")
+  currency                  String
+  expectedRevenueMinorUnits BigInt
+  expectedCostMinorUnits    BigInt
+  downsideMinorUnits        BigInt
+  confidenceBps             Int
+  timeToCashDays            Int
+  forecastEvidenceHash      String
+  idempotencyKey            String
+  createdBy                 String
+  createdAt                 DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace       Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  opportunity     Opportunity              @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  ventureProposal VentureProposal          @relation(fields: [ventureProposalId], references: [id], onDelete: Restrict)
+  approvalRequest ApprovalRequest?         @relation(fields: [approvalRequestId], references: [id], onDelete: Restrict)
+  experiment      Experiment?              @relation(fields: [experimentId], references: [id], onDelete: Restrict)
+  task            AcpTask?                 @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Restrict)
+  run             AcpRun?                  @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Restrict)
+  revenueEntries  RevenueRunRevenueEntry[]
+  expenses        RevenueRunExpense[]
+  usages          RevenueRunUsage[]
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status, createdAt(sort: Desc)])
+  @@index([workspaceId, opportunityId])
+  @@index([workspaceId, ventureProposalId])
+  @@map("revenue_runs")
+}
+
+/// Append-only evidence link to an existing realized-revenue fact. Amounts
+/// remain exclusively on RevenueEntry.
+model RevenueRunRevenueEntry {
+  revenueRunId   String   @db.Uuid
+  revenueEntryId String   @unique @db.Uuid
+  workspaceId    String   @db.Uuid
+  evidenceHash   String
+  linkedBy       String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  revenueRun   RevenueRun   @relation(fields: [revenueRunId], references: [id], onDelete: Cascade)
+  revenueEntry RevenueEntry @relation(fields: [revenueEntryId], references: [id], onDelete: Restrict)
+
+  @@id([workspaceId, revenueRunId, revenueEntryId])
+  @@index([workspaceId, revenueRunId])
+  @@map("revenue_run_revenue_entries")
+}
+
+/// Append-only evidence link to an existing realized-expense fact. Amounts
+/// remain exclusively on Expense.
+model RevenueRunExpense {
+  revenueRunId String   @db.Uuid
+  expenseId    String   @unique @db.Uuid
+  workspaceId  String   @db.Uuid
+  evidenceHash String
+  linkedBy     String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  revenueRun RevenueRun @relation(fields: [revenueRunId], references: [id], onDelete: Cascade)
+  expense    Expense    @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+
+  @@id([workspaceId, revenueRunId, expenseId])
+  @@index([workspaceId, revenueRunId])
+  @@map("revenue_run_expenses")
+}
+
+/// Append-only evidence link to existing runtime usage. Compute and cost facts
+/// remain exclusively on AcpRunUsage.
+model RevenueRunUsage {
+  revenueRunId String   @db.Uuid
+  usageId      String
+  workspaceId  String   @db.Uuid
+  evidenceHash String
+  linkedBy     String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  revenueRun RevenueRun  @relation(fields: [revenueRunId], references: [id], onDelete: Cascade)
+  usage      AcpRunUsage @relation(fields: [workspaceId, usageId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@id([workspaceId, revenueRunId, usageId])
+  @@unique([workspaceId, usageId])
+  @@index([workspaceId, revenueRunId])
+  @@map("revenue_run_usages")
 }
 
 model ExperimentVariant {

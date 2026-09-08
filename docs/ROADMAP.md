@@ -1079,3 +1079,12 @@ milestone. The prior instruction to stop after Phase 8 was superseded by the
 founder's 2026-08-20 autonomous completion directive. Current work follows the
 delivery roadmap above and the repository's protected review, security, and
 deployment gates.
+
+## Revenue-loop correlation (in progress)
+
+- ✅ ADR-0165 adds a planning-only immutable `RevenueRun` forecast and append-only references to
+  canonical revenue, expense, and ACP usage facts. No actual amount is duplicated or inferred.
+- ⬜ Add capability-gated append-only outcome-link writers and tenant-safe derived
+  forecast-versus-actual reporting.
+- ⬜ Prepare one evidence-backed beachhead playbook and asset bundle; publication, customer contact,
+  payment, provider activation, and commercial commitments remain Founder-gated.

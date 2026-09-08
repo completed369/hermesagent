@@ -131,3 +131,14 @@ The first implementation slice is the Linux trusted executable evidence reader d
 ADR-0027. Only a test-only signer is pinned; production authorization remains unavailable. It
 advances P0 while deliberately adding no process, runtime, provider, network, credential,
 deployment, publication, or status authority.
+
+## Current revenue-correlation slice
+
+ADR-0165 adds the planning-only durable `RevenueRun` identity after the remaining production
+runtime activation inputs became Founder-gated. It records immutable forecasts and correlates
+optional opportunity, proposal, approval, experiment, ACP task, and ACP run identities. Separate
+append-only evidence links point at existing revenue, expense, and runtime-usage facts; they do not
+copy or infer actual amounts. The initial database contract permits only `PLANNED`, has no API or
+worker composition, and grants no runtime, spend, publication, customer-contact, or commercial
+authority. P1 items 1 and the forecast half of item 2 are structurally complete; actual outcome
+link writers and derived reporting remain unfinished.
