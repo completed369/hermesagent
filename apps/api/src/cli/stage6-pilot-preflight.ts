@@ -15,7 +15,7 @@ const NEAR_EXPIRY_HOURS = 30 * 24;
 
 export const STAGE6_PREFLIGHT_VERSION = 'stage6-pilot-preflight-v1';
 export const REVIEWED_STAGE6_PILOT_INPUT_DIGEST =
-  '3cd676bc16309844db448a871c045548f64814d2bdcf09edb182aa72c29bebfa';
+  '8c7151389c8b3859c13e23d550c96570d6fad090cb54d338abbb679e58fdf43f';
 
 const REQUIRED_BLOCKERS = [
   'AUTHORITATIVE_POLICY_STATE_REQUIRED',
@@ -292,6 +292,13 @@ function prepareStage6PilotPreflight(
   if (!Number.isFinite(evaluatedAt.getTime())) throw new RangeError('evaluatedAt must be valid');
   assertStrictPreflightShape(rawInput);
   const input = stage6PilotInputSchema.parse(rawInput);
+  if (
+    input.pilot.evidence.some(
+      (item) => new Date(item.retrievedAt).getTime() > evaluatedAt.getTime(),
+    )
+  ) {
+    throw new RangeError('evidence retrievedAt must not be later than evaluatedAt');
+  }
   if (input.pilot.evidence.some((item) => item.personalDataClassification !== 'NONE')) {
     throw new TypeError('offline preflight accepts only evidence classified NONE');
   }
