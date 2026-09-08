@@ -21,3 +21,4 @@ export class ExperimentInvalidStateError extends Error {}
 export class RevenueRunNotFoundError extends Error {}
 export class RevenueRunInvalidInputError extends Error {}
 export class RevenueRunConflictError extends Error {}
+export class RevenueRunOutcomeEvidenceDriftError extends Error {}

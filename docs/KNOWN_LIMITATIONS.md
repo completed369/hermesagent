@@ -772,8 +772,10 @@ This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnec
 ## Revenue-run correlation is planning-only
 
 ADR-0165 adds an immutable `PLANNED` revenue-run forecast and append-only schema links to existing
-revenue, expense, and ACP usage facts. There is no API route, worker composition, activation
-transition, outcome-link writer, derived actual/profit report, customer, payment path, or live
-commercial evidence. Optional approval linkage is correlation evidence and grants no execution,
-publication, spend, or customer-contact authority. No revenue or profit has been verified by this
-change.
+revenue, expense, and ACP usage facts. ADR-0166 adds internal capability-gated, hash-bound link
+writers and a drift-detecting read projection, but there is no API route, worker composition,
+activation transition, cost-deduplication evidence, customer, payment path, or live commercial
+evidence. Recorded revenue is explicitly unverified; business expenses and recognized runtime
+charges remain separate, so profit is explicitly not calculated. Optional approval linkage is
+correlation evidence and grants no execution, publication, spend, or customer-contact authority. No
+revenue or profit has been verified by these changes.

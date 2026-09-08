@@ -7,7 +7,12 @@ const migration = readFileSync(
   'packages/database/prisma/migrations/20260908040000_revenue_run_correlation_spine/migration.sql',
   'utf8',
 );
+const outcomeGuardMigration = readFileSync(
+  'packages/database/prisma/migrations/20260908073000_revenue_run_outcome_link_delete_guard/migration.sql',
+  'utf8',
+);
 const runner = readFileSync('packages/finance-engine/src/revenue-run.ts', 'utf8');
+const outcome = readFileSync('packages/finance-engine/src/revenue-run-outcome.ts', 'utf8');
 const apiModule = readFileSync('apps/api/src/app.module.ts', 'utf8');
 const worker = readFileSync('apps/worker/src/worker.ts', 'utf8');
 
@@ -28,6 +33,25 @@ test('revenue-run spine separates immutable forecasts from authoritative actual 
   assert.match(migration, /"status" = 'PLANNED'/u);
   assert.match(migration, /Revenue run forecasts are immutable/u);
   assert.match(migration, /Revenue outcome evidence links are append-only/u);
+  assert.match(outcomeGuardMigration, /TG_OP = 'DELETE'/u);
+  assert.match(outcomeGuardMigration, /revenue_runs_delete_guard/u);
+  assert.match(outcomeGuardMigration, /Revenue run forecasts are immutable/u);
+  assert.match(outcomeGuardMigration, /Revenue outcome evidence links are append-only/u);
+  assert.match(outcomeGuardMigration, /revenue_run_revenue_entries_delete_guard/u);
+  assert.match(outcomeGuardMigration, /revenue_run_expenses_delete_guard/u);
+  assert.match(outcomeGuardMigration, /revenue_run_usages_delete_guard/u);
+});
+
+test('outcome links bind source facts and reporting refuses unsupported profit', () => {
+  assert.match(outcome, /function revenueEntryEvidenceHash/u);
+  assert.match(outcome, /function expenseEvidenceHash/u);
+  assert.match(outcome, /function usageEvidenceHash/u);
+  assert.match(outcome, /costLedgerEntry/u);
+  assert.match(outcome, /ACP usage and recognized cost-ledger evidence do not match/u);
+  assert.match(outcome, /UNVERIFIED_SOURCE_RECORDS/u);
+  assert.match(outcome, /POTENTIAL_EXPENSE_RUNTIME_OVERLAP/u);
+  assert.match(outcome, /NOT_CALCULATED_POTENTIAL_COST_OVERLAP/u);
+  assert.doesNotMatch(outcome, /minorUnits:\s*recordedNetRevenueMinorUnits\s*-/u);
 });
 
 test('database guards every tenant and semantic revenue-run binding', () => {

@@ -138,7 +138,10 @@ ADR-0165 adds the planning-only durable `RevenueRun` identity after the remainin
 runtime activation inputs became Founder-gated. It records immutable forecasts and correlates
 optional opportunity, proposal, approval, experiment, ACP task, and ACP run identities. Separate
 append-only evidence links point at existing revenue, expense, and runtime-usage facts; they do not
-copy or infer actual amounts. The initial database contract permits only `PLANNED`, has no API or
-worker composition, and grants no runtime, spend, publication, customer-contact, or commercial
-authority. P1 items 1 and the forecast half of item 2 are structurally complete; actual outcome
-link writers and derived reporting remain unfinished.
+copy or infer actual amounts. ADR-0166 adds internal capability-gated link writers and a
+drift-detecting evidence projection. Recorded revenue remains unverified, recognized runtime
+charges remain separate from possibly overlapping business expenses, and profit is explicitly not
+calculated. The database contract still permits only `PLANNED`, has no API or worker composition,
+and grants no runtime, spend, publication, customer-contact, or commercial authority. P1 item 1 and
+the forecast/recorded-evidence portions of item 2 are structurally complete; cost deduplication,
+verified actuals, and permission-scoped reporting remain unfinished.
