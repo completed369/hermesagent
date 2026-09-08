@@ -601,7 +601,11 @@ published and current `main` has not been deployed to private staging.
    distinct listener authority, durable worker public root, API signer, exact worker-listener grant
    issuer, authenticated coordinator endpoint, and bounded frame at a one-shot run boundary
    (ADR-0163). It remains absent from Nest/startup; worker client composition and approved launch
-   inputs are still absent.
+   inputs are still absent. The matching inactive worker composition now resolves only the API root,
+   loads an exact client, verifies raw socket identity before connect and API `SO_PEERCRED` before
+   writing, and returns the one-use authenticated worker-listener authority (ADR-0164). It remains
+   outside `worker.ts`; production identities, paths, signer/key custody, artifacts, and lifecycle
+   activation are still absent and Founder-gated.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

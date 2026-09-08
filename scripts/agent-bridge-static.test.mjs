@@ -3546,6 +3546,62 @@ test('API worker service-authority listener composes exact authenticated parts w
   );
 });
 
+test('worker service-authority client authenticates native identity before writing and remains inactive', () => {
+  const source = readFileSync(
+    'apps/worker/src/lib/worker-service-authority-client-composition.ts',
+    'utf8',
+  );
+  const startup = readFileSync('apps/worker/src/worker.ts', 'utf8');
+  assert.match(source, /createLoadedLinuxNativeWorkerServiceAuthority/u);
+  assert.match(source, /loadLinuxNativeWorkerServiceAuthority/u);
+  assert.match(source, /AuthenticatedLinuxNativeWorkerServiceAuthorityByteChannel/u);
+  assert.match(source, /BoundedLinuxRetainedNativeSupervisorNativeClientBinding/u);
+  assert.match(source, /BoundedLinuxRetainedNativeSupervisorLocalIpcClient/u);
+  assert.match(source, /BoundedRetainedNativeSupervisorTopologyObservationCarrierChannel/u);
+  assert.match(
+    source,
+    /Ed25519AuthenticatedRetainedNativeSupervisorTopologyObservationWorkerCarrier/u,
+  );
+  assert.match(
+    source,
+    /AuthenticatedCarrierLinuxRetainedNativeSupervisorWorkerServiceAuthority/u,
+  );
+  assert.match(source, /exactRawStat\(candidate, this\.authorization\)/u);
+  assert.match(source, /exactRawPeer\(await peerCredentials\(signal\), authorization\)/u);
+  assert.match(
+    source,
+    /BoundedLinuxRetainedNativeSupervisorLocalIpcClient\.prototype\.exchange\.call/u,
+  );
+  assert.match(
+    source,
+    /BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource\.prototype\.read\.call/u,
+  );
+  assert.match(
+    source,
+    /BoundedLinuxRetainedNativeSupervisorModuleLoader\.prototype\.load\.call/u,
+  );
+  assert.ok(
+    source.indexOf("request.expectedPeerRole !== 'API_COORDINATOR'") <
+      source.indexOf(
+        'BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource.prototype.read.call(',
+      ),
+  );
+  assert.ok(
+    source.indexOf(
+      'BoundedMutuallyAuthenticatedRetainedNativeSupervisorTopologyObservationCarrierWorkerRootSource.prototype.read.call(',
+    ) <
+      source.indexOf('BoundedLinuxRetainedNativeSupervisorModuleLoader.prototype.load.call('),
+  );
+  assert.doesNotMatch(
+    source,
+    /process\.env|\bCONNECTED\b|provider|deployment|publish|spend|\.node['"`]|\.sock['"`]|from 'node:(?:child_process|fs|net|tls)'/u,
+  );
+  assert.doesNotMatch(
+    startup,
+    /worker-service-authority-client-composition|loadLinuxNativeWorkerServiceAuthority/u,
+  );
+});
+
 test('role-local topology and carrier listeners require distinct Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',

@@ -760,6 +760,11 @@ A distinct Level-3 API listener purpose can now admit one kernel-authenticated w
 authority-delivery frame (ADR-0162). An inactive API boundary can now load the exact listener and
 compose its authority-delivery protocol with a durable worker public root, injected API signer, and
 exact Level-3 worker-listener grant issuer (ADR-0163), but it is not registered with Nest/startup and
-the worker client, route, custody, and approved launch inputs remain unselected.
+the worker client, route, custody, and approved launch inputs remain unselected. A matching inactive
+worker boundary can now resolve only the API root, load the exact native client, authenticate raw
+socket identity before connect and API peer credentials before writing, and return the one-use
+worker-listener authority (ADR-0164). It remains outside `worker.ts`; approved production identities,
+paths, native artifacts, signer/key custody, route, and lifecycle activation remain unselected and
+Founder-gated.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
