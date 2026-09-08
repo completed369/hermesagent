@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "bundleId": "pet-sitting-operations-tracker",
+  "bundleVersion": "0.1.0-prepublication",
+  "preparedAt": "2026-09-08T00:00:00.000Z",
+  "status": "PRE_PUBLICATION_UNVALIDATED",
+  "selectedBeachhead": "solo pet-sitting and dog-walking owner-operators",
+  "files": [
+    {
+      "path": "commercial/beachheads/pet-sitting-operations-tracker/Pet-Sitting-Business-Operations-Tracker.xlsx",
+      "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "bytes": 63425,
+      "sha256": "1c640027394cf8de6edd3bc0f4b58c3297c539f224399de0808f72e33b7c9175",
+      "sheetNames": [
+        "Dashboard",
+        "Visits",
+        "Clients & Pets",
+        "Expenses",
+        "Services",
+        "Guide & Sources"
+      ]
+    }
+  ],
+  "verification": {
+    "formulaErrorScan": "PASS",
+    "scenarioPropagation": "PASS",
+    "allSheetsRendered": "PASS",
+    "syntheticRowsOnly": true,
+    "macros": false,
+    "externalLinks": false,
+    "externalConnections": false
+  },
+  "commercialTruth": {
+    "published": false,
+    "customerContacted": false,
+    "paymentAccepted": false,
+    "deliveredToCustomer": false,
+    "revenueVerified": false,
+    "providerActivated": false,
+    "commercialCommitmentMade": false
+  },
+  "runtimeTruth": {
+    "codex": "NOT_CONFIGURED",
+    "hermes": "NOT_CONFIGURED",
+    "pi": "NOT_CONFIGURED",
+    "runtimeConnection": "NOT_CONFIGURED"
+  }
+}

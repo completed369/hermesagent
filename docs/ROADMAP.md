@@ -1093,5 +1093,7 @@ deployment gates.
   recognized-runtime evidence-set hashes. Later links make prior reconciliation stale; profit is
   calculated only with a current exact-set reconciliation and remains explicitly based on
   unverified revenue.
-- ⬜ Prepare one evidence-backed beachhead playbook and asset bundle; publication, customer contact,
-  payment, provider activation, and commercial commitments remain Founder-gated.
+- ✅ Prepare one evidence-backed beachhead playbook and asset bundle. The pre-publication,
+  hash-bound pet-sitting operations workbook includes source provenance, synthetic examples,
+  formula/scenario verification, and explicit privacy and commercial-truth boundaries. Publication,
+  customer contact, payment, provider activation, and commercial commitments remain Founder-gated.
