@@ -20,6 +20,11 @@ import {
   BudgetNotFoundError,
   ExperimentNotFoundError,
   ExperimentInvalidStateError,
+  RevenueRunNotFoundError,
+  RevenueRunInvalidInputError,
+  RevenueRunConflictError,
+  RevenueRunOutcomeEvidenceDriftError,
+  getRevenueRunOutcomeEvidence,
 } from '@ventureos/finance-engine';
 import type {
   CreateExpenseInput,
@@ -79,12 +84,22 @@ export class FinanceService {
   }
 
   private translateError(err: unknown): Error {
-    if (err instanceof BudgetLimitExceededError || err instanceof ExperimentInvalidStateError) {
+    if (
+      err instanceof BudgetLimitExceededError ||
+      err instanceof ExperimentInvalidStateError ||
+      err instanceof RevenueRunConflictError ||
+      err instanceof RevenueRunOutcomeEvidenceDriftError
+    ) {
       return new ConflictException(err.message);
     }
-    if (err instanceof BudgetNotFoundError || err instanceof ExperimentNotFoundError) {
+    if (
+      err instanceof BudgetNotFoundError ||
+      err instanceof ExperimentNotFoundError ||
+      err instanceof RevenueRunNotFoundError
+    ) {
       return new NotFoundException(err.message);
     }
+    if (err instanceof RevenueRunInvalidInputError) return new BadRequestException(err.message);
     return err instanceof Error ? err : new Error('Unknown finance error');
   }
 
@@ -266,6 +281,53 @@ export class FinanceService {
       where: { workspaceId, ventureProposalId },
       orderBy: { occurredAt: 'desc' as const },
     });
+  }
+
+  /**
+   * JSON-safe, read-only projection of the finance engine's tamper-evident
+   * outcome view. Minor/compute units remain exact decimal strings rather
+   * than lossy JavaScript numbers. The finance engine retains responsibility
+   * for fresh capability admission, tenant scoping, and drift detection.
+   */
+  async getRevenueRunOutcome(workspaceId: string, revenueRunId: string) {
+    try {
+      const outcome = await getRevenueRunOutcomeEvidence(workspaceId, revenueRunId);
+      return {
+        id: outcome.id,
+        workspaceId: outcome.workspaceId,
+        currency: outcome.currency,
+        forecast: {
+          expectedRevenueMinorUnits: outcome.forecast.expectedRevenueMinorUnits.toString(),
+          expectedCostMinorUnits: outcome.forecast.expectedCostMinorUnits.toString(),
+          downsideMinorUnits: outcome.forecast.downsideMinorUnits.toString(),
+          confidenceBps: outcome.forecast.confidenceBps,
+          timeToCashDays: outcome.forecast.timeToCashDays,
+          evidenceHash: outcome.forecast.evidenceHash,
+        },
+        recordedRevenue: {
+          evidenceCount: outcome.recordedRevenue.evidenceCount,
+          grossMinorUnits: outcome.recordedRevenue.grossMinorUnits.toString(),
+          netMinorUnits: outcome.recordedRevenue.netMinorUnits.toString(),
+          verificationState: outcome.recordedRevenue.verificationState,
+        },
+        recordedCosts: {
+          expenseEvidenceCount: outcome.recordedCosts.expenseEvidenceCount,
+          expenseMinorUnits: outcome.recordedCosts.expenseMinorUnits.toString(),
+          recognizedRuntimeUsageCount: outcome.recordedCosts.recognizedRuntimeUsageCount,
+          recognizedRuntimeChargeMinorUnits:
+            outcome.recordedCosts.recognizedRuntimeChargeMinorUnits.toString(),
+          recognizedRuntimeComputeUnits:
+            outcome.recordedCosts.recognizedRuntimeComputeUnits.toString(),
+          overlapState: outcome.recordedCosts.overlapState,
+        },
+        profit: {
+          minorUnits: outcome.profit.minorUnits,
+          state: outcome.profit.state,
+        },
+      };
+    } catch (err) {
+      throw this.translateError(err);
+    }
   }
 
   // --- Budgets ---------------------------------------------------------------

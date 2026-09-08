@@ -1087,6 +1087,8 @@ deployment gates.
 - ✅ ADR-0166 adds capability-gated, hash-bound outcome-link writers and a tenant-safe derived
   evidence projection. Recorded revenue remains unverified, runtime charges stay distinct from
   possibly overlapping expenses, and profit is not calculated without deduplication evidence.
-- ⬜ Add explicit cost-deduplication evidence and a permission-scoped API read projection.
+- ✅ ADR-0167 exposes that exact projection through an authenticated, `finance:view`-scoped,
+  read-only API with lossless decimal-string amounts and unchanged commercial-truth labels.
+- ⬜ Add explicit cost-deduplication evidence.
 - ⬜ Prepare one evidence-backed beachhead playbook and asset bundle; publication, customer contact,
   payment, provider activation, and commercial commitments remain Founder-gated.

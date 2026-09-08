@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedFrom": "apps/api/src/main.ts + apps/api/src/**/*.controller.ts",
   "globalPrefix": "/api",
-  "routeCount": 79,
+  "routeCount": 80,
   "routes": [
     {
       "method": "GET",
@@ -151,6 +151,12 @@
     {
       "method": "GET",
       "path": "/api/finance/model-usage",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/revenue-runs/:revenueRunId/outcome",
       "controller": "FinanceController",
       "source": "apps/api/src/modules/finance/finance.controller.ts"
     },
