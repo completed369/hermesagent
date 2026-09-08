@@ -141,7 +141,9 @@ append-only evidence links point at existing revenue, expense, and runtime-usage
 copy or infer actual amounts. ADR-0166 adds internal capability-gated link writers and a
 drift-detecting evidence projection. Recorded revenue remains unverified, recognized runtime
 charges remain separate from possibly overlapping business expenses, and profit is explicitly not
-calculated. The database contract still permits only `PLANNED`, has no API or worker composition,
-and grants no runtime, spend, publication, customer-contact, or commercial authority. P1 item 1 and
-the forecast/recorded-evidence portions of item 2 are structurally complete; cost deduplication,
-verified actuals, and permission-scoped reporting remain unfinished.
+calculated. ADR-0167 exposes only that exact view through an authenticated, `finance:view`-scoped
+read API, using exact decimal strings for bigint amounts and compute. The database contract still
+permits only `PLANNED`, has no mutation API or worker composition, and grants no runtime, spend,
+publication, customer-contact, or commercial authority. P1 item 1 and the
+forecast/recorded-evidence/reporting portions of item 2 are structurally complete; cost
+deduplication and verified actuals remain unfinished.

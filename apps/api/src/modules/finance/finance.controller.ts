@@ -136,6 +136,15 @@ export class FinanceController {
     return this.financeService.listRevenueEntries(user.workspaceId, ventureProposalId);
   }
 
+  @Get('revenue-runs/:revenueRunId/outcome')
+  @RequirePermission('finance:view')
+  getRevenueRunOutcome(
+    @Param('revenueRunId') revenueRunId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.financeService.getRevenueRunOutcome(user.workspaceId, revenueRunId);
+  }
+
   // --- Budgets ---------------------------------------------------------------
 
   @Post('budgets')
