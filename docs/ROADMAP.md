@@ -1084,7 +1084,9 @@ deployment gates.
 
 - ✅ ADR-0165 adds a planning-only immutable `RevenueRun` forecast and append-only references to
   canonical revenue, expense, and ACP usage facts. No actual amount is duplicated or inferred.
-- ⬜ Add capability-gated append-only outcome-link writers and tenant-safe derived
-  forecast-versus-actual reporting.
+- ✅ ADR-0166 adds capability-gated, hash-bound outcome-link writers and a tenant-safe derived
+  evidence projection. Recorded revenue remains unverified, runtime charges stay distinct from
+  possibly overlapping expenses, and profit is not calculated without deduplication evidence.
+- ⬜ Add explicit cost-deduplication evidence and a permission-scoped API read projection.
 - ⬜ Prepare one evidence-backed beachhead playbook and asset bundle; publication, customer contact,
   payment, provider activation, and commercial commitments remain Founder-gated.
