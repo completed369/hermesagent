@@ -1089,6 +1089,9 @@ deployment gates.
   possibly overlapping expenses, and profit is not calculated without deduplication evidence.
 - ✅ ADR-0167 exposes that exact projection through an authenticated, `finance:view`-scoped,
   read-only API with lossless decimal-string amounts and unchanged commercial-truth labels.
-- ⬜ Add explicit cost-deduplication evidence.
+- ✅ ADR-0168 adds immutable aggregate cost-overlap reconciliation bound to exact expense and
+  recognized-runtime evidence-set hashes. Later links make prior reconciliation stale; profit is
+  calculated only with a current exact-set reconciliation and remains explicitly based on
+  unverified revenue.
 - ⬜ Prepare one evidence-backed beachhead playbook and asset bundle; publication, customer contact,
   payment, provider activation, and commercial commitments remain Founder-gated.

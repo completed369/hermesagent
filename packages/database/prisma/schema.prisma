@@ -2942,16 +2942,17 @@ model RevenueRun {
   createdBy                 String
   createdAt                 DateTime @default(now()) @db.Timestamptz(3)
 
-  workspace       Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  opportunity     Opportunity              @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  ventureProposal VentureProposal          @relation(fields: [ventureProposalId], references: [id], onDelete: Restrict)
-  approvalRequest ApprovalRequest?         @relation(fields: [approvalRequestId], references: [id], onDelete: Restrict)
-  experiment      Experiment?              @relation(fields: [experimentId], references: [id], onDelete: Restrict)
-  task            AcpTask?                 @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Restrict)
-  run             AcpRun?                  @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Restrict)
-  revenueEntries  RevenueRunRevenueEntry[]
-  expenses        RevenueRunExpense[]
-  usages          RevenueRunUsage[]
+  workspace           Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  opportunity         Opportunity                    @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  ventureProposal     VentureProposal                @relation(fields: [ventureProposalId], references: [id], onDelete: Restrict)
+  approvalRequest     ApprovalRequest?               @relation(fields: [approvalRequestId], references: [id], onDelete: Restrict)
+  experiment          Experiment?                    @relation(fields: [experimentId], references: [id], onDelete: Restrict)
+  task                AcpTask?                       @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Restrict)
+  run                 AcpRun?                        @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Restrict)
+  revenueEntries      RevenueRunRevenueEntry[]
+  expenses            RevenueRunExpense[]
+  usages              RevenueRunUsage[]
+  costReconciliations RevenueRunCostReconciliation[]
 
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status, createdAt(sort: Desc)])
@@ -3013,6 +3014,33 @@ model RevenueRunUsage {
   @@unique([workspaceId, usageId])
   @@index([workspaceId, revenueRunId])
   @@map("revenue_run_usages")
+}
+
+/// Immutable operator evidence reconciling aggregate overlap between the
+/// exact expense-link and recognized-runtime-usage evidence sets. A later
+/// link changes the set hashes and makes the prior reconciliation stale.
+model RevenueRunCostReconciliation {
+  id                      String   @id @default(uuid()) @db.Uuid
+  workspaceId             String   @db.Uuid
+  revenueRunId            String   @db.Uuid
+  currency                String
+  expenseEvidenceSetHash  String
+  usageEvidenceSetHash    String
+  expenseTotalMinorUnits  BigInt
+  runtimeChargeMinorUnits BigInt
+  overlapMinorUnits       BigInt
+  basisReference          String
+  reconciliationHash      String
+  idempotencyKey          String
+  reconciledBy            String
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
+
+  revenueRun RevenueRun @relation(fields: [revenueRunId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, idempotencyKey], name: "revenueRunCostReconciliationIdempotency")
+  @@unique([workspaceId, revenueRunId, expenseEvidenceSetHash, usageEvidenceSetHash], name: "revenueRunCostReconciliationEvidenceSet")
+  @@index([workspaceId, revenueRunId, createdAt(sort: Desc)])
+  @@map("revenue_run_cost_reconciliations")
 }
 
 model ExperimentVariant {

@@ -775,8 +775,10 @@ ADR-0165 adds an immutable `PLANNED` revenue-run forecast and append-only schema
 revenue, expense, and ACP usage facts. ADR-0166 adds internal capability-gated, hash-bound link
 writers and a drift-detecting read projection. ADR-0167 adds an authenticated, `finance:view`-scoped
 read-only API for that exact projection with lossless decimal-string amounts. There is still no
-mutation route, worker composition, activation transition, cost-deduplication evidence, customer,
-payment path, or live commercial evidence. Recorded revenue is explicitly unverified; business
-expenses and recognized runtime charges remain separate, so profit is explicitly not calculated.
-Optional approval linkage is correlation evidence and grants no execution, publication, spend, or
-customer-contact authority. No revenue or profit has been verified by these changes.
+mutation route, worker composition, activation transition, customer, payment path, or live
+commercial evidence. ADR-0168 permits an internal immutable cost-overlap reconciliation only for
+the exact current expense and recognized-runtime evidence sets; a later link makes it stale. Profit
+is absent without current reconciliation and otherwise explicitly labelled as calculated from
+unverified revenue and reconciled costs. Optional approval linkage is correlation evidence and
+grants no execution, publication, spend, or customer-contact authority. No revenue or profit has
+been verified by these changes.

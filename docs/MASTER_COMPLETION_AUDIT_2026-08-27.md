@@ -145,5 +145,8 @@ calculated. ADR-0167 exposes only that exact view through an authenticated, `fin
 read API, using exact decimal strings for bigint amounts and compute. The database contract still
 permits only `PLANNED`, has no mutation API or worker composition, and grants no runtime, spend,
 publication, customer-contact, or commercial authority. P1 item 1 and the
-forecast/recorded-evidence/reporting portions of item 2 are structurally complete; cost
-deduplication and verified actuals remain unfinished.
+forecast/recorded-evidence/reporting portions of item 2 are structurally complete. ADR-0168 adds
+immutable aggregate cost-overlap reconciliation bound to the exact current expense and recognized
+runtime evidence sets. A later link makes prior reconciliation stale, and any resulting profit is
+labelled as calculated from unverified revenue and reconciled costs. Verified actuals remain
+unfinished.

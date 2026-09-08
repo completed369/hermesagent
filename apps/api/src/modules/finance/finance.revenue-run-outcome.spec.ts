@@ -64,6 +64,9 @@ const outcome = {
     recognizedRuntimeChargeMinorUnits: 400n,
     recognizedRuntimeComputeUnits: 9_007_199_254_740_995n,
     overlapState: 'POTENTIAL_EXPENSE_RUNTIME_OVERLAP' as const,
+    reconciledOverlapMinorUnits: null,
+    deduplicatedTotalMinorUnits: null,
+    reconciliation: null,
   },
   profit: {
     minorUnits: null,
@@ -128,11 +131,46 @@ describe('Finance revenue-run outcome API projection', () => {
         recognizedRuntimeChargeMinorUnits: '400',
         recognizedRuntimeComputeUnits: '9007199254740995',
         overlapState: 'POTENTIAL_EXPENSE_RUNTIME_OVERLAP',
+        reconciledOverlapMinorUnits: null,
+        deduplicatedTotalMinorUnits: null,
+        reconciliation: null,
       },
       profit: {
         minorUnits: null,
         state: 'NOT_CALCULATED_POTENTIAL_COST_OVERLAP',
       },
+    });
+    expect(() => JSON.stringify(result)).not.toThrow();
+  });
+
+  it('serializes reconciled cost and explicitly unverified profit without precision loss', async () => {
+    mocks.getRevenueRunOutcomeEvidence.mockResolvedValue({
+      ...outcome,
+      recordedCosts: {
+        ...outcome.recordedCosts,
+        overlapState: 'RECONCILED_EXACT_EVIDENCE_SET',
+        reconciledOverlapMinorUnits: 300n,
+        deduplicatedTotalMinorUnits: 9_007_199_254_740_999n,
+        reconciliation: {
+          id: 'reconciliation',
+          evidenceHash: 'e'.repeat(64),
+          basisReference: 'audit:cost-overlap-review-1',
+        },
+      },
+      profit: {
+        minorUnits: -9_007_199_254_730_999n,
+        state: 'CALCULATED_FROM_UNVERIFIED_REVENUE_AND_RECONCILED_COSTS',
+      },
+    });
+    const service = new FinanceService({ record: vi.fn() } as never);
+
+    const result = await service.getRevenueRunOutcome('workspace', 'revenue-run');
+
+    expect(result.recordedCosts.reconciledOverlapMinorUnits).toBe('300');
+    expect(result.recordedCosts.deduplicatedTotalMinorUnits).toBe('9007199254740999');
+    expect(result.profit).toEqual({
+      minorUnits: '-9007199254730999',
+      state: 'CALCULATED_FROM_UNVERIFIED_REVENUE_AND_RECONCILED_COSTS',
     });
     expect(() => JSON.stringify(result)).not.toThrow();
   });

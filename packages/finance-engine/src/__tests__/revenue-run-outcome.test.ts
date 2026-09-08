@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   expenseLinkCreate: vi.fn(),
   usageLinkFindUnique: vi.fn(),
   usageLinkCreate: vi.fn(),
+  reconciliationFindUnique: vi.fn(),
+  reconciliationCreate: vi.fn(),
 }));
 
 const tx = {
@@ -35,6 +37,10 @@ const tx = {
     findUnique: mocks.usageLinkFindUnique,
     create: mocks.usageLinkCreate,
   },
+  revenueRunCostReconciliation: {
+    findUnique: mocks.reconciliationFindUnique,
+    create: mocks.reconciliationCreate,
+  },
 };
 
 vi.mock('../capability-guard.js', () => ({
@@ -42,7 +48,10 @@ vi.mock('../capability-guard.js', () => ({
   enforceFinanceRead: mocks.enforceFinanceRead,
 }));
 vi.mock('@ventureos/database', () => ({
-  Prisma: { sql: vi.fn((strings: TemplateStringsArray) => strings.join('?')) },
+  Prisma: {
+    sql: vi.fn((strings: TemplateStringsArray) => strings.join('?')),
+    TransactionIsolationLevel: { RepeatableRead: 'RepeatableRead' },
+  },
   prisma: {
     $transaction: mocks.transaction,
     revenueRun: { findFirst: mocks.revenueRunFindFirst },
@@ -54,6 +63,7 @@ import {
   linkRevenueRunExpense,
   linkRevenueRunRevenueEntry,
   linkRevenueRunUsage,
+  recordRevenueRunCostReconciliation,
 } from '../revenue-run-outcome.js';
 
 const params = {
@@ -61,6 +71,14 @@ const params = {
   revenueRunId: 'revenue-run',
   factId: 'fact',
   linkedBy: 'founder:user-1',
+};
+const reconciliationParams = {
+  workspaceId: 'workspace',
+  revenueRunId: 'revenue-run',
+  overlapMinorUnits: 20n,
+  basisReference: 'audit:cost-overlap-review-1',
+  idempotencyKey: 'cost-reconciliation-1',
+  reconciledBy: 'founder:user-1',
 };
 const decimal = (value: string) => ({ toString: () => value });
 const revenueEntry = {
@@ -142,9 +160,15 @@ describe('revenue-run outcome evidence', () => {
     mocks.revenueLinkFindUnique.mockResolvedValue(null);
     mocks.expenseLinkFindUnique.mockResolvedValue(null);
     mocks.usageLinkFindUnique.mockResolvedValue(null);
+    mocks.reconciliationFindUnique.mockResolvedValue(null);
     mocks.revenueLinkCreate.mockImplementation(async ({ data }: { data: object }) => data);
     mocks.expenseLinkCreate.mockImplementation(async ({ data }: { data: object }) => data);
     mocks.usageLinkCreate.mockImplementation(async ({ data }: { data: object }) => data);
+    mocks.reconciliationCreate.mockImplementation(async ({ data }: { data: object }) => ({
+      id: 'reconciliation',
+      createdAt: new Date('2026-09-08T01:06:00.000Z'),
+      ...data,
+    }));
   });
 
   it('denies link mutation before reading the fact or revenue run', async () => {
@@ -220,6 +244,87 @@ describe('revenue-run outcome evidence', () => {
     );
   });
 
+  it('binds cost overlap to the exact current expense and recognized-usage evidence sets', async () => {
+    const expenseLink = await linkRevenueRunExpense(params);
+    const usageLink = await linkRevenueRunUsage(params);
+    mocks.revenueRunFindFirst.mockResolvedValue({
+      id: 'revenue-run',
+      workspaceId: 'workspace',
+      currency: 'EUR',
+      expenses: [{ ...expenseLink, expense }],
+      usages: [{ ...usageLink, usage }],
+    });
+
+    const result = await recordRevenueRunCostReconciliation(reconciliationParams);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        workspaceId: 'workspace',
+        revenueRunId: 'revenue-run',
+        expenseTotalMinorUnits: 250n,
+        runtimeChargeMinorUnits: 25n,
+        overlapMinorUnits: 20n,
+        expenseEvidenceSetHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        usageEvidenceSetHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        reconciliationHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      }),
+    );
+  });
+
+  it('denies cost reconciliation before locking or reading the revenue run', async () => {
+    mocks.enforceFinanceMutation.mockRejectedValue(new Error('Operation is not available'));
+
+    await expect(recordRevenueRunCostReconciliation(reconciliationParams)).rejects.toThrow(
+      'Operation is not available',
+    );
+
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
+    expect(mocks.revenueRunFindFirst).not.toHaveBeenCalled();
+    expect(mocks.reconciliationCreate).not.toHaveBeenCalled();
+  });
+
+  it('accepts only an exact cost-reconciliation replay for an idempotency key', async () => {
+    const expenseLink = await linkRevenueRunExpense(params);
+    const usageLink = await linkRevenueRunUsage(params);
+    mocks.revenueRunFindFirst.mockResolvedValue({
+      id: 'revenue-run',
+      workspaceId: 'workspace',
+      currency: 'EUR',
+      expenses: [{ ...expenseLink, expense }],
+      usages: [{ ...usageLink, usage }],
+    });
+    const first = await recordRevenueRunCostReconciliation(reconciliationParams);
+    mocks.reconciliationFindUnique.mockResolvedValue(first);
+
+    await expect(recordRevenueRunCostReconciliation(reconciliationParams)).resolves.toBe(first);
+    await expect(
+      recordRevenueRunCostReconciliation({
+        ...reconciliationParams,
+        basisReference: 'audit:different-review',
+      }),
+    ).rejects.toThrow('idempotency key already has different evidence');
+  });
+
+  it('rejects overlap larger than either authoritative aggregate', async () => {
+    const expenseLink = await linkRevenueRunExpense(params);
+    const usageLink = await linkRevenueRunUsage(params);
+    mocks.revenueRunFindFirst.mockResolvedValue({
+      id: 'revenue-run',
+      workspaceId: 'workspace',
+      currency: 'EUR',
+      expenses: [{ ...expenseLink, expense }],
+      usages: [{ ...usageLink, usage }],
+    });
+
+    await expect(
+      recordRevenueRunCostReconciliation({
+        ...reconciliationParams,
+        overlapMinorUnits: 26n,
+      }),
+    ).rejects.toThrow('exceeds an authoritative cost aggregate');
+    expect(mocks.reconciliationCreate).not.toHaveBeenCalled();
+  });
+
   it('keeps recorded revenue, expenses, and recognized runtime charges separate from profit', async () => {
     const revenueLink = await linkRevenueRunRevenueEntry(params);
     const expenseLink = await linkRevenueRunExpense(params);
@@ -237,10 +342,14 @@ describe('revenue-run outcome evidence', () => {
       revenueEntries: [{ ...revenueLink, revenueEntry }],
       expenses: [{ ...expenseLink, expense }],
       usages: [{ ...usageLink, usage }],
+      costReconciliations: [],
     });
 
     const outcome = await getRevenueRunOutcomeEvidence('workspace', 'revenue-run');
 
+    expect(mocks.transaction).toHaveBeenLastCalledWith(expect.any(Function), {
+      isolationLevel: 'RepeatableRead',
+    });
     expect(outcome.recordedRevenue).toEqual({
       evidenceCount: 1,
       grossMinorUnits: 1_234n,
@@ -254,7 +363,102 @@ describe('revenue-run outcome evidence', () => {
       recognizedRuntimeChargeMinorUnits: 25n,
       recognizedRuntimeComputeUnits: 5n,
       overlapState: 'POTENTIAL_EXPENSE_RUNTIME_OVERLAP',
+      reconciledOverlapMinorUnits: null,
+      deduplicatedTotalMinorUnits: null,
+      reconciliation: null,
     });
+    expect(outcome.profit).toEqual({
+      minorUnits: null,
+      state: 'NOT_CALCULATED_POTENTIAL_COST_OVERLAP',
+    });
+  });
+
+  it('calculates only an explicitly unverified profit after exact-set cost reconciliation', async () => {
+    const revenueLink = await linkRevenueRunRevenueEntry(params);
+    const expenseLink = await linkRevenueRunExpense(params);
+    const usageLink = await linkRevenueRunUsage(params);
+    mocks.revenueRunFindFirst.mockResolvedValue({
+      id: 'revenue-run',
+      workspaceId: 'workspace',
+      currency: 'EUR',
+      expenses: [{ ...expenseLink, expense }],
+      usages: [{ ...usageLink, usage }],
+    });
+    const reconciliation = await recordRevenueRunCostReconciliation(reconciliationParams);
+    mocks.revenueRunFindFirst.mockResolvedValue({
+      id: 'revenue-run',
+      workspaceId: 'workspace',
+      currency: 'EUR',
+      expectedRevenueMinorUnits: 2_000n,
+      expectedCostMinorUnits: 500n,
+      downsideMinorUnits: 500n,
+      confidenceBps: 6_500,
+      timeToCashDays: 30,
+      forecastEvidenceHash: 'a'.repeat(64),
+      revenueEntries: [{ ...revenueLink, revenueEntry }],
+      expenses: [{ ...expenseLink, expense }],
+      usages: [{ ...usageLink, usage }],
+      costReconciliations: [reconciliation],
+    });
+
+    const outcome = await getRevenueRunOutcomeEvidence('workspace', 'revenue-run');
+
+    expect(outcome.recordedCosts).toEqual(
+      expect.objectContaining({
+        overlapState: 'RECONCILED_EXACT_EVIDENCE_SET',
+        reconciledOverlapMinorUnits: 20n,
+        deduplicatedTotalMinorUnits: 255n,
+        reconciliation: {
+          id: 'reconciliation',
+          evidenceHash: reconciliation.reconciliationHash,
+          basisReference: 'audit:cost-overlap-review-1',
+        },
+      }),
+    );
+    expect(outcome.profit).toEqual({
+      minorUnits: 854n,
+      state: 'CALCULATED_FROM_UNVERIFIED_REVENUE_AND_RECONCILED_COSTS',
+    });
+  });
+
+  it('invalidates profit when a reconciliation no longer matches the current evidence sets', async () => {
+    const revenueLink = await linkRevenueRunRevenueEntry(params);
+    const expenseLink = await linkRevenueRunExpense(params);
+    const usageLink = await linkRevenueRunUsage(params);
+    mocks.revenueRunFindFirst.mockResolvedValue({
+      id: 'revenue-run',
+      workspaceId: 'workspace',
+      currency: 'EUR',
+      expenses: [{ ...expenseLink, expense }],
+      usages: [{ ...usageLink, usage }],
+    });
+    const reconciliation = await recordRevenueRunCostReconciliation(reconciliationParams);
+    mocks.revenueRunFindFirst.mockResolvedValue({
+      id: 'revenue-run',
+      workspaceId: 'workspace',
+      currency: 'EUR',
+      expectedRevenueMinorUnits: 2_000n,
+      expectedCostMinorUnits: 500n,
+      downsideMinorUnits: 500n,
+      confidenceBps: 6_500,
+      timeToCashDays: 30,
+      forecastEvidenceHash: 'a'.repeat(64),
+      revenueEntries: [{ ...revenueLink, revenueEntry }],
+      expenses: [{ ...expenseLink, expense }],
+      usages: [{ ...usageLink, usage }],
+      costReconciliations: [{ ...reconciliation, usageEvidenceSetHash: 'd'.repeat(64) }],
+    });
+
+    const outcome = await getRevenueRunOutcomeEvidence('workspace', 'revenue-run');
+
+    expect(outcome.recordedCosts).toEqual(
+      expect.objectContaining({
+        overlapState: 'STALE_RECONCILIATION_EVIDENCE_SET',
+        reconciledOverlapMinorUnits: null,
+        deduplicatedTotalMinorUnits: null,
+        reconciliation: null,
+      }),
+    );
     expect(outcome.profit).toEqual({
       minorUnits: null,
       state: 'NOT_CALCULATED_POTENTIAL_COST_OVERLAP',
@@ -278,6 +482,7 @@ describe('revenue-run outcome evidence', () => {
       ],
       expenses: [],
       usages: [],
+      costReconciliations: [],
     });
 
     await expect(getRevenueRunOutcomeEvidence('workspace', 'revenue-run')).rejects.toThrow(
