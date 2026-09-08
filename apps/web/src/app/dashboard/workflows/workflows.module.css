@@ -68,6 +68,22 @@
   margin: 0;
 }
 
+.telemetryStatus {
+  margin: -8px 0 0;
+  color: var(--vos-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.telemetryStatus[data-state='ACTIVE'] strong {
+  color: var(--vos-accent-readable);
+}
+
+.telemetryStatus[data-state='RECONNECTING'] strong,
+.telemetryStatus[data-state='UNAVAILABLE'] strong {
+  color: var(--vos-warning);
+}
+
 .runtimeBoundary p {
   color: var(--vos-text-muted);
   font-size: 12px;
