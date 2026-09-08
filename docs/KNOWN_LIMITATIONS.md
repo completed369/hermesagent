@@ -753,6 +753,8 @@ and invoke that one-session owner (ADR-0159), but service-authority delivery and
 launch inputs remain uncomposed. A one-use worker-initiated Ed25519 carrier can now authenticate a
 worker request to the API coordinator and its signed response against the live carrier binding
 (ADR-0160), but no service-grant protocol, authority issuance/delivery composition, route, or launch
-input is selected.
+input is selected. The exact worker-listener request and fresh Level-3 grant now have a one-shot
+authenticated protocol (ADR-0161), but API issuer/endpoint and worker native client/authority
+composition, route, custody, and approved launch inputs remain unselected and inactive.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

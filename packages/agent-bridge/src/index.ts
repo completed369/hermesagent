@@ -49,6 +49,7 @@ export * from './retained-native-supervisor-topology-gated-provisioning';
 export * from './retained-native-supervisor-topology-observation-local-ipc';
 export * from './retained-native-supervisor-topology-observation-carrier';
 export * from './retained-native-supervisor-topology-observation-carrier-signature';
+export * from './retained-native-supervisor-worker-service-authority-carrier';
 export * from './retained-native-supervisor-topology-observation-carrier-composition';
 export * from './retained-native-supervisor-topology-observation-carrier-channel';
 export * from './retained-native-supervisor-topology-observation-carrier-worker-admission';

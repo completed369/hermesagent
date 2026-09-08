@@ -591,7 +591,10 @@ published and current `main` has not been deployed to private staging.
    delivery and approved production launch inputs remain outstanding. A symmetric one-use carrier
    now lets the worker sign one request for API-coordinator verification and verify the signed API
    response against the exact live binding (ADR-0160). It remains uncomposed and defines no
-   service-grant protocol, so authority issuance/delivery and launch inputs remain outstanding.
+   service-grant protocol, so authority issuance/delivery and launch inputs remain outstanding. A
+   strict one-shot protocol now carries only the exact fresh `TOPOLOGY_CARRIER_WORKER_LISTENER`
+   Level-3 grant between the signed worker carrier and an API coordinator handler (ADR-0161). API
+   issuer/endpoint and worker client/authority transport composition remain outstanding and inactive.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent
