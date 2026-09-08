@@ -10,6 +10,10 @@ import {
   createExperimentSchema,
   recordExperimentResultSchema,
   decideExperimentSchema,
+  recordRevenueRunCostReconciliationSchema,
+  revenueRunIdSchema,
+  revenueRunFactIdSchema,
+  createRevenueRunPlanSchema,
 } from './finance.dto';
 import { SessionAuthGuard, type AuthenticatedUser } from '../../common/guards/session-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -143,6 +147,74 @@ export class FinanceController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.financeService.getRevenueRunOutcome(user.workspaceId, revenueRunId);
+  }
+
+  @Post('revenue-runs')
+  @RequirePermission('finance:manage')
+  createRevenueRunPlan(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    const input = createRevenueRunPlanSchema.parse(body);
+    return this.financeService.createRevenueRunPlan(user.workspaceId, input, user.userId);
+  }
+
+  @Post('revenue-runs/:revenueRunId/revenue-entries/:factId')
+  @RequirePermission('finance:manage')
+  linkRevenueRunRevenueEntry(
+    @Param('revenueRunId') revenueRunId: string,
+    @Param('factId') factId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.financeService.linkRevenueRunRevenueEntry(
+      user.workspaceId,
+      revenueRunIdSchema.parse(revenueRunId),
+      revenueRunFactIdSchema.parse(factId),
+      user.userId,
+    );
+  }
+
+  @Post('revenue-runs/:revenueRunId/expenses/:factId')
+  @RequirePermission('finance:manage')
+  linkRevenueRunExpense(
+    @Param('revenueRunId') revenueRunId: string,
+    @Param('factId') factId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.financeService.linkRevenueRunExpense(
+      user.workspaceId,
+      revenueRunIdSchema.parse(revenueRunId),
+      revenueRunFactIdSchema.parse(factId),
+      user.userId,
+    );
+  }
+
+  @Post('revenue-runs/:revenueRunId/usages/:factId')
+  @RequirePermission('finance:manage')
+  linkRevenueRunUsage(
+    @Param('revenueRunId') revenueRunId: string,
+    @Param('factId') factId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.financeService.linkRevenueRunUsage(
+      user.workspaceId,
+      revenueRunIdSchema.parse(revenueRunId),
+      revenueRunFactIdSchema.parse(factId),
+      user.userId,
+    );
+  }
+
+  @Post('revenue-runs/:revenueRunId/cost-reconciliations')
+  @RequirePermission('finance:manage')
+  recordRevenueRunCostReconciliation(
+    @Param('revenueRunId') revenueRunId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const input = recordRevenueRunCostReconciliationSchema.parse(body);
+    return this.financeService.recordRevenueRunCostReconciliation(
+      user.workspaceId,
+      revenueRunIdSchema.parse(revenueRunId),
+      input,
+      user.userId,
+    );
   }
 
   // --- Budgets ---------------------------------------------------------------

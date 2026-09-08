@@ -50,6 +50,69 @@ export const createRevenueEntrySchema = z.object({
 });
 export type CreateRevenueEntryInput = z.infer<typeof createRevenueEntrySchema>;
 
+const signedBigIntMaximum = 9_223_372_036_854_775_807n;
+const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
+
+function canonicalNonNegativeBigIntSchema(field: string) {
+  return z
+    .string()
+    .regex(/^(0|[1-9]\d{0,18})$/, `${field} must be a canonical non-negative integer string`)
+    .transform((value) => BigInt(value))
+    .refine((value) => value <= signedBigIntMaximum, `${field} exceeds BIGINT range`);
+}
+
+export const revenueRunIdSchema = z.string().uuid();
+export const revenueRunFactIdSchema = z.string().uuid();
+
+export const createRevenueRunPlanSchema = z
+  .object({
+    opportunityId: z.string().uuid(),
+    ventureProposalId: z.string().uuid(),
+    approvalRequestId: z.string().uuid().optional(),
+    experimentId: z.string().uuid().optional(),
+    taskId: z.string().uuid().optional(),
+    runId: z.string().uuid().optional(),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    expectedRevenueMinorUnits: canonicalNonNegativeBigIntSchema('expectedRevenueMinorUnits'),
+    expectedCostMinorUnits: canonicalNonNegativeBigIntSchema('expectedCostMinorUnits'),
+    downsideMinorUnits: canonicalNonNegativeBigIntSchema('downsideMinorUnits'),
+    confidenceBps: z.number().int().min(0).max(10_000),
+    timeToCashDays: z.number().int().min(0).max(36_500),
+    forecastEvidenceHash: sha256Schema,
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(200)
+      .refine((value) => value.trim() === value, 'idempotencyKey must be trimmed'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.runId && !value.taskId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['runId'],
+        message: 'runId requires the exact taskId',
+      });
+    }
+  });
+export type CreateRevenueRunPlanInput = z.infer<typeof createRevenueRunPlanSchema>;
+
+export const recordRevenueRunCostReconciliationSchema = z.object({
+  overlapMinorUnits: canonicalNonNegativeBigIntSchema('overlapMinorUnits'),
+  basisReference: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine((value) => value.trim() === value, 'basisReference must be trimmed'),
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine((value) => value.trim() === value, 'idempotencyKey must be trimmed'),
+});
+export type RecordRevenueRunCostReconciliationInput = z.infer<
+  typeof recordRevenueRunCostReconciliationSchema
+>;
+
 export const createBudgetSchema = z.object({
   ventureProposalId: z.string().uuid().optional(),
   name: z.string().min(1),

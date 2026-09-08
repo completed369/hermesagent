@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedFrom": "apps/api/src/main.ts + apps/api/src/**/*.controller.ts",
   "globalPrefix": "/api",
-  "routeCount": 80,
+  "routeCount": 85,
   "routes": [
     {
       "method": "GET",
@@ -155,8 +155,38 @@
       "source": "apps/api/src/modules/finance/finance.controller.ts"
     },
     {
+      "method": "POST",
+      "path": "/api/finance/revenue-runs",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/revenue-runs/:revenueRunId/cost-reconciliations",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/revenue-runs/:revenueRunId/expenses/:factId",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
       "method": "GET",
       "path": "/api/finance/revenue-runs/:revenueRunId/outcome",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/revenue-runs/:revenueRunId/revenue-entries/:factId",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/revenue-runs/:revenueRunId/usages/:factId",
       "controller": "FinanceController",
       "source": "apps/api/src/modules/finance/finance.controller.ts"
     },
