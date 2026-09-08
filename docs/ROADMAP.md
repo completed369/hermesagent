@@ -595,6 +595,10 @@ published and current `main` has not been deployed to private staging.
    strict one-shot protocol now carries only the exact fresh `TOPOLOGY_CARRIER_WORKER_LISTENER`
    Level-3 grant between the signed worker carrier and an API coordinator handler (ADR-0161). API
    issuer/endpoint and worker client/authority transport composition remain outstanding and inactive.
+   A separate API listener purpose now requires its own Level-3 grant, fixes the peer role to
+   `WORKER_CLIENT`, and handles one canonical bounded authority-delivery frame with exact cleanup
+   (ADR-0162). Its native listener, protocol endpoint, signer/root, and application composition are
+   still absent.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

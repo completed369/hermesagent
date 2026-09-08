@@ -3544,6 +3544,16 @@ test('role-local topology and carrier listeners require distinct Level-3 one-ses
   );
   assert.match(owner, /TOPOLOGY_CARRIER_WORKER_LISTENER/u);
   assert.match(owner, /runTopologyCarrierWorkerOne/u);
+  assert.match(owner, /TOPOLOGY_CARRIER_WORKER_SERVICE_AUTHORITY_API_LISTENER/u);
+  assert.match(owner, /runTopologyCarrierWorkerServiceAuthorityApiOne/u);
+  assert.match(
+    owner,
+    /authenticateBoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint/u,
+  );
+  assert.match(
+    owner,
+    /case 'TOPOLOGY_CARRIER_WORKER_SERVICE_AUTHORITY_API_LISTENER':\s*case 'TOPOLOGY_CARRIER_ROOT_LOOKUP_API_LISTENER':\s*return 'WORKER_CLIENT'/u,
+  );
   assert.match(
     owner,
     /authenticateRootResolvedRetainedNativeSupervisorTopologyObservationWorkerBinding/u,

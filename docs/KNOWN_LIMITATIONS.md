@@ -756,5 +756,8 @@ worker request to the API coordinator and its signed response against the live c
 input is selected. The exact worker-listener request and fresh Level-3 grant now have a one-shot
 authenticated protocol (ADR-0161), but API issuer/endpoint and worker native client/authority
 composition, route, custody, and approved launch inputs remain unselected and inactive.
+A distinct Level-3 API listener purpose can now admit one kernel-authenticated worker and one bounded
+authority-delivery frame (ADR-0162), but no loaded listener, protocol endpoint, signer/root,
+application composition, route, or startup input is selected.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.

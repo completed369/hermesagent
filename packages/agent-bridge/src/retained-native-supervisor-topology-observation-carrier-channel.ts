@@ -7,6 +7,7 @@ const MIN_TIMEOUT_MS = 100;
 const MAX_TIMEOUT_MS = 5_000;
 const MAX_JSON_DEPTH = 16;
 const MAX_JSON_NODES = 4_096;
+const AUTHENTIC_WORKER_FRAME_ENDPOINTS = new WeakSet<object>();
 
 export interface RetainedNativeSupervisorTopologyObservationCarrierByteChannel {
   exchange(request: Uint8Array, signal: AbortSignal): Promise<unknown>;
@@ -321,6 +322,7 @@ export class BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFram
   ) {
     this.#handle = bindHandler(handler);
     this.#timeoutMs = timeout(timeoutMs);
+    AUTHENTIC_WORKER_FRAME_ENDPOINTS.add(this);
   }
 
   async handle(input: unknown, signal: AbortSignal): Promise<Uint8Array> {
@@ -341,6 +343,20 @@ export class BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFram
   }
 }
 
+/** Proves that one nominal worker frame endpoint completed the canonical constructor. */
+export function authenticateBoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+  input: unknown,
+): BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint {
+  if (
+    !(
+      input instanceof BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint
+    ) ||
+    !AUTHENTIC_WORKER_FRAME_ENDPOINTS.has(input)
+  )
+    deny('NOT_CONFIGURED');
+  return input;
+}
+
 /**
  * Owns one already-accepted worker carrier byte session through one canonical request/response.
  * It cannot discover, create, accept, retry, multiplex, or expose a listener.
@@ -359,13 +375,9 @@ export class BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerSess
     session: RetainedNativeSupervisorTopologyObservationCarrierWorkerByteSession,
     timeoutMs = 5_000,
   ) {
-    if (
-      !(
-        endpoint instanceof
-        BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint
-      )
-    )
-      deny('NOT_CONFIGURED');
+    authenticateBoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint(
+      endpoint,
+    );
     this.#timeoutMs = timeout(timeoutMs);
     const bound = bindWorkerSession(session);
     this.#endpoint = endpoint;
