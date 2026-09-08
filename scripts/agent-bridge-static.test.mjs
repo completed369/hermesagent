@@ -3502,6 +3502,50 @@ test('API carrier root listener composition bounds exact loader and one-session 
   );
 });
 
+test('API worker service-authority listener composes exact authenticated parts without activation', () => {
+  const source = readFileSync(
+    'apps/api/src/modules/agent-control-plane/worker-service-authority-api-composition.ts',
+    'utf8',
+  );
+  const apiComposition = readFileSync(
+    'apps/api/src/modules/agent-control-plane/agent-control-plane.module.ts',
+    'utf8',
+  );
+  assert.match(source, /createLoadedLinuxNativeWorkerServiceAuthorityApiServiceOwner/u);
+  assert.match(source, /loadLinuxNativeWorkerServiceAuthorityApiServiceOwner/u);
+  assert.match(source, /runPostgresApiCoordinatorWorkerServiceAuthorityOne/u);
+  assert.match(
+    source,
+    /TOPOLOGY_CARRIER_WORKER_SERVICE_AUTHORITY_API_LISTENER/u,
+  );
+  assert.match(source, /TOPOLOGY_CARRIER_WORKER_LISTENER/u);
+  assert.match(source, /PostgresApiCoordinatorTopologyCarrierSignatureRootSource/u);
+  assert.match(source, /BoundedRetainedNativeSupervisorWorkerServiceAuthorityCoordinatorHandler/u);
+  assert.match(source, /Ed25519RetainedNativeSupervisorTopologyObservationCoordinatorEndpoint/u);
+  assert.match(
+    source,
+    /BoundedRetainedNativeSupervisorTopologyObservationCarrierWorkerFrameEndpoint/u,
+  );
+  assert.match(source, /runTopologyCarrierWorkerServiceAuthorityApiOne/u);
+  assert.ok(
+    source.indexOf("workerRequest.serviceKind !== 'TOPOLOGY_CARRIER_WORKER_LISTENER'") <
+      source.indexOf("rootSource.read(binding, 'WORKER_CLIENT', signal)"),
+  );
+  assert.ok(
+    source.indexOf("rootSource.read(binding, 'WORKER_CLIENT', signal)") <
+      source.indexOf('owner.runTopologyCarrierWorkerServiceAuthorityApiOne('),
+  );
+  assert.doesNotMatch(
+    source,
+    /createRetainedDescriptorLinuxNativeSupervisorModuleLoader|\.node['"`]|\.sock['"`]|runtimeConnection:\s*'CONNECTED'/u,
+  );
+  assert.doesNotMatch(apiComposition, /worker-service-authority-api-composition/u);
+  assert.doesNotMatch(
+    apiComposition,
+    /runPostgresApiCoordinatorWorkerServiceAuthorityOne/u,
+  );
+});
+
 test('role-local topology and carrier listeners require distinct Level-3 one-session authority', () => {
   const lifecycle = readFileSync(
     'packages/agent-bridge/src/retained-native-supervisor-listener-lifecycle.ts',

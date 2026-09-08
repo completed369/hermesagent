@@ -597,8 +597,11 @@ published and current `main` has not been deployed to private staging.
    issuer/endpoint and worker client/authority transport composition remain outstanding and inactive.
    A separate API listener purpose now requires its own Level-3 grant, fixes the peer role to
    `WORKER_CLIENT`, and handles one canonical bounded authority-delivery frame with exact cleanup
-   (ADR-0162). Its native listener, protocol endpoint, signer/root, and application composition are
-   still absent.
+   (ADR-0162). An inactive API composition now loads only an exact matching listener and joins the
+   distinct listener authority, durable worker public root, API signer, exact worker-listener grant
+   issuer, authenticated coordinator endpoint, and bounded frame at a one-shot run boundary
+   (ADR-0163). It remains absent from Nest/startup; worker client composition and approved launch
+   inputs are still absent.
    A separate uncomposed publisher now reuses the exact Ed25519 admission boundary and can append
    only an authenticated snapshot proof through a PostgreSQL adapter; database serialization admits
    only bootstrap, exact latest replay, or the adjacent hash-linked successor and denies concurrent

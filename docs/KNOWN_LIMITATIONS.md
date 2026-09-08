@@ -757,7 +757,9 @@ input is selected. The exact worker-listener request and fresh Level-3 grant now
 authenticated protocol (ADR-0161), but API issuer/endpoint and worker native client/authority
 composition, route, custody, and approved launch inputs remain unselected and inactive.
 A distinct Level-3 API listener purpose can now admit one kernel-authenticated worker and one bounded
-authority-delivery frame (ADR-0162), but no loaded listener, protocol endpoint, signer/root,
-application composition, route, or startup input is selected.
+authority-delivery frame (ADR-0162). An inactive API boundary can now load the exact listener and
+compose its authority-delivery protocol with a durable worker public root, injected API signer, and
+exact Level-3 worker-listener grant issuer (ADR-0163), but it is not registered with Nest/startup and
+the worker client, route, custody, and approved launch inputs remain unselected.
 This is not runtime connectivity evidence; Codex, Hermes, Pi, and `runtimeConnection` remain
 `NOT_CONFIGURED`.
