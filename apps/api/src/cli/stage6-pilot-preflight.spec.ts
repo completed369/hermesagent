@@ -18,10 +18,14 @@ function fixture(): MutableFixture {
   return JSON.parse(fs.readFileSync(fixturePath, 'utf8')) as MutableFixture;
 }
 
+function trustedEvaluatedAt(): Date {
+  return new Date('2026-09-08T07:00:00.000Z');
+}
+
 describe('Stage 6 offline pilot preflight', () => {
   it('produces a deterministic sanitized PREPARED/BLOCKED packet', () => {
     const input = fixture();
-    const now = new Date('2026-08-26T00:00:00.000Z');
+    const now = trustedEvaluatedAt();
     const first = prepareStage6PilotPreflightForTest(input, now);
     const second = prepareStage6PilotPreflightForTest(input, now);
 
@@ -46,7 +50,7 @@ describe('Stage 6 offline pilot preflight', () => {
     expect(first.evidence).toMatchObject({
       count: 6,
       state: 'NEAR_EXPIRY',
-      earliestExpiryAt: '2026-09-17T17:29:00.000Z',
+      earliestExpiryAt: '2026-10-08T06:58:21.359Z',
     });
     expect(first.blockers).toEqual(
       expect.arrayContaining([
@@ -84,28 +88,36 @@ describe('Stage 6 offline pilot preflight', () => {
   it('fails strict schema validation for unknown input fields', () => {
     const input = fixture();
     input.unexpected = 'rejected';
-    expect(() => prepareStage6PilotPreflightForTest(input, new Date('2026-08-26'))).toThrow();
+    expect(() => prepareStage6PilotPreflightForTest(input, trustedEvaluatedAt())).toThrow();
 
     const nested = fixture();
     nested.pilot.evidence[0]!.unexpected = 'rejected';
-    expect(() => prepareStage6PilotPreflightForTest(nested, new Date('2026-08-26'))).toThrow();
+    expect(() => prepareStage6PilotPreflightForTest(nested, trustedEvaluatedAt())).toThrow();
   });
 
   it('rejects any input classified as containing customer or pseudonymous data', () => {
     for (const classification of ['PERSONAL', 'PSEUDONYMOUS']) {
       const input = fixture();
       input.pilot.evidence[0]!.personalDataClassification = classification;
-      expect(() => prepareStage6PilotPreflightForTest(input, new Date('2026-08-26'))).toThrow(
+      expect(() => prepareStage6PilotPreflightForTest(input, trustedEvaluatedAt())).toThrow(
         'offline preflight accepts only evidence classified NONE',
       );
     }
+  });
+
+  it('fails closed on future-dated evidence provenance', () => {
+    const input = fixture();
+    input.pilot.evidence[0]!.retrievedAt = '2026-09-08T07:00:00.001Z';
+    expect(() => prepareStage6PilotPreflightForTest(input, trustedEvaluatedAt())).toThrow(
+      'evidence retrievedAt must not be later than evaluatedAt',
+    );
   });
 
   it('reports incompatible source policy inputs without inferring a gate result', () => {
     const input = fixture();
     input.pilot.suggestedProductType = 'PHYSICAL_WEAPON';
     input.compliance.declaredCategories = ['weapons'];
-    const packet = prepareStage6PilotPreflightForTest(input, new Date('2026-08-26'));
+    const packet = prepareStage6PilotPreflightForTest(input, trustedEvaluatedAt());
     expect(packet.sourceInputCompatibility).toMatchObject({
       result: 'INCOMPATIBLE',
       supportedProductTypeCode: null,
@@ -123,7 +135,7 @@ describe('Stage 6 offline pilot preflight', () => {
     (productType) => {
       const input = fixture();
       input.pilot.suggestedProductType = productType;
-      const packet = prepareStage6PilotPreflightForTest(input, new Date('2026-08-26'));
+      const packet = prepareStage6PilotPreflightForTest(input, trustedEvaluatedAt());
       expect(packet.sourceInputCompatibility.supportedProductTypeCode).toBe(productType);
     },
   );
@@ -131,7 +143,7 @@ describe('Stage 6 offline pilot preflight', () => {
   it('fails closed when the earliest evidence horizon has elapsed', () => {
     const packet = prepareStage6PilotPreflightForTest(
       fixture(),
-      new Date('2026-09-18T00:00:00.000Z'),
+      new Date('2026-10-09T00:00:00.000Z'),
     );
     expect(packet.evidence.state).toBe('EXPIRED');
     expect(packet.evidence.riskCodes).toContain('EVIDENCE_EXPIRED');
@@ -148,7 +160,7 @@ describe('Stage 6 offline pilot preflight', () => {
     ];
     input.pilot.description = `${String(input.pilot.description)} ${smuggled.join(' ')}`;
     input.pilot.suggestedProductType = smuggled.join('-');
-    const packet = prepareStage6PilotPreflightForTest(input, new Date('2026-08-26'));
+    const packet = prepareStage6PilotPreflightForTest(input, trustedEvaluatedAt());
     const serialized = JSON.stringify(packet);
     for (const value of smuggled) expect(serialized).not.toContain(value);
     expect(packet.sourceInputCompatibility.supportedProductTypeCode).toBeNull();
