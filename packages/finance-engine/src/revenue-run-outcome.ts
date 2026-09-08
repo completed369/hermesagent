@@ -22,6 +22,15 @@ export interface LinkRevenueRunFactParams {
   linkedBy: string;
 }
 
+export interface RecordRevenueRunCostReconciliationParams {
+  workspaceId: string;
+  revenueRunId: string;
+  overlapMinorUnits: bigint;
+  basisReference: string;
+  idempotencyKey: string;
+  reconciledBy: string;
+}
+
 type UsageWithLedger = AcpRunUsage & { costLedgerEntry: AcpCostLedgerEntry | null };
 
 function requireBoundedText(value: string, field: string): void {
@@ -38,6 +47,27 @@ function validateLinkParams(params: LinkRevenueRunFactParams): void {
     ['linkedBy', params.linkedBy],
   ] as const) {
     requireBoundedText(value, field);
+  }
+}
+
+function validateCostReconciliationParams(params: RecordRevenueRunCostReconciliationParams): void {
+  for (const [field, value] of [
+    ['workspaceId', params.workspaceId],
+    ['revenueRunId', params.revenueRunId],
+    ['idempotencyKey', params.idempotencyKey],
+    ['reconciledBy', params.reconciledBy],
+  ] as const) {
+    requireBoundedText(value, field);
+  }
+  if (
+    params.basisReference.length < 1 ||
+    params.basisReference.length > 500 ||
+    params.basisReference.trim() !== params.basisReference
+  ) {
+    throw new RevenueRunInvalidInputError('basisReference must be 1-500 trimmed characters');
+  }
+  if (typeof params.overlapMinorUnits !== 'bigint' || params.overlapMinorUnits < 0n) {
+    throw new RevenueRunInvalidInputError('overlapMinorUnits must be a non-negative bigint');
   }
 }
 
@@ -300,82 +330,324 @@ function eurDecimalToMinorUnits(value: { toString(): string }): bigint {
   return match[1] === '-' ? -minor : minor;
 }
 
+function costEvidenceSetHash(
+  kind: 'EXPENSE_SET' | 'RECOGNIZED_RUNTIME_USAGE_SET',
+  links: ReadonlyArray<{ factId: string; evidenceHash: string }>,
+): string {
+  return hashObject({
+    kind,
+    evidence: [...links].sort((left, right) => left.factId.localeCompare(right.factId)),
+  });
+}
+
+function costReconciliationHash(input: {
+  workspaceId: string;
+  revenueRunId: string;
+  currency: string;
+  expenseEvidenceSetHash: string;
+  usageEvidenceSetHash: string;
+  expenseTotalMinorUnits: bigint;
+  runtimeChargeMinorUnits: bigint;
+  overlapMinorUnits: bigint;
+  basisReference: string;
+  reconciledBy: string;
+}): string {
+  return hashObject({
+    kind: 'REVENUE_RUN_COST_RECONCILIATION',
+    workspaceId: input.workspaceId,
+    revenueRunId: input.revenueRunId,
+    currency: input.currency,
+    expenseEvidenceSetHash: input.expenseEvidenceSetHash,
+    usageEvidenceSetHash: input.usageEvidenceSetHash,
+    expenseTotalMinorUnits: input.expenseTotalMinorUnits.toString(),
+    runtimeChargeMinorUnits: input.runtimeChargeMinorUnits.toString(),
+    overlapMinorUnits: input.overlapMinorUnits.toString(),
+    basisReference: input.basisReference,
+    reconciledBy: input.reconciledBy,
+  });
+}
+
+/**
+ * Records an immutable operator reconciliation for the exact current cost
+ * evidence sets. The parent-row lock serializes append-only link insertion;
+ * any later link changes a set hash and makes this evidence stale.
+ */
+export async function recordRevenueRunCostReconciliation(
+  params: RecordRevenueRunCostReconciliationParams,
+) {
+  validateCostReconciliationParams(params);
+  return prisma.$transaction(async (tx) => {
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:revenue-run:cost-reconciliation:${params.idempotencyKey}`,
+      tx,
+    );
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "revenue_runs" WHERE "workspaceId" = ${params.workspaceId}::uuid AND "id" = ${params.revenueRunId}::uuid FOR UPDATE`,
+    );
+    const run = await tx.revenueRun.findFirst({
+      where: { id: params.revenueRunId, workspaceId: params.workspaceId },
+      include: {
+        expenses: { include: { expense: true } },
+        usages: { include: { usage: { include: { costLedgerEntry: true } } } },
+      },
+    });
+    if (!run) throw new RevenueRunNotFoundError('Revenue run not found');
+    if (run.expenses.length === 0 || run.usages.length === 0) {
+      throw new RevenueRunInvalidInputError(
+        'Cost reconciliation requires both expense and recognized runtime evidence',
+      );
+    }
+
+    let expenseTotalMinorUnits = 0n;
+    const expenseSet = run.expenses.map((link) => {
+      if (expenseEvidenceHash(link.expense) !== link.evidenceHash) {
+        throw new RevenueRunOutcomeEvidenceDriftError('Expense evidence changed after linking');
+      }
+      expenseTotalMinorUnits += eurDecimalToMinorUnits(link.expense.amountEur);
+      return { factId: link.expenseId, evidenceHash: link.evidenceHash };
+    });
+
+    let runtimeChargeMinorUnits = 0n;
+    const usageSet = run.usages.map((link) => {
+      if (usageEvidenceHash(link.usage) !== link.evidenceHash) {
+        throw new RevenueRunOutcomeEvidenceDriftError('ACP usage evidence changed after linking');
+      }
+      runtimeChargeMinorUnits += link.usage.costMinorUnits;
+      return { factId: link.usageId, evidenceHash: link.evidenceHash };
+    });
+    if (expenseTotalMinorUnits < 0n || runtimeChargeMinorUnits < 0n) {
+      throw new RevenueRunOutcomeEvidenceDriftError('Cost evidence contains a negative aggregate');
+    }
+    if (
+      params.overlapMinorUnits > expenseTotalMinorUnits ||
+      params.overlapMinorUnits > runtimeChargeMinorUnits
+    ) {
+      throw new RevenueRunInvalidInputError(
+        'overlapMinorUnits exceeds an authoritative cost aggregate',
+      );
+    }
+
+    const expenseEvidenceSetHash = costEvidenceSetHash('EXPENSE_SET', expenseSet);
+    const usageEvidenceSetHash = costEvidenceSetHash('RECOGNIZED_RUNTIME_USAGE_SET', usageSet);
+    const candidate = {
+      workspaceId: params.workspaceId,
+      revenueRunId: params.revenueRunId,
+      currency: run.currency,
+      expenseEvidenceSetHash,
+      usageEvidenceSetHash,
+      expenseTotalMinorUnits,
+      runtimeChargeMinorUnits,
+      overlapMinorUnits: params.overlapMinorUnits,
+      basisReference: params.basisReference,
+      reconciledBy: params.reconciledBy,
+    };
+    const reconciliationHash = costReconciliationHash(candidate);
+    const existing = await tx.revenueRunCostReconciliation.findUnique({
+      where: {
+        revenueRunCostReconciliationIdempotency: {
+          workspaceId: params.workspaceId,
+          idempotencyKey: params.idempotencyKey,
+        },
+      },
+    });
+    if (existing) {
+      if (
+        existing.revenueRunId !== candidate.revenueRunId ||
+        existing.currency !== candidate.currency ||
+        existing.expenseEvidenceSetHash !== candidate.expenseEvidenceSetHash ||
+        existing.usageEvidenceSetHash !== candidate.usageEvidenceSetHash ||
+        existing.expenseTotalMinorUnits !== candidate.expenseTotalMinorUnits ||
+        existing.runtimeChargeMinorUnits !== candidate.runtimeChargeMinorUnits ||
+        existing.overlapMinorUnits !== candidate.overlapMinorUnits ||
+        existing.basisReference !== candidate.basisReference ||
+        existing.reconciledBy !== candidate.reconciledBy ||
+        existing.reconciliationHash !== reconciliationHash
+      ) {
+        throw new RevenueRunConflictError(
+          'Cost-reconciliation idempotency key already has different evidence',
+        );
+      }
+      return existing;
+    }
+
+    const evidenceSetExisting = await tx.revenueRunCostReconciliation.findUnique({
+      where: {
+        revenueRunCostReconciliationEvidenceSet: {
+          workspaceId: params.workspaceId,
+          revenueRunId: params.revenueRunId,
+          expenseEvidenceSetHash,
+          usageEvidenceSetHash,
+        },
+      },
+    });
+    if (evidenceSetExisting) {
+      throw new RevenueRunConflictError(
+        'Current cost evidence set already has immutable reconciliation evidence',
+      );
+    }
+
+    return tx.revenueRunCostReconciliation.create({
+      data: {
+        ...candidate,
+        reconciliationHash,
+        idempotencyKey: params.idempotencyKey,
+      },
+    });
+  });
+}
+
 /**
  * Returns recorded evidence without claiming that manual/mock revenue is
- * verified or that separately recorded expenses and runtime charges do not
- * overlap. Profit therefore remains deliberately uncalculated.
+ * verified. Profit remains absent until an immutable reconciliation matches
+ * the exact current cost evidence sets, and is explicitly unverified then.
  */
 export async function getRevenueRunOutcomeEvidence(workspaceId: string, revenueRunId: string) {
   requireBoundedText(workspaceId, 'workspaceId');
   requireBoundedText(revenueRunId, 'revenueRunId');
   await enforceFinanceRead(workspaceId, `finance:revenue-run:outcome:${revenueRunId}`);
-  const run = await prisma.revenueRun.findFirst({
-    where: { id: revenueRunId, workspaceId },
-    include: {
-      revenueEntries: { include: { revenueEntry: true } },
-      expenses: { include: { expense: true } },
-      usages: { include: { usage: { include: { costLedgerEntry: true } } } },
-    },
-  });
-  if (!run) throw new RevenueRunNotFoundError('Revenue run not found');
+  return prisma.$transaction(
+    async (tx) => {
+      const run = await tx.revenueRun.findFirst({
+        where: { id: revenueRunId, workspaceId },
+        include: {
+          revenueEntries: { include: { revenueEntry: true } },
+          expenses: { include: { expense: true } },
+          usages: { include: { usage: { include: { costLedgerEntry: true } } } },
+          costReconciliations: { orderBy: { createdAt: 'desc' as const }, take: 1 },
+        },
+      });
+      if (!run) throw new RevenueRunNotFoundError('Revenue run not found');
 
-  let recordedGrossRevenueMinorUnits = 0n;
-  let recordedNetRevenueMinorUnits = 0n;
-  for (const link of run.revenueEntries) {
-    if (revenueEntryEvidenceHash(link.revenueEntry) !== link.evidenceHash) {
-      throw new RevenueRunOutcomeEvidenceDriftError('Revenue-entry evidence changed after linking');
-    }
-    recordedGrossRevenueMinorUnits += eurDecimalToMinorUnits(link.revenueEntry.grossRevenueEur);
-    recordedNetRevenueMinorUnits += eurDecimalToMinorUnits(link.revenueEntry.netRevenueEur);
-  }
+      let recordedGrossRevenueMinorUnits = 0n;
+      let recordedNetRevenueMinorUnits = 0n;
+      for (const link of run.revenueEntries) {
+        if (revenueEntryEvidenceHash(link.revenueEntry) !== link.evidenceHash) {
+          throw new RevenueRunOutcomeEvidenceDriftError(
+            'Revenue-entry evidence changed after linking',
+          );
+        }
+        recordedGrossRevenueMinorUnits += eurDecimalToMinorUnits(link.revenueEntry.grossRevenueEur);
+        recordedNetRevenueMinorUnits += eurDecimalToMinorUnits(link.revenueEntry.netRevenueEur);
+      }
 
-  let recordedExpenseMinorUnits = 0n;
-  for (const link of run.expenses) {
-    if (expenseEvidenceHash(link.expense) !== link.evidenceHash) {
-      throw new RevenueRunOutcomeEvidenceDriftError('Expense evidence changed after linking');
-    }
-    recordedExpenseMinorUnits += eurDecimalToMinorUnits(link.expense.amountEur);
-  }
+      let recordedExpenseMinorUnits = 0n;
+      for (const link of run.expenses) {
+        if (expenseEvidenceHash(link.expense) !== link.evidenceHash) {
+          throw new RevenueRunOutcomeEvidenceDriftError('Expense evidence changed after linking');
+        }
+        recordedExpenseMinorUnits += eurDecimalToMinorUnits(link.expense.amountEur);
+      }
 
-  let recognizedRuntimeChargeMinorUnits = 0n;
-  let recognizedRuntimeComputeUnits = 0n;
-  for (const link of run.usages) {
-    if (usageEvidenceHash(link.usage) !== link.evidenceHash) {
-      throw new RevenueRunOutcomeEvidenceDriftError('ACP usage evidence changed after linking');
-    }
-    recognizedRuntimeChargeMinorUnits += link.usage.costMinorUnits;
-    recognizedRuntimeComputeUnits += link.usage.computeUnits;
-  }
+      let recognizedRuntimeChargeMinorUnits = 0n;
+      let recognizedRuntimeComputeUnits = 0n;
+      for (const link of run.usages) {
+        if (usageEvidenceHash(link.usage) !== link.evidenceHash) {
+          throw new RevenueRunOutcomeEvidenceDriftError('ACP usage evidence changed after linking');
+        }
+        recognizedRuntimeChargeMinorUnits += link.usage.costMinorUnits;
+        recognizedRuntimeComputeUnits += link.usage.computeUnits;
+      }
 
-  return {
-    id: run.id,
-    workspaceId: run.workspaceId,
-    currency: run.currency,
-    forecast: {
-      expectedRevenueMinorUnits: run.expectedRevenueMinorUnits,
-      expectedCostMinorUnits: run.expectedCostMinorUnits,
-      downsideMinorUnits: run.downsideMinorUnits,
-      confidenceBps: run.confidenceBps,
-      timeToCashDays: run.timeToCashDays,
-      evidenceHash: run.forecastEvidenceHash,
+      const expenseEvidenceSetHash = costEvidenceSetHash(
+        'EXPENSE_SET',
+        run.expenses.map((link) => ({ factId: link.expenseId, evidenceHash: link.evidenceHash })),
+      );
+      const usageEvidenceSetHash = costEvidenceSetHash(
+        'RECOGNIZED_RUNTIME_USAGE_SET',
+        run.usages.map((link) => ({ factId: link.usageId, evidenceHash: link.evidenceHash })),
+      );
+      const reconciliation = run.costReconciliations[0];
+      const reconciliationMatchesCurrentEvidence =
+        reconciliation?.expenseEvidenceSetHash === expenseEvidenceSetHash &&
+        reconciliation.usageEvidenceSetHash === usageEvidenceSetHash;
+      if (reconciliationMatchesCurrentEvidence) {
+        const expectedHash = costReconciliationHash({
+          workspaceId: reconciliation.workspaceId,
+          revenueRunId: reconciliation.revenueRunId,
+          currency: reconciliation.currency,
+          expenseEvidenceSetHash: reconciliation.expenseEvidenceSetHash,
+          usageEvidenceSetHash: reconciliation.usageEvidenceSetHash,
+          expenseTotalMinorUnits: reconciliation.expenseTotalMinorUnits,
+          runtimeChargeMinorUnits: reconciliation.runtimeChargeMinorUnits,
+          overlapMinorUnits: reconciliation.overlapMinorUnits,
+          basisReference: reconciliation.basisReference,
+          reconciledBy: reconciliation.reconciledBy,
+        });
+        if (
+          reconciliation.workspaceId !== workspaceId ||
+          reconciliation.revenueRunId !== revenueRunId ||
+          reconciliation.currency !== run.currency ||
+          reconciliation.expenseTotalMinorUnits !== recordedExpenseMinorUnits ||
+          reconciliation.runtimeChargeMinorUnits !== recognizedRuntimeChargeMinorUnits ||
+          reconciliation.overlapMinorUnits > recordedExpenseMinorUnits ||
+          reconciliation.overlapMinorUnits > recognizedRuntimeChargeMinorUnits ||
+          reconciliation.reconciliationHash !== expectedHash
+        ) {
+          throw new RevenueRunOutcomeEvidenceDriftError(
+            'Cost-reconciliation evidence does not match authoritative aggregates',
+          );
+        }
+      }
+      const deduplicatedTotalMinorUnits = reconciliationMatchesCurrentEvidence
+        ? recordedExpenseMinorUnits +
+          recognizedRuntimeChargeMinorUnits -
+          reconciliation.overlapMinorUnits
+        : null;
+
+      return {
+        id: run.id,
+        workspaceId: run.workspaceId,
+        currency: run.currency,
+        forecast: {
+          expectedRevenueMinorUnits: run.expectedRevenueMinorUnits,
+          expectedCostMinorUnits: run.expectedCostMinorUnits,
+          downsideMinorUnits: run.downsideMinorUnits,
+          confidenceBps: run.confidenceBps,
+          timeToCashDays: run.timeToCashDays,
+          evidenceHash: run.forecastEvidenceHash,
+        },
+        recordedRevenue: {
+          evidenceCount: run.revenueEntries.length,
+          grossMinorUnits: recordedGrossRevenueMinorUnits,
+          netMinorUnits: recordedNetRevenueMinorUnits,
+          verificationState: 'UNVERIFIED_SOURCE_RECORDS' as const,
+        },
+        recordedCosts: {
+          expenseEvidenceCount: run.expenses.length,
+          expenseMinorUnits: recordedExpenseMinorUnits,
+          recognizedRuntimeUsageCount: run.usages.length,
+          recognizedRuntimeChargeMinorUnits,
+          recognizedRuntimeComputeUnits,
+          overlapState: reconciliationMatchesCurrentEvidence
+            ? ('RECONCILED_EXACT_EVIDENCE_SET' as const)
+            : run.costReconciliations.length > 0
+              ? ('STALE_RECONCILIATION_EVIDENCE_SET' as const)
+              : ('POTENTIAL_EXPENSE_RUNTIME_OVERLAP' as const),
+          reconciledOverlapMinorUnits: reconciliationMatchesCurrentEvidence
+            ? reconciliation.overlapMinorUnits
+            : null,
+          deduplicatedTotalMinorUnits,
+          reconciliation: reconciliationMatchesCurrentEvidence
+            ? {
+                id: reconciliation.id,
+                evidenceHash: reconciliation.reconciliationHash,
+                basisReference: reconciliation.basisReference,
+              }
+            : null,
+        },
+        profit: {
+          minorUnits:
+            deduplicatedTotalMinorUnits === null
+              ? null
+              : recordedNetRevenueMinorUnits - deduplicatedTotalMinorUnits,
+          state:
+            deduplicatedTotalMinorUnits === null
+              ? ('NOT_CALCULATED_POTENTIAL_COST_OVERLAP' as const)
+              : ('CALCULATED_FROM_UNVERIFIED_REVENUE_AND_RECONCILED_COSTS' as const),
+        },
+      };
     },
-    recordedRevenue: {
-      evidenceCount: run.revenueEntries.length,
-      grossMinorUnits: recordedGrossRevenueMinorUnits,
-      netMinorUnits: recordedNetRevenueMinorUnits,
-      verificationState: 'UNVERIFIED_SOURCE_RECORDS' as const,
-    },
-    recordedCosts: {
-      expenseEvidenceCount: run.expenses.length,
-      expenseMinorUnits: recordedExpenseMinorUnits,
-      recognizedRuntimeUsageCount: run.usages.length,
-      recognizedRuntimeChargeMinorUnits,
-      recognizedRuntimeComputeUnits,
-      overlapState: 'POTENTIAL_EXPENSE_RUNTIME_OVERLAP' as const,
-    },
-    profit: {
-      minorUnits: null,
-      state: 'NOT_CALCULATED_POTENTIAL_COST_OVERLAP' as const,
-    },
-  };
+    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+  );
 }

@@ -11,6 +11,10 @@ const outcomeGuardMigration = readFileSync(
   'packages/database/prisma/migrations/20260908073000_revenue_run_outcome_link_delete_guard/migration.sql',
   'utf8',
 );
+const reconciliationMigration = readFileSync(
+  'packages/database/prisma/migrations/20260908093000_revenue_run_cost_reconciliation/migration.sql',
+  'utf8',
+);
 const runner = readFileSync('packages/finance-engine/src/revenue-run.ts', 'utf8');
 const outcome = readFileSync('packages/finance-engine/src/revenue-run-outcome.ts', 'utf8');
 const apiModule = readFileSync('apps/api/src/app.module.ts', 'utf8');
@@ -26,6 +30,7 @@ test('revenue-run spine separates immutable forecasts from authoritative actual 
   assert.match(schema, /model RevenueRunRevenueEntry \{/u);
   assert.match(schema, /model RevenueRunExpense \{/u);
   assert.match(schema, /model RevenueRunUsage \{/u);
+  assert.match(schema, /model RevenueRunCostReconciliation \{/u);
   assert.doesNotMatch(
     schema.match(/model RevenueRun \{[\s\S]*?\n\}/u)?.[0] ?? '',
     /actualRevenue|actualCost|realizedRevenue|realizedCost|profitMinorUnits/u,
@@ -40,9 +45,13 @@ test('revenue-run spine separates immutable forecasts from authoritative actual 
   assert.match(outcomeGuardMigration, /revenue_run_revenue_entries_delete_guard/u);
   assert.match(outcomeGuardMigration, /revenue_run_expenses_delete_guard/u);
   assert.match(outcomeGuardMigration, /revenue_run_usages_delete_guard/u);
+  assert.match(reconciliationMigration, /Revenue cost reconciliations are append-only/u);
+  assert.match(reconciliationMigration, /revenue_run_cost_reconciliations_scope_guard/u);
+  assert.match(reconciliationMigration, /"overlapMinorUnits" <= "expenseTotalMinorUnits"/u);
+  assert.match(reconciliationMigration, /"overlapMinorUnits" <= "runtimeChargeMinorUnits"/u);
 });
 
-test('outcome links bind source facts and reporting refuses unsupported profit', () => {
+test('outcome reporting calculates only from exact-set reconciled costs', () => {
   assert.match(outcome, /function revenueEntryEvidenceHash/u);
   assert.match(outcome, /function expenseEvidenceHash/u);
   assert.match(outcome, /function usageEvidenceHash/u);
@@ -51,7 +60,12 @@ test('outcome links bind source facts and reporting refuses unsupported profit',
   assert.match(outcome, /UNVERIFIED_SOURCE_RECORDS/u);
   assert.match(outcome, /POTENTIAL_EXPENSE_RUNTIME_OVERLAP/u);
   assert.match(outcome, /NOT_CALCULATED_POTENTIAL_COST_OVERLAP/u);
-  assert.doesNotMatch(outcome, /minorUnits:\s*recordedNetRevenueMinorUnits\s*-/u);
+  assert.match(outcome, /RECONCILED_EXACT_EVIDENCE_SET/u);
+  assert.match(outcome, /CALCULATED_FROM_UNVERIFIED_REVENUE_AND_RECONCILED_COSTS/u);
+  assert.match(outcome, /costReconciliationHash/u);
+  assert.match(outcome, /FOR UPDATE/u);
+  assert.match(outcome, /TransactionIsolationLevel\.RepeatableRead/u);
+  assert.doesNotMatch(outcome, /verificationState:\s*'VERIFIED'|state:\s*'VERIFIED_PROFIT'/u);
 });
 
 test('database guards every tenant and semantic revenue-run binding', () => {
@@ -66,6 +80,10 @@ test('database guards every tenant and semantic revenue-run binding', () => {
   );
   assert.match(migration, /Expense crossed revenue-run venture, currency, or workspace scope/u);
   assert.match(migration, /Runtime usage crossed revenue-run run, currency, or workspace scope/u);
+  assert.match(
+    reconciliationMigration,
+    /Revenue cost reconciliation crossed run, currency, or workspace scope/u,
+  );
 });
 
 test('revenue-run writer remains planning-only, capability-gated, and uncomposed', () => {

@@ -214,6 +214,7 @@ test('the immutable migration chain matches the reviewed sequence', () => {
     '20260906210000_topology_carrier_signature_root_registry',
     '20260908040000_revenue_run_correlation_spine',
     '20260908073000_revenue_run_outcome_link_delete_guard',
+    '20260908093000_revenue_run_cost_reconciliation',
   ]);
   const unsafeRestoreReference =
     /(?:password|passwd|secret|token|cookie|authorization|chain[-_.:/ ]?of[-_.:/ ]?thought)/u;

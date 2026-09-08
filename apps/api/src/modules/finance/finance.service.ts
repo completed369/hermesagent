@@ -319,9 +319,14 @@ export class FinanceService {
           recognizedRuntimeComputeUnits:
             outcome.recordedCosts.recognizedRuntimeComputeUnits.toString(),
           overlapState: outcome.recordedCosts.overlapState,
+          reconciledOverlapMinorUnits:
+            outcome.recordedCosts.reconciledOverlapMinorUnits?.toString() ?? null,
+          deduplicatedTotalMinorUnits:
+            outcome.recordedCosts.deduplicatedTotalMinorUnits?.toString() ?? null,
+          reconciliation: outcome.recordedCosts.reconciliation,
         },
         profit: {
-          minorUnits: outcome.profit.minorUnits,
+          minorUnits: outcome.profit.minorUnits?.toString() ?? null,
           state: outcome.profit.state,
         },
       };
