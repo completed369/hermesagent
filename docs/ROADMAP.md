@@ -701,11 +701,17 @@ published and current `main` has not been deployed to private staging.
    Workflow Centre source at `/dashboard/workflows`. It combines safe legacy
    workflow metadata with persisted Agent Control Plane objective, task, run,
    runtime, connection, and pending Level-4 summaries without exposing approval
-   authority, private evidence, secrets, transcripts, artifacts, or cost. This
-   source capability is not live telemetry or deployment evidence.
-   Continue authenticated telemetry, task graph, approvals, security,
-   infrastructure, commercial, finance, and board views without exposing
-   confidential fields or weakening Cloudflare Access.
+   authority, private evidence, secrets, transcripts, artifacts, or cost. Its
+   bounded authenticated SSE projection now provides notification-only refreshes
+   from allowlisted persisted operational-event metadata. The browser never
+   parses event payloads or turns a notification into an action, and the visible
+   transport state explicitly preserves `NOT_CONFIGURED` runtime truth. This is
+   live persisted-event notification, not runtime heartbeat, connectivity, or
+   deployment evidence. Continue task graph, approvals, security, infrastructure,
+   commercial, finance, and board views without exposing confidential fields or
+   weakening Cloudflare Access. See
+   `AGENT_CONTROL_PLANE_DELIVERY_EVIDENCE.md` for the issue-level delivery and
+   activation evidence matrix.
 4. **Commercial validation:** select and qualify one real beachhead pilot from
    evidence. Synthetic readiness is not a pilot, customer, revenue, conversion,
    or product-market-fit claim.
