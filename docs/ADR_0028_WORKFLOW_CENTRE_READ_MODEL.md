@@ -56,7 +56,9 @@ runtime connection.
 
 ## Limitations
 
-This is a bounded polling snapshot, not live telemetry. Truncated collections
+This remains a bounded polling snapshot. ADR-0171 adds a separate bounded SSE
+notification projection over allowlisted persisted operational-event metadata;
+clients still retrieve authoritative state from this snapshot. Truncated collections
 require a later paginated design. Persisted `PARTIAL`, `DEGRADED`, or other
 internal runtime states do not prove a direct Codex, Hermes, or Pi connection.
 The read model does not verify or execute work and does not replace the protected

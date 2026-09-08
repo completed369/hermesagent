@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedUser } from '../../common/guards/session-auth.guard';
 import { WorkflowCentreController } from './workflow-centre.controller';
 import { WorkflowCentreService } from './workflow-centre.service';
+import { WorkflowCentreTelemetryService } from './workflow-centre-telemetry.service';
 
 const databaseMock = vi.hoisted(() => ({
   transaction: vi.fn(),
@@ -27,13 +28,31 @@ const user: AuthenticatedUser = {
 describe('WorkflowCentreController', () => {
   it('derives the only workspace argument from the authenticated user', async () => {
     const snapshot = vi.fn().mockResolvedValue({ schemaVersion: 1 });
-    const controller = new WorkflowCentreController({
-      snapshot,
-    } as unknown as WorkflowCentreService);
+    const controller = new WorkflowCentreController(
+      { snapshot } as unknown as WorkflowCentreService,
+      { stream: vi.fn() } as unknown as WorkflowCentreTelemetryService,
+    );
 
     await expect(controller.snapshot(user)).resolves.toEqual({ schemaVersion: 1 });
     expect(snapshot).toHaveBeenCalledOnce();
     expect(snapshot).toHaveBeenCalledWith(user.workspaceId);
+  });
+
+  it('derives the telemetry workspace from the session and passes only the reconnect cursor', () => {
+    const streamResult = { subscribe: vi.fn() };
+    const stream = vi.fn().mockReturnValue(streamResult);
+    const controller = new WorkflowCentreController(
+      { snapshot: vi.fn() } as unknown as WorkflowCentreService,
+      { stream } as unknown as WorkflowCentreTelemetryService,
+    );
+
+    expect(
+      controller.streamTelemetry(user, 'v1.1788271200000.00000000-0000-4000-8000-000000000004'),
+    ).toBe(streamResult);
+    expect(stream).toHaveBeenCalledWith(
+      user.workspaceId,
+      'v1.1788271200000.00000000-0000-4000-8000-000000000004',
+    );
   });
 });
 

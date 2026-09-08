@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedFrom": "apps/api/src/main.ts + apps/api/src/**/*.controller.ts",
   "globalPrefix": "/api",
-  "routeCount": 86,
+  "routeCount": 87,
   "routes": [
     {
       "method": "GET",
@@ -445,6 +445,12 @@
     {
       "method": "GET",
       "path": "/api/workflow-centre",
+      "controller": "WorkflowCentreController",
+      "source": "apps/api/src/modules/workflow-centre/workflow-centre.controller.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workflow-centre/telemetry",
       "controller": "WorkflowCentreController",
       "source": "apps/api/src/modules/workflow-centre/workflow-centre.controller.ts"
     },
