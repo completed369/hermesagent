@@ -1,4 +1,21 @@
 import { z } from 'zod';
+import type {
+  RevenueRunCommercialEvidenceKind,
+  RevenueRunCommercialEvidenceSourceType,
+} from '@ventureos/finance-engine';
+
+const revenueRunCommercialEvidenceKinds = [
+  'PAYMENT_SETTLEMENT',
+  'DELIVERY_CONFIRMATION',
+  'REFUND_OBSERVATION',
+] as const satisfies readonly RevenueRunCommercialEvidenceKind[];
+const revenueRunCommercialEvidenceSourceTypes = [
+  'MARKETPLACE_EXPORT',
+  'PAYMENT_PROCESSOR_EXPORT',
+  'BANK_SETTLEMENT_EXPORT',
+  'FULFILLMENT_EXPORT',
+  'FOUNDER_OBSERVED',
+] as const satisfies readonly RevenueRunCommercialEvidenceSourceType[];
 
 export const upsertFinancialAssumptionSchema = z.object({
   productPriceEur: z.number().positive().optional(),
@@ -111,6 +128,25 @@ export const recordRevenueRunCostReconciliationSchema = z.object({
 });
 export type RecordRevenueRunCostReconciliationInput = z.infer<
   typeof recordRevenueRunCostReconciliationSchema
+>;
+
+export const recordRevenueRunCommercialEvidenceSchema = z.object({
+  kind: z.enum(revenueRunCommercialEvidenceKinds),
+  sourceType: z.enum(revenueRunCommercialEvidenceSourceTypes),
+  sourceReferenceHash: sha256Schema,
+  sourceArtifactSha256: sha256Schema,
+  observedAt: z
+    .string()
+    .datetime()
+    .transform((value) => new Date(value)),
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine((value) => value.trim() === value, 'idempotencyKey must be trimmed'),
+});
+export type RecordRevenueRunCommercialEvidenceInput = z.infer<
+  typeof recordRevenueRunCommercialEvidenceSchema
 >;
 
 export const createBudgetSchema = z.object({

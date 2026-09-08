@@ -5,6 +5,7 @@ import {
   recordRevenueRunCostReconciliationSchema,
   revenueRunIdSchema,
   createRevenueRunPlanSchema,
+  recordRevenueRunCommercialEvidenceSchema,
 } from './finance.dto';
 
 const variantId = '11111111-1111-4111-8111-111111111111';
@@ -171,5 +172,36 @@ describe('revenue-run plan DTO', () => {
     { ...plan, timeToCashDays: 36_501 },
   ])('rejects malformed or unbounded planning evidence', (input) => {
     expect(createRevenueRunPlanSchema.safeParse(input).success).toBe(false);
+  });
+});
+
+describe('revenue-run commercial-evidence DTO', () => {
+  const evidence = {
+    kind: 'PAYMENT_SETTLEMENT',
+    sourceType: 'MARKETPLACE_EXPORT',
+    sourceReferenceHash: 'a'.repeat(64),
+    sourceArtifactSha256: 'b'.repeat(64),
+    observedAt: '2026-09-08T01:00:00.000Z',
+    idempotencyKey: 'commercial-evidence-1',
+  };
+
+  it('accepts only bounded privacy-minimized provenance and derives a Date', () => {
+    const parsed = recordRevenueRunCommercialEvidenceSchema.parse(evidence);
+
+    expect(parsed.observedAt).toEqual(new Date(evidence.observedAt));
+    expect(parsed).not.toHaveProperty('verificationState');
+    expect(parsed).not.toHaveProperty('sourceReference');
+  });
+
+  it.each([
+    { ...evidence, kind: 'VERIFIED_PAYMENT' },
+    { ...evidence, sourceType: 'SYNTHETIC' },
+    { ...evidence, sourceReferenceHash: 'A'.repeat(64) },
+    { ...evidence, sourceArtifactSha256: 'b'.repeat(63) },
+    { ...evidence, observedAt: 'not-a-date' },
+    { ...evidence, idempotencyKey: ' padded' },
+    { ...evidence, idempotencyKey: 'x'.repeat(201) },
+  ])('rejects unsupported, unhashed, malformed, or unbounded provenance', (input) => {
+    expect(recordRevenueRunCommercialEvidenceSchema.safeParse(input).success).toBe(false);
   });
 });

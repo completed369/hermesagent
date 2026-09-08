@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedFrom": "apps/api/src/main.ts + apps/api/src/**/*.controller.ts",
   "globalPrefix": "/api",
-  "routeCount": 85,
+  "routeCount": 86,
   "routes": [
     {
       "method": "GET",
@@ -181,6 +181,12 @@
     {
       "method": "POST",
       "path": "/api/finance/revenue-runs/:revenueRunId/revenue-entries/:factId",
+      "controller": "FinanceController",
+      "source": "apps/api/src/modules/finance/finance.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/revenue-runs/:revenueRunId/revenue-entries/:factId/commercial-evidence",
       "controller": "FinanceController",
       "source": "apps/api/src/modules/finance/finance.controller.ts"
     },

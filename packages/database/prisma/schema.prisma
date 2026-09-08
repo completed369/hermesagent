@@ -2971,12 +2971,40 @@ model RevenueRunRevenueEntry {
   linkedBy       String
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
-  revenueRun   RevenueRun   @relation(fields: [revenueRunId], references: [id], onDelete: Cascade)
-  revenueEntry RevenueEntry @relation(fields: [revenueEntryId], references: [id], onDelete: Restrict)
+  revenueRun         RevenueRun                     @relation(fields: [revenueRunId], references: [id], onDelete: Cascade)
+  revenueEntry       RevenueEntry                   @relation(fields: [revenueEntryId], references: [id], onDelete: Restrict)
+  commercialEvidence RevenueRunCommercialEvidence[]
 
   @@id([workspaceId, revenueRunId, revenueEntryId])
   @@index([workspaceId, revenueRunId])
   @@map("revenue_run_revenue_entries")
+}
+
+/// Immutable, privacy-minimized external-evidence assertion attached to one
+/// exact revenue-run revenue link. This is evidence retention, not provider
+/// verification: the only accepted state is UNVERIFIED_EXTERNAL_ASSERTION.
+model RevenueRunCommercialEvidence {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workspaceId          String   @db.Uuid
+  revenueRunId         String   @db.Uuid
+  revenueEntryId       String   @db.Uuid
+  kind                 String
+  sourceType           String
+  sourceReferenceHash  String
+  sourceArtifactSha256 String
+  observedAt           DateTime @db.Timestamptz(3)
+  verificationState    String   @default("UNVERIFIED_EXTERNAL_ASSERTION")
+  evidenceHash         String
+  idempotencyKey       String
+  recordedBy           String
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+
+  revenueLink RevenueRunRevenueEntry @relation(fields: [workspaceId, revenueRunId, revenueEntryId], references: [workspaceId, revenueRunId, revenueEntryId], onDelete: Cascade)
+
+  @@unique([workspaceId, idempotencyKey], name: "revenueRunCommercialEvidenceIdempotency")
+  @@unique([workspaceId, revenueRunId, revenueEntryId, kind, sourceArtifactSha256], name: "revenueRunCommercialEvidenceArtifact")
+  @@index([workspaceId, revenueRunId, revenueEntryId, createdAt(sort: Desc)])
+  @@map("revenue_run_commercial_evidence")
 }
 
 /// Append-only evidence link to an existing realized-expense fact. Amounts

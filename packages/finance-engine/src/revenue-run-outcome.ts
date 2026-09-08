@@ -31,6 +31,37 @@ export interface RecordRevenueRunCostReconciliationParams {
   reconciledBy: string;
 }
 
+export const REVENUE_RUN_COMMERCIAL_EVIDENCE_KINDS = [
+  'PAYMENT_SETTLEMENT',
+  'DELIVERY_CONFIRMATION',
+  'REFUND_OBSERVATION',
+] as const;
+export type RevenueRunCommercialEvidenceKind =
+  (typeof REVENUE_RUN_COMMERCIAL_EVIDENCE_KINDS)[number];
+
+export const REVENUE_RUN_COMMERCIAL_EVIDENCE_SOURCE_TYPES = [
+  'MARKETPLACE_EXPORT',
+  'PAYMENT_PROCESSOR_EXPORT',
+  'BANK_SETTLEMENT_EXPORT',
+  'FULFILLMENT_EXPORT',
+  'FOUNDER_OBSERVED',
+] as const;
+export type RevenueRunCommercialEvidenceSourceType =
+  (typeof REVENUE_RUN_COMMERCIAL_EVIDENCE_SOURCE_TYPES)[number];
+
+export interface RecordRevenueRunCommercialEvidenceParams {
+  workspaceId: string;
+  revenueRunId: string;
+  revenueEntryId: string;
+  kind: RevenueRunCommercialEvidenceKind;
+  sourceType: RevenueRunCommercialEvidenceSourceType;
+  sourceReferenceHash: string;
+  sourceArtifactSha256: string;
+  observedAt: Date;
+  idempotencyKey: string;
+  recordedBy: string;
+}
+
 type UsageWithLedger = AcpRunUsage & { costLedgerEntry: AcpCostLedgerEntry | null };
 
 function requireBoundedText(value: string, field: string): void {
@@ -69,6 +100,76 @@ function validateCostReconciliationParams(params: RecordRevenueRunCostReconcilia
   if (typeof params.overlapMinorUnits !== 'bigint' || params.overlapMinorUnits < 0n) {
     throw new RevenueRunInvalidInputError('overlapMinorUnits must be a non-negative bigint');
   }
+}
+
+function validateCommercialEvidenceParams(
+  params: RecordRevenueRunCommercialEvidenceParams,
+  capturedAt: Date,
+): void {
+  for (const [field, value] of [
+    ['workspaceId', params.workspaceId],
+    ['revenueRunId', params.revenueRunId],
+    ['revenueEntryId', params.revenueEntryId],
+    ['idempotencyKey', params.idempotencyKey],
+    ['recordedBy', params.recordedBy],
+  ] as const) {
+    requireBoundedText(value, field);
+  }
+  if (!REVENUE_RUN_COMMERCIAL_EVIDENCE_KINDS.includes(params.kind)) {
+    throw new RevenueRunInvalidInputError('Unsupported commercial evidence kind');
+  }
+  if (!REVENUE_RUN_COMMERCIAL_EVIDENCE_SOURCE_TYPES.includes(params.sourceType)) {
+    throw new RevenueRunInvalidInputError('Unsupported commercial evidence source type');
+  }
+  if (!/^[0-9a-f]{64}$/u.test(params.sourceReferenceHash)) {
+    throw new RevenueRunInvalidInputError('sourceReferenceHash must be a lowercase SHA-256 digest');
+  }
+  if (!/^[0-9a-f]{64}$/u.test(params.sourceArtifactSha256)) {
+    throw new RevenueRunInvalidInputError(
+      'sourceArtifactSha256 must be a lowercase SHA-256 digest',
+    );
+  }
+  if (!Number.isFinite(params.observedAt.getTime()) || params.observedAt > capturedAt) {
+    throw new RevenueRunInvalidInputError('observedAt must be a valid non-future timestamp');
+  }
+}
+
+function commercialEvidenceHash(input: {
+  workspaceId: string;
+  revenueRunId: string;
+  revenueEntryId: string;
+  kind: string;
+  sourceType: string;
+  sourceReferenceHash: string;
+  sourceArtifactSha256: string;
+  observedAt: Date;
+  verificationState: string;
+  recordedBy: string;
+}): string {
+  return hashObject({
+    kind: 'REVENUE_RUN_COMMERCIAL_EVIDENCE',
+    workspaceId: input.workspaceId,
+    revenueRunId: input.revenueRunId,
+    revenueEntryId: input.revenueEntryId,
+    evidenceKind: input.kind,
+    sourceType: input.sourceType,
+    sourceReferenceHash: input.sourceReferenceHash,
+    sourceArtifactSha256: input.sourceArtifactSha256,
+    observedAt: input.observedAt.toISOString(),
+    verificationState: input.verificationState,
+    recordedBy: input.recordedBy,
+  });
+}
+
+function commercialEvidenceSetHash(
+  evidence: ReadonlyArray<{ id: string; evidenceHash: string }>,
+): string {
+  return hashObject({
+    kind: 'REVENUE_RUN_COMMERCIAL_EVIDENCE_SET',
+    evidence: evidence
+      .map((item) => ({ id: item.id, evidenceHash: item.evidenceHash }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  });
 }
 
 function revenueEntryEvidenceHash(entry: RevenueEntry): string {
@@ -320,6 +421,102 @@ export async function linkRevenueRunUsage(params: LinkRevenueRunFactParams) {
   });
 }
 
+/**
+ * Retains a privacy-minimized external commercial evidence assertion for an
+ * exact linked revenue fact. The state is deliberately fixed to unverified;
+ * this function cannot authenticate a provider export or promote revenue
+ * truth.
+ */
+export async function recordRevenueRunCommercialEvidence(
+  params: RecordRevenueRunCommercialEvidenceParams,
+) {
+  const capturedAt = new Date();
+  validateCommercialEvidenceParams(params, capturedAt);
+  return prisma.$transaction(async (tx) => {
+    await enforceFinanceMutation(
+      params.workspaceId,
+      `finance:revenue-run:commercial-evidence:${params.idempotencyKey}`,
+      tx,
+    );
+    const revenueLink = await tx.revenueRunRevenueEntry.findUnique({
+      where: {
+        workspaceId_revenueRunId_revenueEntryId: {
+          workspaceId: params.workspaceId,
+          revenueRunId: params.revenueRunId,
+          revenueEntryId: params.revenueEntryId,
+        },
+      },
+      select: { revenueEntryId: true },
+    });
+    if (!revenueLink) {
+      throw new RevenueRunNotFoundError('Exact revenue-run revenue link not found');
+    }
+
+    const candidate = {
+      workspaceId: params.workspaceId,
+      revenueRunId: params.revenueRunId,
+      revenueEntryId: params.revenueEntryId,
+      kind: params.kind,
+      sourceType: params.sourceType,
+      sourceReferenceHash: params.sourceReferenceHash,
+      sourceArtifactSha256: params.sourceArtifactSha256,
+      observedAt: params.observedAt,
+      verificationState: 'UNVERIFIED_EXTERNAL_ASSERTION' as const,
+      idempotencyKey: params.idempotencyKey,
+      recordedBy: params.recordedBy,
+    };
+    const evidenceHash = commercialEvidenceHash(candidate);
+    const existing = await tx.revenueRunCommercialEvidence.findUnique({
+      where: {
+        revenueRunCommercialEvidenceIdempotency: {
+          workspaceId: params.workspaceId,
+          idempotencyKey: params.idempotencyKey,
+        },
+      },
+    });
+    if (existing) {
+      if (
+        existing.revenueRunId !== candidate.revenueRunId ||
+        existing.revenueEntryId !== candidate.revenueEntryId ||
+        existing.kind !== candidate.kind ||
+        existing.sourceType !== candidate.sourceType ||
+        existing.sourceReferenceHash !== candidate.sourceReferenceHash ||
+        existing.sourceArtifactSha256 !== candidate.sourceArtifactSha256 ||
+        existing.observedAt.getTime() !== candidate.observedAt.getTime() ||
+        existing.verificationState !== candidate.verificationState ||
+        existing.recordedBy !== candidate.recordedBy ||
+        existing.evidenceHash !== evidenceHash
+      ) {
+        throw new RevenueRunConflictError(
+          'Commercial-evidence idempotency key already has different evidence',
+        );
+      }
+      return existing;
+    }
+
+    const artifactExisting = await tx.revenueRunCommercialEvidence.findUnique({
+      where: {
+        revenueRunCommercialEvidenceArtifact: {
+          workspaceId: params.workspaceId,
+          revenueRunId: params.revenueRunId,
+          revenueEntryId: params.revenueEntryId,
+          kind: params.kind,
+          sourceArtifactSha256: params.sourceArtifactSha256,
+        },
+      },
+    });
+    if (artifactExisting) {
+      throw new RevenueRunConflictError(
+        'Commercial evidence artifact already has an immutable assertion',
+      );
+    }
+
+    return tx.revenueRunCommercialEvidence.create({
+      data: { ...candidate, evidenceHash },
+    });
+  });
+}
+
 function eurDecimalToMinorUnits(value: { toString(): string }): bigint {
   const text = value.toString();
   const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/u.exec(text);
@@ -511,7 +708,9 @@ export async function getRevenueRunOutcomeEvidence(workspaceId: string, revenueR
       const run = await tx.revenueRun.findFirst({
         where: { id: revenueRunId, workspaceId },
         include: {
-          revenueEntries: { include: { revenueEntry: true } },
+          revenueEntries: {
+            include: { revenueEntry: true, commercialEvidence: true },
+          },
           expenses: { include: { expense: true } },
           usages: { include: { usage: { include: { costLedgerEntry: true } } } },
           costReconciliations: { orderBy: { createdAt: 'desc' as const }, take: 1 },
@@ -521,6 +720,11 @@ export async function getRevenueRunOutcomeEvidence(workspaceId: string, revenueR
 
       let recordedGrossRevenueMinorUnits = 0n;
       let recordedNetRevenueMinorUnits = 0n;
+      const commercialEvidence: Array<{
+        id: string;
+        evidenceHash: string;
+        kind: string;
+      }> = [];
       for (const link of run.revenueEntries) {
         if (revenueEntryEvidenceHash(link.revenueEntry) !== link.evidenceHash) {
           throw new RevenueRunOutcomeEvidenceDriftError(
@@ -529,6 +733,24 @@ export async function getRevenueRunOutcomeEvidence(workspaceId: string, revenueR
         }
         recordedGrossRevenueMinorUnits += eurDecimalToMinorUnits(link.revenueEntry.grossRevenueEur);
         recordedNetRevenueMinorUnits += eurDecimalToMinorUnits(link.revenueEntry.netRevenueEur);
+        for (const evidence of link.commercialEvidence) {
+          if (
+            evidence.workspaceId !== workspaceId ||
+            evidence.revenueRunId !== revenueRunId ||
+            evidence.revenueEntryId !== link.revenueEntryId ||
+            evidence.verificationState !== 'UNVERIFIED_EXTERNAL_ASSERTION' ||
+            commercialEvidenceHash(evidence) !== evidence.evidenceHash
+          ) {
+            throw new RevenueRunOutcomeEvidenceDriftError(
+              'Commercial evidence does not match its exact revenue link',
+            );
+          }
+          commercialEvidence.push({
+            id: evidence.id,
+            evidenceHash: evidence.evidenceHash,
+            kind: evidence.kind,
+          });
+        }
       }
 
       let recordedExpenseMinorUnits = 0n;
@@ -612,6 +834,26 @@ export async function getRevenueRunOutcomeEvidence(workspaceId: string, revenueR
           grossMinorUnits: recordedGrossRevenueMinorUnits,
           netMinorUnits: recordedNetRevenueMinorUnits,
           verificationState: 'UNVERIFIED_SOURCE_RECORDS' as const,
+          commercialEvidence: {
+            evidenceCount: commercialEvidence.length,
+            paymentSettlementCount: commercialEvidence.filter(
+              (evidence) => evidence.kind === 'PAYMENT_SETTLEMENT',
+            ).length,
+            deliveryConfirmationCount: commercialEvidence.filter(
+              (evidence) => evidence.kind === 'DELIVERY_CONFIRMATION',
+            ).length,
+            refundObservationCount: commercialEvidence.filter(
+              (evidence) => evidence.kind === 'REFUND_OBSERVATION',
+            ).length,
+            evidenceSetHash:
+              commercialEvidence.length === 0
+                ? null
+                : commercialEvidenceSetHash(commercialEvidence),
+            state:
+              commercialEvidence.length === 0
+                ? ('NO_COMMERCIAL_EVIDENCE' as const)
+                : ('UNVERIFIED_EXTERNAL_ASSERTIONS' as const),
+          },
         },
         recordedCosts: {
           expenseEvidenceCount: run.expenses.length,
