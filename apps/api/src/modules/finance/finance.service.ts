@@ -25,6 +25,11 @@ import {
   RevenueRunConflictError,
   RevenueRunOutcomeEvidenceDriftError,
   getRevenueRunOutcomeEvidence,
+  recordRevenueRunCostReconciliation,
+  createRevenueRunPlan,
+  linkRevenueRunRevenueEntry,
+  linkRevenueRunExpense,
+  linkRevenueRunUsage,
 } from '@ventureos/finance-engine';
 import type {
   CreateExpenseInput,
@@ -33,6 +38,8 @@ import type {
   CreateExperimentInput,
   RecordExperimentResultInput,
   DecideExperimentInput,
+  RecordRevenueRunCostReconciliationInput,
+  CreateRevenueRunPlanInput,
 } from './finance.dto';
 import { AuditService } from '../audit/audit.service';
 import { enforceCapabilityAdmission } from '../../common/policy/capability-admission';
@@ -330,6 +337,157 @@ export class FinanceService {
           state: outcome.profit.state,
         },
       };
+    } catch (err) {
+      throw this.translateError(err);
+    }
+  }
+
+  async createRevenueRunPlan(
+    workspaceId: string,
+    input: CreateRevenueRunPlanInput,
+    actorId: string,
+  ) {
+    try {
+      const run = await createRevenueRunPlan({
+        workspaceId,
+        ...input,
+        createdBy: actorId,
+      });
+      const response = {
+        id: run.id,
+        opportunityId: run.opportunityId,
+        ventureProposalId: run.ventureProposalId,
+        approvalRequestId: run.approvalRequestId,
+        experimentId: run.experimentId,
+        taskId: run.taskId,
+        runId: run.runId,
+        status: run.status,
+        currency: run.currency,
+        expectedRevenueMinorUnits: run.expectedRevenueMinorUnits.toString(),
+        expectedCostMinorUnits: run.expectedCostMinorUnits.toString(),
+        downsideMinorUnits: run.downsideMinorUnits.toString(),
+        confidenceBps: run.confidenceBps,
+        timeToCashDays: run.timeToCashDays,
+        forecastEvidenceHash: run.forecastEvidenceHash,
+        idempotencyKey: run.idempotencyKey,
+        createdBy: run.createdBy,
+        createdAt: run.createdAt,
+      };
+      await this.auditService.record(workspaceId, {
+        actorId,
+        action: 'REVENUE_RUN_PLANNED',
+        entityType: 'RevenueRun',
+        entityId: run.id,
+        after: response as unknown as Record<string, unknown>,
+      });
+      return response;
+    } catch (err) {
+      throw this.translateError(err);
+    }
+  }
+
+  private async linkRevenueRunFact(
+    kind: 'REVENUE_ENTRY' | 'EXPENSE' | 'USAGE',
+    workspaceId: string,
+    revenueRunId: string,
+    factId: string,
+    actorId: string,
+  ) {
+    try {
+      const params = { workspaceId, revenueRunId, factId, linkedBy: actorId };
+      const link =
+        kind === 'REVENUE_ENTRY'
+          ? await linkRevenueRunRevenueEntry(params)
+          : kind === 'EXPENSE'
+            ? await linkRevenueRunExpense(params)
+            : await linkRevenueRunUsage(params);
+      const response = {
+        revenueRunId: link.revenueRunId,
+        factId,
+        evidenceHash: link.evidenceHash,
+        linkedBy: link.linkedBy,
+        createdAt: link.createdAt,
+      };
+      await this.auditService.record(workspaceId, {
+        actorId,
+        action: `REVENUE_RUN_${kind}_LINKED`,
+        entityType: 'RevenueRun',
+        entityId: revenueRunId,
+        after: response as unknown as Record<string, unknown>,
+      });
+      return response;
+    } catch (err) {
+      throw this.translateError(err);
+    }
+  }
+
+  linkRevenueRunRevenueEntry(
+    workspaceId: string,
+    revenueRunId: string,
+    factId: string,
+    actorId: string,
+  ) {
+    return this.linkRevenueRunFact('REVENUE_ENTRY', workspaceId, revenueRunId, factId, actorId);
+  }
+
+  linkRevenueRunExpense(
+    workspaceId: string,
+    revenueRunId: string,
+    factId: string,
+    actorId: string,
+  ) {
+    return this.linkRevenueRunFact('EXPENSE', workspaceId, revenueRunId, factId, actorId);
+  }
+
+  linkRevenueRunUsage(workspaceId: string, revenueRunId: string, factId: string, actorId: string) {
+    return this.linkRevenueRunFact('USAGE', workspaceId, revenueRunId, factId, actorId);
+  }
+
+  /**
+   * Records a bounded operator assertion for overlap between the complete
+   * current expense and recognized-runtime evidence sets. Tenant and actor
+   * identity are derived only from the authenticated session; the finance
+   * engine retains the parent lock, fresh capability decision, exact-set
+   * hashing, idempotency, and immutable persistence boundary.
+   */
+  async recordRevenueRunCostReconciliation(
+    workspaceId: string,
+    revenueRunId: string,
+    input: RecordRevenueRunCostReconciliationInput,
+    actorId: string,
+  ) {
+    try {
+      const reconciliation = await recordRevenueRunCostReconciliation({
+        workspaceId,
+        revenueRunId,
+        overlapMinorUnits: input.overlapMinorUnits,
+        basisReference: input.basisReference,
+        idempotencyKey: input.idempotencyKey,
+        reconciledBy: actorId,
+      });
+      const response = {
+        id: reconciliation.id,
+        revenueRunId: reconciliation.revenueRunId,
+        currency: reconciliation.currency,
+        expenseEvidenceSetHash: reconciliation.expenseEvidenceSetHash,
+        usageEvidenceSetHash: reconciliation.usageEvidenceSetHash,
+        expenseTotalMinorUnits: reconciliation.expenseTotalMinorUnits.toString(),
+        runtimeChargeMinorUnits: reconciliation.runtimeChargeMinorUnits.toString(),
+        overlapMinorUnits: reconciliation.overlapMinorUnits.toString(),
+        basisReference: reconciliation.basisReference,
+        reconciliationHash: reconciliation.reconciliationHash,
+        idempotencyKey: reconciliation.idempotencyKey,
+        reconciledBy: reconciliation.reconciledBy,
+        createdAt: reconciliation.createdAt,
+      };
+      await this.auditService.record(workspaceId, {
+        actorId,
+        action: 'REVENUE_RUN_COST_RECONCILED',
+        entityType: 'RevenueRunCostReconciliation',
+        entityId: reconciliation.id,
+        after: response as unknown as Record<string, unknown>,
+      });
+      return response;
     } catch (err) {
       throw this.translateError(err);
     }

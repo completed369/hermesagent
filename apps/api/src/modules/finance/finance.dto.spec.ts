@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createExperimentSchema, recordExperimentResultSchema } from './finance.dto';
+import {
+  createExperimentSchema,
+  recordExperimentResultSchema,
+  recordRevenueRunCostReconciliationSchema,
+  revenueRunIdSchema,
+  createRevenueRunPlanSchema,
+} from './finance.dto';
 
 const variantId = '11111111-1111-4111-8111-111111111111';
 const metricId = '22222222-2222-4222-8222-222222222222';
@@ -76,5 +82,94 @@ describe('commercial observation DTOs', () => {
       'SUPPORT_MINUTES',
       'QUALITY_INCIDENTS',
     ]);
+  });
+});
+
+describe('revenue-run cost-reconciliation DTO', () => {
+  it('requires a UUID revenue-run route identifier', () => {
+    expect(revenueRunIdSchema.safeParse('11111111-1111-4111-8111-111111111111').success).toBe(true);
+    expect(revenueRunIdSchema.safeParse('revenue-run').success).toBe(false);
+  });
+
+  it('accepts exact JSON-safe BIGINT input without precision loss', () => {
+    const parsed = recordRevenueRunCostReconciliationSchema.parse({
+      overlapMinorUnits: '9007199254740993',
+      basisReference: 'audit:cost-overlap-review-1',
+      idempotencyKey: 'cost-reconciliation-1',
+    });
+
+    expect(parsed.overlapMinorUnits).toBe(9_007_199_254_740_993n);
+  });
+
+  it.each([1, '-1', '+1', '01', '1.0', ' 1', '9223372036854775808'])(
+    'rejects a non-canonical or out-of-range overlap: %s',
+    (overlapMinorUnits) => {
+      expect(
+        recordRevenueRunCostReconciliationSchema.safeParse({
+          overlapMinorUnits,
+          basisReference: 'audit:cost-overlap-review-1',
+          idempotencyKey: 'cost-reconciliation-1',
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('rejects padded or unbounded assertion metadata', () => {
+    for (const body of [
+      {
+        overlapMinorUnits: '0',
+        basisReference: ' padded',
+        idempotencyKey: 'cost-reconciliation-1',
+      },
+      {
+        overlapMinorUnits: '0',
+        basisReference: 'audit:cost-overlap-review-1',
+        idempotencyKey: 'x'.repeat(201),
+      },
+    ]) {
+      expect(recordRevenueRunCostReconciliationSchema.safeParse(body).success).toBe(false);
+    }
+  });
+});
+
+describe('revenue-run plan DTO', () => {
+  const plan = {
+    opportunityId: '11111111-1111-4111-8111-111111111111',
+    ventureProposalId: '22222222-2222-4222-8222-222222222222',
+    taskId: '33333333-3333-4333-8333-333333333333',
+    runId: '44444444-4444-4444-8444-444444444444',
+    currency: 'EUR',
+    expectedRevenueMinorUnits: '9007199254740993',
+    expectedCostMinorUnits: '6000',
+    downsideMinorUnits: '1200',
+    confidenceBps: 6500,
+    timeToCashDays: 30,
+    forecastEvidenceHash: 'a'.repeat(64),
+    idempotencyKey: 'revenue-run-plan-1',
+  };
+
+  it('parses exact amounts and preserves the task/run binding', () => {
+    const parsed = createRevenueRunPlanSchema.parse(plan);
+
+    expect(parsed.expectedRevenueMinorUnits).toBe(9_007_199_254_740_993n);
+    expect(parsed.taskId).toBe(plan.taskId);
+    expect(parsed.runId).toBe(plan.runId);
+  });
+
+  it('requires task identity when an ACP run is supplied', () => {
+    const { taskId: _taskId, ...withoutTask } = plan;
+    expect(createRevenueRunPlanSchema.safeParse(withoutTask).success).toBe(false);
+  });
+
+  it.each([
+    { ...plan, expectedCostMinorUnits: 6000 },
+    { ...plan, expectedCostMinorUnits: '01' },
+    { ...plan, expectedCostMinorUnits: '9223372036854775808' },
+    { ...plan, currency: 'eur' },
+    { ...plan, forecastEvidenceHash: 'A'.repeat(64) },
+    { ...plan, confidenceBps: 10_001 },
+    { ...plan, timeToCashDays: 36_501 },
+  ])('rejects malformed or unbounded planning evidence', (input) => {
+    expect(createRevenueRunPlanSchema.safeParse(input).success).toBe(false);
   });
 });
