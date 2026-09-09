@@ -24,9 +24,9 @@ export default function ProgressPage() {
         </div>
         <p className={styles.eyebrow}>VentureOS progress</p>
         <h1>
-          Building the control plane
+          Building one workspace
           <br />
-          <span>for AI-native ventures.</span>
+          <span>for your business ideas.</span>
         </h1>
         <p className={styles.lede}>{BUILD_STATUS.boundary}</p>
         <div className={styles.metrics}>
@@ -48,12 +48,12 @@ export default function ProgressPage() {
       <section className={styles.roadmap}>
         <div className={styles.sectionHead}>
           <div>
-            <p className={styles.eyebrow}>Release trajectory</p>
-            <h2>Progress with proof, not theatre.</h2>
+            <p className={styles.eyebrow}>Development roadmap</p>
+            <h2>What is built and what still needs testing.</h2>
           </div>
           <p>
-            Statuses describe repository capabilities. They do not prove a live deployment, a
-            connected provider or a successful commercial pilot.
+            These labels describe completed code. They do not mean the service is online,
+            the AI agents are connected or a product is available to buy.
           </p>
         </div>
         <div className={styles.phaseGrid}>
@@ -77,10 +77,10 @@ export default function ProgressPage() {
       <section className={styles.cta}>
         <div>
           <p className={styles.eyebrow}>Workspace registration</p>
-          <h2>Build with the system as it evolves.</h2>
+          <h2>Explore the workspace as it develops.</h2>
           <p>
-            Registration is available where this application is hosted and enabled. Creating a
-            workspace does not activate an AI runtime or authorize external actions.
+            Registration works only where this application has been deployed and enabled.
+            Creating an account does not start AI agents or spend money.
           </p>
         </div>
         <Link href="/register">
