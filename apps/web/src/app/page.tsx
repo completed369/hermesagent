@@ -1,50 +1,8 @@
 import Link from 'next/link';
+import { BUILD_STATUS } from '@/lib/build-status';
 import styles from './page.module.css';
 
-const milestones = [
-  {
-    title: 'Foundation & governance',
-    detail: 'Workspace controls, auditability and founder authority',
-    status: 'Complete',
-    tone: 'complete',
-  },
-  {
-    title: 'Opportunity intelligence',
-    detail: 'Evidence-backed intake, scoring and freshness controls',
-    status: 'Complete',
-    tone: 'complete',
-  },
-  {
-    title: 'Board & founder approvals',
-    detail: 'Weighted review, vetoes and persisted approval gates',
-    status: 'Complete',
-    tone: 'complete',
-  },
-  {
-    title: 'Product & listing studio',
-    detail: 'Governed product preparation and marketplace-ready workflows',
-    status: 'Complete',
-    tone: 'complete',
-  },
-  {
-    title: 'Research & staging foundation',
-    detail: 'Evidence connectors, security gates and private validation',
-    status: 'Complete',
-    tone: 'complete',
-  },
-  {
-    title: 'Genuine commercial validation',
-    detail: 'Real pilot evidence, economics and founder-gated decisions',
-    status: 'In progress',
-    tone: 'progress',
-  },
-  {
-    title: 'Production launch',
-    detail: 'Unlocked only after commercial validation is genuinely passed',
-    status: 'Gated',
-    tone: 'locked',
-  },
-] as const;
+const milestones = BUILD_STATUS.milestones;
 
 const pillars = [
   {
@@ -89,7 +47,7 @@ export default function RootPage() {
                 <span className={styles.pulse} aria-hidden="true" />
                 Development in progress
               </span>
-              <span className={styles.betaBadge}>Open workspace access</span>
+              <span className={styles.betaBadge}>Workspace registration</span>
             </div>
             <p className={styles.eyebrow}>Human-controlled AI venture operations</p>
             <h1 className={styles.title}>
@@ -106,7 +64,7 @@ export default function RootPage() {
                 Create your workspace
               </Link>
               <Link href="/progress" className={styles.secondaryAction}>
-                Explore live progress ↗
+                Explore build progress ↗
               </Link>
             </div>
           </div>
@@ -115,18 +73,15 @@ export default function RootPage() {
             <div className={styles.heroPanelInner}>
               <p className={styles.panelLabel}>System status</p>
               <h2 className={styles.panelTitle}>From prototype to governed venture engine</h2>
-              <p className={styles.panelText}>
-                Core operating layers are built. The project is now moving through real commercial
-                validation before production exposure.
-              </p>
+              <p className={styles.panelText}>{BUILD_STATUS.boundary}</p>
               <div className={styles.signalGrid}>
                 <div className={styles.signalCard}>
                   <span className={styles.signalValue}>5</span>
-                  <span className={styles.signalLabel}>core milestone groups complete</span>
+                  <span className={styles.signalLabel}>capability groups implemented</span>
                 </div>
                 <div className={styles.signalCard}>
-                  <span className={styles.signalValue}>1</span>
-                  <span className={styles.signalLabel}>commercial validation phase active</span>
+                  <span className={styles.signalValue}>3</span>
+                  <span className={styles.signalLabel}>runtimes not configured</span>
                 </div>
                 <div className={styles.signalCard}>
                   <span className={styles.signalValue}>100%</span>
@@ -142,8 +97,8 @@ export default function RootPage() {
               <div className={styles.focusCard}>
                 <strong>Current focus</strong>
                 <span>
-                  Public launch surface, release alignment and the first evidence-backed commercial
-                  validation cycle.
+                  Runtime connection evidence, release alignment and a controlled staging rehearsal
+                  before the first real commercial pilot.
                 </span>
               </div>
             </div>
@@ -227,8 +182,8 @@ export default function RootPage() {
               <p className={styles.panelLabel}>Now building</p>
               <h3>The public face of VentureOS</h3>
               <p>
-                The engineering core is staying stable while the project gets a clear public entry
-                point and prepares to resume its first genuine commercial-validation cycle.
+                The next acceptance work connects the implemented foundations to a verified runtime
+                and staging release. A real commercial pilot follows those operational checks.
               </p>
               <ul className={styles.nowList}>
                 <li>Modern public landing surface</li>

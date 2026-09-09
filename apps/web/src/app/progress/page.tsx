@@ -1,19 +1,6 @@
 import Link from 'next/link';
+import { BUILD_STATUS } from '@/lib/build-status';
 import styles from './progress.module.css';
-
-const phases = [
-  ['01', 'Foundation', 'Identity, workspaces, governance and audit controls', 'Complete'],
-  ['02', 'Intelligence', 'Evidence-backed opportunity research and scoring', 'Complete'],
-  ['03', 'Decision system', 'Board review, approvals and human authority', 'Complete'],
-  ['04', 'Venture studio', 'Product, listing, finance and experiment workflows', 'Complete'],
-  ['05', 'Commercial validation', 'Real evidence, pilot economics and repeatability', 'Active'],
-  [
-    '06',
-    'Production readiness',
-    'Operational proof, legal readiness and launch rehearsal',
-    'Gated',
-  ],
-] as const;
 
 export default function ProgressPage() {
   return (
@@ -33,7 +20,7 @@ export default function ProgressPage() {
 
       <section className={styles.hero}>
         <div className={styles.status}>
-          <i /> Public build signal · updated with verified releases
+          <i aria-hidden="true" /> {BUILD_STATUS.label}
         </div>
         <p className={styles.eyebrow}>VentureOS progress</p>
         <h1>
@@ -41,18 +28,15 @@ export default function ProgressPage() {
           <br />
           <span>for AI-native ventures.</span>
         </h1>
-        <p className={styles.lede}>
-          A public, confidentiality-safe view of what is built, what is being validated and what
-          remains deliberately gated.
-        </p>
+        <p className={styles.lede}>{BUILD_STATUS.boundary}</p>
         <div className={styles.metrics}>
           <article>
-            <strong>4</strong>
-            <span>core systems complete</span>
+            <strong>5</strong>
+            <span>capability groups implemented</span>
           </article>
           <article>
-            <strong>1</strong>
-            <span>validation phase active</span>
+            <strong>3</strong>
+            <span>runtimes not configured</span>
           </article>
           <article>
             <strong>100%</strong>
@@ -68,22 +52,22 @@ export default function ProgressPage() {
             <h2>Progress with proof, not theatre.</h2>
           </div>
           <p>
-            Statuses reflect shipped platform capability and verified gates. Confidential
-            infrastructure, customer data and commercial diligence remain private.
+            Statuses describe repository capabilities. They do not prove a live deployment, a
+            connected provider or a successful commercial pilot.
           </p>
         </div>
         <div className={styles.phaseGrid}>
-          {phases.map(([id, name, detail, status]) => (
-            <article key={id} className={styles.phase}>
+          {BUILD_STATUS.milestones.map(({ title, detail, status, tone }, index) => (
+            <article key={title} className={styles.phase}>
               <div>
-                <span className={styles.phaseId}>{id}</span>
+                <span className={styles.phaseId}>{String(index + 1).padStart(2, '0')}</span>
                 <span
-                  className={`${styles.chip} ${status === 'Complete' ? styles.complete : status === 'Active' ? styles.active : styles.gated}`}
+                  className={`${styles.chip} ${tone === 'complete' ? styles.complete : tone === 'progress' ? styles.active : styles.gated}`}
                 >
                   {status}
                 </span>
               </div>
-              <h3>{name}</h3>
+              <h3>{title}</h3>
               <p>{detail}</p>
             </article>
           ))}
@@ -92,11 +76,11 @@ export default function ProgressPage() {
 
       <section className={styles.cta}>
         <div>
-          <p className={styles.eyebrow}>Open workspace access</p>
+          <p className={styles.eyebrow}>Workspace registration</p>
           <h2>Build with the system as it evolves.</h2>
           <p>
-            Founders, operators, partners and venture teams can create a workspace. Roles and
-            approvals keep consequential actions governed.
+            Registration is available where this application is hosted and enabled. Creating a
+            workspace does not activate an AI runtime or authorize external actions.
           </p>
         </div>
         <Link href="/register">
