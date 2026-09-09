@@ -7,18 +7,18 @@ const milestones = BUILD_STATUS.milestones;
 const pillars = [
   {
     number: '01',
-    title: 'Evidence-first intelligence',
-    text: 'Research and opportunity scoring are tied to provenance, freshness and explicit confidence instead of free-form optimism.',
+    title: 'Research with sources',
+    text: 'Keep research sources and assumptions beside each business idea.',
   },
   {
     number: '02',
-    title: 'Approval-gated agents',
-    text: 'AI can research, draft, calculate and recommend. Sensitive actions remain behind deterministic policy and founder approval.',
+    title: 'Work within your limits',
+    text: 'AI helps prepare work. Your permissions and budget determine which actions can proceed.',
   },
   {
     number: '03',
-    title: 'Venture control plane',
-    text: 'One operating layer for opportunity review, product preparation, finance, experiments and multi-venture governance.',
+    title: 'One place to track work',
+    text: 'Review ideas, product drafts, costs and results in one workspace.',
   },
 ] as const;
 
@@ -49,15 +49,14 @@ export default function RootPage() {
               </span>
               <span className={styles.betaBadge}>Workspace registration</span>
             </div>
-            <p className={styles.eyebrow}>Human-controlled AI venture operations</p>
+            <p className={styles.eyebrow}>Business planning with AI assistance</p>
             <h1 className={styles.title}>
-              Build companies with AI.
-              <span className={styles.titleAccent}>Keep the authority.</span>
+              Build a business with AI.
+              <span className={styles.titleAccent}>Stay in control.</span>
             </h1>
             <p className={styles.lede}>
-              VentureOS is a governed operating system where founders, operators, partners and teams
-              can research, validate, build and operate digital ventures with AI — with accountable
-              human control over approvals, risk and spend.
+              VentureOS is being built to help you research business ideas, prepare digital products
+              and track the work. You set the priorities, review results and control the budget.
             </p>
             <div className={styles.actions}>
               <Link href="/register" className={styles.primaryAction}>
@@ -72,7 +71,7 @@ export default function RootPage() {
           <aside className={styles.heroPanel} aria-label="Current VentureOS build status">
             <div className={styles.heroPanelInner}>
               <p className={styles.panelLabel}>System status</p>
-              <h2 className={styles.panelTitle}>From prototype to governed venture engine</h2>
+              <h2 className={styles.panelTitle}>Preparing for a public launch</h2>
               <p className={styles.panelText}>{BUILD_STATUS.boundary}</p>
               <div className={styles.signalGrid}>
                 <div className={styles.signalCard}>
@@ -97,8 +96,8 @@ export default function RootPage() {
               <div className={styles.focusCard}>
                 <strong>Current focus</strong>
                 <span>
-                  Runtime connection evidence, release alignment and a controlled staging rehearsal
-                  before the first real commercial pilot.
+                  Connect the AI agents, test the application and verify product delivery
+                  before opening sales.
                 </span>
               </div>
             </div>
@@ -114,9 +113,8 @@ export default function RootPage() {
               <h2 className={styles.sectionTitle}>AI speed, without giving up control.</h2>
             </div>
             <p className={styles.sectionText}>
-              VentureOS is being built around an explicit separation: agents can do the heavy
-              analytical and operational work, while policy and persisted approvals govern what can
-              actually happen.
+              AI can help with research and product drafts. You decide the goals and limits.
+              Connected execution is still being tested before public launch.
             </p>
           </div>
 
@@ -137,7 +135,7 @@ export default function RootPage() {
           <div className={styles.sectionHeader}>
             <div>
               <p className={styles.eyebrow}>Development tracker</p>
-              <h2 className={styles.sectionTitle}>Built in stages. Released behind gates.</h2>
+              <h2 className={styles.sectionTitle}>What is built. What comes next.</h2>
             </div>
             <p className={styles.sectionText}>
               This tracker shows the public development state without exposing credentials,
@@ -180,16 +178,16 @@ export default function RootPage() {
 
             <aside className={styles.nowCard}>
               <p className={styles.panelLabel}>Now building</p>
-              <h3>The public face of VentureOS</h3>
+              <h3>Preparing the first product</h3>
               <p>
-                The next acceptance work connects the implemented foundations to a verified runtime
-                and staging release. A real commercial pilot follows those operational checks.
+                The first product is a pet-sitting operations tracker. Product checks, checkout and
+                delivery must work before it is available to buy.
               </p>
               <ul className={styles.nowList}>
                 <li>Modern public landing surface</li>
                 <li>Release and staging alignment</li>
-                <li>Evidence-backed commercial validation next</li>
-                <li>Production remains gated until validation passes</li>
+                <li>First product and delivery checks</li>
+                <li>Public launch follows completed testing</li>
               </ul>
             </aside>
           </div>
