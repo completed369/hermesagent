@@ -52,8 +52,8 @@ export default function ProgressPage() {
             <h2>What is built and what still needs testing.</h2>
           </div>
           <p>
-            These labels describe completed code. They do not mean the service is online,
-            the AI agents are connected or a product is available to buy.
+            These labels describe completed code. They do not mean the service is online, the AI
+            agents are connected or a product is available to buy.
           </p>
         </div>
         <div className={styles.phaseGrid}>
@@ -79,8 +79,8 @@ export default function ProgressPage() {
           <p className={styles.eyebrow}>Workspace registration</p>
           <h2>Explore the workspace as it develops.</h2>
           <p>
-            Registration works only where this application has been deployed and enabled.
-            Creating an account does not start AI agents or spend money.
+            Registration works only where this application has been deployed and enabled. Creating
+            an account does not start AI agents or spend money.
           </p>
         </div>
         <Link href="/register">
