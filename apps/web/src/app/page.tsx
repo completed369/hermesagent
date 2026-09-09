@@ -96,8 +96,8 @@ export default function RootPage() {
               <div className={styles.focusCard}>
                 <strong>Current focus</strong>
                 <span>
-                  Connect the AI agents, test the application and verify product delivery
-                  before opening sales.
+                  Connect the AI agents, test the application and verify product delivery before
+                  opening sales.
                 </span>
               </div>
             </div>
