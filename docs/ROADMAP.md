@@ -1,5 +1,8 @@
 # Roadmap
 
+Current dated review: [Completion status reviewed 9 September 2026](COMPLETION_STATUS_2026-09-09.md).
+The historical records below do not replace exact-source release or runtime evidence.
+
 ## Delivery roadmap (reviewed 2026-08-26)
 
 The Phase 0–8 checklist below is a historical record of implemented product
