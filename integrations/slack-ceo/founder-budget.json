@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "status": "RECORDED_NOT_ENFORCED",
+  "currency": "EUR",
+  "starting_budget_cents": 10000,
+  "monthly_spending_cap_cents": 15000,
+  "maximum_single_expense_cents": 2500,
+  "reinvestment_percent": 100,
+  "reinvestment_condition": "Only for justified project needs; retain other surplus.",
+  "funding_status": "UNVERIFIED",
+  "monthly_period_timezone": "Asia/Nicosia",
+  "rules": [
+    "Monthly cap does not imply recurring funding.",
+    "Reinvestment remains subject to cash availability and all expense limits.",
+    "Count paid and committed costs, including fees and taxes; do not split related expenses to bypass limits.",
+    "Reserve costs, refund obligations, and required reserves before calculating available profit.",
+    "Stop new paid work when verified funds or remaining authority are insufficient."
+  ]
+}
