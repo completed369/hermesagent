@@ -42,6 +42,7 @@ Missing runtime/provider/ledger evidence must be shown as unknown or unconfigure
 never zero revenue, funded balance, successful deployment, or completed work.
 
 Desired interface (not implemented by this manifest):
+
 - Report: completed work with evidence, active tasks, blockers and next actions.
 - Budget: verified cash, committed costs, expenses, revenue and remaining limits.
 - Priorities: next tasks and their rationale.
@@ -80,5 +81,6 @@ installation; the connected ChatGPT Slack tools do not expose app creation or
 app-level token generation.
 
 References:
+
 - https://docs.slack.dev/reference/app-manifest/
 - https://docs.slack.dev/apis/events-api/using-socket-mode/
