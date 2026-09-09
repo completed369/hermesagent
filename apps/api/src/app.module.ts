@@ -24,6 +24,7 @@ import { SafeExceptionFilter } from './common/filters/safe-exception.filter';
 import { CsrfOriginGuard } from './common/guards/csrf-origin.guard';
 import { AgentControlPlaneModule } from './modules/agent-control-plane/agent-control-plane.module';
 import { WorkflowCentreModule } from './modules/workflow-centre/workflow-centre.module';
+import { CeoModule } from './modules/ceo/ceo.module';
 
 const env = loadEnv();
 
@@ -48,6 +49,7 @@ const env = loadEnv();
     VenturesModule,
     AgentControlPlaneModule,
     WorkflowCentreModule,
+    CeoModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
