@@ -128,22 +128,10 @@ jobs:
       - name: Production build
         run: pnpm build
 
-      # GitHub's Azure Ubuntu mirror can stop responding while Playwright runs
-      # apt-get. Prefer the canonical HTTPS archive and bound apt retries so an
-      # external mirror outage fails promptly instead of consuming the job.
-      - name: Stabilize Ubuntu archive for browser dependencies
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
-            test -f "$source" || continue
-            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
-          done
-          printf '%s\n' \
-            'Acquire::Retries "3";' \
-            'Acquire::http::Timeout "30";' \
-            'Acquire::https::Timeout "30";' \
-            | sudo tee /etc/apt/apt.conf.d/99ventureos-ci-network >/dev/null
+      # Native APT mirror failover keeps a stalled archive from blocking both
+      # browser jobs. Ubuntu signature/keyring verification remains unchanged.
+      - name: Configure Ubuntu archive mirror fallback
+        run: sudo env GITHUB_ACTIONS=true "$(command -v node)" scripts/configure-ci-apt.mjs
 
       # Install only the browser exercised by apps/web/playwright.config.ts.
       # Playwright's webServer configuration owns deterministic API/web
@@ -192,19 +180,10 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: Stabilize Ubuntu archive for browser dependencies
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
-            test -f "$source" || continue
-            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
-          done
-          printf '%s\n' \
-            'Acquire::Retries "3";' \
-            'Acquire::http::Timeout "30";' \
-            'Acquire::https::Timeout "30";' \
-            | sudo tee /etc/apt/apt.conf.d/99ventureos-ci-network >/dev/null
+      # Native APT mirror failover keeps a stalled archive from blocking both
+      # browser jobs. Ubuntu signature/keyring verification remains unchanged.
+      - name: Configure Ubuntu archive mirror fallback
+        run: sudo env GITHUB_ACTIONS=true "$(command -v node)" scripts/configure-ci-apt.mjs
 
       - name: Install Playwright Chromium
         timeout-minutes: 8
