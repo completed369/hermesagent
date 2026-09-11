@@ -49,7 +49,8 @@ budgets and timelines below are historical; they are not current spending or
 launch authority. Existing staging mock-only and protected release controls stay
 in force. Runtime and commercial claims require current executed evidence.
 
-The current continuation implements durable owner-instruction research intake.
+The current continuation implements durable owner-instruction research intake
+and verifies immutable stored sender/content provenance before task creation.
 It does not establish a connected research runtime, strategic model planning,
 paid execution or revenue. See `docs/DIRECTOR_INSTRUCTION_INTAKE.md`.
 
