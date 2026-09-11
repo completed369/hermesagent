@@ -7,9 +7,9 @@ import { pathToFileURL } from 'node:url';
 // https://manpages.ubuntu.com/manpages/noble/man1/apt-transport-mirror.1.html
 export const mirrorList =
   [
-    'https://azure.archive.ubuntu.com/ubuntu/\tpriority:1',
-    'https://us.archive.ubuntu.com/ubuntu/\tpriority:2',
-    'https://archive.ubuntu.com/ubuntu/\tpriority:3',
+    'https://us.archive.ubuntu.com/ubuntu/\tpriority:1',
+    'https://archive.ubuntu.com/ubuntu/\tpriority:2',
+    'https://azure.archive.ubuntu.com/ubuntu/\tpriority:3',
   ].join('\n') + '\n';
 
 export function withUbuntuMirrorFallback(source) {
