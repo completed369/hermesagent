@@ -84,14 +84,29 @@ export class CeoSlackService implements OnModuleInit, OnModuleDestroy {
     await this.assertFounder();
     await prisma.$transaction(async (tx) => {
       const count = await tx.$executeRaw(Prisma.sql`INSERT INTO ceo_slack_inbox
-        (workspace_id,event_id,channel_id,command,instruction,payload_digest)
-        VALUES (${b.workspaceId}::uuid,${message.eventId},${message.channel},${message.command},${message.instruction},${message.digest})
+        (workspace_id,event_id,channel_id,command,instruction,payload_digest,
+          founder_id,slack_team_id,slack_user_id,slack_app_id)
+        VALUES (${b.workspaceId}::uuid,${message.eventId},${message.channel},${message.command},${message.instruction},${message.digest},
+          ${b.founderId}::uuid,${b.slackTeamId},${b.slackUserId},${b.slackAppId})
         ON CONFLICT (workspace_id,event_id) DO NOTHING`);
       const [row] = await tx.$queryRaw<
-        Array<{ payload_digest: string }>
-      >(Prisma.sql`SELECT payload_digest FROM ceo_slack_inbox
+        Array<{
+          payload_digest: string;
+          founder_id: string | null;
+          slack_team_id: string | null;
+          slack_user_id: string | null;
+          slack_app_id: string | null;
+        }>
+      >(Prisma.sql`SELECT payload_digest,founder_id,slack_team_id,slack_user_id,slack_app_id FROM ceo_slack_inbox
         WHERE workspace_id=${b.workspaceId}::uuid AND event_id=${message.eventId}`);
-      if (row?.payload_digest !== message.digest) throw new Error('Slack event identity collision');
+      if (
+        row?.payload_digest !== message.digest ||
+        row.founder_id !== b.founderId ||
+        row.slack_team_id !== b.slackTeamId ||
+        row.slack_user_id !== b.slackUserId ||
+        row.slack_app_id !== b.slackAppId
+      )
+        throw new Error('Slack event identity collision');
       if (count)
         await tx.$executeRaw(Prisma.sql`INSERT INTO ceo_slack_audit (workspace_id,event_id,kind,digest)
         VALUES (${b.workspaceId}::uuid,${message.eventId},'ACCEPTED',${message.digest})`);
@@ -129,8 +144,7 @@ export class CeoSlackService implements OnModuleInit, OnModuleDestroy {
         return 'Budget unavailable or unconfigured. Verified available funds: unknown. New paid execution is blocked.';
       }
     }
-    if (item.command === 'instruction')
-      return this.instructions.prepare(b.workspaceId, b.founderId, item.event_id);
+    if (item.command === 'instruction') return this.instructions.prepare(b, item.event_id);
     const [tasks, runtimes] = await Promise.all([
       prisma.acpTask.groupBy({
         by: ['status'],
@@ -163,12 +177,16 @@ export class CeoSlackService implements OnModuleInit, OnModuleDestroy {
       await this.assertFounder();
       await prisma.$executeRaw(Prisma.sql`UPDATE ceo_slack_inbox SET state='FAILED',updated_at=clock_timestamp()
         WHERE workspace_id=${b.workspaceId}::uuid AND attempts>=3
+          AND founder_id=${b.founderId}::uuid AND slack_team_id=${b.slackTeamId}
+          AND slack_user_id=${b.slackUserId} AND slack_app_id=${b.slackAppId}
           AND state IN ('PROCESSING','REPLY_READY') AND lease_until<clock_timestamp()`);
       const [item] = await prisma.$queryRaw<Inbox[]>(Prisma.sql`UPDATE ceo_slack_inbox SET
         state=CASE WHEN reply IS NULL THEN 'PROCESSING' ELSE 'REPLY_READY' END,
         attempts=attempts+1,lease_id=${lease}::uuid,lease_until=clock_timestamp()+interval '45 seconds',updated_at=clock_timestamp()
         WHERE (workspace_id,event_id) IN (SELECT workspace_id,event_id FROM ceo_slack_inbox
           WHERE workspace_id=${b.workspaceId}::uuid AND state IN ('QUEUED','PROCESSING','REPLY_READY')
+            AND founder_id=${b.founderId}::uuid AND slack_team_id=${b.slackTeamId}
+            AND slack_user_id=${b.slackUserId} AND slack_app_id=${b.slackAppId}
             AND attempts<3 AND (lease_until IS NULL OR lease_until<clock_timestamp())
           ORDER BY CASE WHEN command IN ('pause','stop') THEN 0 ELSE 1 END,created_at
           FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`);
@@ -184,6 +202,7 @@ export class CeoSlackService implements OnModuleInit, OnModuleDestroy {
           VALUES(${b.workspaceId}::uuid,${item.event_id},'RESULT_VERIFIED',${hash}) ON CONFLICT DO NOTHING`);
       });
       if (this.stopping) return;
+      await this.assertFounder();
       const sent = await this.slack('chat.postMessage', {
         channel: item.channel_id,
         text: reply,

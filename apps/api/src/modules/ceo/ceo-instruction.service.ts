@@ -3,12 +3,15 @@ import { OperationalEventCapability } from '@ventureos/agent-control-plane';
 import { Prisma, prisma } from '@ventureos/database';
 import { AcpTaskRunService } from '../agent-control-plane/acp-task-run.service';
 import { buildCeoInstructionPlan } from './ceo-instruction-plan';
+import type { CeoBinding } from './ceo-command';
+import { verifyCeoInstructionRecord, type CeoInstructionRecord } from './ceo-instruction-record';
 
 @Injectable()
 export class CeoInstructionService {
   constructor(private readonly taskRuns: AcpTaskRunService) {}
 
-  async prepare(workspaceId: string, founderId: string, eventId: string): Promise<string> {
+  async prepare(binding: CeoBinding, eventId: string): Promise<string> {
+    const { workspaceId, founderId } = binding;
     // Identity is supplied by the server's verified Slack binding, never message text.
     const founder = await prisma.workspaceMember.findFirst({
       where: {
@@ -19,15 +22,17 @@ export class CeoInstructionService {
       },
     });
     if (!founder) throw new Error('Owner instruction binding is no longer authorized');
-    const [instruction] = await prisma.$queryRaw<Array<{ payload_digest: string }>>(
-      Prisma.sql`SELECT payload_digest FROM ceo_slack_inbox
+    const [instruction] = await prisma.$queryRaw<CeoInstructionRecord[]>(
+      Prisma.sql`SELECT workspace_id,event_id,channel_id,command,instruction,payload_digest,
+        founder_id,slack_team_id,slack_user_id,slack_app_id FROM ceo_slack_inbox
         WHERE workspace_id=${workspaceId}::uuid AND event_id=${eventId} AND command='instruction'`,
     );
     if (!instruction) throw new Error('Owner instruction not found in this workspace');
+    const verified = verifyCeoInstructionRecord(instruction, binding, eventId);
     const plan = buildCeoInstructionPlan({
       workspaceId,
       eventId,
-      payloadDigest: instruction.payload_digest,
+      payloadDigest: verified.digest,
     });
     const context = { workspaceId, principalId: founderId };
     const capability = OperationalEventCapability.issue('AI_COO', [
