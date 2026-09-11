@@ -204,6 +204,12 @@ const TASK_KIND_MINIMUMS: Readonly<
     { capabilityId: string; toolId: string; scope: string; authority: AuthorityLevel }
   >
 > = {
+  'business.research': {
+    capabilityId: 'business.research',
+    toolId: 'research.readonly',
+    scope: 'read',
+    authority: 1,
+  },
   'repository.review': {
     capabilityId: 'repository.review',
     toolId: 'git.readonly',
@@ -955,6 +961,7 @@ export class GovernedAiCoo {
           'quality.verify',
           'documentation.prepare',
           'runtime.health.check',
+          'business.research',
         ].includes(task.kind)
       )
         throw new AiCooPolicyError('Unsupported task kind');

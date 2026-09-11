@@ -24,6 +24,11 @@ import type {
 } from '@ventureos/agent-bridge';
 import { BRIDGE_TEST_ONLY_GATE } from '@ventureos/agent-bridge';
 import { Prisma, prisma } from '@ventureos/database';
+import {
+  assertBusinessExecutionInTransaction,
+  isBusinessReservationExecutable,
+  reserveBusinessExpenseInTransaction,
+} from '@ventureos/finance-engine';
 import type { AuditService } from '../audit/audit.service';
 import { AUDIT_SERVICE } from '../audit/audit.tokens';
 
@@ -404,6 +409,25 @@ export class AcpBrokerReservationService implements BridgeBrokerEvidenceVerifier
               decision,
             });
             const evidenceHash = computeBrokerReservationEvidenceHash(binding);
+            if (!snapshot.testOnly && !finalAgentEvidence.testOnly) {
+              await assertBusinessExecutionInTransaction(tx, context.workspaceId);
+              if (run.task.currency !== 'EUR')
+                throw new AcpBrokerReservationDeniedError(
+                  'Business spending requires verified EUR costs',
+                );
+              if (run.task.maximumCostMinorUnits > 0n) {
+                // Reserve the full enforced task ceiling, not an optimistic model estimate.
+                // Related tasks in one objective cannot split a purchase around the EUR 25 cap.
+                await reserveBusinessExpenseInTransaction(tx, {
+                  workspaceId: context.workspaceId,
+                  id: input.reservationId,
+                  purchaseGroup: run.objectiveId,
+                  maximumCents: run.task.maximumCostMinorUnits,
+                  costEvidence: snapshot.evidenceHash,
+                  costValidUntil: new Date(now.getTime() + BROKER_RESERVATION_TTL_MS),
+                });
+              }
+            }
             const reservation = await tx.acpBrokerReservation.create({
               data: {
                 id: input.reservationId,
@@ -476,6 +500,15 @@ export class AcpBrokerReservationService implements BridgeBrokerEvidenceVerifier
       where: { workspaceId_id: { workspaceId: evidence.workspaceId, id: evidence.evidenceId } },
     });
     if (!reservation) return false;
+    if (
+      !reservation.testOnly &&
+      !(await isBusinessReservationExecutable(
+        evidence.workspaceId,
+        reservation.id,
+        reservation.estimatedCostMinorUnits > 0n,
+      ))
+    )
+      return false;
     const recomputedHash = durableEvidenceHash(reservation);
     return (
       reservation.evidenceHash === evidence.evidenceHash &&

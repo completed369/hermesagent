@@ -57,6 +57,12 @@ interface TaskKindPolicy {
 }
 
 const TASK_POLICIES: Readonly<Record<TaskKind, TaskKindPolicy>> = {
+  'business.research': {
+    inputKeys: ['instructionReference'],
+    capabilityNames: ['business.research'],
+    tools: [{ name: 'research.readonly', scope: 'read' }],
+    authorityLevel: 1,
+  },
   'repository.review': {
     inputKeys: ['repository', 'ref', 'pullRequestUrl'],
     capabilityNames: ['repository.review'],
@@ -168,6 +174,10 @@ function assertTaskInput(task: ControlPlaneTask): void {
   } else if (task.kind === 'documentation.prepare') {
     assertString(task.input.document, 'document');
     assertStringArray(task.input.evidenceIds, 'evidenceIds');
+  } else if (task.kind === 'business.research') {
+    assertString(task.input.instructionReference, 'instructionReference');
+    if (!/^slack:Ev[A-Za-z0-9]{1,100}$/.test(task.input.instructionReference))
+      throw new ControlPlanePolicyError('Research requires a stored owner instruction reference');
   } else {
     assertString(task.input.connectionId, 'connectionId');
   }

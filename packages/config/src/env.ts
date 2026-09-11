@@ -84,6 +84,7 @@ export const envSchema = z
     FEATURE_STORAGE_UPLOADS_ENABLED: zBoolean(false),
     FEATURE_ADVERTISING_ENABLED: zBoolean(false),
     FEATURE_PAID_INTEGRATIONS_ENABLED: zBoolean(false),
+    CEO_SLACK_ENABLED: zBoolean(false),
     GOVERNANCE_BOARD_APPROVAL_THRESHOLD: z.coerce.number().min(0).max(100).default(75),
     GOVERNANCE_EVIDENCE_QUALITY_MINIMUM: z.coerce.number().min(0).max(100).default(70),
 
@@ -213,7 +214,8 @@ export const envSchema = z
         env.FEATURE_LIVE_PUBLISHING_ENABLED ||
         env.FEATURE_STORAGE_UPLOADS_ENABLED ||
         env.FEATURE_ADVERTISING_ENABLED ||
-        env.FEATURE_PAID_INTEGRATIONS_ENABLED
+        env.FEATURE_PAID_INTEGRATIONS_ENABLED ||
+        env.CEO_SLACK_ENABLED
       ) {
         context.addIssue({
           code: z.ZodIssueCode.custom,

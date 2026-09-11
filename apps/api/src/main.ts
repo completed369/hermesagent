@@ -11,7 +11,7 @@ async function bootstrap() {
   const env = loadEnv();
   const logger = new StructuredLogger('api');
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
 
   app.getHttpAdapter().getInstance().set('trust proxy', env.API_TRUST_PROXY_HOPS);
   app.use(cookieParser());

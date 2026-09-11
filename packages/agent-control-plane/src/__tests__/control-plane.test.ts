@@ -345,6 +345,69 @@ function partialRuntime() {
 }
 
 describe('allowlisted structured tasks', () => {
+  it('requires explicit research grants and rejects arbitrary actions in research input', () => {
+    const plane = new InMemoryControlPlane({
+      authorityPrincipals: [founder.principalId],
+      clock: () => NOW,
+    });
+    provision(plane);
+    const task: ControlPlaneTask = {
+      ...reviewTask('research-task'),
+      kind: 'business.research',
+      input: { instructionReference: 'slack:Ev123' },
+      requiredCapabilityIds: ['research-capability'],
+      requiredToolIds: ['research-tool'],
+    };
+    expect(() => plane.createTask(founder, task)).toThrow();
+    plane.putCapability(founder, {
+      id: 'research-capability',
+      workspaceId: founder.workspaceId,
+      name: 'business.research',
+      version: '1',
+    });
+    plane.putTool(founder, {
+      id: 'research-tool',
+      workspaceId: founder.workspaceId,
+      name: 'research.readonly',
+      version: '1',
+    });
+    plane.grantAgentCapability(founder, {
+      id: 'research-capability-grant',
+      workspaceId: founder.workspaceId,
+      agentId: 'agent-1',
+      capabilityId: 'research-capability',
+    });
+    plane.grantTool(founder, {
+      id: 'research-tool-grant',
+      workspaceId: founder.workspaceId,
+      agentId: 'agent-1',
+      toolId: 'research-tool',
+      scopes: ['read'],
+    });
+    expect(() => plane.createTask(founder, task)).toThrow();
+    plane.grantAuthority(founder, {
+      id: 'research-authority',
+      workspaceId: founder.workspaceId,
+      agentId: 'agent-1',
+      level: 1,
+      actionClasses: ['business.research'],
+      costLimit: task.costLimit,
+      maxConcurrentRuns: 1,
+    });
+    expect(() =>
+      plane.createTask(founder, {
+        ...task,
+        input: { instructionReference: 'slack:Ev123', shell: 'publish everything' },
+      }),
+    ).toThrow();
+    expect(() =>
+      plane.createTask(founder, {
+        ...task,
+        input: { instructionReference: 'https://other.example' },
+      }),
+    ).toThrow();
+    expect(() => plane.createTask(founder, task)).not.toThrow();
+  });
   it('allows only an authorized planner or founder to create a task', () => {
     const plane = new InMemoryControlPlane({
       clock: () => NOW,

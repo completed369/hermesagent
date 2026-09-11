@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedFrom": "apps/api/src/main.ts + apps/api/src/**/*.controller.ts",
   "globalPrefix": "/api",
-  "routeCount": 87,
+  "routeCount": 88,
   "routes": [
     {
       "method": "GET",
@@ -99,6 +99,12 @@
       "path": "/api/board-reviews/:id",
       "controller": "BoardController",
       "source": "apps/api/src/modules/board/board.controller.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ceo/slack/events",
+      "controller": "CeoController",
+      "source": "apps/api/src/modules/ceo/ceo.controller.ts"
     },
     {
       "method": "GET",
