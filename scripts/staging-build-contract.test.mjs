@@ -218,6 +218,7 @@ test('the immutable migration chain matches the reviewed sequence', () => {
     '20260908103000_revenue_run_commercial_evidence',
     '20260909150000_business_spending_commitments',
     '20260909151000_ceo_slack_inbox',
+    '20260911100000_ceo_instruction_provenance',
   ]);
   const unsafeRestoreReference =
     /(?:password|passwd|secret|token|cookie|authorization|chain[-_.:/ ]?of[-_.:/ ]?thought)/u;
