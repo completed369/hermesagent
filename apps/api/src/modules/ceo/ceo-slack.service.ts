@@ -6,6 +6,7 @@ import {
   setBusinessExecutionStateInTransaction,
 } from '@ventureos/finance-engine';
 import { acceptCeoMessage, safeSlackReply, type CeoBinding } from './ceo-command';
+import { CeoInstructionService } from './ceo-instruction.service';
 
 interface Inbox {
   event_id: string;
@@ -20,6 +21,8 @@ const digest = (text: string) => createHash('sha256').update(text).digest('hex')
 /** Persistent Slack transport and read-only evidence jobs. Does not claim an autonomous planner. */
 @Injectable()
 export class CeoSlackService implements OnModuleInit, OnModuleDestroy {
+  constructor(private readonly instructions: CeoInstructionService) {}
+
   private binding?: CeoBinding;
   private ready = false;
   private timer?: NodeJS.Timeout;
@@ -127,7 +130,7 @@ export class CeoSlackService implements OnModuleInit, OnModuleDestroy {
       }
     }
     if (item.command === 'instruction')
-      return `Instruction ${item.event_id} is stored for planning. No task has executed. Blocker: autonomous planning and execution credentials are not configured.`;
+      return this.instructions.prepare(b.workspaceId, b.founderId, item.event_id);
     const [tasks, runtimes] = await Promise.all([
       prisma.acpTask.groupBy({
         by: ['status'],

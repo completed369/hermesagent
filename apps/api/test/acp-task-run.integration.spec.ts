@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { buildCeoInstructionPlan } from '../src/modules/ceo/ceo-instruction-plan';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   OperationalEventCapability,
@@ -109,6 +110,47 @@ describe('durable ACP task/run spine (PostgreSQL integration)', () => {
     controlCapability = OperationalEventCapability.issue('CONTROL_PLANE', [
       { workspaceId, principalId: controlId, actorKind: 'SYSTEM', authorityLevel: 3 },
     ]);
+  });
+
+  it('persists one owner research delegation across service restart and denies payload drift', async () => {
+    const input = { workspaceId, eventId: 'EvResearchIntake', payloadDigest: 'a'.repeat(64) };
+    const researchPlan = buildCeoInstructionPlan(input);
+    const context = { workspaceId, principalId: plannerId };
+    const first = await service.createPlan(plannerCapability, context, researchPlan);
+    const restarted = new AcpTaskRunService(
+      new AuditService(),
+      assignmentVerifier,
+      artifactVerifier,
+    );
+    const replay = await restarted.createPlan(plannerCapability, context, researchPlan);
+    expect(replay.replayed).toBe(true);
+    expect(replay.objective.id).toBe(first.objective.id);
+    const tasks = await prisma.acpTask.findMany({
+      where: { workspaceId, objectiveId: first.objective.id },
+      include: { runs: true },
+    });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({
+      kind: 'business.research',
+      status: 'READY',
+      requiredAuthority: 1,
+    });
+    expect(tasks[0]?.runs).toHaveLength(1);
+    expect(tasks[0]?.runs[0]?.status).toBe('PREPARED');
+    await expect(
+      restarted.createPlan(
+        plannerCapability,
+        context,
+        buildCeoInstructionPlan({ ...input, payloadDigest: 'b'.repeat(64) }),
+      ),
+    ).rejects.toThrow(AcpTaskRunConflictError);
+    await expect(
+      restarted.createPlan(
+        plannerCapability,
+        { workspaceId: secondWorkspaceId, principalId: plannerId },
+        researchPlan,
+      ),
+    ).rejects.toThrow(AcpTaskRunDeniedError);
   });
 
   afterAll(async () => {

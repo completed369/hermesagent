@@ -172,6 +172,7 @@ export function validateTrustedArtifactEvidence(value: TrustedArtifactEvidence):
 }
 
 export const TASK_KIND_MINIMUM_AUTHORITY: Readonly<Record<TaskKind, AuthorityLevel>> = {
+  'business.research': 1,
   'repository.review': 1,
   'quality.verify': 3,
   'documentation.prepare': 2,

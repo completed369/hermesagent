@@ -109,7 +109,11 @@ export interface CostLimit {
 }
 
 export type TaskKind =
-  'repository.review' | 'quality.verify' | 'documentation.prepare' | 'runtime.health.check';
+  | 'repository.review'
+  | 'quality.verify'
+  | 'documentation.prepare'
+  | 'runtime.health.check'
+  | 'business.research';
 
 export interface AuthorityGrant {
   id: EntityId;

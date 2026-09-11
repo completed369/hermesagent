@@ -29,7 +29,31 @@ draft, calculate, recommend, and prepare actions — never independently
 execute anything sensitive (see master spec section 2, reproduced in
 `docs/SECURITY.md`).
 
-## Commercial defaults (Phase 1 pilot slice)
+## Current owner direction — 11 September 2026
+
+VentureOS is a general subscription and usage-credit platform where an AI
+Director delegates work to specialist agents. Each workspace pursues useful
+products or services and measures actual buyer receipts and costs. No single
+marketplace, product category or model provider defines the platform. The owner
+communicates with the Director; the backend enforces the standing mandate,
+entitlements, budgets and tenant boundaries.
+
+Use existing architecture and domains. The customer experience includes a simple
+website and an original event-backed company world showing actual agent work.
+Subscriptions, service credits, operating funds and venture earnings are separate
+records. A funded balance does not override pause or expand spending authority.
+
+The private operations report and master execution directive dated 10 September
+2026 preserve the current owner mandate. Earlier commercial defaults, estimated
+budgets and timelines below are historical; they are not current spending or
+launch authority. Existing staging mock-only and protected release controls stay
+in force. Runtime and commercial claims require current executed evidence.
+
+The current continuation implements durable owner-instruction research intake.
+It does not establish a connected research runtime, strategic model planning,
+paid execution or revenue. See `docs/DIRECTOR_INSTRUCTION_INTAKE.md`.
+
+## Historical commercial defaults (Phase 1 pilot slice)
 
 Single workspace, single founder, one pilot marketplace (Etsy, mock/draft
 mode only), one pilot product category (digital template bundle), mock
@@ -41,7 +65,7 @@ build prompt provided by the founder for the complete unabridged text; this
 file summarizes the operative defaults actually encoded in `.env.example`
 and `packages/finance-engine`).
 
-## Budget constraints
+## Historical budget estimates — superseded
 
 Month 1 ≤ ~€100, month 3 ≤ ~€250/month, steady state ~€300–500/month.
 Self-hosted/open-source/usage-based services preferred; no paid service
@@ -49,7 +73,7 @@ activates automatically (`FEATURE_PAID_INTEGRATIONS_ENABLED=false` by
 default). Cost tracking is architected in `packages/finance-engine` and the
 `AI_PER_*_COST_LIMIT_EUR` env vars; UI dashboards for it are Phase 7.
 
-## Timeline
+## Historical target timeline
 
 - **Weeks 1–3**: core technical + governance foundation (Phase 0/1 — this
   build).
@@ -59,10 +83,11 @@ default). Cost tracking is architected in `packages/finance-engine` and the
 - **Long term**: package/resell the platform, agent system, workflow
   architecture, prompt framework, methodology, and white-label version.
 
-## Full master build prompt
+## Historical master build prompt
 
 The complete, unabridged master build prompt supplied by the founder is the
-authoritative source of truth for scope and acceptance criteria. It is
+historical source for the original scope and acceptance criteria. The current
+owner direction above supersedes conflicting strategy and delivery assumptions. It is
 long (46 sections); rather than duplicate all of it here verbatim (risking
 drift between two copies), this repository treats the founder's original
 message as canonical and each `docs/*.md` file implements its relevant

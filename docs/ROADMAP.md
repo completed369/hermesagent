@@ -1,5 +1,12 @@
 # Roadmap
 
+Current product direction: general subscription and usage-credit platform under
+an owner-directed AI company. See `../PROJECT_CONTEXT.md` and
+[director instruction intake](DIRECTOR_INSTRUCTION_INTAKE.md). Older niche,
+budget and timeline assumptions below are historical. The current continuation
+connects stored Slack instructions to durable research tasks; execution and
+commercial acceptance remain unfinished.
+
 Current dated review: [Completion status reviewed 9 September 2026](COMPLETION_STATUS_2026-09-09.md).
 The historical records below do not replace exact-source release or runtime evidence.
 
