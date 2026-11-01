@@ -16,7 +16,7 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "zod": "^3.23.8",
+    "zod": "^4.6.6",
     "@ventureos/contracts": "workspace:*",
     "@ventureos/database": "workspace:*",
     "@ventureos/finance-engine": "workspace:*",

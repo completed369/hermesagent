@@ -15,7 +15,7 @@
     "@ventureos/integrations": "workspace:*",
     "@ventureos/policy-engine": "workspace:*",
     "@ventureos/security": "workspace:*",
-    "zod": "^3.23.8"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
